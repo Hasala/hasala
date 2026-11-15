@@ -40,7 +40,7 @@ stops. The owner merges.
 | File | Change |
 | --- | --- |
 | `flake.nix` | New input `hasala` (below); add `hasala` to the `outputs` arguments and `hasala.nixosModules.default` to the host's `modules` |
-| `flake.lock` | `nix flake lock` (adds `hasala`, its `nixpkgs` and its `nixpkgs-unstable`) |
+| `flake.lock` | `nix flake lock` (adds `hasala` and its `nixpkgs`) |
 | `modules/services/hasala.nix` | New: the instance below |
 | `hosts/<host>/default.nix` | Import `../../modules/services/hasala.nix` |
 | `modules/sops.nix` | The six secrets below |
@@ -54,8 +54,7 @@ stops. The owner merges.
     # Hasala's QA backend. Pinned to a branch that moves only when a CI-green
     # commit of hasala main is released to QA, so the weekly lock bump never
     # deploys unreleased work. Deliberately NO `follows`: the host runs exactly
-    # the closure hasala's CI built and tested (its own nixos-26.05 lock, Go
-    # 1.27 from nixos-unstable).
+    # the closure hasala's CI built and tested (its own nixos-26.05 lock).
     hasala.url = "github:salehtl/hasala/<release branch, e.g. qa>";
 ```
 

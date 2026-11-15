@@ -3,15 +3,12 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
-    # Used for ONE package, Go (see goFor). Everything else comes from 26.05.
-    nixpkgs-unstable.url = "github:nixos/nixpkgs/40b7966096659ec072bc0ca0d1a102165f1509eb";
   };
 
   outputs =
     {
       self,
       nixpkgs,
-      nixpkgs-unstable,
     }:
     let
       inherit (nixpkgs) lib;
@@ -27,30 +24,16 @@
       # stay at or above the `toolchain` line in server/go.mod, which
       # scripts/check.sh enforces.
       #
-      # nixpkgs master (40b7966) packages Go 1.27.3; the source is moved to 1.27.4
-      # (GO-2026-6859) until nixpkgs has it, then back to nixos-unstable. Not 26.05, because 26.05 stops at 1.26.8: that release is past
-      # GO-2026-6090 (the TLS KeyUpdate DoS in the 2026-08-14 ledgerd security
-      # review, which is not published; fixed in 1.26.6) but still
-      # carries ten reachable net/http, crypto/tls and mime/multipart advisories
-      # fixed in 1.26.9 / 1.27.2, and no nixpkgs branch packages 1.26.9.
-      goFor =
-        system:
-        let
-          upstream = nixpkgs-unstable.legacyPackages.${system};
-        in
-        upstream.go_1_27.overrideAttrs {
-          version = "1.27.4";
-          src = upstream.fetchurl {
-            url = "https://go.dev/dl/go1.27.4.src.tar.gz";
-            hash = "sha256-c8+4VxrsDAEXdofbhxY9Rqog6XeWcncokaoXZU2aYJk=";
-          };
-        };
+      # 26.05's go_1_27, not its default go, which is the 1.26 line and below
+      # that floor.
+      goFor = system: nixpkgs.legacyPackages.${system}.go_1_27;
 
       # 26.05's buildGoModule, driven by that Go. The server is built with it,
-      # and so are the Go tools below: 26.05 compiles them with Go 1.26, and a
-      # tool built with an older go/types cannot load 1.27's standard library
+      # and so are gopls and govulncheck: 26.05 compiles them with Go 1.26, and
+      # a tool built with an older go/types cannot load 1.27's standard library
       # (govulncheck fails outright on it). They are still 26.05's packages,
-      # compiled locally rather than fetched from the cache.
+      # compiled locally rather than fetched from the cache. 26.05 already
+      # builds golangci-lint with go_1_27, so it comes from the cache as is.
       buildGoModuleFor = system: pkgs: pkgs.buildGoModule.override { go = goFor system; };
       goToolsFor =
         system: pkgs:
@@ -60,20 +43,7 @@
         [
           (pkgs.gopls.override { buildGoLatestModule = buildGoModule; })
           (pkgs.govulncheck.override { buildGoLatestModule = buildGoModule; })
-          # 26.05's 2.12.2 cannot read Go 1.27 export data even when built with
-          # 1.27 ("export data version 5 is greater than maximum supported"), so
-          # its definition is pointed at 2.14.0, the release nixos-unstable
-          # builds with Go 1.27. Hashes as pinned there.
-          ((pkgs.golangci-lint.override { buildGo126Module = buildGoModule; }).overrideAttrs {
-            version = "2.14.0";
-            src = pkgs.fetchFromGitHub {
-              owner = "golangci";
-              repo = "golangci-lint";
-              tag = "v2.14.0";
-              hash = "sha256-HATA7JKHwEouM+8jYZbQrkX7p4gut4IpyTvcBexu/4o=";
-            };
-            vendorHash = "sha256-ekP/zDhYMpMG+tYAyYHNfLOCt/JkxrXUw1jHUEfsM8k=";
-          })
+          pkgs.golangci-lint
         ];
 
       # XcodeGen 2.46.0 exactly (spec 06 §1; ios/scripts/generate-project.sh says
@@ -164,35 +134,15 @@
           # 05 §4.2: the same PostgreSQL the devShell's test clusters use, so CI
           # and the QA host run one major and minor.
           postgresql = pkgs.postgresql_17;
-          # 05 §4.2, R-09: nixos-26.05's cloudflared recipe, compiled with the
-          # Go 1.27 above. It is the only internet-facing process on the QA
-          # host, and 26.05's Go has reachable standard-library advisories.
-          # The ingress lint (infra/qa/cloudflared/lint.sh) and the host run this
-          # same binary.
-          #
-          # Source pinned to 2026.10.3 (nixpkgs 6ed958b, not yet in a channel):
-          # releases before 2026.10.2 trust eight eMudhra (emSign) intermediates
-          # with weak private keys (Cloudflare advisory, 2026-10-20). Drop the
-          # version, src and vendorHash below once nixos-26.05 ships >= 2026.10.2.
+          # 05 §4.2, R-09: nixos-26.05's cloudflared, built with the Go above.
+          # It is the only internet-facing process on the QA host. The ingress
+          # lint (infra/qa/cloudflared/lint.sh) and the host run this same
+          # binary. Releases before 2026.10.2 trust eight eMudhra (emSign)
+          # intermediates with weak private keys (Cloudflare advisory, 2026-10-20).
           cloudflared =
-            (pkgs.cloudflared.override { buildGoModule = buildGoModuleFor system pkgs; }).overrideAttrs
-              (_: rec {
-                version = "2026.10.3";
-                src = pkgs.fetchFromGitHub {
-                  owner = "cloudflare";
-                  repo = "cloudflared";
-                  tag = version;
-                  hash = "sha256-k1OMkHHItOT5VHhQqgC8ODm/RCJEtwtZi0Lxyf/esLg=";
-                };
-                vendorHash = "sha256-KqTLXEm0jxJ1TsyYzxAwYMe8niIgJxBHQPz/aZKmS40=";
-                ldflags = [
-                  "-s"
-                  "-w"
-                  "-X main.Version=${version}"
-                  "-X github.com/cloudflare/cloudflared/cmd/cloudflared/updater.BuiltForPackageManager=nixpkgs"
-                ];
-                doCheck = false;
-              });
+            assert lib.versionAtLeast pkgs.cloudflared.version "2026.10.2";
+            assert pkgs.cloudflared.go.outPath == (goFor system).outPath;
+            pkgs.cloudflared;
           server = self.packages.${system}.hasalad;
           default = self.packages.${system}.hasalad;
         }

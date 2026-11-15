@@ -74,12 +74,11 @@ same devShell.
 1. Run `direnv allow` one time.
 2. In a non-interactive shell, put `direnv exec .` before each command.
 
-Go is the only tool that does not come from 26.05. Go comes from
-`nixos-unstable` (1.27.4: a nixpkgs master commit's Go 1.27.3 with the 1.27.4 source, until nixpkgs has it), because Go 1.26.8 in 26.05 has standard-library
-advisories that are reachable. The flake builds gopls, govulncheck and
-golangci-lint again with this Go. The `toolchain` line in `server/go.mod` is
-the security floor. In `server/`, `govulncheck ./...` must show nothing that
-is reachable.
+Go is 26.05's `go_1_27` (1.27.4), not its default Go, which is the 1.26
+line. The `toolchain` line in `server/go.mod` is the security floor. The flake
+builds gopls and govulncheck again with this Go, because 26.05 builds them
+with Go 1.26. In `server/`, `govulncheck ./...` must show nothing that is
+reachable.
 
 ### The gate
 

@@ -1166,9 +1166,10 @@ in
       type = types.listOf types.str;
       default = [
         "Comodo AAA Services root"
-        "emSign ECC Root CA - G3"
-      ];
-      description = "Root certificates, by their label in the system CA bundle, that the host stops trusting (security.pki.caCertificateBlacklist; system-wide). A CA distrust stopgap until the pinned nixpkgs ships the fixed CA bundle.";
+      ]
+      ++ optional (lib.versionOlder pkgs.cacert.version "3.131.1") "emSign ECC Root CA - G3";
+      defaultText = lib.literalExpression ''[ "Comodo AAA Services root" ] ++ lib.optional (lib.versionOlder pkgs.cacert.version "3.131.1") "emSign ECC Root CA - G3"'';
+      description = "Root certificates, by their label in the system CA bundle, that the host stops trusting (security.pki.caCertificateBlacklist; system-wide). A CA distrust stopgap until the host's nixpkgs ships the fixed CA bundle. NSS 3.131.1 no longer carries emSign ECC Root CA - G3, and a blocklisted label the bundle lacks fails the build.";
     };
 
     limits = {

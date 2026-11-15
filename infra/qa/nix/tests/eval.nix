@@ -1085,10 +1085,10 @@ let
       && lib.any (lib.hasInfix "systemctl start hasala.target") lines
       && lib.elem "hasala.target" fullSys.config.systemd.timers.hasala-health.wantedBy
     ) "AT-E3 the restore runbook must stop the health probes and bring them back with hasala.target"
-    ++ check (lib.all (n: lib.elem n fullSys.config.security.pki.caCertificateBlacklist) [
-      "Comodo AAA Services root"
-      "emSign ECC Root CA - G3"
-    ]) "AT-E3 the CA distrust stopgap is missing";
+    ++ check (lib.all (n: lib.elem n fullSys.config.security.pki.caCertificateBlacklist) (
+      [ "Comodo AAA Services root" ]
+      ++ lib.optional (lib.versionOlder fullSys.pkgs.cacert.version "3.131.1") "emSign ECC Root CA - G3"
+    )) "AT-E3 the CA distrust stopgap is missing";
 
   errors = negativeErrors ++ typeErrorErrors ++ positiveErrors ++ envErrors ++ retentionErrors;
 

@@ -152,7 +152,7 @@ struct CoreCategorizeTests {
         case "hang forever":
           // Ignores cancellation and answers much later: the tier must not wait for it.
           await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
-            DispatchQueue.global().asyncAfter(deadline: .now() + 60) { k.resume() }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 300) { k.resume() }
           }
           hangAnswered.withLock { $0 = true }
           return .category("shopping")
@@ -163,15 +163,12 @@ struct CoreCategorizeTests {
       }
     }
     let m = Hangs()
-    let clock = ContinuousClock()
-    let started = clock.now
     let r = await ModelTier.run(
       subjects: ["hang forever", "overflow once", "overflow twice", "spinneys"], model: m, allowed: allowed, context: .foreground, now: { 0 },
       callTimeout: .milliseconds(200))
     // Load-independent: the sweep returned while the hung call was still
     // pending (a wall-clock bound on a 200 ms limit is flaky on a busy runner).
     #expect(!m.hangAnswered.withLock { $0 })
-    #expect(clock.now - started < .seconds(60))
     #expect(r.suggestions == [.init(subject: "overflow once", category: "dining"), .init(subject: "spinneys", category: "groceries")])
     #expect(r.unknown.isEmpty && r.stoppedBy == nil)
     #expect(m.calls.withLock { $0 } == ["hang forever": 1, "overflow once": 2, "overflow twice": 2, "spinneys": 1])

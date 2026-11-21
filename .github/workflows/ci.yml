@@ -309,6 +309,9 @@ jobs:
           nix shell --inputs-from . nixpkgs#gitleaks --command
           gitleaks git --config .gitleaks.toml --log-opts=HEAD --redact --verbose --no-banner .
 
+      - name: Comment lint
+        run: nix shell --inputs-from . nixpkgs#bun --command scripts/check-comments.sh
+
   ios-tools:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}

@@ -136,6 +136,11 @@ run "real-mail fence" scripts/check.sh --fence-only
 run "real-mail fence self-test" scripts/tests/fence_test.sh
 run "HasalaCore import lint" ios/scripts/check-imports.sh --no-manifest
 run "HasalaCore forbidden-API lint" ios/scripts/check-forbidden.sh
+if have bun; then
+	run "comment lint" scripts/check-comments.sh
+else
+	skip "comment lint" "bun not on PATH"
+fi
 
 if ! have gitleaks; then
 	skip "gitleaks" "not on PATH"
@@ -224,6 +229,16 @@ if changed '^scripts/(private-fixtures-lock|tests/private_fixtures_lock_test)\.s
 	run "private fixtures lock self-test" scripts/tests/private_fixtures_lock_test.sh
 else
 	skip "private fixtures lock self-test" "no lock script changes"
+fi
+
+if changed '^scripts/(comment-lint\.ts|check-comments\.sh|tests/comment_lint_test\.sh)$'; then
+	if have bun; then
+		run "comment lint self-test" scripts/tests/comment_lint_test.sh
+	else
+		skip "comment lint self-test" "bun not on PATH"
+	fi
+else
+	skip "comment lint self-test" "no comment lint changes"
 fi
 
 if changed '^scripts/(check\.sh|gotest-(ran|summary)\.ts|tests/(gate_run|gotest_ran|git_env|fence)_test\.sh)$'; then

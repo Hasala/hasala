@@ -24,7 +24,7 @@ At this time, Hasala goes to a small TestFlight beta. All deployments are
 | `design/` | The logo and exported assets. They are not in this tree yet. The UI source of truth is a private Paper design file. |
 | `infra/qa/` | The QA deployment as code. `nix/module.nix` is `nixosModules.hasala` (`services.hasala`). It contains: a PostgreSQL 17 for Hasala only, on a unix socket; the migrations; `hasalad serve` and `hasalad console` on loopback; the tunnel; and encrypted backups. `cloudflared/` contains the ingress golden file, the lint and the fixtures. `nix/tests/` contains the eval check and the VM check. `HOST-PR.md` is the change on the host side (placeholders only). Do not put host names, addresses, accounts or credentials here. |
 | `infra/assist/` | The `hasala-assist` Cloudflare Worker (TypeScript, Bun). The app sends it one merchant name and gets a Clef category suggestion (opt-in cloud suggestions). It stores nothing and logs nothing. Its fence test fails on a storage binding, a `console.` call or AI Gateway. `scripts/check.sh` runs its typecheck and tests. Refer to `infra/assist/README.md`. |
-| `docs/` | `docs/legal/` contains the privacy policy, the terms, the security page and the support page. The website shows them (`status: "final"`). If a page has an `[[OWNER: ...]]` note, set it to `status: "draft"` again. `docs/decisions/` contains the decisions of record (refer to "Decisions" below). Read the decision of an area before you change it. `docs/runbooks/` contains the restore and the beta review runbooks. `docs/ci.md` contains the CI concurrency and cache details. The ledgerd design history (plans, specs, task reports, reviews) is in a private archive. It is not part of this repository. Code comments that refer to it say "ledgerd design archive". |
+| `docs/` | `docs/legal/` contains the privacy policy, the terms, the security page and the support page. The website shows them (`status: "final"`). If a page has an `[[OWNER: ...]]` note, set it to `status: "draft"` again. `docs/decisions/` contains the decisions of record (refer to "Decisions" below). Read the decision of an area before you change it. `docs/decisions/code/` contains the decisions that were code comments; search it for a file name or a symbol before you change that code. `docs/runbooks/` contains the restore and the beta review runbooks. `docs/ci.md` contains the CI concurrency and cache details. The ledgerd design history (plans, specs, task reports, reviews) is in a private archive. It is not part of this repository. Documents that refer to it say "ledgerd design archive". |
 
 ## How the code fits together
 
@@ -85,6 +85,7 @@ reachable.
 `scripts/check.sh` is the gate. It does these steps:
 
 - The real-mail fence.
+- The comment lint (`scripts/check-comments.sh`, refer to "Comments" below).
 - The HasalaCore lints, and a check that the bundled templates
   (`ios/HasalaCore/Sources/HasalaCore/Resources/templates`) are the same as
   `server/internal/tmpl/seed`. `scripts/check-templates-manifest.sh` also
@@ -112,7 +113,7 @@ reachable.
   alone, and it must still fail with that text.
 
 The gate also runs its own self-tests: `scripts/tests/gate_run_test.sh`,
-`gotest_ran_test.sh` and `git_env_test.sh`. The last one proves that the
+`gotest_ran_test.sh`, `git_env_test.sh` and `comment_lint_test.sh`. The third one proves that the
 self-tests leave the surrounding repository alone when git's variables are
 exported. The closing lines name only the steps that ran, and a step that did
 not run adds `check: NOT RUN: ...`.
@@ -128,11 +129,38 @@ not run adds `check: NOT RUN: ...`.
 - The app: add `-only-testing:HasalaTests/<Class>/<test>` (or
   `HasalaUITests/...`) to the `xcodebuild test` command in "The iOS app".
 
+### Comments
+
+Code comments are not permitted. `scripts/comment-lint.ts` reads the Go,
+Swift, TypeScript, JavaScript, Astro, CSS, shell, Nix, YAML, TOML, Python, SQL,
+xcconfig and JSONC files that git tracks.
+
+- `scripts/comment-baseline.txt` lists the comments that stay for now (a path
+  and a hash for each). A comment that is not in the list fails the lint. A
+  changed comment is a new comment.
+- The baseline only gets smaller. An entry whose comment is gone fails the
+  lint, and `bun scripts/comment-lint.ts ratchet` removes it.
+  `scripts/check-comments.sh` also fails when the baseline has an entry that the
+  base commit does not have.
+- The lint permits the lines that a tool reads: `//go:` directives, the
+  `// Code generated ... DO NOT EDIT.` line, `// swift-tools-version:`,
+  `// swiftlint:`, `// lint-allow: <name> <reason>`, `// @ts-check`, JSDoc types
+  in `.js` and `.mjs` files, `# shellcheck`, the `#!` line, `-- +goose` lines
+  and the version after a pinned action.
+- The lint does not read `server/oracle/v1ref/`, `conformance/`, `testdata/`,
+  `LICENSES/`, the Xcode project and the generated files in `EXCLUDED` of
+  `scripts/comment-lint.ts`.
+- Put a reason that the code cannot show in `docs/decisions/` or
+  `docs/decisions/code/`. Put a shortcut that must be fixed in an issue with the
+  label `comment-debt`. Do not put them in a comment.
+- The skill `/delete-comment` (`.claude/skills/delete-comment/`) classifies and
+  deletes the comments that are left.
+
 ### Before a push
 
 `scripts/pre-push.sh` runs the fast CI checks on the paths that you changed
-since `origin/main`: the fence, the HasalaCore lints, gitleaks on the new
-commits, gofmt and go vet, nixfmt, the tokens, the project, the templates,
+since `origin/main`: the fence, the HasalaCore lints, the comment lint,
+gitleaks on the new commits, gofmt and go vet, nixfmt, the tokens, the project, the templates,
 shellcheck and the web check. It takes seconds. `--all` runs all the checks.
 It shows PASS, FAIL or SKIP for each check and fails on a FAIL. A check skips
 when its tool is not on PATH, thus run it in the devShell.
@@ -162,7 +190,8 @@ ruleset, the ruleset names these three jobs:
   fails if it finds a reachable advisory.
 - `secrets`: the real-mail fence, the HasalaCore lints
   (`ios/scripts/check-imports.sh --no-manifest` and `check-forbidden.sh`),
-  then gitleaks on the full history.
+  then gitleaks on the full history, then the comment lint
+  (`scripts/check-comments.sh`, with the Bun of the flake).
 
 Do not change these job names or the name `ci-ok`. The required status
 checks find the jobs by their names. Add a new job to the `needs` of `ci-ok`
@@ -499,7 +528,8 @@ restore must not undo. `hasala-purge-replay` applies them again before
 
 ### Rules for agents on this Mac
 
-- Do not write code comments. (The owner set this rule to save tokens.)
+- Do not write code comments. (The owner set this rule to save tokens.) The
+  comment lint enforces it. Refer to "Comments" below.
 - Do not change the branch of the main checkout. Other agents use it. Do
   your work in your own worktree in `.claude/worktrees/`. Do not use
   `git stash`, because all worktrees share it.

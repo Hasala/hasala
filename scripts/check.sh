@@ -84,6 +84,7 @@ step "gate run self-test"
 "$ROOT/scripts/tests/gate_run_test.sh"
 "$ROOT/scripts/tests/gotest_ran_test.sh"
 "$ROOT/scripts/tests/git_env_test.sh"
+"$ROOT/scripts/tests/comment_lint_test.sh"
 
 GATE_STEPS="real-mail fence, toolchain, fence"
 NOT_RUN=()
@@ -91,6 +92,9 @@ NOT_RUN=()
 step "HasalaCore import and API lints"
 "$ROOT/ios/scripts/check-imports.sh" --no-manifest
 "$ROOT/ios/scripts/check-forbidden.sh"
+
+step "comment lint"
+"$ROOT/scripts/check-comments.sh"
 
 step "bundled templates equal the server seed"
 bundled="$ROOT/ios/HasalaCore/Sources/HasalaCore/Resources/templates"

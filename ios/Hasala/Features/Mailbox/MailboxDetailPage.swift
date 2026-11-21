@@ -2,13 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// One mailbox, pushed from Bank alerts (Paper "Profile · Bank alerts · Mailbox (Outlook)"
-/// 1NEG when it works, "Sign in again · 2 Mailbox detail" 1O3N when its provider ended
-/// access): the mailbox and its details, the banks read from it, a new sign-in when it
-/// needs one, and Disconnect behind the system alert (1O9X).
-///
-/// The sign-in runs from here, in place; done, the page turns into the working layout.
-/// After Disconnect it goes back to Bank alerts, which says what happened.
 struct MailboxDetailPage: View {
   @Bindable var app: AppModel
   let mailboxID: String
@@ -18,10 +11,7 @@ struct MailboxDetailPage: View {
   @State private var confirmingPlain = false
   @State private var work = MailboxPageWork.idle
   @State private var failure: MailConnectFailure?
-  /// The sign-in again, made once for this page.
   @State private var signIn: MailConnectCoordinator?
-  /// Each sign-in again that worked, counted once the page has turned (the success
-  /// haptic's trigger).
   @State private var signedIn = 0
   @State private var importingPast = false
   @Environment(\.hMotion) private var motion
@@ -87,15 +77,11 @@ struct MailboxDetailPage: View {
       Text(withTextsNote(MailCopy.disconnectPlainMessage))
     }
     .mailSwitchQuestion(signIn)
-    // Signed in again: the motion policy's success, once.
     .hHaptic(.success, trigger: signedIn) { old, new in new > old }
     #if HASALA_MOCKS
-      // A Debug screen id that stands for "Disconnect this mailbox" (`MailLaunch`).
       .task { if MailLaunch.takeDisconnect(mailboxID) { await askToDisconnect() } }
     #endif
   }
-
-  // MARK: Working (1NEG)
 
   @ViewBuilder private func working(_ m: MailboxSnapshot) -> some View {
     HListCard {
@@ -183,8 +169,6 @@ struct MailboxDetailPage: View {
     work = .idle
   }
 
-  // MARK: Needs sign-in (1O3N)
-
   @ViewBuilder private func needsSignIn(_ m: MailboxSnapshot) -> some View {
     VStack(spacing: 10) {
       ProviderMark(m.provider, size: .large64)
@@ -230,9 +214,7 @@ struct MailboxDetailPage: View {
     disconnect(m, footnote: "No new alerts from this mailbox. You choose whether its transactions stay.")
   }
 
-  /// "No new Outlook alerts since Wed 7 Oct. Sign in again to catch up."
   static func signInBody(_ m: MailboxSnapshot) -> String {
-    // A sign-in that the provider didn't end (live: no Outlook mailbox on that account).
     if let note = m.note { return note }
     var lines: [String] = []
     if let day = m.lastChecked?.split(separator: ",").first {
@@ -244,16 +226,10 @@ struct MailboxDetailPage: View {
 
   static let signInCause = "Usually after a password change, a long time signed out, or a work policy."
 
-  /// "Microsoft ended Hasala's access", or, when a note says the provider didn't end it
-  /// (no Outlook mailbox on that account), just what to do.
   static func signInHeading(_ m: MailboxSnapshot) -> String {
     m.note == nil ? "\(m.provider.company) ended Hasala's access" : "Sign in with another account"
   }
 
-  // MARK: Parts
-
-  /// The facts: account kind, banks, last check, access and since when. The working
-  /// layout lists its banks in a card of their own.
   struct Fact: Hashable {
     let key: String
     let value: String
@@ -291,10 +267,7 @@ struct MailboxDetailPage: View {
   }
 
   @ViewBuilder private func disconnect(_ m: MailboxSnapshot, footnote: String?, tip: String? = nil) -> some View {
-    // Not for a mailbox read on another iPhone: the server's delete would end its reading there.
     if m.readElsewhere {
-      // Where Disconnect is for this one: the iPhone that holds its sign-in, or the
-      // provider's own settings.
       Text(Self.readElsewhereFootnote(m.provider))
         .hType(.footnote).foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -316,15 +289,12 @@ struct MailboxDetailPage: View {
     }
   }
 
-  /// Paper 1NEG's footnote; its tip names the provider's own settings.
   static let disconnectFootnote = "Stops alerts and deletes its sign-in from this iPhone. You choose whether its transactions stay."
 
   static func providerSettingsTip(_ provider: MailProviderKind) -> String {
     "You can also remove Hasala in your \(provider.company) account settings."
   }
 
-  /// A mailbox read on another iPhone: this iPhone holds no sign-in to end, so it says
-  /// where to disconnect it.
   static func readElsewhereFootnote(_ provider: MailProviderKind) -> String {
     "Your other iPhone reads this mailbox. Disconnect it there, or remove Hasala at \(MailCopy.consentPage(provider))."
   }
@@ -341,7 +311,6 @@ struct MailboxDetailPage: View {
       } else if let line = signIn.signedInAgainLine {
         app.say(line)
         signIn.reset()
-        // The page turns into the working layout; the haptic once it has.
         try? await Task.sleep(for: policy.settleDelay(.stateSwap))
         signedIn += 1
       }
@@ -365,8 +334,6 @@ struct MailboxDetailPage: View {
     if impact == nil { confirmingPlain = true } else { choosing = true }
   }
 
-  /// Disconnect, then back to Bank alerts. The mock keeps a grey row there; the live lane
-  /// keeps none, so the toast says what happened in both.
   private func disconnect(removing: Bool) async {
     guard let lane = app.mailbox, let m = mailbox, work.begin(.disconnecting, clearing: &failure, signIn: signIn) else { return }
     let removed = removing ? impact?.transactions : nil
@@ -389,14 +356,9 @@ struct MailboxDetailPage: View {
   }
 }
 
-/// A key and its value in a mailbox's card, wrapping under the key when it can't fit.
 private struct MailboxFactRow: View {
   enum Style {
-    /// Under the mailbox row (Paper 1NEG): 15/20, the key in secondary, the value in
-    /// primary, 14 above and below.
     case mailbox
-    /// The details card of a mailbox that needs a sign-in (Paper 1O3N "Card · Details"):
-    /// the key 16/22 in primary, the value 15/20 in secondary, rows at least 52 tall.
     case details
   }
 
@@ -422,9 +384,6 @@ private struct MailboxFactRow: View {
       .padding(.horizontal, 16)
       .padding(.vertical, style == .details ? 10 : 14)
       .frame(minHeight: style == .details ? 52 : nil)
-      // One line of text for VoiceOver ("Account, Personal Microsoft"), not a control: a
-      // label with a value reads as one to the accessibility audit, which then finds its
-      // 20 pt text too small to tap.
       .accessibilityElement(children: .combine)
   }
 }

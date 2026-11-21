@@ -1,30 +1,23 @@
 import Foundation
 
-/// Where setup resumes: derived from facts every time, never stored (spec 04 §6.6; pwa
-/// `stepFor`, the longest unbroken prefix of completed steps).
 enum OnboardingStep: Int, Comparable, CaseIterable, Sendable {
   case passcode = 0
   case account
   case keys
   case bank
-  /// Your email: a provider's read-only connect (or the review account's sample).
   case mail
-  /// Every step is complete: the app opens.
   case finished
 
   static func < (a: OnboardingStep, b: OnboardingStep) -> Bool { a.rawValue < b.rawValue }
 
-  /// The facts §6.6's table reads.
   struct Facts: Equatable, Sendable {
     var hasPasscode = true
     var hasSession = false
     var keysReady = false
-    /// ≥ 1 bank projected, or "Skip" (manual-entry mode).
     var banksChosen = false
     var bankSkipped = false
     enum Mailbox: Equatable, Sendable { case unlinked, scanning, linked, otherDevice }
     var mailbox: Mailbox = .unlinked
-    /// "Skip" on your email's step.
     var mailSkipped = false
     var sampleLoaded = false
     var textsChosen = false

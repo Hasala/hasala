@@ -6,9 +6,6 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// Plan · October (Paper board 104-0): one plan for the month. Ready to assign, the split,
-/// the buckets with their budget rows, and the projects. Rows push the category's month and
-/// the project; Assign opens Move money.
 struct PlanView: View {
   @Bindable var app: AppModel
   let model: any PlanModel
@@ -35,9 +32,6 @@ struct PlanView: View {
 struct PlanContent: View {
   let model: any PlanModel
   @Environment(\.hMotion) private var policy
-  /// The slim bars fill from empty the first time Plan appears in the process (owner rule:
-  /// not on every appearance); after that they show where they are, and a changed budget
-  /// moves its bar on `.fillUpdate`. `fill` scales every bar at once.
   @State private var reveal = PaceFillPhase()
 
   private var snap: PlanSnapshot { model.snapshot }
@@ -89,11 +83,6 @@ struct PlanContent: View {
   }
 }
 
-// MARK: - Ready to assign
-
-/// "Brief card · Ready to assign": the mint poster with the wallet plate, the overline, the
-/// figure and "Income 25,000 · planned 24,000"; under it Assign (and, in Debug, Auto-assign
-/// with its helper). Assign opens Move money with no category chosen yet.
 private struct ReadyToAssignCard: View {
   let model: any PlanModel
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -114,9 +103,6 @@ private struct ReadyToAssignCard: View {
 
   private var poster: some View {
     VStack(alignment: .leading, spacing: 14) {
-      // The plate beside the overline; at the accessibility sizes above it, so the overline
-      // has the card's width to wrap in. One layout either way, so the views keep their
-      // identity while the text size changes.
       let header = typeSize.isAccessibilitySize
         ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
         : AnyLayout(HStackLayout(spacing: 8))
@@ -153,11 +139,9 @@ private struct ReadyToAssignCard: View {
 
   private var actions: some View {
     VStack(alignment: .leading, spacing: 12) {
-      // Side by side; stacked at the accessibility text sizes (spec 04 §17).
       let layout = typeSize.isAccessibilitySize
         ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
       layout {
-        // Each pill takes the height its label needs (two lines at the largest sizes).
         if overPlanned {
           Text("Lower a budget below to fit your income.")
             .hType(.footnote).foregroundStyle(HColor.textSecondary)
@@ -171,7 +155,6 @@ private struct ReadyToAssignCard: View {
             .disabled(snap.readyToAssign.minor == 0)
             .accessibilityIdentifier("plan.assign")
         }
-        // TODO(03a §6.11, spec 04 §16.2 P2): Auto-assign; a Release build offers Assign alone.
         if BuildSurface.showsUnfinished {
           Button("Auto-assign") { model.autoAssign() }
             .buttonStyle(.pill(.secondary, size: .medium, fill: typeSize.isAccessibilitySize))
@@ -242,11 +225,6 @@ private struct NothingPlannedCard: View {
   }
 }
 
-// MARK: - Your split
-
-/// "Your split": the three buckets' share of the plan as one 12 tall bar in their dot
-/// colours (2 apart, outer corners 6, inner 2), with the bucket and its percent under each
-/// part. "Started from 50 / 30 / 20" on the right of the overline.
 private struct SplitSection: View {
   let snap: PlanSnapshot
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -320,7 +298,6 @@ private struct SplitSection: View {
       Text(share.label).hFigure(.stat).foregroundStyle(HColor.textPrimary)
     }
     .fixedSize()
-    // Read as text: an element with no trait reads to the audit as a control too small to tap.
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("\(share.bucket.title), \(share.label)")
     .accessibilityAddTraits(.isStaticText)
@@ -370,10 +347,6 @@ private struct SplitLegendLayout: Layout {
   }
 }
 
-// MARK: - Buckets
-
-/// One bucket: the dot, its name in Title 2, "3,309.20 left of 12,350" (Savings: "✓ Done for
-/// October") on the same baseline, then its rows in a white card with dividers inset 68.
 private struct BucketSection: View {
   let section: PlanSection
   let month: YearMonth
@@ -413,7 +386,6 @@ private struct BucketSection: View {
     } else if section.done {
       DoneMark("Done for \(month.name)")
     } else {
-      // "3,309.20 left of 12,350": what is left first, then the bucket's plan, whole.
       HStack(alignment: .firstTextBaseline, spacing: 4) {
         MoneyText(section.left, figure: .compact, hidden: hidden, hiddenGlyphs: 3,
                   color: section.left.isNegative ? HColor.statusErrorForeground : HColor.textPrimary)
@@ -429,15 +401,9 @@ private struct BucketSection: View {
   }
 }
 
-/// A budget row (Paper "BudgetRow", page 16 §05): the 40 disc, the name with what is left on
-/// the right ("1,387.60 left", "✓ Done", "77%"), a line of facts, and the slim 6 bar in the
-/// verdict's colour, with no today tick. At least 72 tall; one button that reads as one
-/// sentence ("Groceries, AED 1,387.60 left. 812.40 of 2,200, Over pace."). At the
-/// accessibility sizes the figure moves under the name and the facts wrap.
 struct BudgetRowView: View {
   let row: PlanRowModel
   let hidden: Bool
-  /// How much of its fill the bar shows (Plan's first reveal); 1 at rest.
   var reveal: Double = 1
   var unplanned = false
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -520,8 +486,6 @@ extension PlanRowModel {
     return budget.isZero && spent.isZero
   }
 }
-
-// MARK: - Projects
 
 private struct ProjectsSection: View {
   let model: any PlanModel

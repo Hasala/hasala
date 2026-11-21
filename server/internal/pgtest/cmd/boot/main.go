@@ -1,19 +1,3 @@
-// Command boot starts a single throwaway Postgres cluster and prints two
-// shell variable assignments for scripts/check.sh to `eval`:
-//
-//	HASALA_TEST_POSTGRES_URL=...   the admin DSN, for the whole test run to share
-//	PG_STOP=...                    path to a script that stops the server and
-//	                                 removes its data directory
-//
-// This exists so that a run across every package (there will be roughly
-// twenty of them by the end of Phase 1) pays for exactly one initdb instead
-// of one per package: each package's own TestMain (pgtest.Main) already
-// prefers HASALA_TEST_POSTGRES_URL over booting its own cluster when the
-// variable is set — see internal/pgtest/pgtest.go.
-//
-// The server outlives this process on purpose (BootStandalone starts it in
-// its own session via SysProcAttr.Setsid): boot prints and exits immediately
-// while postgres keeps serving connections in the background.
 package main
 
 import (
@@ -40,8 +24,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "boot: %v\n", err)
 		os.Exit(1)
 	}
-	// The roles once, here, before any package's TestMain races to create
-	// them (each still calls EnsureRoles, which is then a no-op).
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err == nil {
 		err = pgtest.EnsureRoles(context.Background(), pool)

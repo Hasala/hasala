@@ -13,16 +13,6 @@ struct WidgetCanvasActions {
   var configure: (HomeCanvasItem) -> Void = { _ in }
 }
 
-/// Canvas · Your widgets (Paper 14PE-0; edit mode "Home · Edit widgets (edit mode)"): "Your
-/// widgets" 22/28 bold with "Edit", then the widgets in the person's order, 12 apart. Mediums
-/// take a full row; smalls pair two to a row and a pair shares one height; a lone small keeps
-/// its width. At the accessibility text sizes the canvas is one column. The dashed "Add widget"
-/// tile ends it.
-///
-/// In edit mode nothing jiggles: each widget wears an ink minus disc at its top-left corner
-/// and a white grip on its top edge. A long press lifts a widget and dropping it on another
-/// takes that place, with a light tap on lift and a selection tick at each move; VoiceOver
-/// offers "Move up", "Move down" and "Remove" instead. Outside edit mode a long press offers "Edit Home".
 struct WidgetCanvas: View {
   var title = "Your widgets"
   let items: [HomeCanvasItem]
@@ -68,7 +58,6 @@ struct WidgetCanvas: View {
             Color.clear.frame(maxWidth: .infinity)
           }
         }
-        // Small widgets fill the row's height (at least 175 pt), so a pair stays even.
         .fixedSize(horizontal: false, vertical: true)
       }
       if editable {
@@ -85,7 +74,6 @@ struct WidgetCanvas: View {
     .onChange(of: editing) { _, now in if !now { dragging = nil } }
   }
 
-  /// "Your widgets" with "Edit" or "Done" 17/24 in the link blue, on one baseline.
   private var header: some View {
     ReflowingRow(alignment: .firstTextBaseline) {
       Text(title).hType(.section).foregroundStyle(HColor.textPrimary)

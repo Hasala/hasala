@@ -1,6 +1,3 @@
-// FakeServer: signup, creation, sign-in, step-up, bootstrap and writers
-// (`02` §7 #3–#6, #9, #16, #18, #23–#24, #43–#47; §8; §9.4; §10.1–§10.2;
-// §10.7–§10.8).
 import CoreAuth
 import CoreCrypto
 import CorePrimitives
@@ -10,8 +7,6 @@ import Foundation
 
 extension FakeServer {
   static let stepUpActions = Set(StepUpParams.actions)
-
-  // MARK: Signup (#43, #44)
 
   func signupBegin(_ r: APIRequest) -> APIResponse {
     guard let b = Self.decode(r, SignupBeginRequest.self) else { return Self.error(400, "bad_request") }
@@ -59,7 +54,6 @@ extension FakeServer {
     return ok ? APIResponse(status: 204) : Self.error(403, "code_rejected")
   }
 
-  /// A verified (or proven), unclaimed signup whose address has no account.
   func claimable(_ id: String) -> Result<SignupCeremony, APIResponse> {
     state.withLock { s in
       guard let c = s.signups[id], c.verified, !c.claimed else { return .failure(Self.error(403, "code_rejected")) }
@@ -69,8 +63,6 @@ extension FakeServer {
       return .success(c)
     }
   }
-
-  // MARK: Creation with a passkey (#3, #4)
 
   func registerBegin(_ r: APIRequest) -> APIResponse {
     guard let b = Self.decode(r, RegisterBeginRequest.self), let aak = try? Base64.decode(b.authority_pubkey),
@@ -111,8 +103,6 @@ extension FakeServer {
     return grant(mintSession(c.userID, writer: nil), user: user, writer: nil, status: 201)
   }
 
-  // MARK: Creation with a password (#45)
-
   func passwordRegister(_ r: APIRequest) -> APIResponse {
     guard let b = Self.decode(r, PasswordRegisterRequest.self), let s = try? Base64.decode(b.verifier), s.count == 32
     else { return Self.error(400, "bad_request") }
@@ -139,8 +129,6 @@ extension FakeServer {
     }
     return grant(mintSession(c.userID, writer: writer), user: user, writer: writer, status: 201)
   }
-
-  // MARK: Sign-in (#5, #6, #46, #47)
 
   func loginBegin() -> APIResponse {
     let challenge = nonce()
@@ -178,7 +166,6 @@ extension FakeServer {
       return Self.error(403, "password_rejected")
     }
     let user = state.withLock { st in st.users.values.first { $0.emailNorm == cer.email } }
-    // §10.8 step 2: the device binding is checked before S.
     if let d = b.device {
       guard let user, let w = user.writers[d.writer_id], let sig = try? Base64.decode(d.sig),
         let msg = try? SigningMessage.sessionBind(loginChallenge: cer.nonce, writerID: w.id),
@@ -206,8 +193,6 @@ extension FakeServer {
     return grant(mintSession(id, writer: writer), user: user, writer: writer)
   }
 
-  // MARK: Step-up (#9) and one guarded route (#16)
-
   func stepUpBegin(_ r: APIRequest, token: String, sess: Session) -> APIResponse {
     guard let b = Self.decode(r, StepUpBeginRequest.self), let ph = try? Hex.decode(b.params_hash), ph.count == 32,
       Self.stepUpActions.contains(b.action)
@@ -232,7 +217,6 @@ extension FakeServer {
         rp_id: b.proof_kind == "passkey" ? Self.rpID : nil, allow_credentials: b.proof_kind == "passkey" ? allow : nil))
   }
 
-  /// `02` §8.1 step 5, for the action and tuple the route recomputes.
   func consumeStepUp(_ su: StepUpJSON?, token: String, sess: Session, action: String, tuple: [Data]) -> APIResponse? {
     guard let su else { return Self.error(403, "step_up_required") }
     guard let n = try? Base64.decodeURL(su.nonce) else { return Self.error(403, "step_up_failed") }
@@ -276,8 +260,6 @@ extension FakeServer {
     }
     return APIResponse(status: 204)
   }
-
-  // MARK: Passkey add (#10, #11)
 
   func passkeyAddBegin(_ r: APIRequest, token: String, sess: Session) -> APIResponse {
     guard let b = Self.decode(r, PasskeyAddBeginRequest.self), let n = try? Base64.decodeURL(b.step_up.nonce) else {
@@ -334,8 +316,6 @@ extension FakeServer {
     return Self.ok(PasskeyAddResponse(credential_id: idB64), status: 201)
   }
 
-  // MARK: Bootstrap (#18) and writers (#24)
-
   func bootstrap(_ r: APIRequest, token: String, sess: Session) -> APIResponse {
     guard let b = Self.decode(r, BootstrapBody.self) else { return Self.error(400, "bad_request") }
     guard var user = state.withLock({ $0.users[sess.userID] }) else { return Self.error(401, "unauthorized") }
@@ -377,7 +357,6 @@ extension FakeServer {
     }
   }
 
-  /// §10.1 checks 3 and 6 and the insertions, onto `user`.
   func applyBootstrap(_ b: BootstrapBody, to user: inout User, nonce: Data, authKind: AuthKind) -> Result<
     WriterID, APIResponse
   > {
@@ -456,8 +435,6 @@ extension FakeServer {
     return Self.ok(WriterIDResponse(writer_id: w.string), status: 201)
   }
 
-  // MARK: Device removal (#25, §9.5) and deletion (#41, §15.2)
-
   func writerRevoke(_ r: APIRequest, token: String, sess: Session) -> APIResponse {
     guard let b = Self.decode(r, WriterRevokeRequest.self), let target = WriterID(b.writer_id),
       let signerID = WriterID(b.signer_writer_id), let n = try? Base64.decode(b.nonce),
@@ -512,8 +489,6 @@ extension FakeServer {
     return APIResponse(status: 204)
   }
 
-  // MARK: WebAuthn (what go-webauthn's verdict depends on here)
-
   struct ClientData: Decodable {
     let type: String
     let challenge: String
@@ -546,7 +521,6 @@ extension FakeServer {
     return (id, key, sha256(attRaw))
   }
 
-  /// Verifies an assertion over `challenge` with UV; returns the credential.
   func verifyAssertion(_ c: PublicKeyCredentialJSON, challenge: Data, owner: UserID?) -> Credential? {
     guard let id = try? Base64.decodeURL(c.rawId), var cred = state.withLock({ $0.credentials[id] }),
       owner == nil || cred.userID == owner,
@@ -562,12 +536,11 @@ extension FakeServer {
     }
     guard cred.publicKey.isValidSignature(sig, for: auth + Data(SHA256.hash(data: cdRaw))) else { return nil }
     let count = UInt32(a[33]) << 24 | UInt32(a[34]) << 16 | UInt32(a[35]) << 8 | UInt32(a[36])
-    guard count == 0 || count > cred.signCount else { return nil }  // clone refused
+    guard count == 0 || count > cred.signCount else { return nil }
     cred.signCount = count
     state.withLock { $0.credentials[id] = cred }
     return cred
   }
 }
 
-/// A refusal carried through `Result` inside the fake.
 extension APIResponse: Error {}

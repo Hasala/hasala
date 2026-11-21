@@ -1,28 +1,10 @@
 import XCTest
 
-/// Onboarding as one new person walks it, on the in-memory mocks (plan Stage I task 3):
-/// the stories, joining with a passkey, the 12 words (shown, then "I've written them
-/// down", with no word check after them, plan B5), and setup from the bank to Home, with
-/// Gmail, or with Outlook through "Use Outlook", then Home's Finish setting up. The other two tests are the owner's
-/// requirement 4: whatever is typed or chosen in onboarding stays for the life of the
-/// process, through Back and Forward (plan B3).
-///
-/// The area classes (`JoinUITests`, `SetupUITests`, `MailboxUITests`) audit each screen
-/// these tests pass through; these walk the screens end to end, across the hand-offs
-/// between join and setup, and attach a screenshot where the journey turns.
-///
-/// Mock values (synthetic): the invite is `JoinUITests.invite`; email codes are 123456;
-/// Gmail reads maya@example.com and Outlook maya.k@example.com.
 final class OnboardingJourneyUITests: XCTestCase {
   override func setUp() {
     continueAfterFailure = false
   }
 
-  // MARK: - New user to Home
-
-  /// Stories › join with the passkey › the words › every bank and Gmail on one screen ›
-  /// Continue with Google › Home, the import reading behind it › Finish setting up: the
-  /// monthly plan (25,000 on the keypad, the 50/30/20 plan), then a note when money moves.
   @MainActor
   func testNewUserToHome() throws {
     let app = launch(scenario: "newUser")
@@ -85,8 +67,6 @@ final class OnboardingJourneyUITests: XCTestCase {
     attach(app, "Home · set up")
   }
 
-  /// The same setup with Outlook through "Use Outlook", through to Home; Bank alerts reads
-  /// the Outlook mailbox.
   @MainActor
   func testOutlookPath() throws {
     let app = launch(scenario: "newUser")
@@ -106,11 +86,6 @@ final class OnboardingJourneyUITests: XCTestCase {
     attach(app, "Bank alerts · Outlook")
   }
 
-  // MARK: - Requirement 4: setup remembers everything
-
-  /// One bank, then Gmail: Home opens, and the account reads one mailbox and that one bank.
-  /// In the monthly plan, 25,000, the 25th and a moved split handle survive Back and
-  /// Forward, and closing the sheet and opening it again; the plan sent is the one chosen.
   @MainActor
   func testSetupRemembersEverything() throws {
     let app = launch(scenario: "setupBank")
@@ -167,10 +142,6 @@ final class OnboardingJourneyUITests: XCTestCase {
     attach(app, "Bank alerts · one mailbox, one bank")
   }
 
-  // MARK: - Requirement 4: join remembers what was typed
-
-  /// The invite, the name and the email; Back to the stories; Forward: each field still holds
-  /// what was typed, and Continue is on.
   @MainActor
   func testJoinRemembersTypedFields() throws {
     let app = launch(scenario: "newUser")
@@ -181,7 +152,6 @@ final class OnboardingJourneyUITests: XCTestCase {
     type(app, "about.email", "maya@example.com")
     attach(app, "About you · typed")
 
-    // Back to the invite, then to the stories.
     back(app)
     XCTAssertTrue(el(app, "invite.field").waitForExistence(timeout: 10))
     XCTAssertEqual(el(app, "invite.field").value as? String, Self.groupedInvite)
@@ -189,7 +159,6 @@ final class OnboardingJourneyUITests: XCTestCase {
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 10))
     attach(app, "Stories · after Back")
 
-    // Forward: the invite, the name and the email as they were typed.
     tap(app, "stories.getStarted")
     XCTAssertTrue(el(app, "invite.field").waitForExistence(timeout: 10))
     XCTAssertEqual(el(app, "invite.field").value as? String, Self.groupedInvite, "the invite was lost")
@@ -201,19 +170,12 @@ final class OnboardingJourneyUITests: XCTestCase {
     XCTAssertTrue(el(app, "about.continue").isEnabled)
     attach(app, "About you · after Back and Forward")
 
-    // And it carries on from there: the code is asked for the address that was kept.
     tap(app, "about.continue")
     XCTAssertTrue(el(app, "code.field").waitForExistence(timeout: 10))
   }
 
-  // MARK: - Support
-
-  /// The invite as the field groups it.
   static let groupedInvite = "ABCD-EFGH-IJKL-MNOP-QRST-UVWX"
 
-  /// A new person from the stories to setup's bank step: the four stories swiped through,
-  /// Get started, the invite, About you, the email code, the passkey (the default method,
-  /// with PRF), then setup: the words wait for Home.
   @MainActor
   private func joinWithPasskey(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
     let progress = el(app, "stories.progress")
@@ -239,7 +201,6 @@ final class OnboardingJourneyUITests: XCTestCase {
     XCTAssertFalse(el(app, "phrase.start").exists, "the words came before setup", file: file, line: line)
   }
 
-  /// The banks as `testSetupRemembersEverything` leaves them: Emirates NBD only.
   @MainActor
   private func assertBanksAsLeft(_ app: XCUIApplication, line: UInt = #line) {
     XCTAssertTrue(el(app, "bank.enbd").isSelected, "Emirates NBD was dropped", line: line)
@@ -257,7 +218,6 @@ final class OnboardingJourneyUITests: XCTestCase {
     return element.isEnabled
   }
 
-  /// Some element's label is `text` or contains it (combined rows read as one).
   @MainActor
   private func says(_ app: XCUIApplication, _ text: String) -> Bool {
     app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch

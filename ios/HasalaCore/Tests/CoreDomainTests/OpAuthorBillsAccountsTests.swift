@@ -1,7 +1,3 @@
-// OpAuthor's bills-and-accounts authors (03b §1.4, §3.2-§4.4): the ids of
-// §1.4's vectors, each payload exactly as the fold's decoder reads it (the
-// canary's own payloads, byte for byte), the author-side refusals, and a fold
-// of everything they author with no anomaly.
 import CoreJSON
 import CoreReplay
 import CoreTime
@@ -127,7 +123,7 @@ struct OpAuthorBillsAccountsTests {
     try a.checkIn(account: enbd, asOfMs: now, balanceMinor: -1_000, resolution: .adjusted(-250))
     try Self.fold(try a.build().ops, into: &s, seq: 1)
 
-    #expect(s.accounts[enbd]?.name == "Emirates NBD ···4412")  // NFC, trimmed
+    #expect(s.accounts[enbd]?.name == "Emirates NBD ···4412")
     #expect(s.accounts["ac_f2df1a64b65c78b30b7112933690cbb7"]?.statementDueDay == 18)
     #expect(s.accounts[sarwa]?.inPlan == false)
     #expect(s.cards["adcb\u{0}1111"]?.state == "not_mine" && s.cards["\u{0}2222"]?.state == "not_mine")
@@ -135,7 +131,6 @@ struct OpAuthorBillsAccountsTests {
     #expect(s.billResolutions.count == 3 && s.billResolutions[bill + "\u{0}2026-10-14"]?.until == "2026-10-20")
     #expect(s.checkins[ck]?.source == "update" && s.checkins.count == 2)
 
-    // Edit the bill (parent 1 → version 2), clear an occurrence, forget a card, void a check-in, close an account.
     var b = OpAuthor(ctx(own: now + 100))
     try b.setBill(
       id: bill, parentVersion: 1,
@@ -156,7 +151,6 @@ struct OpAuthorBillsAccountsTests {
 
   @Test("author-side refusals: closing dates, statement days, bill dates and amounts, resolutions, labels")
   func refusals() throws {
-    // 03b §4.2: in_plan defaults by kind; an explicit value wins.
     for kind in OpAuthor.AccountKind.allCases {
       let everyday = [.current, .savings, .creditCard, .cash].contains(kind)
       #expect(OpAuthor.AccountDraft(name: "x", kind: kind).inPlan == everyday, "\(kind)")
@@ -204,7 +198,7 @@ struct OpAuthorBillsAccountsTests {
   @Test("payloads outside 03b's grammar are author bugs, refused by build() before anything is enqueued")
   func invalid() throws {
     var a = OpAuthor(ctx())
-    a.olderBuildLinkCard(bank: "ENBD", last4: "4412", .notMine)  // a Bank is lower-case
+    a.olderBuildLinkCard(bank: "ENBD", last4: "4412", .notMine)
     #expect(throws: AuthorError.self) { try a.build() }
     var b = OpAuthor(ctx())
     try b.setBill(

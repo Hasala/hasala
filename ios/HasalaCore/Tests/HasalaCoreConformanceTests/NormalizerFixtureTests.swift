@@ -1,16 +1,3 @@
-// conformance/normalizer: the Go normalizer's literal output, which CoreNorm must reproduce
-// byte for byte (spec 04 §2.2 CoreNorm, §19.1 T1). Two families:
-//
-//   - edge-cases.json (public, synthetic): the input classes real mail never exercises
-//     (quoted-printable leniency, malformed base64, unknown charsets and encodings, broken
-//     MIME trees, header recovery, forward dates).
-//   - <name>.json (private, real mail, via HASALA_PRIVATE_FIXTURES): the operator's own bank
-//     mail, including windows-1256 and Arabic DIB alerts and Apple/Gmail forwards. Those tests
-//     are named "[real-corpus] ..." and are disabled, by name, without the variable.
-//
-// Expectations are compared as BYTES (`Array(s.utf8)`), never as `String`, which would hide
-// NFC/NFD differences. Failure messages name the case and the field and the first differing
-// byte offset only; they never print fixture content (the private files hold real mail).
 import CoreJSON
 import CoreNorm
 import CorePrimitives
@@ -51,7 +38,6 @@ struct NormalizerCase: CustomTestStringConvertible, Sendable {
     dateSource = try c.string("expect_date_source")
   }
 
-  /// Runs the case; returns the mismatching fields (empty when the case passes).
   func mismatches() throws -> [String] {
     let receivedMs = try Instant.parseMs(receivedAt)
     let got: NormalizeResult
@@ -94,7 +80,6 @@ enum NormalizerFixtures {
 
   static var privateDir: URL? { Fixtures.privateConformanceRoot?.appendingPathComponent("normalizer") }
 
-  /// The real-mail case files present in the private checkout, sorted.
   static func corpusFiles() -> [String] {
     guard let dir = privateDir,
       let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path)

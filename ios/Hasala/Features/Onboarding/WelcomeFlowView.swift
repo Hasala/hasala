@@ -1,11 +1,6 @@
 import HasalaDesign
 import SwiftUI
 
-/// Everything a signed-out iPhone shows (spec 04 §13.1 BootWalls › signedOut): the stories,
-/// join and the recovery phrase, sign-in, forgot password and recovery, on one navigation
-/// stack. The models and the path are the onboarding store's (plan B3), so a re-made gate
-/// keeps what was typed; each screen is `init(store:)` (plan B7.3) and does its own
-/// navigation through `store.signup.path`.
 struct WelcomeFlowView: View {
   let store: OnboardingStore
 
@@ -36,7 +31,6 @@ struct WelcomeFlowView: View {
     case .password: CreatePasswordView(store: store)
     case .phraseIntro: PhraseIntroView(store: store)
     case .phraseShow: PhraseShowView(store: store)
-    // The account exists from here: no way back.
     case .accountReady: AccountReadyView(store: store).navigationBarBackButtonHidden()
     case .signIn: SignInView(store: store)
     case .forgotEmail: ForgotEmailView(store: store)

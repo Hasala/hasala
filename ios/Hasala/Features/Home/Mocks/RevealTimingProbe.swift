@@ -3,24 +3,11 @@
   import QuartzCore
   import SwiftUI
 
-  /// Debug only, with `-HasalaRevealTiming`: when the hero's first reveal reached the screen,
-  /// in milliseconds from the start of the fill, as the value of `home.hero.revealTiming`:
-  /// "fill 0, filled 295, tick 305, verdict 425, done 555" (the first frame with the bar at its
-  /// width, with the tick and with the verdict showing, and with the verdict fully in), or
-  /// "settled" when the final state showed at once.
-  ///
-  /// It times frames, not state: three invisible views take the bar's, the tick's and the
-  /// verdict's values in the same transactions, so they animate as those do, and each frame
-  /// they draw is stamped. The fill's start is worked back from its first moving frame (an
-  /// animation starts when it is first drawn, which can be a while after the change).
-  /// `SmokeTests` holds the owner's 0–300–420–570 sequence with it (an XCUITest query takes
-  /// longer than the 120 ms tick, so the app times itself).
   struct RevealTimingProbe: ViewModifier {
     static let argument = "-HasalaRevealTiming"
     private static let enabled = ProcessInfo.processInfo.arguments.contains(argument)
 
     let phase: PaceFillPhase
-    /// The fill's final width (spent as a share of the plan).
     let target: Double
     @State private var log = RevealFrameLog()
 
@@ -48,7 +35,6 @@
     }
   }
 
-  /// An invisible view that a value animates through, frame by frame.
   private struct FrameSampler: View, Animatable {
     var value: Double
     let record: (Double) -> Void
@@ -64,8 +50,6 @@
     }
   }
 
-  /// The frames the reveal drew, stamped on the media clock; the summary is published once the
-  /// verdict is fully in (after the frame, never during a view update).
   @MainActor @Observable
   private final class RevealFrameLog {
     private(set) var summary = ""
@@ -78,15 +62,12 @@
       let now = CACurrentMediaTime()
       guard value > 0 else { return }
       if start == nil {
-        // At its width on the first frame it shows: the final state, at once.
         guard value < target - 0.0005 else { return publish("settled") }
         start = now - Self.fillElapsed(share: value / target)
       }
       if value >= target - 0.0005 { mark("filled", now) }
     }
 
-    /// How far into the fill a frame showing `share` of its width is, in seconds: the inverse
-    /// of the fill's curve, cubic-bezier(.65, 0, .35, 1), whose y is 3s² − 2s³.
     static func fillElapsed(share: Double) -> Double {
       var low = 0.0, high = 1.0
       for _ in 0..<40 {
@@ -112,7 +93,6 @@
       publish(text)
     }
 
-    /// The first frame of a step, once the fill has started.
     private func mark(_ name: String, _ time: CFTimeInterval) {
       guard start != nil, !finished, !marks.contains(where: { $0.0 == name }) else { return }
       marks.append((name, time))

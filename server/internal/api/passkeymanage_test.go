@@ -1,21 +1,5 @@
 package api
 
-// Tests for passkeymanage.go — GET /api/v1/auth/passkeys and
-// DELETE /api/v1/auth/passkeys/{credential_id}.
-//
-// What is worth measuring here, over and above auth's own tests:
-//
-//   - the WIRE shape the shipped client is already committed to, field by
-//     field, including that no key material can travel on it;
-//   - the last-passkey refusal arriving as 409 {"error":"last_authenticator"}
-//     rather than as the package's collapsed 401;
-//   - removal needing step-up passkey.delete for that very credential (spec 02
-//     #13), so a session alone cannot strip an account's passkeys;
-//   - a caller reaching only their own account's credentials, with no user
-//     field on the wire to reach anything else with;
-//   - the id surviving the round trip through a URL path, which is the one
-//     thing standard base64 is bad at.
-
 import (
 	"crypto/ed25519"
 	"encoding/base64"
@@ -33,9 +17,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// addFinish runs #10 and #11 on token's session (bound to k.device) and
-// answers the new authenticator and add/finish's response. wrap, when set,
-// is posted as prf_wrap for the new credential and signed.
 func (k *keyed) addFinish(token string, wrap []byte) (*authtest.Authenticator, *httptest.ResponseRecorder) {
 	k.h.t.Helper()
 	su := k.stepUp(token, keyproto.ActionPasskeyAdd)
@@ -54,7 +35,6 @@ func (k *keyed) addFinish(token string, wrap []byte) (*authtest.Authenticator, *
 	return a, k.h.req("POST", "/api/v1/auth/passkey/add/finish", token, req)
 }
 
-// addPasskey enrols a new credential over the real, guarded add ceremony.
 func (k *keyed) addPasskey(token string) *authtest.Authenticator {
 	k.h.t.Helper()
 	a, w := k.addFinish(token, nil)
@@ -62,8 +42,6 @@ func (k *keyed) addPasskey(token string) *authtest.Authenticator {
 	return a
 }
 
-// deletePasskey removes credID on token's session under a passkey.delete
-// step-up that prover's assertion proves.
 func (k *keyed) deletePasskey(token string, prover *authtest.Authenticator, credID []byte) *httptest.ResponseRecorder {
 	k.h.t.Helper()
 	su := k.stepUpWith(token, prover, keyproto.ActionPasskeyDelete, credID)
@@ -77,15 +55,9 @@ func (h *harness) listPasskeys(token string) PasskeysResponse {
 	return decodeJSON[PasskeysResponse](h.t, w)
 }
 
-// passkeyPath builds the DELETE path the way the client does — the id is
-// standard base64, whose '+', '/' and '=' would otherwise change the route.
 func passkeyPath(credID []byte) string {
 	return "/api/v1/auth/passkeys/" + url.QueryEscape(base64.StdEncoding.EncodeToString(credID))
 }
-
-// ---------------------------------------------------------------------------
-// Mounting and authentication
-// ---------------------------------------------------------------------------
 
 func TestPasskeyManagementRoutesAreNotMountedWithoutARelyingParty(t *testing.T) {
 	h := newHarness(t)
@@ -115,15 +87,6 @@ func TestPasskeyManagementRequiresASession(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// The listing
-// ---------------------------------------------------------------------------
-
-// TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial pins the wire contract
-// web/src/v2/passkeys.ts parses, and the spec's flat rule that the endpoint
-// returns no public key. The key check is done against the ACTUAL stored bytes
-// in every encoding this API uses anywhere, so a future SELECT that widened by
-// one column would fail here rather than in production.
 func TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial(t *testing.T) {
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
@@ -157,7 +120,6 @@ func TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial(t *testing.T) {
 		}
 	}
 
-	// Every public key this account holds, in every encoding this API uses.
 	rows, err := h.pool.Query(bg,
 		`SELECT public_key FROM webauthn_credentials WHERE user_id = $1`, k.user)
 	if err != nil {
@@ -188,7 +150,6 @@ func TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial(t *testing.T) {
 		t.Fatalf("checked %d public keys, want 2 — the fixture did not enrol what the test assumes", keys)
 	}
 
-	// And the parsed values are the ones the screen renders.
 	out := decodeJSON[PasskeysResponse](t, w)
 	if out.Passkeys[1].CredentialID != base64.StdEncoding.EncodeToString(second.CredID) {
 		t.Fatalf("second credential id is %q", out.Passkeys[1].CredentialID)
@@ -197,18 +158,13 @@ func TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial(t *testing.T) {
 		if p.CreatedAt.IsZero() {
 			t.Fatalf("row %d has no created_at", i)
 		}
-		// The first credential asserted the passkey.add step-up; the second
-		// has asserted nothing.
 		if (p.LastUsedAt == nil) != (i == 1) {
 			t.Fatalf("row %d last_used_at = %v", i, p.LastUsedAt)
 		}
-		// An honest null on this deployment: there is no AAGUID name table.
-		// See passkeymanage.go's header.
 		if p.Authenticator != nil {
 			t.Fatalf("row %d named an authenticator this server cannot resolve", i)
 		}
 	}
-	// The session came out of register/finish, so it IS the first credential's.
 	if !out.Passkeys[0].Current {
 		t.Fatal("the credential that registered this session is not marked current")
 	}
@@ -217,20 +173,11 @@ func TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial(t *testing.T) {
 	}
 }
 
-// TestTheCurrentMarkerFollowsTheCredentialTheSessionWasMintedWith is the
-// design's one open question, resolved: the marker is READ from
-// sessions.credential_id (00034), never inferred from last_used_at.
-//
-// The second half is the property that made the previous agent refuse to guess:
-// a session with no recorded credential marks NOTHING, rather than marking the
-// most recently used credential and being wrong.
 func TestTheCurrentMarkerFollowsTheCredentialTheSessionWasMintedWith(t *testing.T) {
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	second := k.addPasskey(k.token)
 
-	// Sign in on the SECOND credential. The marker must move with it, which no
-	// last_used_at inference could get right for both sessions at once.
 	id, opts := h.beginAssert("/api/v1/auth/passkey/login/begin", "")
 	w := h.req("POST", "/api/v1/auth/passkey/login/finish", "", PasskeyFinishRequest{
 		CeremonyID: id, Credential: second.Assert(h.t, opts, k.counter.Add(1)),
@@ -252,8 +199,6 @@ func TestTheCurrentMarkerFollowsTheCredentialTheSessionWasMintedWith(t *testing.
 		t.Fatalf("the session signed in on the second credential marks %v, want [false true]", got)
 	}
 
-	// A session that records no credential — an exchange session, or one minted
-	// before 00034 — marks nothing at all.
 	unattributed := h.session(k.user)
 	for i, p := range h.listPasskeys(unattributed).Passkeys {
 		if p.Current {
@@ -280,10 +225,6 @@ func TestListPasskeysOnlyEverShowsTheCallersOwnCredentials(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Removal
-// ---------------------------------------------------------------------------
-
 func TestDeletingTheLastPasskeyIsRefusedByTheServer(t *testing.T) {
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
@@ -308,13 +249,8 @@ func TestDeletingAPasskeyRemovesItAndThenRefusesTheRemainingOne(t *testing.T) {
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	first := k.authn
-	// The session was minted by `first`, so `first` is the one credential this
-	// caller cannot remove without signing itself out. It removes the OTHER one,
-	// which is what the screen's "current" marker steers a user towards.
 	second := k.addPasskey(k.token)
 
-	// A session alone removes nothing: no step-up, then a step-up for the
-	// other credential.
 	wantStatus(t, h.req("DELETE", passkeyPath(second.CredID), k.token, DeletePasskeyRequest{}), http.StatusForbidden)
 	wrong := k.stepUp(k.token, keyproto.ActionPasskeyDelete, first.CredID)
 	wantStatus(t, h.req("DELETE", passkeyPath(second.CredID), k.token, DeletePasskeyRequest{StepUp: wrong}),
@@ -337,14 +273,10 @@ func TestDeletingAPasskeyRemovesItAndThenRefusesTheRemainingOne(t *testing.T) {
 	wantStatus(t, k.deletePasskey(k.token, first, first.CredID), http.StatusConflict)
 }
 
-// TestDeletingAPasskeyTakesItsKeyWrapWithIt: the cascade is the schema's
-// (account_key_wraps → webauthn_credentials), which is why it is measured over
-// HTTP as well as in auth: nothing in the handler would notice if it were lost.
 func TestDeletingAPasskeyTakesItsKeyWrapWithIt(t *testing.T) {
 	h := newHarness(t).passkeys()
-	k := h.onboard(true) // the bootstrap stores the first credential's wrap
+	k := h.onboard(true)
 	first := k.authn
-	// The second credential's wrap arrives with it, signed (#11).
 	second, aw := k.addFinish(k.token, prfWrap(3))
 	wantStatus(t, aw, http.StatusCreated)
 	userID := k.user
@@ -352,8 +284,6 @@ func TestDeletingAPasskeyTakesItsKeyWrapWithIt(t *testing.T) {
 		t.Fatalf("%d wraps before the removal, want 2", n)
 	}
 
-	// The added credential goes: this session was minted by `first`, and removing
-	// that one would sign the caller out before it could read the wraps back.
 	wantStatus(t, k.deletePasskey(k.token, first, second.CredID), http.StatusNoContent)
 
 	if n := h.countWraps(userID); n != 1 {
@@ -365,23 +295,14 @@ func TestDeletingAPasskeyTakesItsKeyWrapWithIt(t *testing.T) {
 	}
 }
 
-// TestDeletingAPasskeyEndsOnlyThatPasskeysSessions is the point of the feature
-// over HTTP, and the narrowing 00034 bought: the lost phone is signed out, the
-// user's OTHER device is not.
-//
-// The caller here is signed in on the credential that survives, which is the
-// ordinary shape of "remove my lost phone".
 func TestDeletingAPasskeyEndsOnlyThatPasskeysSessions(t *testing.T) {
 	h := newHarness(t).passkeys()
-	// Three ceremonies plus five plain requests is past the shipped per-IP burst
-	// of 12. The limit itself has its own test; this one is about revocation.
 	h.srv.PasskeyPerIP = NewLimiter(passkeyPerIPRate, 64, passkeyMaxKeys, h.srv.now)
 	k := h.onboard(true)
 	lost, lostSession := k.authn, k.token
 	second := k.addPasskey(lostSession)
 	userID := k.user
 
-	// The caller: a sign-in on the credential that will survive.
 	id, opts := h.beginAssert("/api/v1/auth/passkey/login/begin", "")
 	w := h.req("POST", "/api/v1/auth/passkey/login/finish", "", PasskeyFinishRequest{
 		CeremonyID: id, Credential: second.Assert(t, opts, k.counter.Add(1)),
@@ -389,8 +310,6 @@ func TestDeletingAPasskeyEndsOnlyThatPasskeysSessions(t *testing.T) {
 	wantStatus(t, w, http.StatusOK)
 	caller := decodeJSON[SessionResponse](t, w).SessionToken
 
-	// A session this server cannot attribute, and another account's, which must
-	// be untouched.
 	unattributed := h.session(userID)
 	_, bystander := h.register(h.invite("a bystander"))
 
@@ -406,16 +325,12 @@ func TestDeletingAPasskeyEndsOnlyThatPasskeysSessions(t *testing.T) {
 	wantStatus(t, h.req("GET", "/api/v1/auth/passkeys", bystander.SessionToken, nil), http.StatusOK)
 }
 
-// TestDeletingAPasskeyLeavesTheAccountsOtherDevicesSignedIn is the regression
-// this whole change exists to prevent: before 00034 the DELETE revoked every
-// session but the caller's, so retiring a phone signed the laptop out.
 func TestDeletingAPasskeyLeavesTheAccountsOtherDevicesSignedIn(t *testing.T) {
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	first, session := k.authn, k.token
 	laptopCred := k.addPasskey(session)
 
-	// The laptop signs in on its own credential.
 	id, opts := h.beginAssert("/api/v1/auth/passkey/login/begin", "")
 	w := h.req("POST", "/api/v1/auth/passkey/login/finish", "", PasskeyFinishRequest{
 		CeremonyID: id, Credential: laptopCred.Assert(t, opts, k.counter.Add(1)),
@@ -423,8 +338,6 @@ func TestDeletingAPasskeyLeavesTheAccountsOtherDevicesSignedIn(t *testing.T) {
 	wantStatus(t, w, http.StatusOK)
 	laptop := decodeJSON[SessionResponse](t, w).SessionToken
 
-	// The phone removes its own passkey. It is standing on that credential, so
-	// it signs ITSELF out — and only itself.
 	wantStatus(t, k.deletePasskey(session, first, first.CredID), http.StatusNoContent)
 
 	if w := h.req("GET", "/api/v1/auth/passkeys", laptop, nil); w.Code != http.StatusOK {
@@ -438,10 +351,9 @@ func TestDeletingAPasskeyLeavesTheAccountsOtherDevicesSignedIn(t *testing.T) {
 func TestDeletingAnotherAccountsPasskeyIsRefusedAndLeavesItAlone(t *testing.T) {
 	h := newHarness(t).passkeys()
 	attacker := h.onboard(true)
-	attacker.addPasskey(attacker.token) // so the last-passkey rule is not what stops them
+	attacker.addPasskey(attacker.token)
 	victimCred, victim := h.register(h.invite("victim"))
 
-	// A step-up the attacker can genuinely prove, over the victim's id.
 	w := attacker.deletePasskey(attacker.token, attacker.authn, victimCred.CredID)
 	wantStatus(t, w, http.StatusNotFound)
 
@@ -450,15 +362,10 @@ func TestDeletingAnotherAccountsPasskeyIsRefusedAndLeavesItAlone(t *testing.T) {
 		got.Passkeys[0].CredentialID != base64.StdEncoding.EncodeToString(victimCred.CredID) {
 		t.Fatalf("the victim's credential did not survive: %+v", got.Passkeys)
 	}
-	// An id that exists NOWHERE answers identically, so the status code is not
-	// an oracle for which credential ids exist.
 	wantStatus(t, attacker.deletePasskey(attacker.token, attacker.authn, []byte("no such credential")),
 		http.StatusNotFound)
 }
 
-// TestDeletingAPasskeyWhoseIdNeedsEscapingWorks covers the one thing standard
-// base64 is bad at: '+', '/' and '=' in a URL path. The client percent-encodes
-// the id; this asserts the route still matches and the right row goes.
 func TestDeletingAPasskeyWhoseIdNeedsEscapingWorks(t *testing.T) {
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
@@ -483,9 +390,6 @@ func TestDeletingAPasskeyWithAMalformedIdIsABadRequest(t *testing.T) {
 	wantStatus(t, w, http.StatusBadRequest)
 }
 
-// TestPasskeyManagementIsRateLimited keeps the two new routes on the budget
-// every other passkey route is on: they are session-authenticated, and the
-// limiter runs before the session is resolved.
 func TestPasskeyManagementIsRateLimited(t *testing.T) {
 	h := newHarness(t).passkeys()
 	_, session := h.register(h.invite("limits"))
@@ -494,7 +398,6 @@ func TestPasskeyManagementIsRateLimited(t *testing.T) {
 		{"DELETE", "/api/v1/auth/passkeys/" + url.QueryEscape(b64([]byte("cred-1")))},
 	} {
 		method, path := route.method, route.path
-		// A limiter with no refill, so the budget is exactly the burst.
 		h.srv.PasskeyPerIP = NewLimiter(0, 1, 16, h.srv.now)
 		if w := h.req(method, path, session.SessionToken, nil); w.Code == http.StatusTooManyRequests {
 			t.Fatalf("%s %s was refused on its first request", method, path)

@@ -1,16 +1,3 @@
-// `Projector` (spec 04 §4.3): writes a folded `State` into `projection.sqlite`,
-// as a full replace inside one transaction, setting `complete = '1'` only after
-// everything committed.
-//
-// The pending overlay: the ops still in this device's outbox are folded on a
-// COPY of the confirmed state at synthetic seqs above `cursor_hot`; every
-// transaction whose record they change is marked `pending = 1`. The overlay is
-// rebuilt on every projection, so an acknowledged op simply stops being pending.
-//
-// Derived, device-local columns (03c §3.9.1-§3.9.2): local date and month at
-// +04:00, merchant key and display name (rename > dictionary > prettify),
-// effective account (03b §4.5), refund and transfer link states, the
-// new-merchant flag, split home apportioning (03c §1.3) and the review lane.
 import CoreCategorize
 import CoreDomain
 import CoreJSON
@@ -29,12 +16,10 @@ public struct ProjectionMeta: Sendable, Equatable {
   public var cursorHot: Int64
   public var complete: Bool
   public var projectedAtMs: Int64
-  /// Outbox ops overlaid on this projection (0: it shows only folded rows).
   public var pendingOps: Int = 0
 }
 
 public enum Projector {
-  /// Opens (or creates) the projection database and makes sure its schema is current.
   public static func open(path: String?) throws -> DatabaseQueue {
     let q = try path.map { try DatabaseQueue(path: $0) } ?? DatabaseQueue()
     try q.write { db in try ensureSchema(db) }
@@ -54,13 +39,10 @@ public enum Projector {
     }
   }
 
-  /// Folds `pending` (the outbox's blobs, in order) on a copy of `state`; returns
-  /// the overlaid state and the txn ids the overlay changed.
   public static func overlay(_ state: State, pending: [[Op]], writerID: String) -> (State, Set<String>) {
     guard !pending.isEmpty else { return (state, []) }
     var s = state
     var seq = state.cursors.hot
-    // The outbox's ops are this device's; a missing writer id still overlays.
     let writer = writerID.isEmpty ? "pending-overlay" : writerID
     for ops in pending {
       seq += 1
@@ -71,7 +53,6 @@ public enum Projector {
     return (s, touched)
   }
 
-  /// Replaces the whole projection with `state` (plus the pending overlay).
   public static func project(
     _ confirmed: State, pending: [[Op]] = [], writerID: String = "", dictionary: MerchantDictionary, projectedAtMs: Int64,
     into db: DatabaseQueue
@@ -84,7 +65,6 @@ public enum Projector {
     try db.write { db in
       try ensureSchema(db)
       try db.execute(sql: "UPDATE projection_meta SET value = '0' WHERE key = 'complete'")
-      // Children before parents: `txn_part` and `rule_pattern` reference `txn` and `rule`.
       for t in ProjectionSchema.tables.reversed() where t != "projection_meta" { try db.execute(sql: "DELETE FROM \(t)") }
       try writeTxns(db, state, categorizer: categorizer, groups: groups, pending: pendingIDs)
       try writeCategories(db, taxonomy)
@@ -105,12 +85,9 @@ public enum Projector {
     }
   }
 
-  // MARK: Transactions
-
   private static func writeTxns(_ db: Database, _ s: State, categorizer: Categorizer, groups: MerchantGroup, pending: Set<String>) throws {
     let txnView = OrderedDictionaryView(s)
     let cards = Array(s.cards.values)
-    // is_new_merchant: no earlier live row (by posted instant, then fold order) with the same key.
     var firstByKey: [String: (Int64, Int)] = [:]
     var keys: [String: String] = [:]
     var groupOf: [ExactKey: String] = [:]
@@ -214,8 +191,6 @@ public enum Projector {
     return JSONWriter().string(.object(JSONObject(o)))
   }
 
-  // MARK: Categories and rules
-
   private static func writeCategories(_ db: Database, _ taxonomy: TaxonomyView) throws {
     let st = try db.makeStatement(
       sql: "INSERT INTO category (id, ord, name, kind, bucket, hue, icon, active, builtin, parent) VALUES (?,?,?,?,?,?,?,?,?,?)")
@@ -242,8 +217,6 @@ public enum Projector {
       for (k, p) in r.patterns.enumerated() { try pat.execute(arguments: [id, k, p]) }
     }
   }
-
-  // MARK: Configuration and 03c keyed records
 
   private static func writeRejections(_ db: Database, _ s: State, groups: MerchantGroup) throws {
     guard !s.merchantRejections.isEmpty else { return }
@@ -292,8 +265,6 @@ public enum Projector {
     }
   }
 
-  // MARK: Plan (03a §5)
-
   private static func writePlan(_ db: Database, _ p: PlanState) throws {
     for (c, months) in p.cells {
       for (m, cell) in months {
@@ -326,8 +297,6 @@ public enum Projector {
         arguments: [w.atSeq, w.keyKind, w.key, w.replacedOp, w.byOp, w.replacedValue])
     }
   }
-
-  // MARK: 03b (beta scope) and notices
 
   private static func write03b(_ db: Database, _ s: State) throws {
     for a in s.accounts.values {

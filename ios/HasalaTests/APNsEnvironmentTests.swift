@@ -8,11 +8,6 @@ import Testing
 
 @testable import Hasala
 
-/// Spec 06 §11.3's vectors. The fixtures in `Fixtures/apns/` are synthetic: shaped like a
-/// real profile (a PKCS#7 envelope with the property list in the clear), but with no
-/// certificates, devices or names; only the team id and bundle id, which are public. They
-/// end in `.mobileprovision.fixture` because the repository ignores `*.mobileprovision`, so
-/// a real profile is never committed by accident.
 @Suite("APNs environment")
 struct APNsEnvironmentTests {
   private final class Marker {}
@@ -25,7 +20,6 @@ struct APNsEnvironmentTests {
   }
 
   @Test func noProfileIsProduction() {
-    // The App Store and TestFlight strip embedded.mobileprovision.
     #expect(APNsProfile.resolve(profileAt: nil) == .resolved("production"))
     let missing = FileManager.default.temporaryDirectory.appending(path: "no-such-\(UUID().uuidString).mobileprovision")
     #expect(APNsProfile.resolve(profileAt: missing) == .resolved("production"))
@@ -45,7 +39,6 @@ struct APNsEnvironmentTests {
   }
 
   @Test func anUnreadableFileIsUnknown() throws {
-    // A directory where the profile should be: it exists, but it can't be read as data.
     let dir = FileManager.default.temporaryDirectory.appending(path: "apns-\(UUID().uuidString).mobileprovision")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: false)
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -65,7 +58,6 @@ struct APNsEnvironmentTests {
     #expect(APNsProfile.resolve(profile: profile("production")) == .resolved("production"))
     #expect(APNsProfile.resolve(profile: profile("Production")) == .unknown)
     #expect(APNsProfile.resolve(profile: profile("")) == .unknown)
-    // A plist without Entitlements, and an empty file.
     #expect(APNsProfile.resolve(profile: Data("<?xml version=\"1.0\"?><plist version=\"1.0\"><dict/></plist>".utf8)) == .unknown)
     #expect(APNsProfile.resolve(profile: Data()) == .unknown)
   }
@@ -77,7 +69,6 @@ struct APNsEnvironmentTests {
     #expect(APNsProfile.embeddedPlist(Data("<plist></plist>".utf8)) == nil)
   }
 
-  /// The simulator's tokens are not used for QA (spec 06 §11.1): no registration there.
   @Test func theSimulatorNeverRegisters() {
     #if targetEnvironment(simulator)
       #expect(resolveAPNsEnvironment() == .unknown)

@@ -1,18 +1,10 @@
 import HasalaModels
 import SwiftUI
 
-/// A mail provider's mark in its own colours (page 15 · Mailboxes, page 05): the Google "G" and
-/// the Microsoft four squares, never recoloured, outlined or tinted, and never a generic mail
-/// icon. Microsoft covers Outlook.com, Hotmail and Live, so there is no separate
-/// Outlook mark.
 public struct ProviderMark: View {
   public enum Size: Sendable, Hashable {
-    /// The 40 pt white tile, radius 12, with a 1 pt `borderSubtle` outline (mailbox rows,
-    /// Choose your email).
     case tile40
-    /// The 26 pt white disc inside a provider button.
     case disc26
-    /// The 64 pt tile, radius 18, at the top of a mailbox detail.
     case large64
 
     var side: CGFloat {
@@ -38,7 +30,6 @@ public struct ProviderMark: View {
   let size: Size
   let faded: Bool
 
-  /// `faded` draws a disconnected mailbox's plate at half opacity.
   public init(_ provider: MailProviderKind, size: Size = .tile40, faded: Bool = false) {
     self.provider = provider
     self.size = size
@@ -64,15 +55,11 @@ public struct ProviderMark: View {
   }
 }
 
-/// The Hasala mark: a dirham going into the slot (page B1). Drawn from the brand artwork's own
-/// geometry (`HasalaMark.svg`, viewBox 616 × 368), never rebuilt from icon parts. Used where the
-/// design shows the coin-on-tray: "You're set", the recap source row.
 public struct HasalaMark: View {
   public init() {}
 
   public var body: some View {
     Canvas { context, size in
-      // The artwork's own units; one scale keeps its 616 × 368 shape inside the frame.
       let s = min(size.width / 616, size.height / 368)
       let ox = (size.width - 616 * s) / 2, oy = (size.height - 368 * s) / 2
       func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
@@ -80,11 +67,9 @@ public struct HasalaMark: View {
       }
       func capsule(_ rect: CGRect) -> Path { Path(roundedRect: rect, cornerRadius: rect.height / 2) }
       let navy = Color(HPalette.blue950)
-      // The plate around the slot, then the slot and its lit lower lip.
       context.fill(capsule(r(212, 576, 600, 112)), with: .color(navy.opacity(0.12)))
       context.fill(capsule(r(244, 600, 536, 64)), with: .color(navy))
       context.fill(capsule(r(268, 648, 488, 10)), with: .color(.white.opacity(0.22)))
-      // The coin, halfway in: everything below the slot's centre line is cut away.
       var coin = context
       coin.clip(to: Path(r(0, 0, 1024, 632)))
       let rim = Color(HRGBA(0xC9, 0x8A, 0x1E, 1))
@@ -96,7 +81,6 @@ public struct HasalaMark: View {
         startPoint: CGPoint(x: faceRect.midX, y: faceRect.minY), endPoint: CGPoint(x: faceRect.midX, y: faceRect.maxY)))
       coin.stroke(Path(ellipseIn: r(512 - 139.8, 519.8 - 139.8, 279.6, 279.6)),
                   with: .color(rim.opacity(0.5)), lineWidth: 10.1 * s)
-      // The double rule: the dirham sign's two strokes.
       let ink = Color(HRGBA(0x8A, 0x5A, 0x05, 1))
       for y in [486.7, 552.9] as [CGFloat] {
         var bar = Path()

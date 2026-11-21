@@ -1,12 +1,3 @@
-// The verified roster (spec 01 §10.13; spec 04 §5.2 R1): `GET /key-history`
-// replayed under the AAK public key, then `GET /writers` checked against it.
-//
-// Where the AAK public key comes from: 01 §10.13 wants `AAK.pub` "derived from
-// the unwrapped seed". The seed is in memory only during a ceremony (01 §11.1),
-// so the device derives `AAK.pub` from the body at enrolment and pins it here,
-// in `sync_state.roster_json`, next to the roster it verified. Every later
-// refresh (each pull's R1 re-fetch, each security wake) verifies under that
-// pinned key; the server's `authority_pubkey` is never used.
 import CoreAuth
 import CoreCrypto
 import CorePrimitives
@@ -14,7 +5,6 @@ import CoreStore
 import CoreWire
 import Foundation
 
-/// `sync_state.roster_json`.
 public struct PinnedRoster: Codable, Sendable, Hashable {
   public struct Writer: Codable, Sendable, Hashable {
     public let dwk: String
@@ -32,7 +22,6 @@ public struct PinnedRoster: Codable, Sendable, Hashable {
     }
   }
 
-  /// `AAK.pub`, b64 32: derived from the unwrapped seed at enrolment.
   public let authority_pubkey: String
   public let last_entry_id: Int64?
   public let writers: [String: Writer]
@@ -51,7 +40,6 @@ public struct PinnedRoster: Codable, Sendable, Hashable {
 
   public var authorityPublicKey: Data? { try? Base64.decode(authority_pubkey) }
 
-  /// The reader's view (R1, R2b).
   public func forReader() -> [WriterID: HeadCheck.RosterWriter] {
     var out: [WriterID: HeadCheck.RosterWriter] = [:]
     for (id, w) in writers {
@@ -61,7 +49,6 @@ public struct PinnedRoster: Codable, Sendable, Hashable {
     return out
   }
 
-  /// Live writers other than `own` (C9's "another live writer" rule, Devices).
   public func liveWriters() -> [WriterID] {
     writers.compactMap { $0.value.isLive ? WriterID($0.key) : nil }
   }
@@ -81,11 +68,6 @@ public struct PinnedRoster: Codable, Sendable, Hashable {
     return (try? e.encode(self)) ?? Data()
   }
 
-  /// Whether `self` (a fresh fetch) only extends `pinned` (01 §10.13: the
-  /// server cannot roll the roster back). It must be under the same AAK, at or
-  /// past the pinned `last_entry_id`, keep every pinned writer with the same
-  /// DWK and DAK, and keep every pinned `final` exactly (a revocation never
-  /// changes or disappears). New writers and new revocations are fine.
   public func extends(_ pinned: PinnedRoster) -> Bool {
     guard authority_pubkey == pinned.authority_pubkey else { return false }
     if let old = pinned.last_entry_id {
@@ -107,8 +89,6 @@ public struct PinnedRoster: Codable, Sendable, Hashable {
 }
 
 public enum RosterService {
-  /// Decodes #27's entries; a field that is not its encoding is a verification
-  /// failure of that entry (`keyHistoryInvalid`).
   static func entries(_ r: KeyHistoryResponse) throws(KeyHistoryVerifier.Alarm) -> [KeyHistoryVerifier.Entry] {
     try r.entries.map { e throws(KeyHistoryVerifier.Alarm) in
       func bytes(_ s: String) throws(KeyHistoryVerifier.Alarm) -> Data {
@@ -132,8 +112,6 @@ public enum RosterService {
     }
   }
 
-  /// Fetches the roster again and checks it only extends `pinned`
-  /// (`extends`); a rollback is `rosterInvalid`. Nothing is persisted.
   public static func refetch(client: AuthClient, bearer: String, pinned: PinnedRoster) async throws(SyncStop)
     -> PinnedRoster
   {
@@ -143,8 +121,6 @@ public enum RosterService {
     return fresh
   }
 
-  /// Fetches `GET /key-history` and `GET /writers`, verifies both under
-  /// `authorityPublicKey`, and returns the roster to pin. Nothing is persisted.
   public static func fetch(client: AuthClient, bearer: String, authorityPublicKey: Data) async throws(SyncStop)
     -> PinnedRoster
   {

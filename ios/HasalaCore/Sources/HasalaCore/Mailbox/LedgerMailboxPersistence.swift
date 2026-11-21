@@ -1,10 +1,3 @@
-// `MailboxPersistence` over ledger.sqlite (CoreStore's `MailboxTableStore`): the production
-// persistence. Each `commit` is one SQLite transaction holding the message's `pending_ops` row(s)
-// and its accounting, so the op and the "this message is done" mark can never disagree.
-//
-// The drafts become ops through `author`, which the composition root supplies from CoreDomain's
-// OpAuthor (R5: the only op constructor) and CoreOutbox's canonical-JSON check; this file never
-// builds an op itself.
 import CoreStore
 import Foundation
 

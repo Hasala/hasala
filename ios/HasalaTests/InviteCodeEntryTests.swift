@@ -3,15 +3,11 @@ import Testing
 
 @testable import Hasala
 
-/// The invite field's edits (`InviteCodeEntry`), driven the way UIKit drives the field:
-/// each edit is a range of the shown text and its replacement, and the next key lands at
-/// the caret the previous edit left (spec 04 §6.1.4).
 @Suite("Invite code field")
 struct InviteCodeEntryTests {
   static let code = "ABCDEFGHIJKLMNOPQRSTUVWX"
   static let grouped = "ABCD-EFGH-IJKL-MNOP-QRST-UVWX"
 
-  /// Types `keys` one at a time, each at the caret the edit before it left.
   func type(_ keys: String, into start: InviteCodeEntry = InviteCodeEntry()) -> InviteCodeEntry {
     var e = start
     for k in keys {
@@ -20,14 +16,10 @@ struct InviteCodeEntryTests {
     return e
   }
 
-  /// Backspace with the caret at UTF-16 offset `at` of `shown`.
   func backspace(_ shown: String, at: Int) -> InviteCodeEntry {
     InviteCodeEntry.edit(shown, range: NSRange(location: at - 1, length: 1), replacement: "")
   }
 
-  // MARK: Typing
-
-  /// The CI failure: a fast lower-case code came out as "ABCD-EGHI-FJKL-…".
   @Test func fastTypingKeepsTheOrder() {
     var e = InviteCodeEntry()
     for (i, k) in Self.code.lowercased().enumerated() {
@@ -53,8 +45,6 @@ struct InviteCodeEntryTests {
     #expect(InviteCodeEntry("abcd efgh").text == "ABCD-EFGH")
   }
 
-  /// A key lands after the same character whether the caret sits before or after the
-  /// hyphen the field put there.
   @Test func eitherSideOfAHyphenIsTheSamePlace() {
     let before = InviteCodeEntry.edit("ABCD-EFGH", range: NSRange(location: 4, length: 0), replacement: "x")
     let after = InviteCodeEntry.edit("ABCD-EFGH", range: NSRange(location: 5, length: 0), replacement: "x")
@@ -71,8 +61,6 @@ struct InviteCodeEntryTests {
     #expect(e.textCaret == 6)
   }
 
-  /// Any start, any caret (either side of any hyphen), any keys: the keys land together,
-  /// in order, where the caret was.
   @Test func keysLandInOrderWhereverTheCaretIs() {
     var rng = SplitMix64(seed: 0x4841_5341_4C41)
     let alphabet = Array("abcdefghijklmnopqrstuvwxyz234567ABCXYZ- ")
@@ -103,8 +91,6 @@ struct InviteCodeEntryTests {
     let mid = type("XY", into: InviteCodeEntry.edit(e.text, range: NSRange(location: 2, length: 0), replacement: ""))
     #expect(mid.characters == e.characters)
   }
-
-  // MARK: Pasting
 
   @Test(arguments: [
     "ABCDEFGHIJKLMNOPQRSTUVWX",
@@ -171,8 +157,6 @@ struct InviteCodeEntryTests {
     #expect(m.invitePasted)
   }
 
-  // MARK: Deleting
-
   @Test func deletingAtTheEndAcrossAHyphen() {
     var e = backspace("ABCD-E", at: 6)
     #expect(e.text == "ABCD")
@@ -182,8 +166,6 @@ struct InviteCodeEntryTests {
     #expect(e.textCaret == 3)
   }
 
-  /// Delete just after a hyphen removes the character before the hyphen, and the rest
-  /// closes up behind it.
   @Test func deletingJustAfterAHyphen() {
     let e = backspace("ABCD-EFGH", at: 5)
     #expect(e.text == "ABCE-FGH")
@@ -212,8 +194,6 @@ struct InviteCodeEntryTests {
     #expect(e.text == "ABCD-E")
   }
 
-  // MARK: Characters a code cannot hold
-
   @Test func otherCharactersStaySoTheHintCanSayWhy() {
     #expect(type("abc1").text == "ABC1")
     let m = SignupModel(account: MockAccountService())
@@ -222,7 +202,6 @@ struct InviteCodeEntryTests {
   }
 }
 
-/// A seeded generator, so the property test is the same every run.
 private struct SplitMix64 {
   var state: UInt64
   init(seed: UInt64) { state = seed }

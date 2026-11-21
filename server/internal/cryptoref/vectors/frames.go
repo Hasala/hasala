@@ -18,10 +18,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// ---------------------------------------------------------------------------
-// frame-aead.json: the AEAD layer of §6.4 only, R supplied (A09, A10).
-// ---------------------------------------------------------------------------
-
 type aeadCase struct {
 	Name     string    `json:"name"`
 	KE       H         `json:"k_e"`
@@ -101,7 +97,7 @@ func genFrameAEAD(f Files, _ string) error {
 		if err != nil {
 			return err
 		}
-		x.Region = nil // the synthetic region: u32be(16) ‖ 00..0f ‖ zeros, stated in the note
+		x.Region = nil
 		cases = append(cases, x)
 	}
 	return f.json(CryptoDir+"/frame-aead.json", struct {
@@ -116,10 +112,6 @@ func genFrameAEAD(f Files, _ string) error {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// frames.json + frames/*.bin: full frames with Go gzip at the bucket edges.
-// ---------------------------------------------------------------------------
-
 type fullFrame struct {
 	Name      string    `json:"name"`
 	File      string    `json:"file"`
@@ -133,7 +125,7 @@ type fullFrame struct {
 	Nonce     H         `json:"nonce"`
 	Bucket    int       `json:"bucket"`
 	GzipLen   int       `json:"gzip_len"`
-	Fill      int       `json:"framed_len"` // 39 + L + |G|
+	Fill      int       `json:"framed_len"`
 	Plaintext string    `json:"plaintext"`
 	SHA256    H         `json:"sha256_frame"`
 	BlobHash  H         `json:"blob_hash"`
@@ -157,11 +149,9 @@ func gzipLen(p []byte) int {
 	return len(g)
 }
 
-// edge finds a plaintext whose framed length 39 + L + |G| is ≤ bucket and one
-// whose framed length is > bucket, as close to the edge as the stream allows.
 func edge(label string, l, bucket int) (fits, spills []byte) {
 	lo, hi := 0, bucket*3
-	for lo < hi { // smallest n whose gzip spills
+	for lo < hi {
 		mid := (lo + hi) / 2
 		if 39+l+gzipLen(padPlaintext(newStream(label), mid)) > bucket {
 			hi = mid
@@ -229,10 +219,6 @@ func genFrames(f Files, _ string) error {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// chain.json: spec 01 §7.
-// ---------------------------------------------------------------------------
-
 type chainRow struct {
 	Counter  int64 `json:"writer_counter"`
 	PrevHash H     `json:"prev_hash"`
@@ -259,8 +245,6 @@ func genChain(f Files, _ string) error {
 			return err
 		}
 		h := blob.Hash(prev, sealed)
-		// A copy: prev is reassigned below, and prev[:] would alias it, so
-		// every row would list the last hash.
 		rows = append(rows, chainRow{c, bytes.Clone(prev[:]), sealed.Bytes, h[:]})
 		prev = h
 	}
@@ -272,7 +256,6 @@ func genChain(f Files, _ string) error {
 		steps = append(steps, v1Step{bytes.Clone(p[:]), hex.EncodeToString([]byte{fill}), 1024, h[:]})
 		p = h
 	}
-	// Each listed prev_hash is its predecessor's blob_hash (0^32 first).
 	for i, r := range rows {
 		want := make([]byte, 32)
 		if i > 0 {
@@ -310,30 +293,21 @@ func genChain(f Files, _ string) error {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// predicate.json: spec 01 §8.1, the cases Go, Swift and SQL must agree on.
-// ---------------------------------------------------------------------------
-
-// Patch overwrites bytes at an offset.
 type Patch struct {
 	At  int `json:"at"`
 	Hex H   `json:"hex"`
 }
 
-// PredicateCase is one predicate.json case. A frame is the first N bytes of
-// the filler stream with Patches applied, or Frame verbatim when it is set.
 type PredicateCase struct {
 	Name    string  `json:"name"`
 	N       int     `json:"n"`
 	Patches []Patch `json:"patches,omitempty"`
 	Frame   H       `json:"frame,omitempty"`
-	Want    string  `json:"want"` // "ok" or the first failing check's name
+	Want    string  `json:"want"`
 }
 
-// FillerLabel names the filler stream: block i = SHA256(utf8(label) ‖ u32be(i)).
 const FillerLabel = "predicate-filler"
 
-// Filler is the first n bytes of the filler stream.
 func Filler(n int) []byte {
 	out := make([]byte, 0, n+32)
 	for i := uint32(0); len(out) < n; i++ {
@@ -343,7 +317,6 @@ func Filler(n int) []byte {
 	return out[:n]
 }
 
-// Build returns the case's frame.
 func (c PredicateCase) Build() []byte {
 	if c.Frame != nil {
 		return append([]byte(nil), c.Frame...)
@@ -402,7 +375,6 @@ func genPredicate(f Files, root string) error {
 	at("nonce with one non-zero byte", 57, append(make([]byte, 11), 1), "ok")
 	at("tail with one non-zero byte", 976, append(make([]byte, 31), 1), "ok")
 	{
-		// ledgerd's v1 plaintext fixture (spec 01 V-B), verbatim.
 		v1, err := os.ReadFile(filepath.Join(root, "conformance/blob/hot-dev-a-7.bin"))
 		if err != nil {
 			return err
@@ -410,7 +382,6 @@ func genPredicate(f Files, root string) error {
 		cs = append(cs, PredicateCase{Name: "ledgerd v1 fixture conformance/blob/hot-dev-a-7.bin", N: len(v1), Frame: v1, Want: blob.CheckVersion})
 	}
 	{
-		// A sealed frame (A09) passes.
 		a := anchorFrame1()
 		cs = append(cs, PredicateCase{Name: "anchor frame A09", N: len(a), Frame: a, Want: "ok"})
 	}

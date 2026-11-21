@@ -1,21 +1,7 @@
-/**
- * One place for the facts the site states about Hasala. The landing page,
- * the JSON-LD, /llms.txt and /llms-full.txt all read from here, so a claim
- * changes in one place. Keep every line true to the product as shipped.
- */
 import { WAITLIST_MODE } from '../lib/env';
 
-/**
- * The mail services the app reads bank alerts from, as shipped. The site
- * says "your email" everywhere; only MAIL and MAIL_NOTE name the services, so
- * adding one is a change to this list. Also update the footer's trademark
- * line and the legal pages (docs/legal) then. Outlook means personal Microsoft
- * accounts only (MAIL_NOTE says so).
- */
 export const MAIL_PROVIDERS = ['Gmail', 'Outlook'] as const;
-/** "Gmail or Outlook". */
 export const MAIL = new Intl.ListFormat('en', { type: 'disjunction' }).format(MAIL_PROVIDERS);
-/** "Gmail or personal Outlook": where a line names the services in passing. */
 export const MAIL_PERSONAL = 'Gmail or personal Outlook';
 export const MAIL_NOTE = 'Hasala works with Gmail and with personal Outlook accounts (outlook.com, hotmail.com and live.com) for now. Work and school accounts aren’t supported yet.';
 
@@ -35,7 +21,6 @@ export const SITE = {
   ogImage: '/og-image.png',
   ogImageAlt: 'Hasala: a private budgeting app that shows where your money goes. For iPhone, in the UAE.',
   testFlightAppStore: 'https://apps.apple.com/app/testflight/id899247664',
-  /** The source: source-available under FSL-1.1-ALv2 (never call it open source). */
   repoUrl: 'https://github.com/salehtl/hasala',
   licenseUrl: 'https://github.com/salehtl/hasala/blob/main/LICENSE.md',
   trademarksUrl: 'https://github.com/salehtl/hasala/blob/main/TRADEMARKS.md',
@@ -48,12 +33,6 @@ export const BANKS = [
   { value: 'adib', name: 'Abu Dhabi Islamic Bank', short: 'ADIB' },
 ] as const;
 
-/**
- * Banks people often ask for. The invite form suggests these names in its
- * "Which one?" field (Another bank). The values are the server's catalog
- * slugs and the names are the catalog's own, so a name typed there matches
- * its aliases.
- */
 export const OTHER_BANKS = [
   { value: 'adcb', name: 'ADCB' },
   { value: 'emirates-islamic', name: 'Emirates Islamic' },
@@ -64,7 +43,6 @@ export const OTHER_BANKS = [
   { value: 'wio', name: 'Wio' },
 ] as const;
 
-/** The detail pages, in the order the nav and the footer list them. */
 export const NAV = [
   { href: '/how-it-works', label: 'How it works' },
   { href: '/budgeting', label: 'Budgeting' },
@@ -99,7 +77,6 @@ export const FOOTER = [
   },
 ] as const;
 
-/** Who can see what. Mirrors /how-privacy-works and the privacy policy. */
 export const VISIBILITY = [
   { who: 'You', sees: 'Everything, on your own devices', never: null },
   {
@@ -124,7 +101,6 @@ export const VISIBILITY = [
   },
 ] as const;
 
-/** How asking for an invite works, by PUBLIC_WAITLIST_MODE (src/lib/env.ts). */
 const ASK_FOR_INVITE =
   WAITLIST_MODE === 'email'
     ? 'Request an invite on the home page. For now, the form opens an email to support@hasala.app in your email app; send it, and we add the address you sent it from to the list.'
@@ -133,21 +109,13 @@ const ASK_FOR_INVITE =
 export type FaqItem = {
   id: string;
   q: string;
-  /** The one-line reply the answer opens with. */
   short: string;
-  /** The detail, if any; `steps` (a numbered list) and `after` follow it. */
   a?: string;
   steps?: readonly string[];
   after?: string;
-  /** The page that explains more. */
   more: { href: string; label: string };
 };
 
-/**
- * /faq. Each answer opens with a one-line reply (`short`), then the detail,
- * then a link to the page that explains more. The FAQPage JSON-LD and
- * /llms-full.txt read the whole answer as text (faqText).
- */
 export const FAQ: readonly FaqItem[] = [
   {
     id: 'bank-login',
@@ -215,6 +183,5 @@ export const FAQ: readonly FaqItem[] = [
 
 export const curly = (s: string) => s.replace(/'/g, '’');
 
-/** One FAQ answer as plain text: the one-line reply, then the detail. */
 export const faqText = (f: FaqItem): string =>
   [f.short, f.a, f.steps?.map((step, i) => `${i + 1}. ${step}`).join(' '), f.after].filter(Boolean).join(' ');

@@ -2,9 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Profile › Get help: how to send feedback from TestFlight, and how to reach a person. Paper
-/// draws no Get help page; this one is built from the profile's own parts (a white card of
-/// rows on the large sheet's grey).
 struct HelpPage: View {
   var body: some View {
     ScrollView {
@@ -30,8 +27,6 @@ struct HelpPage: View {
   }
 }
 
-/// Settings › Notifications (spec 04 §16.2 X2; Debug only until notifications exist): one of
-/// three levels, ticked, and what Important only keeps (page 18).
 struct NotificationSettingsPage: View {
   let model: any ProfileModel
 

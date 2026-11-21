@@ -1,6 +1,3 @@
-// conformance/dict/matching.json (Go's own answers, internal/dict
-// TestWriteDictConformanceFixtures): the HasalaText building blocks the
-// categorization canon is made of, against Go's verdicts.
 import CorePrimitives
 import HasalaText
 import Foundation
@@ -34,10 +31,6 @@ struct TextFixtureTests {
     }
   }
 
-  // Go's canonical form is strings.ToLower(strings.Join(strings.Fields(s), " ")).
-  // For every entry Go accepted, collapse-then-lower reproduces its bytes.
-  // (Which entries Go refuses, and why, is the dictionary validator's contract
-  // in CoreCategorize, not these building blocks'.)
   @Test("canonical: collapse then lower reproduces every accepted pattern")
   func canonical() throws {
     let cases = try Self.matching.get().array("canonical").filter { $0["ok"]?.boolValue == true }

@@ -163,9 +163,9 @@ func TestWriterIDGrammar(t *testing.T) {
 		}
 	}
 	for _, bad := range []string{
-		"dev-a", "ios-0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D", // uppercase
-		"ios-0a1b2c3d-4e5f-3a6b-8c7d-9e0f1a2b3c4d", // version 3
-		"ios-0a1b2c3d-4e5f-4a6b-cc7d-9e0f1a2b3c4d", // variant c
+		"dev-a", "ios-0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D",
+		"ios-0a1b2c3d-4e5f-3a6b-8c7d-9e0f1a2b3c4d",
+		"ios-0a1b2c3d-4e5f-4a6b-cc7d-9e0f1a2b3c4d",
 		writer + "\n", "ingest",
 	} {
 		if ValidWriterID(bad) {
@@ -179,9 +179,6 @@ func TestSmallOrderEd25519KeysAreRefused(t *testing.T) {
 	if CheckEd25519PublicKey(identity) == nil {
 		t.Fatal("the identity point is accepted")
 	}
-	// The forgery the check exists for: identity ‖ 0^32 verifies under the
-	// identity point for any message in crypto/ed25519, and VerifyEd25519
-	// refuses it.
 	sig := append(append([]byte(nil), identity...), make([]byte, 32)...)
 	if VerifyEd25519(identity, []byte("anything"), sig) {
 		t.Fatal("VerifyEd25519 accepted the small-order forgery")

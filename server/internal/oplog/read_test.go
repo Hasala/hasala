@@ -11,9 +11,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// seedInterleaved appends n rounds of one row from dev-a and one from dev-b,
-// so the two writers' chains share one seq space and neither is contiguous in
-// it. It returns nothing: every assertion below reads the rows back.
 func seedInterleaved(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, n int) {
 	t.Helper()
 	a := &Appender{Pool: pool}
@@ -31,7 +28,6 @@ func seedInterleaved(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, n int) {
 	}
 }
 
-// writerRows keeps one writer's rows, in the order given.
 func writerRows(rows []Row, writer string) []Row {
 	var out []Row
 	for _, r := range rows {
@@ -62,8 +58,6 @@ func TestReadReturnsTheLogInSeqOrderAndEachChainVerifies(t *testing.T) {
 			t.Fatalf("row %d came back without its bytes or hashes", i)
 		}
 	}
-	// One writer's rows are 1,3,5,7,9 in seq, which is NOT a gap: each chain
-	// is per writer, and each verifies from genesis on its own.
 	for _, w := range []string{"ios-00000000-0000-4000-8000-00000000000a", "ios-00000000-0000-4000-8000-00000000000b"} {
 		mine := writerRows(rows, w)
 		if len(mine) != 5 || mine[1].Seq-mine[0].Seq != 2 {
@@ -130,8 +124,6 @@ func TestReadStopsAtTheByteBudgetButAlwaysReturnsOneRow(t *testing.T) {
 	u := insertUser(t, pool)
 	seedInterleaved(t, pool, u, 5)
 
-	// Every blob is padded to the smallest bucket, so the budget arithmetic is
-	// exact rather than approximate.
 	one, err := Read(bg, pool, u, blob.StreamHot, 0, 100, 1)
 	if err != nil {
 		t.Fatal(err)
@@ -151,11 +143,6 @@ func TestReadStopsAtTheByteBudgetButAlwaysReturnsOneRow(t *testing.T) {
 }
 
 func TestTheByteBudgetIsAppliedByTheDatabaseNotOnlyInGo(t *testing.T) {
-	// Read's Go-side budget bounds what this process RETAINS. It cannot bound
-	// what Postgres sends, because pgx drains a result set it stops scanning —
-	// so if the budget lived only in Go, a 500-row page of megabyte blobs would
-	// still cross the wire in full. This asserts the database itself returns the
-	// budgeted prefix, by running the query directly.
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	seedInterleaved(t, pool, u, 6)
@@ -229,9 +216,6 @@ func TestHashesCoverEveryRowAndLinkAsAChain(t *testing.T) {
 		if !bytes.Equal(h.BlobHash, rows[i].BlobHash) {
 			t.Fatalf("hash %d is %x, but the row stores %x", i, h.BlobHash, rows[i].BlobHash)
 		}
-		// The link check a client can run WITHOUT downloading a single body:
-		// within each writer, every entry's prev_hash is the previous entry's
-		// blob_hash, and the first is the genesis hash.
 		p := prev[h.WriterID]
 		if !bytes.Equal(h.PrevHash, p[:]) {
 			t.Fatalf("hash %d links to %x, but %s's list is at %x", i, h.PrevHash, h.WriterID, p)
@@ -253,8 +237,6 @@ func TestHashesAreScopedToTheUserAndStream(t *testing.T) {
 	if len(hashes) != 8 {
 		t.Fatalf("got %d hashes for user a, want 8", len(hashes))
 	}
-	// seq is per user, so both users own a seq 1: identity has to be tested on
-	// the blob hashes, which differ because the AAD binds the user id.
 	rows, err := Read(bg, pool, b, blob.StreamHot, 0, 100, 1<<20)
 	if err != nil {
 		t.Fatal(err)
@@ -291,9 +273,6 @@ func TestStreamMaxSeqIsPerUser(t *testing.T) {
 }
 
 func TestPartiallyAppliedBatchIsNamedSoTheAPICanTellTheClientWhatToDo(t *testing.T) {
-	// The client contract: "read the chain head and resend only the rows above
-	// it". The HTTP layer has to recognise this case to say that, and it must
-	// not be reported as a chain break (spec §3.3:68 hard stop).
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}

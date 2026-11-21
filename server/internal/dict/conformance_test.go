@@ -1,63 +1,5 @@
 package dict
 
-// conformance_test.go writes conformance/dict/matching.json and then re-reads
-// it, asserting this build still produces it.
-//
-// # Why the dictionary needs a fixture at all
-//
-// The server canonicalizes a merchant pattern, decides whether it may exist,
-// and ships it to every device. The device canonicalizes a MERCHANT with the
-// same rules and decides whether the pattern matches it. Nothing in between
-// checks that the two agree, and when they do not the symptom is silence: a
-// pattern the operator can see in the moderation queue simply never matches
-// anything on a phone, and no error is raised anywhere.
-//
-// The disagreements are not hypothetical. Writing the TypeScript half turned up
-// four, each of which the obvious JavaScript one-liner gets wrong:
-//
-//   - U+0085 is whitespace to Go's unicode.IsSpace and is NOT in JavaScript's
-//     \s, so `.replace(/\s+/g, " ")` keeps it while Go collapses it.
-//   - U+FEFF is the mirror image: in \s, not in unicode.IsSpace.
-//   - U+0130 lower-cases to ONE code point in Go and to TWO in JavaScript
-//     (`i` + U+0307), because strings.ToLower is Unicode's SIMPLE case mapping
-//     and String.prototype.toLowerCase is the FULL one.
-//   - A capital sigma at the end of a word lower-cases to U+03C2 in JavaScript
-//     (the Final_Sigma condition) and to U+03C3 in Go, which has no context.
-//
-// So this file carries Go's own answers, and client/src/categorize/
-// conformance.test.ts compares the device's against them.
-//
-// # What each section is, and what it can prove
-//
-//  1. `limits` — the numbers both sides hard-code. The 4-rune `contains` floor
-//     is already pinned to the SQL literal by TestTheContainsFloorMatchesTheSQL
-//     Literal; this carries it across the language boundary as well, so a
-//     device cannot enforce a different floor than the server publishes at.
-//
-//  2. `space` and `lower` — the two primitives canonicalization is built from,
-//     probed one code point at a time. These are the sections that actually
-//     catch the four divergences above; a fixture that only carried whole
-//     canonicalized strings would catch them too, but would not say WHICH
-//     primitive was wrong.
-//
-//  3. `canonical` — Canonicalize's verdict and output for whole entries,
-//     including every refusal it makes. The verdict is a boolean (`ok`) rather
-//     than a reason string on purpose: the reason is Go's wording, the device
-//     has its own vocabulary of defect codes, and pinning prose across two
-//     languages is a rename away from a false failure. What must agree is
-//     whether the entry may exist and what it canonicalizes to.
-//
-//  4. `match` — contains/exact verdicts computed by POSTGRES, using the same
-//     expression internal/dict's moderation queue uses for Status.
-//     AlsoMatches (`position(pattern IN other) > 0` / equality). That makes the
-//     device's matcher answerable to the only server-side matching there is: if
-//     they disagree, the moderator's breadth preview is lying about what
-//     devices will do with the pattern they are approving.
-//
-// No Go MATCHER is written here, and deliberately: the server does not
-// categorize, and a Go implementation of the device's matcher would be a
-// function nothing calls, tested green, drifting from both sides.
-
 import (
 	"bytes"
 	"context"
@@ -76,8 +18,7 @@ import (
 
 const (
 	dictConformancePath = "../../../conformance/dict/matching.json"
-	// The same switch internal/tmpl's dialect fixture uses.
-	writeFixturesEnv = "HASALA_WRITE_CONFORMANCE"
+	writeFixturesEnv    = "HASALA_WRITE_CONFORMANCE"
 )
 
 type dictFixture struct {
@@ -100,16 +41,12 @@ type dictLimits struct {
 	MaxCategoryRunes int `json:"max_category_runes"`
 }
 
-// spaceCase is unicode.IsSpace's verdict for one code point.
 type spaceCase struct {
 	Name    string `json:"name"`
 	CP      int    `json:"cp"`
 	IsSpace bool   `json:"is_space"`
 }
 
-// lowerCase is strings.ToLower's output for one probe string. Base64 because
-// several probes differ from their input only in code points that no diff
-// renders distinguishably.
 type lowerCase struct {
 	Name        string `json:"name"`
 	InputBase64 string `json:"input_base64"`
@@ -117,12 +54,10 @@ type lowerCase struct {
 }
 
 type canonCase struct {
-	Name           string `json:"name"`
-	PatternBase64  string `json:"pattern_base64"`
-	Match          string `json:"match"`
-	CategoryBase64 string `json:"category_base64"`
-	// OK is whether Canonicalize accepted the entry. When false the three
-	// fields below are empty.
+	Name                   string `json:"name"`
+	PatternBase64          string `json:"pattern_base64"`
+	Match                  string `json:"match"`
+	CategoryBase64         string `json:"category_base64"`
 	OK                     bool   `json:"ok"`
 	CanonicalPatternBase64 string `json:"canonical_pattern_base64"`
 	CanonicalMatch         string `json:"canonical_match"`
@@ -144,9 +79,6 @@ type engineNote struct {
 
 func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
 
-// spaceProbes covers every rune unicode.IsSpace treats as whitespace plus the
-// ones a JavaScript author would expect it to. The two that disagree are the
-// reason this section exists.
 var spaceProbes = []struct {
 	name string
 	cp   rune
@@ -261,7 +193,6 @@ var matchProbes = []struct {
 	{"bom in both", MatchContains, "carrefour\ufeffhyper", "carrefour\ufeffhyper"},
 }
 
-// buildDictFixture computes every section from THIS build.
 func buildDictFixture(t *testing.T, pool *pgxpool.Pool) dictFixture {
 	t.Helper()
 	f := dictFixture{
@@ -315,11 +246,6 @@ func buildDictFixture(t *testing.T, pool *pgxpool.Pool) dictFixture {
 	return f
 }
 
-// sqlMatches asks Postgres the question dict.List's AlsoMatches LATERAL asks.
-//
-// The expression is copied from that query rather than paraphrased: it is the
-// only server-side matcher that exists, and it is what a moderator's breadth
-// preview is computed with.
 func sqlMatches(t *testing.T, pool *pgxpool.Pool, match, pattern, subject string) bool {
 	t.Helper()
 	var got bool
@@ -332,13 +258,8 @@ func sqlMatches(t *testing.T, pool *pgxpool.Pool, match, pattern, subject string
 	return got
 }
 
-// TestMain shares one throwaway Postgres across the package: the SQL matcher
-// probe needs a database (internal/pgtest).
 func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
 
-// TestWriteDictConformanceFixtures regenerates the fixture under
-// HASALA_WRITE_CONFORMANCE=1 and otherwise asserts the committed bytes still
-// describe this build.
 func TestWriteDictConformanceFixtures(t *testing.T) {
 	pool := pgtest.New(t)
 	f := buildDictFixture(t, pool)
@@ -373,12 +294,6 @@ func TestWriteDictConformanceFixtures(t *testing.T) {
 	}
 }
 
-// TestTheFixtureCarriesBothSidesOfEveryDivergence fails if a probe set is
-// trimmed down to the cases everybody already agrees on.
-//
-// A conformance fixture whose probes are all uncontroversial is a fixture that
-// passes on both a correct implementation and a naive one, which is the failure
-// mode this project has hit repeatedly under a different name.
 func TestTheFixtureCarriesBothSidesOfEveryDivergence(t *testing.T) {
 	pool := pgtest.New(t)
 	f := buildDictFixture(t, pool)

@@ -1,10 +1,6 @@
 import HasalaModels
 import SwiftUI
 
-/// The ambient wash at the top of tab, pushed and flow screens (Paper `4.6`): a tint that
-/// fades into the grouped canvas, interpolated in a perceptual space as Paper draws it
-/// (`in oklab`). A change of wash cross-fades (`.stateSwap`); the colour is set before any
-/// other motion starts.
 public struct AmbientWash: View {
   let wash: HWash
   let height: CGFloat

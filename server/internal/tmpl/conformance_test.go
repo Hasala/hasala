@@ -1,32 +1,5 @@
 package tmpl
 
-// conformance_test.go writes conformance/dialect/patterns.json and then
-// re-reads it, asserting this build still produces it.
-//
-// The file is the shared half of the dual-executor contract for the dialect.
-// It carries three different kinds of claim, and they are different on purpose:
-//
-//  1. REJECTED patterns with their reason codes. Task 20's TypeScript
-//     validator must reject the same patterns with the same codes. This is
-//     validator parity, and it is the only part Go can state alone.
-//
-//  2. ACCEPTED patterns with PROBE RESULTS — for each pattern, a set of inputs
-//     and what Go's engine did with them, group by group. This is the part
-//     that matters most and the part a validator-parity check cannot give you:
-//     two validators can agree perfectly that a pattern is legal while the two
-//     regex engines then disagree about what it matches. The probe corpus is
-//     chosen to contain exactly the characters the banned constructs diverge
-//     on — CR, U+2028, U+2029, NBSP, VT, U+FEFF, the Kelvin sign, long s —
-//     so an accepted pattern is not merely "not obviously unsafe" but measured
-//     safe on the inputs that break the unsafe ones.
-//
-//  3. A CANONICAL definition and its exact bytes, because the hash of a
-//     template has to be the same number in both languages.
-//
-// The probe expectations are produced by Go's engine and consumed by
-// JavaScript's, so this direction catches a TypeScript executor that reads
-// patterns differently. client/src/tmpl/agreement.test.ts is the reader.
-
 import (
 	"bytes"
 	"crypto/sha256"
@@ -75,21 +48,6 @@ type probeInput struct {
 	InputBase64 string `json:"input_base64"`
 }
 
-// corpusDigest is validator parity over a GENERATED corpus rather than over
-// hand-picked rows.
-//
-// Every other claim in this file is a pattern somebody chose, and the person
-// who chooses the rows is the person who wrote both validators — so the rows
-// agree where the author expected them to. That is the "true by construction"
-// shape. This one enumerates the cross product of a small grammar, runs the
-// validator over all of it, and records a hash: it agrees only if the two
-// implementations are the same FUNCTION over 9,324 shapes, not the same
-// intuition over sixty.
-//
-// It is a hash rather than the rows because the rows are ~400 KB. Checkpoints
-// exist so a failure is diagnosable: the TypeScript side compares those first
-// and names the first pattern that differs, and only falls back to "the digest
-// differs somewhere else" when they all match.
 type corpusDigest struct {
 	Spec        string             `json:"spec"`
 	Size        int                `json:"size"`
@@ -103,15 +61,6 @@ type corpusCheckpoint struct {
 	Codes   []string `json:"codes"`
 }
 
-// dialectCorpus is the generator, written as plain nested loops over literal
-// arrays so that the TypeScript mirror in client/src/tmpl/dialect.test.ts is a
-// transliteration rather than a reimplementation. The ORDER is part of the
-// contract: the digest is over the sequence.
-//
-// The alphabet is chosen for the cost rules — a fixed atom, a class, a negated
-// class, an escape, and one Arabic literal so that the two languages are shown
-// to agree on a non-ASCII pattern as well — crossed with every quantifier form
-// the dialect has an opinion about, then nested and repeated.
 func dialectCorpus() []string {
 	atoms := []string{`a`, `[a-z]`, `[^\n]`, `\n`, `م`}
 	quants := []string{``, `?`, `*`, `+`, `{2}`, `{1,4}`, `{0,2}`, `{2,}`, `{1,32}`}
@@ -141,10 +90,6 @@ func dialectCorpus() []string {
 	return pats
 }
 
-// buildCorpusDigest runs the validator over dialectCorpus and hashes the
-// result. The hashed line is pattern, NUL, the codes joined by commas — NUL
-// because it cannot occur in a pattern, so no pattern/codes pair can be
-// confused with a different one that concatenates to the same bytes.
 func buildCorpusDigest() corpusDigest {
 	pats := dialectCorpus()
 	h := sha256.New()
@@ -173,43 +118,25 @@ func nonNilCodes(c []string) []string {
 }
 
 type rejectedCase struct {
-	Code string `json:"code"`
-	// Pattern is a plain JSON string, not base64: this file is read by a human
-	// porting the validator, and every pattern here is valid UTF-8 that JSON
-	// round-trips exactly.
-	Pattern string `json:"pattern"`
-	// JSPattern is the text JavaScript would compile, i.e. after ToJS. It
-	// matters for the two rows whose rejection JavaScript only sees once the
-	// named-group spelling has been rewritten.
-	JSPattern string   `json:"js_pattern"`
-	Flags     []string `json:"flags"`
-	Codes     []string `json:"codes"`
-	// JSSyntaxError records whether new RegExp(ToJS(pattern), flags+"u") throws.
-	// Where it is true, JavaScript's own parser is a second, free layer of
-	// enforcement; where it is false, the dialect is the only thing standing
-	// between this pattern and a silent cross-executor difference. Measured,
-	// and asserted by the TypeScript side.
-	JSSyntaxError bool   `json:"js_syntax_error"`
-	Why           string `json:"why"`
+	Code          string   `json:"code"`
+	Pattern       string   `json:"pattern"`
+	JSPattern     string   `json:"js_pattern"`
+	Flags         []string `json:"flags"`
+	Codes         []string `json:"codes"`
+	JSSyntaxError bool     `json:"js_syntax_error"`
+	Why           string   `json:"why"`
 }
 
 type acceptedCase struct {
-	Name      string   `json:"name"`
-	Pattern   string   `json:"pattern"`
-	JSPattern string   `json:"js_pattern"`
-	Flags     []string `json:"flags"`
-	// Why is carried only by the rows whose acceptance is itself the claim —
-	// the cost-bound boundary cases, where "this pattern is legal" is the
-	// measurement rather than a side effect of the rule it illustrates.
-	// omitempty, so the rewrite-of-* and seed-* rows stay as they were.
+	Name       string        `json:"name"`
+	Pattern    string        `json:"pattern"`
+	JSPattern  string        `json:"js_pattern"`
+	Flags      []string      `json:"flags"`
 	Why        string        `json:"why,omitempty"`
 	GroupNames []string      `json:"group_names"`
 	Probes     []probeResult `json:"probes"`
 }
 
-// probeResult is what Go's engine did. Matched plus the full match plus every
-// named group, because a pattern that matches in both engines and captures
-// different text is the failure this file exists to catch.
 type probeResult struct {
 	Input  string             `json:"input"`
 	Match  bool               `json:"match"`
@@ -239,10 +166,6 @@ type engineDivergence struct {
 	Note    string `json:"note"`
 }
 
-// probeCorpus is deliberately hostile. Every character on which the two
-// engines were measured to disagree for some banned construct appears here, so
-// an accepted pattern is exercised against the inputs that break the rejected
-// ones rather than against a happy path.
 func probeCorpus() []struct{ name, in string } {
 	return []struct{ name, in string }{
 		{"empty", ""},
@@ -251,25 +174,14 @@ func probeCorpus() []struct{ name, in string } {
 		{"dib-amount-no-currency", "المبلغ\n12,750.00"},
 		{"enbd-alert", "AED 12,750.00 has been withdrawn from your account"},
 		{"enbd-alert-lowercase", "aed 12,750.00 has been WITHDRAWN from your account"},
-		// The credit anchor is the widest pattern the seed set ships and the
-		// one closest to MaxRepetitionWidth, so it gets both of its optional
-		// arms exercised: the (?:in)?to that is absent here and present below,
-		// and both branches of (?:credited|deposited).
 		{"enbd-alert-credit", "AED 12,750.00 has been credited to your account"},
 		{"enbd-alert-deposited-into", "aed 1.00 has been DEPOSITED into your account"},
-		// The separator class is [ \t\n\f\r] — Go's \s written out, because \s
-		// itself means different things in the two engines. Only a probe that
-		// USES the exotic members compares them, and until 2026-08-14 the class
-		// was [ \n] and no probe carried a tab into it.
 		{"enbd-alert-tab-separated", "AED 250.00\thas been\twithdrawn\tfrom your account"},
 		{"enbd-alert-formfeed-separated", "AED 250.00\fhas been\fwithdrawn\ffrom your account"},
-		// The currency-adjacent forms, which the ccy group used to miss entirely
-		// and default_currency then silently reported as AED.
 		{"enbd-alert-currency-adjacent", "USD12,750.00 has been withdrawn from your account"},
 		{"enbd-alert-credit-currency-adjacent", "USD400.00 has been credited to your account"},
 		{"subject-last4", "account ending with 8642"},
 		{"subject-last4-two-spaces", "account ending with  8642"},
-		// enbd.transfer.v1's three anchors, in the order the advice writes them.
 		{"enbd-transfer-advice", "Transaction Date:\n15/Mar/2026 09:15 PM\nFrom Account:\n012***34***56\n" +
 			"Debit Amount:\nAED 23,456.00\nBeneficiary Name:\nSOME BENEFICIARY"},
 		{"enbd-transfer-currency-adjacent", "Debit Amount:\nUSD1,200.00\nBeneficiary Name:\nSOME BENEFICIARY"},
@@ -282,8 +194,6 @@ func probeCorpus() []struct{ name, in string } {
 		{"kelvin-sign", "\u212aelvin AED 1.00"},
 		{"latin-small-long-s", "\u017fugar AED 1.00"},
 		{"dib-card-block", "\u0627\u0644\u062f\u0641\u0639 \u0627\u0644\u0649\nCARREFOUR DUBAI\n\u0631\u0642\u0645 \u0627\u0644\u0628\u0637\u0627\u0642\u0629\nXXXX1234"},
-		// The load-bearing probe for the bare-dot rule's replacement: [^\n] must
-		// include \r in BOTH engines, which is exactly what a bare . does not.
 		{"dib-merchant-with-cr", "\u0627\u0644\u062f\u0641\u0639 \u0627\u0644\u0649\nCARREFOUR\rDUBAI\n\u0631\u0642\u0645 \u0627\u0644\u0628\u0637\u0627\u0642\u0629\nXXXX1234"},
 		{"repeated-a", strings.Repeat("a", 40)},
 		{"metacharacters", `a.b [x] (y) {z} \ | ^ $ -`},
@@ -295,30 +205,22 @@ func probeCorpus() []struct{ name, in string } {
 	}
 }
 
-// jsSyntaxErrorCases names the reject rows for which JavaScript's own parser,
-// with the u flag, refuses the pattern outright. Measured against Bun 1.3,
-// V8 and WebKit; the TypeScript side asserts every entry, so an engine that
-// changes its mind shows up as a failure rather than as silent drift.
 var jsSyntaxErrorCases = map[string]bool{
-	ReasonEscapeUnicodeClass:     true, // \p{Arabic} needs \p{Script=Arabic} in JS
-	ReasonEscapeUnicodeCodepoint: true, // \x{...} is not JS syntax
-	ReasonEscapeTextAnchor:       true, // \A
-	ReasonEscapeNotAllowed:       true, // \a
-	ReasonMalformedEscape:        true, // trailing backslash
-	ReasonInlineFlags:            true, // (?i)
-	ReasonUnsupportedGroup:       true, // (?P=amt)
-	ReasonInvalidGroupName:       true, // (?<0a>x) after ToJS
-	ReasonDuplicateGroupName:     true, // (?<v>a)(?<v>b) after ToJS
-	ReasonUnbalancedParen:        true, // (a
-	ReasonMalformedRepetition:    true, // a{,3}
-	ReasonUnterminatedCharClass:  true, // [abc
-	ReasonClassLiteralBracket:    true, // [[:alpha:]]
-	ReasonNotCompilable:          true, // [z-a]
-	// Not a pattern-syntax error but a FLAG error: the flag list is passed to
-	// JavaScript verbatim, so ["i","i"] becomes "iiu" and JavaScript rejects a
-	// repeated flag. ["m"], by contrast, is a perfectly legal JavaScript flag,
-	// which is exactly why banning it has to be the validator's job.
-	ReasonDuplicateFlag: true,
+	ReasonEscapeUnicodeClass:     true,
+	ReasonEscapeUnicodeCodepoint: true,
+	ReasonEscapeTextAnchor:       true,
+	ReasonEscapeNotAllowed:       true,
+	ReasonMalformedEscape:        true,
+	ReasonInlineFlags:            true,
+	ReasonUnsupportedGroup:       true,
+	ReasonInvalidGroupName:       true,
+	ReasonDuplicateGroupName:     true,
+	ReasonUnbalancedParen:        true,
+	ReasonMalformedRepetition:    true,
+	ReasonUnterminatedCharClass:  true,
+	ReasonClassLiteralBracket:    true,
+	ReasonNotCompilable:          true,
+	ReasonDuplicateFlag:          true,
 }
 
 func buildDialectFixture(t *testing.T) dialectFixture {
@@ -333,24 +235,7 @@ func buildDialectFixture(t *testing.T) dialectFixture {
 			"TypeScript validator must reject each pattern with the same reason codes. `accepted` pins ENGINE " +
 			"parity, which is the stronger claim: for each pattern, what Go's RE2 matched and captured on every " +
 			"probe input, which JavaScript must reproduce exactly.",
-		Spec: "server/internal/tmpl/v2-template-format.md",
-		// 2: Task 20 added the multiple_unbounded_quantifiers rule and with it
-		// max_unbounded_per_branch, and rewrote the escape_perl_space row's
-		// sanctioned rewrite, which the new rule refused.
-		//
-		// 3: the two BOUNDED cost rules — nested_variable_repetition and
-		// repetition_width_too_large — and with them max_repetition_width. Both
-		// close a ReDoS hole that MaxBoundProduct is structurally unable to see:
-		// (?:[a-z]{8}){8}z and (?:[a-z0-9 ]{1,8}){8}z score identically on it
-		// and cost 0.0 ms and 2,178 ms. No previously accepted pattern became
-		// rejected: all 72 patterns in seed/*.json and conformance/templates/
-		// were re-validated, every `accept` in the dialect table still passes,
-		// and the 7,004-message parity corpus still runs 5,719/0/0/0. The
-		// widest thing that ships measures 200 against a limit of 1,024.
-		//
-		// The row set also grew: eight boundary cases that straddle
-		// MaxRepetitionWidth by ONE, in both directions, so the constant is
-		// pinned rather than only the direction of the inequality.
+		Spec:          "server/internal/tmpl/v2-template-format.md",
 		SchemaVersion: 3,
 		Limits: dialectLimits{
 			MaxPatternRunes:       MaxPatternRunes,
@@ -381,8 +266,6 @@ func buildDialectFixture(t *testing.T) dialectFixture {
 		})
 	}
 
-	// Every row of the dialect table contributes both a rejected case and an
-	// accepted one, so the two lists cannot drift apart from the rules.
 	for _, r := range dialectRules() {
 		errs := ValidatePattern(r.reject, r.rejectFlags)
 		f.Rejected = append(f.Rejected, rejectedCase{
@@ -397,19 +280,8 @@ func buildDialectFixture(t *testing.T) dialectFixture {
 		f.Accepted = append(f.Accepted, acceptedCaseFor(t, "rewrite-of-"+r.code, r.accept, r.acceptFlags))
 	}
 
-	// The two BOUNDED cost rules are bounds on a NUMBER, and the row-per-rule
-	// table above states only their direction: every one of its rejects is
-	// orders of magnitude past the limit, so a mirror that used 4,096 or 900
-	// instead of 1,024 would reproduce it exactly. These straddle the limit by
-	// one on each side, in both engines, so the constant itself is the contract.
-	//
-	// They also pin the ARITHMETIC, which the limits block cannot: alternation
-	// branches sum where concatenation multiplies, an unbounded quantifier
-	// counts one rather than infinity, and a group repeated at most once
-	// multiplies nothing. A mirror that got any of those wrong lands on a
-	// different side of at least one of these rows.
 	for _, b := range []struct {
-		code string // "" means the pattern must be ACCEPTED
+		code string
 		name string
 		pat  string
 		why  string
@@ -464,7 +336,6 @@ func buildDialectFixture(t *testing.T) dialectFixture {
 		})
 	}
 
-	// The seed shapes, which are the patterns Task 21 actually ships.
 	for _, s := range []struct {
 		name  string
 		pat   string
@@ -474,34 +345,10 @@ func buildDialectFixture(t *testing.T) dialectFixture {
 		{"seed-dib-date", `بتاريخ (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4})`, nil},
 		{"seed-dib-merchant", `الدفع الى\n(?P<v>[^\n]+)`, nil},
 		{"seed-dib-card", `رقم البطاقة\n(?P<v>[^ \n]+)`, nil},
-		// Three-branch alternation since enbd.alert.v1 version 2 added
-		// `deducted`, the verb v1 uses for bank-initiated debits.
-		//
-		// Every row below is VERBATIM from seed/*.json, and that was not true
-		// until 2026-08-14: this row previously folded the currency into the amt
-		// group — `(?P<amt>(?:[A-Z]{3} )?[0-9]...)` — while the seed has always
-		// shipped them as two groups, and its comment claimed it was "the
-		// SHIPPING pattern". A row that is not the shipping pattern pins engine
-		// parity on a pattern nobody runs, and its group set differed from the
-		// real one, so the capture the executor actually reads was never
-		// compared across the two engines at all.
 		{"seed-enbd-alert-debit", `(?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\.[0-9]{2})[ \t\n\f\r]has been[ \t\n\f\r](?:withdrawn|debited|deducted)[ \t\n\f\r]from your account`, []string{"i"}},
-		// Verbatim from seed/enbd.alert.v1.json, and the WIDEST pattern the seed
-		// set ships: 200, against a limit of 1,024. It is here because the two
-		// bounded cost rules are the only rules in this dialect that a real
-		// template can come close to failing, so the closest one is the row
-		// that has to be checked in both engines rather than only in Go.
-		//
-		// It is also why version 3's optional-space currency fix is a SECOND
-		// pattern rather than `(?P<ccy>[A-Z]{3} ?)?`: that spelling measures 400,
-		// and TestTheShippingSeedsHaveHeadroomUnderTheWidthBound pins the widest
-		// shipping seed at exactly 200 and demands 4x headroom.
 		{"seed-enbd-alert-credit-widest-shipping-pattern",
 			`(?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\.[0-9]{2})[ \t\n\f\r]has been[ \t\n\f\r](?:credited|deposited)[ \t\n\f\r](?:in)?to your account`,
 			[]string{"i"}},
-		// The currency-adjacent pair, listed FIRST in the seed so that rule 3
-		// reaches it before the spaced pattern produces an AED value for
-		// `USD99.99`.
 		{"seed-enbd-alert-debit-currency-adjacent",
 			`(?P<ccy>[A-Z]{3})(?P<amt>[0-9][0-9,]{0,24}\.[0-9]{2})[ \t\n\f\r]has been[ \t\n\f\r](?:withdrawn|debited|deducted)[ \t\n\f\r]from your account`,
 			[]string{"i"}},
@@ -509,12 +356,7 @@ func buildDialectFixture(t *testing.T) dialectFixture {
 			`(?P<ccy>[A-Z]{3})(?P<amt>[0-9][0-9,]{0,24}\.[0-9]{2})[ \t\n\f\r]has been[ \t\n\f\r](?:credited|deposited)[ \t\n\f\r](?:in)?to your account`,
 			[]string{"i"}},
 		{"seed-dib-account-transfer", `المعاملة\n[^\n]*(?:TRNSFER|TRANSFER)`, nil},
-		// The one seed anchor whose SOURCE is the subject, which norm does not
-		// whitespace-collapse — hence the only `+` separator in the seed set.
 		{"seed-enbd-alert-last4", `account ending with[ \t\n\f\r]+(?P<v>[0-9]{4})`, []string{"i"}},
-		// enbd.transfer.v1, which had no row here at all until 2026-08-14 — the
-		// template that handles 62 of the corpus's 64 ENBD messages, with
-		// nothing comparing its two executions.
 		{"seed-enbd-transfer-amount", `Debit Amount:\n(?P<ccy>[A-Z]{3} ?)?(?P<amt>[0-9][0-9,]{0,24}\.[0-9]{2})`, []string{"i"}},
 		{"seed-enbd-transfer-date", `Transaction Date:\n(?P<d>[^\n]+)`, []string{"i"}},
 		{"seed-enbd-transfer-merchant", `Beneficiary Name:\n(?P<v>[^\n]+)`, []string{"i"}},
@@ -526,10 +368,6 @@ func buildDialectFixture(t *testing.T) dialectFixture {
 		{"seed-dib-sms-purchase-last4", `من بطاقة (?P<v>[^ \n]+) في `, nil},
 		{"seed-dib-sms-card-payment-last4", `لبطاقتك المنتهية بـ{0,8} (?P<v>[^ \n]+) في `, nil},
 		{"seed-dib-sms-card-payment-date", ` في \.?(?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{1,2}:[0-9]{2}) `, nil},
-		// Not a seed, but the adversarial ToJS shape: an ESCAPED paren followed
-		// by ?P<. It is dialect-valid, so it goes through the full probe
-		// machinery and the two engines are compared on it directly rather
-		// than only on a string-rewrite assertion.
 		{"tojs-escaped-paren-not-a-named-group", `a\(?P<v`, nil},
 	} {
 		if errs := ValidatePattern(s.pat, s.flags); len(errs) != 0 {
@@ -601,9 +439,6 @@ func probeOne(re *regexp.Regexp, name, in string) probeResult {
 		if n == "" {
 			continue
 		}
-		// A group that did not participate is nil; a group that matched the
-		// empty string is the empty string. Conflating the two is how an
-		// EmptyGroups diagnostic goes wrong.
 		if 2*gi+1 < len(idx) && idx[2*gi] >= 0 {
 			r.Groups[n] = b64ptr(in[idx[2*gi]:idx[2*gi+1]])
 		}
@@ -633,10 +468,6 @@ func nonNilNames(re *regexp.Regexp) []string {
 	return out
 }
 
-// measuredDivergences is the evidence behind the ban list: every row was run in
-// Go 1.25 and in JavaScript (Bun 1.3, V8 151 and WebKit 26.5 via Playwright)
-// during Task 18. It is documentation with a machine-readable shape, not an
-// assertion — the assertions are the rejected/accepted lists above.
 func measuredDivergences() []engineDivergence {
 	return []engineDivergence{
 		{Name: `\s on U+00A0`, Pattern: `\s`, Flags: "u", Input: "U+00A0", Go: "false", JS: "true",
@@ -664,10 +495,6 @@ func measuredDivergences() []engineDivergence {
 		{Name: `^ and $ without m`, Pattern: `abc$`, Flags: "u", Input: `"abc\n"`, Go: "false", JS: "false",
 			Note: "an AGREEMENT, recorded because Perl and Python disagree with both: neither Go nor JS " +
 				"matches $ before a trailing newline, which is what makes the m flag ban free"},
-		// Not engine DIVERGENCES but engine COSTS: the same pattern on the same
-		// input, RE2 versus a backtracking engine. They are the evidence behind
-		// multiple_unbounded_quantifiers, and they belong here because the whole
-		// point of that rule is that Go alone cannot feel the harm.
 		{Name: `cost: [0-9]+[0-9]+z`, Pattern: `[0-9]+[0-9]+z`, Flags: "u", Input: `"1" x 800`,
 			Go: "microseconds", JS: "86 ms in Bun 1.3.14",
 			Note: "two unbounded quantifiers that consume the same characters is O(n^2) in a backtracking engine"},
@@ -698,9 +525,6 @@ func measuredDivergences() []engineDivergence {
 	}
 }
 
-// TestWriteDialectConformanceFixtures regenerates the committed file.
-//
-//	HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteDialectConformanceFixtures
 func TestWriteDialectConformanceFixtures(t *testing.T) {
 	if os.Getenv(writeFixturesEnv) == "" {
 		t.Skipf("set %s=1 to regenerate %s", writeFixturesEnv, dialectConformancePath)
@@ -715,10 +539,6 @@ func TestWriteDialectConformanceFixtures(t *testing.T) {
 	t.Logf("wrote %s (%d bytes)", dialectConformancePath, len(b))
 }
 
-// TestDialectConformanceFixturesAreWhatThisBuildProduces is the guard against
-// the committed file going stale. Without it a change to a reason code would
-// leave TypeScript checking itself against a snapshot of a validator that no
-// longer exists.
 func TestDialectConformanceFixturesAreWhatThisBuildProduces(t *testing.T) {
 	want, err := encodeDialectFixture(buildDialectFixture(t))
 	if err != nil {
@@ -746,8 +566,6 @@ func encodeDialectFixture(f dialectFixture) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// The fixture is only worth anything if the accepted patterns really do
-// exercise the hostile inputs, so assert that the corpus is not inert.
 func TestTheProbeCorpusActuallyExercisesTheAcceptedPatterns(t *testing.T) {
 	f := buildDialectFixture(t)
 	matches := 0
@@ -762,8 +580,6 @@ func TestTheProbeCorpusActuallyExercisesTheAcceptedPatterns(t *testing.T) {
 		t.Fatalf("only %d probe matches across %d accepted patterns; the corpus is not exercising them",
 			matches, len(f.Accepted))
 	}
-	// And every named group of every seed shape must be captured by at least
-	// one probe, or the fixture proves nothing about capture agreement.
 	for _, a := range f.Accepted {
 		if !strings.HasPrefix(a.Name, "seed-") {
 			continue

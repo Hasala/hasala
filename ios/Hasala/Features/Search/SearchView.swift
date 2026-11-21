@@ -4,16 +4,9 @@ import HasalaModel
 import HasalaModels
 import SwiftUI
 
-/// Search · Ready and Results as you type (Paper "Search · Ready", "Search · Results as you
-/// type (carre)"), in every build. The header's search opens it as
-/// a sheet with the field focused; while it is empty, "Try asking" and the recent searches; as
-/// you type, the top result, the matching transactions, the categories and the rules, the typed part in
-/// bold. Everything is found in this iPhone's own ledger (`ActivityEngine`'s search): no
-/// query leaves the device.
 struct SearchView: View {
   let app: AppModel
   @State private var query = ""
-  /// The field is up and focused when Search opens (Paper "Search · Ready": keyboard up).
   @State private var searching = false
   @State private var ask = AskSearchModel()
   @State private var opened: OpenedTransaction?
@@ -27,8 +20,6 @@ struct SearchView: View {
     ("What did I spend at Carrefour?", "carrefour"),
   ]
 
-  /// The "Try asking" rows this ledger has an answer for: a row whose word finds nothing
-  /// (no rent, never at Carrefour) would open "No matches", so it is not offered.
   static func suggestions(in s: LedgerState, now: LocalDateTime) -> [(question: String, term: String)] {
     suggestions.filter { !SearchResults($0.term, s, now: now).isEmpty }
   }
@@ -67,15 +58,9 @@ struct SearchView: View {
       .scrollDismissesKeyboard(.interactively)
       .background(alignment: .top) { AmbientWash(.onTrack).ignoresSafeArea() }
       .background(HColor.surfaceSecondary)
-      // Ready keeps its large title over the field (Paper "Search · Ready", spec 13 S1);
-      // results take the room from the first letter (S3, no large title). The results also
-      // drop the title's words: on a CI simulator the hidden bar left its large title drawn
-      // over the top result, where an empty title leaves nothing to see.
       .navigationTitle(typed.isEmpty ? "Search" : "")
       .searchable(text: $query, isPresented: $searching, prompt: Self.prompt(available: ask.available))
       .searchPresentationToolbarBehavior(typed.isEmpty ? .avoidHidingContent : .automatic)
-      // Merchant names and words as typed ("carre", "talabat"): no capital, no correction,
-      // so no QuickType bar over the keys either (Paper's keyboard has none).
       .textInputAutocapitalization(.never)
       .autocorrectionDisabled()
       .onSubmit(of: .search) { SearchHistory.shared.add(query) }
@@ -111,8 +96,6 @@ struct SearchView: View {
     app.router.transaction = []
     opened = OpenedTransaction(id: id)
   }
-
-  // MARK: Ready
 
   private var ready: some View {
     VStack(alignment: .leading, spacing: 24) {
@@ -183,8 +166,6 @@ struct SearchView: View {
       .padding(.leading, 4)
       .accessibilityAddTraits(.isHeader)
   }
-
-  // MARK: Results
 
   @ViewBuilder
   private func results(_ q: String) -> some View {
@@ -536,7 +517,6 @@ struct SearchView: View {
     .accessibilityElement(children: .combine)
   }
 
-  /// The typed part in bold, the rest regular (Paper "Carre" + "four").
   private func highlighted(_ text: String, _ marks: [String]) -> Text {
     guard let r = marks.lazy.filter({ !$0.isEmpty })
       .compactMap({ text.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) }).first
@@ -547,7 +527,6 @@ struct SearchView: View {
     return Text("\(Text(text[..<r.lowerBound]))\(Text(text[r]).font(bold))\(Text(text[r.upperBound...]))")
   }
 
-  /// No matches (Paper page 17 "NothingFound", Proposed): echo the query, say what to try.
   private func nothingFound(_ q: String, reason: SearchFallback?) -> some View {
     let copy = Self.nothingFoundCopy(q, reason: reason)
     return VStack(spacing: 10) {
@@ -684,8 +663,6 @@ enum ArabicAlias {
   }
 }
 
-/// What a typed query finds in the ledger, across months: the transactions (newest first),
-/// the categories by name, and the rules whose words contain it.
 struct SearchResults {
   struct RuleMatch: Identifiable {
     let id: RuleID
@@ -701,13 +678,11 @@ struct SearchResults {
 
   init(_ q: String, _ s: LedgerState, now: LocalDateTime) {
     let found = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(text: q)).days.flatMap(\.rows)
-    // A transaction found by its merchant leads; one found by its category or note follows.
     let ordered = found.filter { SearchText.contains($0.merchant, q) }
       + found.filter { !SearchText.contains($0.merchant, q) }
     rows = ordered.compactMap { r in
       guard let t = s.txn(r.id) else { return nil }
       var row = r
-      // "Groceries · Fri 9 Oct": what it was, and when.
       row.detail = "\(s.category(t.categoryID)?.name ?? "To review") · \(t.postedAt.date.short(today: now.date))"
       return row
     }
@@ -770,14 +745,10 @@ struct SearchResults {
     return shownFor.count == 1 ? shownFor[0] : nil
   }
 
-  /// The merchant match people most likely meant: the newest one.
   var top: MiniTxnRow? { rows.first }
   var isEmpty: Bool { rows.isEmpty && categories.isEmpty && rules.isEmpty }
 }
 
-/// Recent searches, for this process only (nothing about what was searched is kept on disk),
-/// and for the open account only: they are cleared when its runtime closes and when its data
-/// leaves this iPhone (`BootController.closeRuntime`, `LocalAccountData.forget`).
 @MainActor
 @Observable
 final class SearchHistory {
@@ -795,7 +766,6 @@ final class SearchHistory {
   func clear() { recent = [] }
 
   #if HASALA_MOCKS
-    /// A Debug screen launch's query (`search.results`).
     static var launchQuery: String?
   #endif
 }

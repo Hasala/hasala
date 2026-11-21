@@ -9,7 +9,6 @@ import (
 	"time"
 )
 
-// env is a fake environment for LoadEnv.
 type env map[string]string
 
 func (e env) lookup(k string) (string, bool) { v, ok := e[k]; return v, ok }
@@ -47,7 +46,6 @@ func wantErr(t *testing.T, e env, contains string) {
 	}
 }
 
-// secretFile writes a 0600 file and returns its path.
 func secretFile(t *testing.T, mode os.FileMode) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "secret")
@@ -110,7 +108,6 @@ func TestATOMLFileIsReadAndUnknownKeysAreRefused(t *testing.T) {
 	if err != nil || c.Server.HTTPListen != "127.0.0.1:9000" || c.Auth.RPID != "hasala.app" {
 		t.Fatalf("toml not applied: %+v, %v", c.Server, err)
 	}
-	// HASALA_CONFIG names the file when --config does not.
 	c, err = LoadEnv("", env{"HASALA_CONFIG": good}.lookup, nil)
 	if err != nil || c.Server.HTTPListen != "127.0.0.1:9000" {
 		t.Fatalf("HASALA_CONFIG not honoured: %v", err)
@@ -131,8 +128,6 @@ func TestATOMLFileIsReadAndUnknownKeysAreRefused(t *testing.T) {
 	}
 }
 
-// There is no TLS code in hasalad (F3): the listener is plain HTTP and must be
-// loopback, whatever else is configured.
 func TestTheListenerIsLoopbackOnly(t *testing.T) {
 	for _, addr := range []string{":8443", "0.0.0.0:8443", "[::]:8443", "192.0.2.1:8443", "example.test:8443", "nonsense"} {
 		wantErr(t, env{"HASALA_HTTP_LISTEN": addr}, "loopback")
@@ -172,12 +167,9 @@ func TestValuesAreValidated(t *testing.T) {
 
 func TestTheOptionalGroupsAreAllOrNothing(t *testing.T) {
 	key := secretFile(t, 0o600)
-	// APNs: enabled needs its three values.
 	wantErr(t, env{"HASALA_APNS_ENABLED": "true"}, "team_id")
 	wantErr(t, env{"HASALA_APNS_ENABLED": "true", "HASALA_APNS_TEAM_ID": "ABCDE12345", "HASALA_APNS_KEY_ID": "KEY1234567"}, "HASALA_APNS_KEY_FILE")
 	wantErr(t, env{"HASALA_APNS_ENVIRONMENTS": "staging"}, "production or sandbox")
-	// Gmail: TestTheGmailGroupIsALinkAndAnOptionalPush.
-	// Email: account id without the token, and a bad account id.
 	wantErr(t, env{"HASALA_EMAIL_CF_ACCOUNT_ID": strings.Repeat("a", 32)}, "API_TOKEN_FILE")
 	wantErr(t, env{"HASALA_EMAIL_CF_ACCOUNT_ID": "nothex", "HASALA_EMAIL_API_TOKEN_FILE": key}, "32 lowercase hex")
 	wantErr(t, env{"HASALA_EMAIL_FROM": "no-reply@example.test"}, "hasala.app")
@@ -186,9 +178,6 @@ func TestTheOptionalGroupsAreAllOrNothing(t *testing.T) {
 	wantErr(t, env{"HASALA_WEB_BASE_URL": "https://evil.test"}, "https URL on hasala.app")
 }
 
-// The [gmail] group is two parts: the mailbox link (the iOS client id and the
-// route key, both or neither) and the Pub/Sub push (four values, all or none,
-// and only with the link). The link alone is a valid configuration.
 func TestTheGmailGroupIsALinkAndAnOptionalPush(t *testing.T) {
 	key := secretFile(t, 0o600)
 	link := env{
@@ -216,43 +205,37 @@ func TestTheGmailGroupIsALinkAndAnOptionalPush(t *testing.T) {
 		return out
 	}
 
-	// The link alone: mounted, with no push.
 	if c := mustLoad(t, link); !c.Gmail.LinkEnabled() || c.Gmail.PushEnabled() {
 		t.Fatalf("link only: link %v push %v", c.Gmail.LinkEnabled(), c.Gmail.PushEnabled())
 	}
-	// Both parts.
 	if c := mustLoad(t, merge(link, push)); !c.Gmail.LinkEnabled() || !c.Gmail.PushEnabled() {
 		t.Fatalf("link and push: link %v push %v", c.Gmail.LinkEnabled(), c.Gmail.PushEnabled())
 	}
 
-	// Half a link, with or without the push.
 	wantErr(t, without(link, "HASALA_MAILBOX_ROUTE_KEY_FILE"), "missing: HASALA_MAILBOX_ROUTE_KEY_FILE")
 	wantErr(t, without(link, "HASALA_GOOGLE_IOS_CLIENT_ID"), "missing: gmail.ios_client_id")
 	wantErr(t, merge(without(link, "HASALA_MAILBOX_ROUTE_KEY_FILE"), push), "missing: HASALA_MAILBOX_ROUTE_KEY_FILE")
 
-	// Partial push settings are refused, each one named, with the link or without.
 	for k := range push {
 		wantErr(t, merge(link, without(push, k)), k)
 		wantErr(t, merge(link, env{k: push[k]}), "all or nothing")
 		wantErr(t, env{k: push[k]}, "all or nothing")
 	}
-	// The whole push without the link.
 	wantErr(t, push, "needs the mailbox link")
 	wantErr(t, merge(push, without(link, "HASALA_GOOGLE_IOS_CLIENT_ID")), "missing: gmail.ios_client_id")
 
-	// Shapes.
 	wantErr(t, merge(link, env{"HASALA_GOOGLE_IOS_CLIENT_ID": "not-a-client"}), "not a Google client id")
 	wantErr(t, merge(link, push, env{"HASALA_GMAIL_PUBSUB_TOPIC": "t"}), "pubsub_topic")
 	wantErr(t, merge(link, push, env{"HASALA_GMAIL_PUBSUB_SUBSCRIPTION": "projects/p/topics/t"}), "pubsub_subscription")
 	wantErr(t, merge(link, push, env{"HASALA_GMAIL_PUBSUB_AUDIENCE": "http://api.hasala.app/hooks/gmail/pubsub"}), "pubsub_audience")
 	for _, sa := range []string{
-		"push",                                // no domain
-		"@p.iam.gserviceaccount.com",          // no name
-		"push@p.gserviceaccount.com",          // not a service account domain
-		"push@.iam.gserviceaccount.com",       // no project
-		"push@p.iam.gserviceaccount.com.evil", // suffix not at the end
-		"a@b@p.iam.gserviceaccount.com",       // two '@'
-		"push @p.iam.gserviceaccount.com",     // whitespace
+		"push",
+		"@p.iam.gserviceaccount.com",
+		"push@p.gserviceaccount.com",
+		"push@.iam.gserviceaccount.com",
+		"push@p.iam.gserviceaccount.com.evil",
+		"a@b@p.iam.gserviceaccount.com",
+		"push @p.iam.gserviceaccount.com",
 	} {
 		wantErr(t, merge(link, push, env{"HASALA_GMAIL_PUBSUB_SA_EMAIL": sa}), "pubsub_service_account")
 	}
@@ -260,9 +243,6 @@ func TestTheGmailGroupIsALinkAndAnOptionalPush(t *testing.T) {
 	wantErr(t, merge(link, env{"HASALA_MAILBOX_ROUTE_KEY_FILE": secretFile(t, 0o640)}), "no group or other permission")
 }
 
-// The [outlook] group: the link (client_id and [gmail]'s route key) and the
-// push (both hook URLs, only with the link). The route key alone keys either
-// link, so Outlook works without Gmail.
 func TestTheOutlookGroupIsALinkAndAnOptionalPush(t *testing.T) {
 	key := secretFile(t, 0o600)
 	link := env{
@@ -291,7 +271,6 @@ func TestTheOutlookGroupIsALinkAndAnOptionalPush(t *testing.T) {
 	if !c.Outlook.LinkEnabled() || !c.Outlook.PushEnabled() {
 		t.Fatalf("outlook link and push: %+v", c.Outlook)
 	}
-	// With the Gmail link beside it.
 	c = mustLoad(t, merge(link, push, env{"HASALA_GOOGLE_IOS_CLIENT_ID": "1-abc.apps.googleusercontent.com"}))
 	if !c.Outlook.LinkEnabled() || !c.Gmail.LinkEnabled() {
 		t.Fatal("both links")
@@ -318,7 +297,6 @@ func TestTheOutlookGroupIsALinkAndAnOptionalPush(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) { wantErr(t, merge(link, push, bad), "outlook.") })
 	}
-	// The route key without either link is still half a link.
 	wantErr(t, env{"HASALA_MAILBOX_ROUTE_KEY_FILE": key}, "missing: gmail.ios_client_id")
 }
 
@@ -353,9 +331,6 @@ func TestSecretFilesMustBePrivate(t *testing.T) {
 	mustLoad(t, env{"HASALA_SALT_KEY_FILE": secretFile(t, 0o400)})
 }
 
-// systemd's LoadCredential= files show 0440 (the ACL mask that grants the
-// unit's user read access): accepted inside $CREDENTIALS_DIRECTORY only, and
-// still refused when other may read them.
 func TestCredentialFilesFromSystemd(t *testing.T) {
 	cred := secretFile(t, 0o440)
 	dir := filepath.Dir(cred)
@@ -371,8 +346,6 @@ func TestCredentialFilesFromSystemd(t *testing.T) {
 	wantErr(t, env{"HASALA_AUTH_KEY_FILE": writable, "CREDENTIALS_DIRECTORY": filepath.Dir(writable)}, "no write or other permission")
 }
 
-// Behind Cloudflare (the QA host) the production rails apply: mail is
-// required, debug logging is refused, and no secret may arrive as a raw value.
 func TestTheCloudflarePostureIsStricter(t *testing.T) {
 	key := secretFile(t, 0o600)
 	prod := func(extra env) env {
@@ -397,10 +370,7 @@ func TestTheCloudflarePostureIsStricter(t *testing.T) {
 	mustLoad(t, prod(env{"HASALA_PG_DSN": "postgres://hasala_runtime@%2Frun%2Fx/hasala"}))
 	wantErr(t, prod(env{"HASALA_RP_ID": "localhost", "HASALA_RP_ORIGINS": "https://localhost"}), "localhost")
 	wantErr(t, prod(env{"HASALA_RP_ID": "hasala.app", "HASALA_RP_ORIGINS": "http://hasala.app"}), "https")
-	// The same raw value is tolerated off Cloudflare (local runs and tests).
 	mustLoad(t, env{"HASALA_SOMETHING_TOKEN": "raw"})
-	// HASALA_EMAIL_API_BASE_URL (a local run's mail capture): behind
-	// Cloudflare only the default is accepted; off it, any http(s) root.
 	capture := "http://127.0.0.1:18444/client/v4"
 	wantErr(t, prod(env{"HASALA_EMAIL_API_BASE_URL": capture}), "HASALA_EMAIL_API_BASE_URL")
 	wantErr(t, prod(env{"HASALA_EMAIL_API_BASE_URL": DefaultEmailAPIBaseURL + "/"}), "HASALA_EMAIL_API_BASE_URL")
@@ -442,7 +412,6 @@ func TestModesHaveTheirOwnRequirements(t *testing.T) {
 	if err := c.ValidateFor("serve"); err != nil {
 		t.Fatalf("serve: %v", err)
 	}
-	// Behind Cloudflare serve needs both server keys (review 2 F-04).
 	c.Server.TrustedProxy = ProxyCloudflare
 	c.Auth.AuthKeyFile = "/run/credentials/hasalad.service/auth-key"
 	if err := c.ValidateFor("serve"); err == nil || !strings.Contains(err.Error(), "HASALA_SALT_KEY_FILE") {
@@ -477,8 +446,6 @@ func TestPurgeLedgerPath(t *testing.T) {
 	}
 }
 
-// Fence F7-4 (spec 07 §8.1): serve refuses the console's and App Store
-// Connect's variables, and the console refuses serve's secrets.
 func TestServeAndConsoleRefuseEachOthersEnvironment(t *testing.T) {
 	for _, kv := range []string{"HASALA_CONSOLE_LISTEN=127.0.0.1:8472", "HASALA_ASC_KEY_ID=X", "HASALA_TESTFLIGHT_MODE=manual"} {
 		if err := CheckServeEnvironment([]string{"PATH=/bin", kv}); err == nil {
@@ -525,7 +492,7 @@ func TestTheConsoleConfigurationIsChecked(t *testing.T) {
 	for k, v := range base {
 		e[k] = v
 	}
-	e["HASALA_CONSOLE_LISTEN"] = "127.0.0.1:8443" // serve's default port
+	e["HASALA_CONSOLE_LISTEN"] = "127.0.0.1:8443"
 	if err := mustLoad(t, e).ValidateFor("console"); err == nil {
 		t.Error("console accepted a listener on serve's port")
 	}
@@ -540,9 +507,6 @@ func TestModesAreAdvertised(t *testing.T) {
 	}
 }
 
-// The committed example is a real configuration: it loads, it validates for
-// serve with only the runtime DSN added, and its values are the defaults
-// wherever it does not say "example".
 func TestTheExampleConfigLoads(t *testing.T) {
 	e := env{"HASALA_PG_DSN": "host=/tmp dbname=x"}
 	cfg, err := LoadEnv("../../config.example.toml", e.lookup, e.list())
@@ -560,7 +524,6 @@ func TestTheExampleConfigLoads(t *testing.T) {
 	}
 }
 
-// Spec 02 §15.5: absent is 1; anything but one decimal integer >= 1 refuses.
 func TestReadLogGeneration(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, body string) string {

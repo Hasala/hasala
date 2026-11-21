@@ -1,6 +1,3 @@
-// Unit tests for CoreWire: the schema-4 registry and the blob rule, the op
-// codec's messages, the checkpoint codec, the v3 layout and envelope, the chain
-// and R0.
 import CoreJSON
 import CorePrimitives
 import Foundation
@@ -288,8 +285,8 @@ struct FrameTests {
     #expect(UserID("6F1C2B9E-4D3A-4F5B-8C7D-0E1F2A3B4C5D") == nil)
     #expect(UserID("00000000-0000-0000-0000-000000000000") == nil)
     #expect(UserID(raw: user.raw) == user)
-    #expect(WriterID("ios-0a1b2c3d-4e5f-3a6b-8c7d-9e0f1a2b3c4d") == nil)  // not v4
-    #expect(WriterID("ios-0a1b2c3d-4e5f-4a6b-cc7d-9e0f1a2b3c4d") == nil)  // bad variant
+    #expect(WriterID("ios-0a1b2c3d-4e5f-3a6b-8c7d-9e0f1a2b3c4d") == nil)
+    #expect(WriterID("ios-0a1b2c3d-4e5f-4a6b-cc7d-9e0f1a2b3c4d") == nil)
     #expect(WriterID("dev-a") == nil)
   }
 

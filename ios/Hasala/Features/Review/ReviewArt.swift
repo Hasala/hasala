@@ -2,17 +2,10 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-// Small drawings the Review and Activity boards share: line glyphs the kit's icon set does
-// not carry (the direction arrows, the note lines), the grey monogram at the sizes these
-// boards draw it, and the two card-stack pictures (Review · Tab "Swipe through them",
-// Activity · Overview "To review"). All decorative: the controls around them carry the words.
-
-/// A line glyph drawn from Paper's path data in a 24 grid, round caps and joins.
 struct PathGlyph: View {
   let paths: [String]
   let size: CGFloat
   let color: Color
-  /// In grid units, as Paper writes it.
   let stroke: CGFloat
 
   init(_ paths: [String], size: CGFloat, color: Color, stroke: CGFloat) {
@@ -23,7 +16,6 @@ struct PathGlyph: View {
   }
 
   var body: some View {
-    // Parsed once per body, not on every draw of the canvas.
     let parsed = paths.compactMap { try? SVGPath(parsing: $0) }
     Canvas { context, canvasSize in
       let box = CGRect(origin: .zero, size: canvasSize)
@@ -37,7 +29,6 @@ struct PathGlyph: View {
     .accessibilityHidden(true)
   }
 
-  /// The arrows on the direction pills (Paper "Direction pill · …").
   static func arrow(_ edge: SwipeEdge) -> [String] {
     switch edge {
     case .left: ["M19 12H5.5M11 5.5 4.5 12l6.5 6.5"]
@@ -47,21 +38,11 @@ struct PathGlyph: View {
     }
   }
 
-  /// The note line on a split line card ("Kitchen towels and batteries").
   static let noteLines = ["M5 6.5h14M5 11.5h14M5 16.5h8.5"]
-  /// The envelope beside "View bank email" (the deck's footer).
   static let envelope = ["M6 5.5h12a2.5 2.5 0 0 1 2.5 2.5v8a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 16V8A2.5 2.5 0 0 1 6 5.5Z",
                          "M4.5 7.5 12 13l7.5-5.5"]
 }
 
-/// The grey disc with a merchant's first letter, for a merchant not sorted yet: the review
-/// card's 56 (letter 24), the To sort list's 32 (14/18 600) and the mini card's 20 (11). The
-/// letter follows Dynamic Type and shrinks to stay inside the disc, which keeps its size; the
-/// row or card around it says the merchant's name.
-///
-/// The card's 56 and the mini card's 20 sit on white with Paper's inset 1 pt
-/// `--color-border-subtle` ring; the To sort row's 32 is a plain disc (Paper NTY-0), so a
-/// list passes `ring: false`.
 struct MerchantMonogram: View {
   let letter: String
   let size: CGFloat
@@ -90,7 +71,6 @@ struct MerchantMonogram: View {
   }
 }
 
-/// "Swipe through them": three white cards fanned in a 72 × 60 box (Paper NTH-0).
 struct CardStackArt: View {
   var body: some View {
     ZStack(alignment: .topLeading) {
@@ -125,8 +105,6 @@ struct CardStackArt: View {
   }
 }
 
-/// Activity's "To review" picture (Paper 2DZ-0): a 72 sky tile with two tilted mini cards, a
-/// sorted Dubai Taxi and a new Lulu.
 struct ReviewDeckArt: View {
   var body: some View {
     ZStack(alignment: .topLeading) {

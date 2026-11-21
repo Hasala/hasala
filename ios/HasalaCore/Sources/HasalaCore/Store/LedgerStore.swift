@@ -1,33 +1,16 @@
-// The durable sync state (spec 04 §4.2): verified rows, pinned heads, the
-// cursor, the authored head, pending ops and the in-flight batch. Every
-// transaction boundary §5 names is one method here, so a crash between two
-// statements of one step is impossible by construction:
-//
-//   persistPage      §5.2 step 6: rows + heads + cursor, one transaction
-//   enqueue          §5.4: pending ops durable before the call returns
-//   persistBatch     §5.5 step 4: the sealed, signed batch (R-OUT-2)
-//   acknowledge      §5.5 step 6: inflight + pending deleted, authored head moved
 import CorePrimitives
 import CoreWire
 import Foundation
 import GRDB
 
 public enum StoreError: Error, Sendable, Hashable {
-  /// The database refused or failed (a GRDB error, by result code only:
-  /// messages can carry values and are never logged).
   case database(code: Int32)
-  /// The store holds no `store_meta` row (never created, or wiped).
   case notCreated
-  /// A stored value is not the shape this build writes.
   case corrupt(String)
-  /// `persistBatch` while another batch is in flight.
   case batchInFlight
-  /// `persistBatch` with a batch that does not follow the authored head, or
-  /// that carries an op no longer pending: it was sealed from a stale read.
   case staleBatch
 }
 
-/// `store_meta` (§4.2).
 public struct StoreMeta: Sendable, Hashable {
   public let userID: UserID
   public let writerID: WriterID
@@ -44,7 +27,6 @@ public struct StoreMeta: Sendable, Hashable {
   }
 }
 
-/// `sync_state.outbox_latch`.
 public enum OutboxLatch: String, Sendable, Hashable, CaseIterable {
   case chainBreak = "chain_break"
   case hardStop = "hard_stop"
@@ -54,10 +36,8 @@ public enum OutboxLatch: String, Sendable, Hashable, CaseIterable {
   public var keepsChangesFromUploading: Bool { self == .hardStop || self == .sealerFault }
 }
 
-/// `sync_state` (§4.2).
 public struct SyncStateRow: Sendable, Hashable {
   public var cursorHot: Int64
-  /// This writer's last ACKED counter and hash (genesis: 0 and 32 zero bytes).
   public var authoredHead: Chain.Head
   public var checkpointJSON: Data?
   public var rosterJSON: Data?
@@ -70,7 +50,6 @@ public struct SyncStateRow: Sendable, Hashable {
   public var lastFullCheckAt: Int64?
 }
 
-/// One verified row as `wire_rows` stores it.
 public struct WireRowRecord: Sendable, Hashable {
   public enum Disposition: String, Sendable, Hashable {
     case folded
@@ -106,11 +85,9 @@ public struct WireRowRecord: Sendable, Hashable {
   }
 }
 
-/// One op authored here and not yet acknowledged (`pending_ops`).
 public struct PendingOp: Sendable, Hashable {
   public let localSeq: Int64
   public let opID: String
-  /// The op's canonical JSON object (CoreJSON), as it will travel in a blob.
   public let opJSON: Data
   public let opType: String
   public let entityKind: String?
@@ -131,7 +108,6 @@ public struct PendingOp: Sendable, Hashable {
   }
 }
 
-/// One sealed blob of the batch being uploaded (`inflight_blobs`, R-OUT-2).
 public struct InflightBlob: Sendable, Hashable {
   public let counter: Int64
   public let batchID: String
@@ -140,7 +116,6 @@ public struct InflightBlob: Sendable, Hashable {
   public let sizeBucket: Int
   public let blob: Data
   public let opIDs: [String]
-  /// Non-nil on exactly the batch's last row.
   public let headSig: Data?
   public let createdAt: Int64
 
@@ -163,9 +138,6 @@ public struct InflightBlob: Sendable, Hashable {
 public final class LedgerStore: Sendable {
   public let db: any DatabaseWriter
 
-  /// Opens (creating if needed) `<directory>/ledger.sqlite` with §4.1's
-  /// configuration, after asserting the directory's protection and backup
-  /// exclusion; then migrates.
   public static func open(directory: URL) throws(StoreError) -> LedgerStore {
     do {
       try FileHygiene.prepareDirectory(directory)
@@ -190,7 +162,6 @@ public final class LedgerStore: Sendable {
     return UserID(id)
   }
 
-  /// An in-memory store (tests).
   public static func inMemory() throws(StoreError) -> LedgerStore {
     do {
       return try LedgerStore(db: try DatabaseQueue(configuration: configuration()))
@@ -199,7 +170,6 @@ public final class LedgerStore: Sendable {
     }
   }
 
-  /// §4.1: foreign keys on, 5 s busy timeout, at most 4 readers, secure delete.
   static func configuration() -> Configuration {
     var c = Configuration()
     c.foreignKeysEnabled = true
@@ -239,10 +209,6 @@ public final class LedgerStore: Sendable {
     try run { w in try w.read(body) }
   }
 
-  // MARK: - Creation
-
-  /// Creates the store's identity and sync state (enrolment). `logGeneration`
-  /// is `meta.log_generation` seen now (§5.7 `server_restored`).
   public func create(_ meta: StoreMeta, epochHWM: UInt32 = 1, logGeneration: Int64? = nil) throws(StoreError) {
     try write { db in
       try db.execute(
@@ -267,8 +233,6 @@ public final class LedgerStore: Sendable {
       userID: u, writerID: w, apiBase: row["api_base"], keyEpoch: UInt32(row["key_epoch"] as Int64),
       createdAt: row["created_at"])
   }
-
-  // MARK: - Sync state
 
   public func syncState() throws(StoreError) -> SyncStateRow {
     let row = try read { db in try Row.fetchOne(db, sql: "SELECT * FROM sync_state WHERE id = 1") }
@@ -322,8 +286,6 @@ public final class LedgerStore: Sendable {
     try write { db in try db.execute(sql: "UPDATE sync_state SET last_pull_at = ? WHERE id = 1", arguments: [at]) }
   }
 
-  /// Same-iPhone restore (§4.7 row 8): the authored head becomes the VERIFIED
-  /// server head of this writer before anything is authored.
   public func setAuthoredHead(_ head: Chain.Head) throws(StoreError) {
     try write { db in
       try db.execute(
@@ -331,8 +293,6 @@ public final class LedgerStore: Sendable {
         arguments: [head.counter, head.hash.bytes])
     }
   }
-
-  // MARK: - Pulled rows
 
   public func chainHeads() throws(StoreError) -> [WriterID: Chain.Head] {
     let rows = try read { db in try Row.fetchAll(db, sql: "SELECT writer_id, counter, hash FROM chain_heads") }
@@ -346,10 +306,6 @@ public final class LedgerStore: Sendable {
     return out
   }
 
-  /// §5.2 step 6: the page's rows, the new heads and the cursor, in ONE
-  /// transaction. Heads come from verified bodies only. `snapshot` is the fold
-  /// snapshot the page's fold produced (§5.3), bound to the row at `cursor`, so
-  /// the snapshot and the cursor commit together.
   public func persistPage(
     rows: [WireRowRecord], heads: [WriterID: Chain.Head], cursor: Int64, at: Int64,
     snapshot: FoldSnapshotChange = .keep, epochHWM: UInt32? = nil
@@ -385,7 +341,6 @@ public final class LedgerStore: Sendable {
     }
   }
 
-  /// Rows above `seq`, oldest first (cold folds, audits).
   public func wireRows(after seq: Int64 = 0, limit: Int = 250) throws(StoreError) -> [WireRowRecord] {
     let rows = try read { db in
       try Row.fetchAll(
@@ -416,9 +371,6 @@ public final class LedgerStore: Sendable {
     try read { db in try Int.fetchOne(db, sql: "SELECT count(*) FROM wire_rows") ?? 0 }
   }
 
-  // MARK: - Pending ops (§5.4)
-
-  /// Inserts `ops` in one transaction; durable when this returns.
   public func enqueue(_ ops: [PendingOp], imports: [(domain: String, sinceMs: Int64)] = []) throws(StoreError) {
     try write { db in
       for op in ops {
@@ -452,18 +404,11 @@ public final class LedgerStore: Sendable {
     try read { db in try Int.fetchOne(db, sql: "SELECT count(*) FROM pending_ops") ?? 0 }
   }
 
-  // MARK: - The in-flight batch (§5.5, R-OUT-2/3)
-
-  /// Persists a sealed, signed batch in one transaction (write-ahead).
   public func persistBatch(_ blobs: [InflightBlob]) throws(StoreError) {
     try write { db in
       guard try Int.fetchOne(db, sql: "SELECT count(*) FROM inflight_blobs") == 0 else {
         throw StoreError.batchInFlight
       }
-      // The batch must continue the authored head and seal only pending ops,
-      // checked inside this transaction (a defence behind the engine's
-      // one-run-at-a-time rule: a batch sealed from a stale read would put a
-      // duplicate op in the shared log).
       guard let first = blobs.first,
         let head = try Row.fetchOne(db, sql: "SELECT authored_counter, authored_hash FROM sync_state WHERE id = 1"),
         first.counter == (head["authored_counter"] as Int64) + 1,
@@ -498,7 +443,6 @@ public final class LedgerStore: Sendable {
     }
   }
 
-  /// The in-flight batch, counters ascending (empty when none).
   public func inflight() throws(StoreError) -> [InflightBlob] {
     let rows = try read { db in try Row.fetchAll(db, sql: "SELECT * FROM inflight_blobs ORDER BY writer_counter") }
     return try rows.map { r throws(StoreError) in
@@ -512,8 +456,6 @@ public final class LedgerStore: Sendable {
     }
   }
 
-  /// §5.5 step 6 (and a 409 resend's already-stored rows): the acknowledged
-  /// blobs and their ops leave, and the authored head moves to `head`.
   public func acknowledge(counters: [Int64], head: Chain.Head, at: Int64) throws(StoreError) {
     try write { db in
       for c in counters {
@@ -544,14 +486,9 @@ public final class LedgerStore: Sendable {
     }
   }
 
-  /// Discards the in-flight batch WITHOUT acknowledging it: only after a
-  /// definitive refusal that stored nothing (`409 stale_epoch`, R-OUT-4). The
-  /// ops stay pending and are sealed again.
   public func discardInflight() throws(StoreError) {
     try write { db in try db.execute(sql: "DELETE FROM inflight_blobs") }
   }
-
-  // MARK: - Fold events (content-free ring of 64)
 
   public func recordFoldEvent(kind: String, detail: String, at: Int64) throws(StoreError) {
     try write { db in
@@ -573,7 +510,6 @@ public final class LedgerStore: Sendable {
     }
   }
 
-  /// `fold_events` keeps its newest 64 entries.
   static func pruneFoldEvents(_ db: Database) throws {
     try db.execute(
       sql: "DELETE FROM fold_events WHERE id NOT IN (SELECT id FROM fold_events ORDER BY id DESC LIMIT 64)")

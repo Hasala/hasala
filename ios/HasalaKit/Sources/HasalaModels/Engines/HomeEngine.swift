@@ -1,8 +1,3 @@
-// Home · Default (Paper 14O7-0), Over pace (2S7-0), Over budget (18WY-0), September (14W1-0)
-// and Last 3 months (1531-0): the hero with its pace, the bell's list and the widget canvas,
-// built from `LedgerState` (spec 10 §2, page 06 §6.4, page 16 §01–02).
-//
-
 public enum HomeEngine {
   public static func snapshot(_ s: LedgerState, now: LocalDateTime, period: Period? = nil) -> HomeSnapshot {
     let today = now.date.yearMonth
@@ -46,11 +41,6 @@ public enum HomeEngine {
       period: p, canvasTitle: p.title, aboutNow: aboutNow(s, now: now))
   }
 
-  // MARK: - The hero
-
-  /// The month as one bar (page 06 §6.4): everything spent (`Spending`) against the needs + wants plan,
-  /// the tick where spending should be today, and the verdict against the tick. Integer money
-  /// throughout; only the view turns a share into geometry.
   public static func hero(_ s: LedgerState, now: LocalDateTime, plan: PlanSnapshot) -> SpendHero {
     let month = now.date.yearMonth
     let day = now.date.day
@@ -60,8 +50,6 @@ public enum HomeEngine {
     let overline = "Day \(day) of \(days)"
     let tiles = heroTiles(s, month: month)
 
-    // S9: the first import is still running and nothing has arrived this month: the figure
-    // fills in as batches land, beside Home's import pill.
     let anyThisMonth = s.txns.contains { $0.postedAt.date.yearMonth == month && !$0.archived }
     if s.mailbox.status == .importing, !anyThisMonth {
       return SpendHero(
@@ -70,7 +58,6 @@ public enum HomeEngine {
         wash: .sky)
     }
 
-    // S8: spending still counts, with nothing to measure it against.
     guard budget > 0 else {
       return SpendHero(
         state: .noPlan, overline: overline, spent: .aed(total), plan: .aed(0), tick: nil, verdict: nil,
@@ -89,7 +76,6 @@ public enum HomeEngine {
       word = MoneyPhrase([.text("Over by AED "), .amount(.aed(total.minus(budget)), hidden: 3)])
       fact = nil
     case .overPace:
-      // Home says "Ahead of pace"; cards and rows say "Over pace" (plan decision 9).
       word = "Ahead of pace"
       fact = left
     case .onTrack, .done:
@@ -291,15 +277,6 @@ public enum HomeEngine {
       .min { $0.nextDue < $1.nextDue }
   }
 
-  /// Planned spend by today (page 06 §6.4): bills due so far + (plan − all bills this month) ×
-  /// day ÷ days, rounded to the fil. Rent on the 1st moves the tick with it, so a bill never
-  /// reads as overspending.
-  ///
-  /// "Due so far" counts the bills already charged this month: Paper's own figures do (Maya's
-  /// day-10 tick 11,217.17 is the 8,005.89 paid plus 3,211.28, with AXA three days late and
-  /// unpaid), and a late bill then moves the tick and the spending together when it lands, so
-  /// its arrival never flips the verdict. "All bills" adds the bills still to come this month,
-  /// late ones included. Only needs and wants bills count: savings are off the bar.
   public static func tick(_ s: LedgerState, month: YearMonth, plan: Int64, day: Int, days: Int) -> Int64 {
     let bills = billsThisMonth(s, month: month)
     let rest = max(0, plan.minus(bills.paid).minus(bills.toCome))
@@ -307,8 +284,6 @@ public enum HomeEngine {
     return bills.paid.plus(share)
   }
 
-  /// Needs and wants bills this month: charged so far (transactions that paid a bill) and still
-  /// to come (tracked bills due this month or earlier and not paid).
   public static func billsThisMonth(_ s: LedgerState, month: YearMonth) -> (paid: Int64, toCome: Int64) {
     func onTheBar(_ c: CategoryID?) -> Bool {
       guard let cat = s.category(c) else { return false }
@@ -331,8 +306,6 @@ public enum HomeEngine {
       HeroTile("Savings", .aed(saved), style: style),
     ]
   }
-
-  // MARK: - Widgets (whole dirhams: the views round every figure, page 06 rule 5)
 
   static func budgetPace(_ plan: PlanSnapshot, label: String) -> BudgetPaceWidget {
     BudgetPaceWidget(

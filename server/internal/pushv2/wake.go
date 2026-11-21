@@ -1,9 +1,5 @@
 package pushv2
 
-// wake.go is the Waker (spec 02 §12.1, §12.4, §12.5): who is woken, through a
-// bounded queue that never blocks a request, under the throttle, and what
-// happens to a token after APNs answers.
-
 import (
 	"context"
 	"errors"
@@ -17,12 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Reason says why a device is woken. It is internal only: every reason sends
-// the same bytes (spec 02 §12.5), so nothing on the wire tells a mail wake
-// from a security one.
 type Reason uint8
 
-// The reasons (spec 02 §12.1).
 const (
 	ReasonMail Reason = iota + 1
 	ReasonSync
@@ -47,34 +39,27 @@ func (r Reason) String() string {
 	return "unknown"
 }
 
-// Target is one APNs token and the gateway it belongs to.
 type Target struct {
 	TokenHex    string
 	Environment string
 }
 
-// Waker wakes devices. Its calls never block a request.
 type Waker interface {
 	WakeWriter(ctx context.Context, userID uuid.UUID, writerID string, r Reason)
-	WakeOthers(ctx context.Context, userID uuid.UUID, exceptWriterID string, r Reason) // "" = all
-	WakeTokens(ctx context.Context, tokens []Target, r Reason)                         // pre-collected
+	WakeOthers(ctx context.Context, userID uuid.UUID, exceptWriterID string, r Reason)
+	WakeTokens(ctx context.Context, tokens []Target, r Reason)
 }
 
-// NopWaker is the Waker while apns.enabled is false (spec 02 §18.2: the token
-// routes stay mounted, nothing is sent).
 type NopWaker struct{}
 
 func (NopWaker) WakeWriter(context.Context, uuid.UUID, string, Reason) {}
 func (NopWaker) WakeOthers(context.Context, uuid.UUID, string, Reason) {}
 func (NopWaker) WakeTokens(context.Context, []Target, Reason)          {}
 
-// Sender is what the dispatcher sends through: *Client in production, a fake
-// in tests.
 type Sender interface {
 	Send(ctx context.Context, t Target) Result
 }
 
-// Queue sizing (spec 02 §12.1).
 const (
 	queueCapacity = 1024
 	senderCount   = 4
@@ -89,17 +74,15 @@ type job struct {
 	others  bool
 	tokens  []Target
 	r       Reason
-	resolve bool // false: tokens are already final (a trailing wake)
+	resolve bool
 	sent    func()
 }
 
-// Stats are the dispatcher's counters (spec 02 §20.1's apns_* metrics).
 type Stats struct {
 	Sent, Gone, Cooled, ConfigErrors, Transient atomic.Int64
 	Dropped                                     [ReasonAccountGone + 1]atomic.Int64
 }
 
-// Dispatcher is the production Waker.
 type Dispatcher struct {
 	Pool   *pgxpool.Pool
 	Sender Sender
@@ -109,7 +92,7 @@ type Dispatcher struct {
 	SessionIdle time.Duration
 
 	queue    chan job
-	mu       sync.Mutex // guards th, pause, envPause, closed and the sends to queue
+	mu       sync.Mutex
 	th       *throttle
 	pause    time.Time
 	envPause map[string]time.Time
@@ -118,7 +101,6 @@ type Dispatcher struct {
 	drainFor time.Duration
 }
 
-// NewDispatcher builds a dispatcher; call Start to run it.
 func NewDispatcher(pool *pgxpool.Pool, s Sender) *Dispatcher {
 	return &Dispatcher{Pool: pool, Sender: s, queue: make(chan job, queueCapacity), th: newThrottle(), drainFor: drainTimeout}
 }
@@ -130,9 +112,6 @@ func (d *Dispatcher) now() time.Time {
 	return time.Now()
 }
 
-// Start runs the senders and the trailing-edge ticker until ctx is done. A
-// wake already queued then still goes out, within drainFor; a later one is
-// refused. The returned channel closes when every goroutine has stopped.
 func (d *Dispatcher) Start(ctx context.Context) <-chan struct{} {
 	runCtx, stopRun := context.WithCancel(context.WithoutCancel(ctx))
 	context.AfterFunc(ctx, func() { time.AfterFunc(d.drainFor, stopRun) })
@@ -207,12 +186,10 @@ func (d *Dispatcher) enqueue(j job) bool {
 	}
 }
 
-// WakeWriter wakes one writer's device.
 func (d *Dispatcher) WakeWriter(ctx context.Context, userID uuid.UUID, writerID string, r Reason) {
 	d.TryWakeWriter(ctx, userID, writerID, r)
 }
 
-// TryWakeWriter is WakeWriter that reports whether the wake was queued.
 func (d *Dispatcher) TryWakeWriter(ctx context.Context, userID uuid.UUID, writerID string, r Reason) bool {
 	return d.TryWakeWriterConfirmed(ctx, userID, writerID, r, nil)
 }
@@ -224,13 +201,10 @@ func (d *Dispatcher) TryWakeWriterConfirmed(_ context.Context, userID uuid.UUID,
 	return d.enqueue(job{user: userID, writer: writerID, r: r, resolve: true, sent: sent})
 }
 
-// WakeOthers wakes every device of userID except exceptWriterID ("" = all).
 func (d *Dispatcher) WakeOthers(_ context.Context, userID uuid.UUID, exceptWriterID string, r Reason) {
 	d.enqueue(job{user: userID, writer: exceptWriterID, others: true, r: r, resolve: true})
 }
 
-// WakeTokens wakes tokens collected before their rows went away (logout-all,
-// revoke, purge).
 func (d *Dispatcher) WakeTokens(_ context.Context, tokens []Target, r Reason) {
 	if len(tokens) == 0 {
 		return
@@ -238,7 +212,6 @@ func (d *Dispatcher) WakeTokens(_ context.Context, tokens []Target, r Reason) {
 	d.enqueue(job{tokens: append([]Target(nil), tokens...), r: r})
 }
 
-// Notify implements Notifier: a sync wake to every device of the account.
 func (d *Dispatcher) Notify(ctx context.Context, userID uuid.UUID) error {
 	d.WakeOthers(ctx, userID, "", ReasonSync)
 	return nil
@@ -256,7 +229,6 @@ func (d *Dispatcher) sessionCutoffs() (time.Time, *time.Time) {
 	return now, &usedAfter
 }
 
-// targets resolves a job's tokens from apns_tokens: those of live sessions.
 func (d *Dispatcher) targets(ctx context.Context, j job) ([]Target, error) {
 	if !j.resolve {
 		return j.tokens, nil
@@ -304,11 +276,6 @@ func (d *Dispatcher) run(ctx context.Context, j job) {
 	}
 }
 
-// Flush sends every trailing wake whose window has closed. The ticker calls it
-// every second; tests call it with a fake clock. A trailing wake goes out only
-// if the token's row still exists for the account it was owed to and its
-// session is live: a token revoked, logged out, expired or moved to another
-// account since is not woken.
 func (d *Dispatcher) Flush(ctx context.Context) {
 	d.mu.Lock()
 	owed, dropped := d.th.due(d.now(), d.pausedFor)
@@ -404,14 +371,10 @@ func (d *Dispatcher) send(ctx context.Context, t Target) Result {
 	return res
 }
 
-// Querier is what the token readers need: a pool or a transaction.
 type Querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
-// CollectTokens reads every token of userID (except exceptWriterID, "" = none
-// excepted) through q, for a caller about to delete the rows that hold them
-// (logout-all, writer revoke, purge; spec 02 §12.5).
 func CollectTokens(ctx context.Context, q Querier, userID uuid.UUID, exceptWriterID string) ([]Target, error) {
 	rows, err := q.Query(ctx,
 		`SELECT token_hex, environment FROM apns_tokens WHERE user_id = $1 AND writer_id <> $2`, userID, exceptWriterID)

@@ -1,16 +1,7 @@
-// The FX snapshot rule (replay/fx.ts, ported; spec §3.7): a row freezes its home
-// amount at its own position against the live rate head, a later `rate_set`
-// backfills only rows still null, `rate_unset` thaws nothing, and the home
-// currency carries the implicit identity 1.000000.
-//
-// `convert` is `(amount * rate + 500000) / 1000000` in `Int128` (half-up,
-// operands positive). A result outside Int64 cannot be stored: the row stays
-// null and pending, and the fold records `money_overflow` (03c §1.3).
 import HasalaText
 import OrderedCollections
 
 public enum FX {
-  /// The home amount of `amountMinor` at `rateMicro`, or nil when it does not fit Int64.
   public static func convert(_ amountMinor: Int64, _ rateMicro: Int64) -> Int64? {
     guard amountMinor >= 0, rateMicro >= 0 else { return nil }
     let wide = Int128(amountMinor) * Int128(rateMicro) + 500_000
@@ -19,13 +10,11 @@ public enum FX {
 }
 
 extension State {
-  /// state.ts `markPending`: files a live, unfrozen, parsed row under its currency.
   mutating func markPending(_ t: Txn) {
     if t.unparsed || t.amountHomeMinor != nil { return }
     pendingByCurrency[t.currency, default: []].append(t.id)
   }
 
-  /// state.ts `clearPending`. Empty buckets are deleted.
   mutating func clearPending(_ t: Txn) {
     guard var set = pendingByCurrency[t.currency] else { return }
     set.remove(t.id)
@@ -47,7 +36,6 @@ extension State {
     rates[ccy] = .some(nil)
   }
 
-  /// fx.ts `freezeIfPossible`: freezes `txns[id]` against the head live now.
   mutating func freezeIfPossible(_ id: String, seq: Int64) {
     guard let t = txns[id] else { return }
     if case .some(.some(let rate)) = rates[t.currency] {

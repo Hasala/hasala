@@ -2,15 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Review · Tab · To sort (Paper NPV-0): the root of the Review tab, the queue Hasala
-/// couldn't sort and the card that starts the swipe deck. The list runs newest or oldest first,
-/// as the person chose on this iPhone, each card under its month.
-///
-/// Start opens the deck at the top of the list and reads on in the list's order; a row opens
-/// it at that row's card and reads on down the list. The
-/// "couldn't read" line counts the bank emails Hasala kept as empty rows and the ones it could
-/// not download; when there are rows, it opens the list where each is added by hand or dismissed,
-/// and with none it opens Add a transaction.
 struct ReviewTabView: View {
   @Bindable var app: AppModel
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -212,8 +203,6 @@ struct ReviewTabView: View {
     .accessibilityIdentifier("review.slot.importing")
   }
 
-  // MARK: Period
-
   private func periodRow(_ elsewhere: ReviewElsewhere?, isThisMonth: Bool) -> some View {
     ReflowingRow(spacing: 12) {
       PeriodPill(app.period.title, tinted: !isThisMonth) { app.sheet = .period }
@@ -231,10 +220,6 @@ struct ReviewTabView: View {
     }
   }
 
-  // MARK: Start card
-
-  /// "Swipe through them" over a sky tint, the fanned cards and Start, the kit's Large pill
-  /// (54; Paper draws 50, a height the pill set doesn't have).
   private var startCard: some View {
     VStack(alignment: .leading, spacing: 16) {
       HStack(alignment: .top, spacing: 12) {
@@ -273,9 +258,6 @@ struct ReviewTabView: View {
     }
   }
 
-  // MARK: To sort
-
-  /// "To sort", in the order the person chose: each row opens the deck at its own card.
   private func list(_ cards: [ReviewCardModel]) -> some View {
     let months = ReviewEngine.months(cards, now: app.store.now)
     return VStack(alignment: .leading, spacing: 4) {
@@ -385,9 +367,6 @@ struct ReviewTabView: View {
     }
   }
 
-  // MARK: Others
-
-  /// Nothing to sort: good news, said plainly, with the way to everything that was sorted.
   private func caughtUp(_ elsewhere: ReviewElsewhere?, skipped: Int) -> some View {
     VStack(spacing: 12) {
       Circle().fill(HColor.statusSuccessSurface).frame(width: 56, height: 56)
@@ -483,7 +462,6 @@ struct ReviewTabView: View {
     .contentShape(Rectangle())
   }
 
-  /// The tab's cards: widget white, radius 26, near and far shadows.
   private var cardSurface: some View {
     RoundedRectangle(cornerRadius: HRadius.widget, style: .continuous)
       .fill(HColor.widgetSurface)

@@ -12,15 +12,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// A guarded request holds one connection for its whole step-up: StepUp.Run's
-// transaction locks the nonce row, and everything the proof and the action
-// read or write goes through that transaction. If any of it went to the pool
-// instead, N concurrent guarded requests on an N-connection pool would each
-// hold one connection and wait for a second, for ever. On a one-connection
-// pool that wait is immediate, so this test is the deadlock's detector: a
-// passkey step-up (the credential lookup, the handle check and the counter
-// update) and passkey.add's begin (the account's credentials and the
-// ceremony row) must both complete with a single connection.
 func TestAGuardedRequestNeedsOneConnection(t *testing.T) {
 	f := newKeyFixture(t)
 	one := onePool(t, f.pool)
@@ -33,7 +24,6 @@ func TestAGuardedRequestNeedsOneConnection(t *testing.T) {
 	defer cancel()
 	info := f.info(f.token)
 
-	// A passkey-proved step-up whose action uses only its transaction.
 	ph, _ := keyproto.ParamsHash(keyproto.ActionSessionLogoutAll)
 	g := Guarded{UserID: f.user, SessionHash: info.Hash, BoundWriter: info.WriterID,
 		Action: keyproto.ActionSessionLogoutAll, ParamsHash: ph,
@@ -55,7 +45,6 @@ func TestAGuardedRequestNeedsOneConnection(t *testing.T) {
 		t.Fatalf("the nonce was not spent: %v %v", used, err)
 	}
 
-	// passkey.add's begin, inside its own step-up.
 	id, opts, err := pk.AddBegin(ctx, info, f.stepUpPasskey(f.token, keyproto.ActionPasskeyAdd))
 	if err != nil || id == "" || opts == nil {
 		t.Fatalf("passkey.add begin on a one-connection pool: %q %v", id, err)

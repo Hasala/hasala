@@ -6,36 +6,17 @@ import (
 	"time"
 )
 
-// account.go is spec 02 §14.6's account emails (codes, the address-in-use
-// notice, security alerts, the goodbye), rendered by internal/auth's renderers
-// and sent only through internal/mailq. Spec 07's kinds (waitlist, invite,
-// bank_supported, test) are mailq's templates.
-//
-// Every one is English, to exactly one address, with a plain-text part and an
-// HTML part in the shared layout (html.go, Paper's P2 row 14.7). The text
-// starts with a greeting line and a blank line and ends with the footer. The
-// only substitutions are the code, the time, the freeze link, the
-// passkey/password word and the greeting's first name. No other URL (the HTML
-// layout adds only the logo and its hasala.app support and privacy links), no
-// account data, no device name.
-
-// Footer is the S-35 footer every account email ends with.
 const Footer = "—\nWe'll never ask you to share anything from the Hasala app by email, " +
 	"by phone or on a website. Questions? Reply to this email."
 
-// DefaultFreezeURL is the freeze page; the token goes in the fragment.
 const DefaultFreezeURL = "https://hasala.app/freeze"
 
-// uae is the fixed UTC+4 clock every email writes times in.
 var uae = time.FixedZone("UAE", 4*60*60)
 
-// When writes t as "Sun 11 Oct 2026, 13:40 UAE time".
 func When(t time.Time) string {
 	return t.In(uae).Format("Mon 2 Jan 2006, 15:04") + " UAE time"
 }
 
-// Greeting is "Hi {first}," for a name, else "Hi,". first is the stored
-// display name up to its first space (Q19).
 func Greeting(displayName string) string {
 	name := strings.TrimSpace(displayName)
 	if name == "" {
@@ -61,19 +42,12 @@ func body(greetName string, lines ...string) string {
 	return b.String()
 }
 
-// The HTML footer's "You're getting this because …" lines. None names the
-// address.
 const (
 	whyCode    = "You're getting this because someone entered this address in Hasala."
 	whyAlert   = "You're getting this security alert because of a change to your Hasala account. Security alerts can't be turned off."
 	whyDeleted = "You're getting this because the Hasala account for this address was deleted. We won't email you again."
 )
 
-// compose builds one message: the text part from lines, the HTML part from p
-// (whose Lead is lines when p sets neither Lead nor Paras). The layout and
-// the account template are embedded, and TestTheTemplatesAreContentFree
-// renders every account email, so render does not fail at run time; if it
-// ever did, the message still goes, as text only.
 func compose(to, subject, name string, p page, lines ...string) Message {
 	p.Title, p.Greeting = subject, Greeting(name)
 	if p.Lead == nil && p.Paras == nil {
@@ -83,7 +57,6 @@ func compose(to, subject, name string, p page, lines ...string) Message {
 	return Message{To: to, Subject: subject, Text: body(name, lines...), HTML: html}
 }
 
-// codePurposeLines are the first lines of a code email, by purpose.
 var codePurposeLines = map[string]string{
 	"signup":           "Use this code to create your Hasala account.",
 	"email_verify":     "Use this code to confirm this is still your Hasala email address.",
@@ -93,9 +66,6 @@ var codePurposeLines = map[string]string{
 	"recovery":         "Use this code, with your recovery phrase, to get back into your Hasala account.",
 }
 
-// CodeGreetsByName says whether a code email of this purpose greets the
-// account holder by name (spec 02 §14.6): only when it concerns an existing
-// account and goes to an address that account verified.
 func CodeGreetsByName(purpose string) bool {
 	switch purpose {
 	case "email_verify", "password_reset", "recovery", "email_change_old":
@@ -104,7 +74,6 @@ func CodeGreetsByName(purpose string) bool {
 	return false
 }
 
-// CodeKind is mail_log.kind for a code of this purpose.
 func CodeKind(purpose string) string {
 	switch purpose {
 	case "password_reset":
@@ -115,7 +84,6 @@ func CodeKind(purpose string) string {
 	return "code"
 }
 
-// Code renders a code email. name is "" unless CodeGreetsByName(purpose).
 func Code(to, purpose, code, name string) (Message, error) {
 	line, ok := codePurposeLines[purpose]
 	if !ok {
@@ -137,8 +105,6 @@ func Code(to, purpose, code, name string) (Message, error) {
 		line, "Your Hasala code is "+code+". It works for 10 minutes. "+never), nil
 }
 
-// AddressInUse is the notice sent instead of a code to an address that already
-// has an account (#43, #60). It greets no one by name.
 func AddressInUse(to string) Message {
 	return compose(to, "Your Hasala email address", "",
 		page{Heading: "This address already has an account", Why: whyCode},
@@ -146,12 +112,8 @@ func AddressInUse(to string) Message {
 			"Hasala account, so nothing has changed. If this was you, sign in to Hasala instead.")
 }
 
-// notYou points at the screen every build has. The in-app freeze is not in
-// every build (the beta hides it), so the line names the place, not the
-// button (spec 02 §14.6's wording names the freeze).
 const notYou = "If this wasn't you, open Hasala on one of your iPhones and go to Profile › Sign-in & security."
 
-// AlertSubkinds is the closed set of alert subkinds (spec 02 §14.6).
 var AlertSubkinds = []string{
 	"new_sign_in_passkey", "new_sign_in_password", "recovery_used_passkey", "recovery_used_password",
 	"new_passkey", "password_set", "password_changed", "password_removed", "password_reset",
@@ -159,15 +121,11 @@ var AlertSubkinds = []string{
 	"account_frozen", "account_unfrozen",
 }
 
-// AlertCarriesFreezeLink says whether an alert of this subkind carries a
-// freeze link (and so needs a token minted at send time).
 func AlertCarriesFreezeLink(subkind string) bool {
 	return strings.HasPrefix(subkind, "new_sign_in_") || strings.HasPrefix(subkind, "recovery_used_") ||
 		subkind == "phrase_viewed"
 }
 
-// Alert renders a security alert. freezeLink is the full link for the two
-// subkinds that carry one and "" otherwise.
 func Alert(to, subkind string, at time.Time, name, freezeLink string) (Message, error) {
 	when := When(at)
 	if AlertCarriesFreezeLink(subkind) && freezeLink == "" {
@@ -176,8 +134,6 @@ func Alert(to, subkind string, at time.Time, name, freezeLink string) (Message, 
 	alert := func(subject, heading string, lines ...string) (Message, error) {
 		return compose(to, subject, name, page{Heading: heading, Why: whyAlert}, lines...), nil
 	}
-	// withFreeze ends the text with the freeze link; the HTML puts it in the
-	// "This wasn't me" panel's button.
 	withFreeze := func(subject, heading string, lines ...string) (Message, error) {
 		text := append(lines,
 			"If it wasn't, freeze your account now. Everyone will be signed out until you confirm it's you: "+freezeLink,
@@ -229,8 +185,6 @@ func Alert(to, subkind string, at time.Time, name, freezeLink string) (Message, 
 	return Message{}, fmt.Errorf("mail: no alert %q", subkind)
 }
 
-// Deleted is the goodbye email after a purge. It greets no one by name: the
-// account, and so the name, is gone by the time it is sent.
 func Deleted(to string, at time.Time) Message {
 	const (
 		passkey = "Your Hasala passkey may still show in the Passwords app on your iPhone. You can delete it there."
@@ -238,8 +192,6 @@ func Deleted(to string, at time.Time) Message {
 	)
 	p := page{Heading: "Your account is deleted.", Why: whyDeleted,
 		Lead: []string{"Your Hasala account and its data were deleted from our server on " + When(at) + "."},
-		// Paper's summary rows. The backups expire within 30 days, so the
-		// sealed backup is gone by the day 30 days on (UAE time).
 		Rows: []Row{{"Budget, plan, rules", "Erased"},
 			{"Sealed backup", "Gone from backups by " + at.Add(30*24*time.Hour).In(uae).Format("2 Jan")}},
 		Paras: []string{passkey}, Small: notMe}

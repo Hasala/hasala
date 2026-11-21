@@ -4,9 +4,6 @@ import Testing
 
 @testable import HasalaDesign
 
-/// The motion vocabulary matches the owner's motion policy of 15 Oct (plan OWNER OVERRIDES,
-/// hasala-v2-work/motion-policy.md), which replaces the longer page 04 values. If the owner
-/// changes a value on purpose, these expectations change with it.
 @Suite("Motion")
 struct MotionTests {
   @Test func durationsAreTheOwnersValues() {
@@ -82,8 +79,6 @@ struct MotionTests {
     #expect(MotionPolicy().curve(kind) == curve)
   }
 
-  /// "UI animations stay under 300 ms": only fills and counts reach 300, and only the first-time
-  /// moments (Welcome deal-in, a celebration) and the one loop run longer.
   @Test func uiMotionStaysShort() {
     let longAllowed: Set<HMotion.Kind> = [.deal(index: 0), .chipPop, .celebrate, .idleFloat]
     for kind in HMotion.Kind.allKinds where !longAllowed.contains(kind) {
@@ -94,21 +89,18 @@ struct MotionTests {
       .nominalDuration <= HMotion.celebrateLimit)
   }
 
-  /// Every kind has a Reduce Motion substitute: a short fade, or the final state at once. Travel,
-  /// scale and springs never survive Reduce Motion.
   @Test func everyKindHasAReduceMotionSubstitute() {
     let reduce = MotionPolicy(reduceMotion: true)
     for kind in HMotion.Kind.allKinds {
       switch reduce.curve(kind) {
       case nil:
-        break  // shown at once
+        break
       case .easeOutSoft(let d)?:
         #expect(d <= HMotion.fade, "\(kind)")
       case let other?:
         Issue.record("\(kind) keeps \(other) under Reduce Motion")
       }
     }
-    // Travel becomes the 150 ms cross-fade; fills, ticks and counts show at once.
     #expect(reduce.curve(.rise) == .easeOutSoft(duration: 0.15))
     #expect(reduce.curve(.toastIn) == .easeOutSoft(duration: 0.15))
     #expect(reduce.curve(.deal(index: 2)) == .easeOutSoft(duration: 0.15))
@@ -118,11 +110,9 @@ struct MotionTests {
     #expect(reduce.curve(.count) == nil)
     #expect(reduce.curve(.thumbSlide) == nil)
     #expect(reduce.curve(.idleFloat) == nil)
-    // A colour change is not motion: the press keeps its colour timing.
     #expect(reduce.curve(.press) == .easeOutSoft(duration: 0.12))
   }
 
-  /// Debug `-HasalaMotion off`: every final state at once.
   @Test func settledMotionAnimatesNothing() {
     let settled = MotionPolicy(settled: true)
     for kind in HMotion.Kind.allKinds {
@@ -138,7 +128,6 @@ struct MotionTests {
     #expect(HMotion.dealDelay(index: 0) == 0)
     #expect(abs(HMotion.dealDelay(index: 1) - 0.08) < 1e-9)
     #expect(abs(HMotion.dealDelay(index: 3) - 0.24) < 1e-9)
-    // At most four are staggered: later cards enter with the fourth.
     #expect(HMotion.dealDelay(index: 7) == HMotion.dealDelay(index: 3))
   }
 
@@ -151,7 +140,6 @@ struct MotionTests {
     #expect(HWash.overPace.top == HPalette.washOverPace)
     #expect(HWash.overBudget.top == HPalette.washOverBudget)
     #expect([HWash.setup.height, HWash.itWorks.height, HWash.welcome.height, HWash.onTrack.height] == [360, 480, 560, 420])
-    // Page 04's recipe: the wash, half the wash at 38%, then clear.
     let stops = HWash.onTrack.stops
     #expect(stops.map(\.location) == [0, 0.38, 1])
     #expect(stops.map(\.color.opacity) == [1, 0.5, 0])
@@ -164,7 +152,6 @@ struct MotionTests {
     #expect(PaceFillPhase.settled(0.54) == PaceFillPhase(fill: 0.54, tickVisible: true, verdictVisible: true))
   }
 
-  /// The Home hero's first reveal plays once per process; later appearances show the end state.
   @MainActor @Test func aPerProcessRevealIsRememberedForTheProcess() {
     let memory = PaceFillMemory.shared
     memory.reset()

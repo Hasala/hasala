@@ -18,13 +18,8 @@ var (
 	imgRE  = regexp.MustCompile(`<img [^>]*>`)
 )
 
-// The logo the layout shows, exactly as the template writes it.
 const logoTag = `<img src="` + LogoURL + `" width="40" height="24" alt="">`
 
-// checkHTML is spec 07 F7-6 over a rendered account email: the shared layout
-// with the logo as its only image, no script, inline style, remote stylesheet
-// or http:// link, and links only to hasala.app's support and privacy pages
-// and the freeze page.
 func checkHTML(t *testing.T, m Message) {
 	t.Helper()
 	h := m.HTML
@@ -57,8 +52,6 @@ func checkHTML(t *testing.T, m Message) {
 	}
 }
 
-// The layout and the account template themselves: the same rules, before
-// any rendering.
 func TestHTMLTemplatesAreContentFree(t *testing.T) {
 	n := 0
 	err := fs.WalkDir(htmlFS, "templates", func(path string, d fs.DirEntry, err error) error {
@@ -89,8 +82,6 @@ func TestHTMLTemplatesAreContentFree(t *testing.T) {
 	}
 }
 
-// The freeze alerts put the link in the button; the goodbye carries its
-// summary table. Both used to be plain text only.
 func TestAccountEmailsHaveTheStyledLayout(t *testing.T) {
 	at := time.Date(2026, 10, 11, 9, 40, 0, 0, time.UTC)
 	link := DefaultFreezeURL + "#" + strings.Repeat("A", 43)
@@ -117,9 +108,6 @@ func TestAccountEmailsHaveTheStyledLayout(t *testing.T) {
 	}
 }
 
-// Golden files: what three account emails render to, byte for byte. Open
-// them in a browser to see the layout. Rewrite with
-// `go test ./internal/mail -run TestHTMLGolden -update`.
 func TestHTMLGolden(t *testing.T) {
 	at := time.Date(2026, 10, 11, 9, 40, 0, 0, time.UTC)
 	code, err := Code("maya@example.com", "email_verify", "482913", "Maya Rahman")

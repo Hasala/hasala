@@ -1,13 +1,5 @@
 package auth
 
-// keyhistory.go is the read side of the append-only key-history log (spec 02
-// #27). Every entry carries the signature that authorized it and the nonce it
-// was made over, so a device verifies the log itself (spec 01 §10.13) instead
-// of trusting the server's account of it: registrations verify under the
-// authority key the device derived from its own unwrapped seed, revocations
-// under a writer that was live at that point of the log. The server returns
-// the log and computes nothing over it.
-
 import (
 	"context"
 	"errors"
@@ -17,25 +9,22 @@ import (
 	"github.com/google/uuid"
 )
 
-// KeyHistoryEntry is one append-only log row.
 type KeyHistoryEntry struct {
 	ID                 int64
 	WriterID           string
 	Alg                string
 	PubKey             []byte
-	DAKPubkey          []byte // registered rows only
-	Event              string // EventRegistered | EventRevoked
-	AuthorizedBy       string // AuthorizedAuthority | AuthorizedDevice
-	AuthorizerWriterID string // revoked rows: the signing writer
-	FinalCounter       *int64 // revoked rows: the pinned final head
+	DAKPubkey          []byte
+	Event              string
+	AuthorizedBy       string
+	AuthorizerWriterID string
+	FinalCounter       *int64
 	FinalHead          []byte
 	Nonce              []byte
 	Signature          []byte
 	At                 time.Time
 }
 
-// KeyHistory returns a user's whole log, oldest first: ascending id makes the
-// last element the head, so a truncated log changes the head a device compares.
 func (w *Writers) KeyHistory(ctx context.Context, userID uuid.UUID) ([]KeyHistoryEntry, error) {
 	if w == nil || w.Pool == nil {
 		return nil, errors.New("auth: Writers.Pool is nil")

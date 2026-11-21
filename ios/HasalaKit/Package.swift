@@ -1,12 +1,4 @@
 // swift-tools-version: 6.2
-// HasalaKit: the UI-side modules of the Hasala app (spec 04 §2.5).
-//
-// - HasalaModels: UI read models (value types) and money formatting.
-// - HasalaDesign: tokens (generated from Paper), typography, fonts, components.
-// - HasalaMocks:  the Maya scenario that drives Debug builds, previews and UI tests.
-//
-// It does not depend on HasalaCore yet; when HasalaCore lands, HasalaModels
-// takes CoreMoney/CoreTime from it (spec 04 §2.5) instead of its own Money.
 
 import PackageDescription
 

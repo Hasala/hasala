@@ -1,32 +1,3 @@
-// MailboxEngine: the mailbox lane on the holder iPhone (spec 04 §7.4-§7.9; port of fetch.ts
-// `runFetchCycle`, rebuilt on a sender-filtered listing, PO G). The mail service is a
-// `MailProvider` (Gmail: `GmailProvider`); everything below it is the provider's wire.
-//
-// One actor per bound account. Every entry point is serialized (single flight): a cycle that is
-// asked for while one runs waits for it and returns its report rather than running twice. A
-// cycle never throws; every failure it can name ends as `haltedOn` in its report and, where it
-// changes what the user must do, in the persisted phase.
-//
-// The invariants carried over from fetch.ts, each pinned by a test in CoreMailboxTests:
-//   - every listed message ends ACCOUNTED (an op, set aside, unreadable, dup or gone) in the
-//     same transaction as its op's enqueue, so a cut cycle never re-downloads;
-//   - the checkpoint (watermark) moves only after every group's listing is exhausted, every id
-//     accounted AND the outbox flushed; a cut run keeps the old watermark and re-lists;
-//   - 404/410 is `gone` (accounted, the cycle moves past it); 5xx/transport retry 400 ms then
-//     1200 ms, a 429 retries after 1, 2, 4 and 8 s, and a 429 narrows the download width to 1
-//     (a 403 whose reason is a rate or quota limit counts as a 429, the provider's MailSource);
-//     a 429 or 503 that names
-//     its `Retry-After` stops the run at once and no cycle starts before it has passed; 401/403
-//     is fatal; any other 4xx halts;
-//   - 413 on flush halts `account_full` with the watermark intact;
-//   - no token is `reconnect_required`, an unreadable Keychain is "not now";
-//   - a deadline or background-processing run lists page by page, downloading each page before
-//     listing the next, so a short run always makes progress;
-//   - an interruption of the first-connect setup (reconnect, takeover, halt) resumes the phase it
-//     cut short (`halted_detail` "resume:<phase>"), so a backfill is never restarted as a scan;
-//   - there is no cards step and no card gate: a finished scan authors what it staged in the
-//     same run (`awaiting_cards` survives only as a state an older build may have stored; the
-//     next cycle authors it).
 import CoreJSON
 import CoreMail
 import CoreNorm
@@ -44,34 +15,23 @@ public enum MailboxDisconnectOutcome: Sendable, Equatable {
 }
 
 public struct MailboxEngineConfig: Sendable {
-  /// `provenance.grant_id`: the account's user id (one link per account).
   public var grantID: String
-  /// `BuildInfo.gmailPubSubTopic`; the server's `meta.gmail_watch_topic` wins on a mismatch.
   public var buildTopic: String?
   public var maxMessageBytes = MailboxLimits.maxMessageBytes
   public var stagingCap = 5_000
   public var holderCheckIntervalMs: Int64 = 10 * 60_000
   public var accountFullRetryMs: Int64 = 15 * 60_000
-  /// Authoring stops this long before the deadline (§3).
   public var authoringMarginMs: Int64 = 5_000
   public var backfillBatch = 200
   public var firstScanCommitEvery = 25
   public var readerSaveEvery = 25
-  /// Downloads in flight at once. Each message is two `messages.get` calls (5 quota units each)
-  /// against Gmail's 250 units per user per second; 6 at once on a fast link went over it.
   public var downloadWidth = 4
   public var retryBackoffMs: [Int64] = [400, 1_200]
-  /// The waits before each retry of a rate-limited (429) download: Google's limit is a moving
-  /// average, so the 400 ms / 1.2 s blip retries above only meet it again (exponential, 15 s).
   public var rateLimitBackoffMs: [Int64] = [1_000, 2_000, 4_000, 8_000]
-  /// The first scan's waits after a cycle that stopped on a passing condition without reading
-  /// anything (`runFirstScan`); it gives up after the last one.
   public var firstScanStallWaitsMs: [Int64] = [2_000, 5_000, 15_000, 30_000]
-  /// Renew the watch when it expires within this window (§7.5 step 5).
   public var watchRenewWindowMs: Int64 = 3 * 86_400_000
   public var maxListPages = 100
   public var messageStrikeLimit = 3
-  /// The Gmail API base of the `oauth:gmailHTTP:` initializer's `GmailProvider`.
   public var gmailBase = GmailClient.defaultBase
 
   public init(grantID: String, buildTopic: String? = nil) {
@@ -109,13 +69,9 @@ public struct CycleReport: Sendable, Equatable {
   public var setAside = 0
   public var staged = 0
   public var dup = 0
-  /// Authored rows by `category_source.kind` ("rule", "dictionary", "none", ... ; unparsed rows
-  /// count as "unparsed"), for "264 transactions, sorted." summaries.
   public var sortedBy: [String: Int] = [:]
-  /// Authored rows that land in the review deck: needs review, or no category.
   public var toReview = 0
   public var haltedOn: MailboxHaltCode?
-  /// The checkpoint advanced (or the scan / backfill phase finished).
   public var completed = false
   public var phase: MailboxPhase = .unlinked
   public var stateUnread = false
@@ -134,7 +90,6 @@ public struct CycleReport: Sendable, Equatable {
   }
 }
 
-/// Progress of a scan or backfill, for the first-scan board (Paper FR2-0: "182 of 268 alerts").
 public struct MailboxProgress: Sendable, Equatable {
   public enum Stage: Sendable, Equatable {
     case listing, downloading, authoring, done
@@ -214,10 +169,7 @@ public typealias MailboxSwitchConfirm = @Sendable (MailboxSwitchQuestion) async 
 public enum ConnectFailure: String, Sendable, Equatable {
   case notConfigured = "not_configured"
   case offline
-  /// The token response lacked the mail-read scope (gmail.readonly) or a refresh token.
   case permissionMissing = "permission_missing"
-  /// The signed-in account has no mailbox the provider's API reads (Outlook's
-  /// `MailboxNotEnabledForRESTAPI`). Nothing was linked.
   case noMailbox = "no_mailbox"
   case stateMismatch = "state_mismatch"
   case nonceMismatch = "nonce_mismatch"
@@ -254,7 +206,6 @@ public struct MailboxStatus: Sendable, Equatable {
   public var setAside: [SetAsideGroup]
   public var unreadable: Int
   public var health: [BankHealthRow]
-  /// False when the server relays no wakes ("Updates when you open Hasala").
   public var watchActive: Bool
   public var unlisted: [String] = []
   public var unparsedSenders: [String: String] = [:]
@@ -297,19 +248,13 @@ public actor MailboxEngine {
   private var onCommit: (@Sendable () -> Void)?
   private var scanTotal = 0
   private var thisMonthRead = false
-  /// Consecutive cycles that ended on a 429 (`quota` after 3); process-local.
   private var quotaStrikes = 0
   private var waiters: [CheckedContinuation<Void, Never>] = []
   private var textsRead: TextOverlap??
-  /// The server's push settings for this provider (`meta`): nil until read; `.none` when the
-  /// server relays no wakes.
   private var push: MailboxPushConfig?
-  /// When `push` was last read (engine clock).
   private var pushReadAtMs: Int64 = 0
-  /// Set when the last cycle saw the server's topic differ from the build's (diagnostics).
   public private(set) var topicMismatch = false
   private var pause = ProviderPause()
-  /// `runFirstScan` is driving: its passing stops are not `.failed` progress.
   private var firstScanRunning: Bool { firstScanFollowers != nil }
   private var firstScanFollowers: [CheckedContinuation<[CycleReport], Never>]?
   public private(set) var stopped = false
@@ -321,7 +266,6 @@ public actor MailboxEngine {
   private var lastStatus: MailboxStatus?
   private var strayTokenAskedAtMs: Int64?
 
-  /// `tokens` must refresh through `provider.oauth` and keep the provider's Keychain item.
   public init(
     config: MailboxEngineConfig, provider: any MailProvider, tokens: RefreshingMailTokenProvider,
     store: any MailboxPersistence, ledger: any MailboxLedger,
@@ -345,7 +289,6 @@ public actor MailboxEngine {
     self.sleep = sleep
   }
 
-  /// The Gmail lane: a `GmailProvider` over `oauth` and `gmailHTTP` (at `config.gmailBase`).
   public init(
     config: MailboxEngineConfig, oauth: GoogleOAuthClient, tokens: RefreshingMailTokenProvider,
     gmailHTTP: any HTTPExchange, store: any MailboxPersistence, ledger: any MailboxLedger,
@@ -360,7 +303,6 @@ public actor MailboxEngine {
       clock: clock, random: random, readerKeys: readerKeys, sleep: sleep)
   }
 
-  /// Receives scan and backfill progress (called on the engine's executor; hop to the UI).
   public func setProgressHandler(_ h: (@Sendable (MailboxProgress) -> Void)?) { onProgress = h }
 
   public func setCommitHandler(_ h: (@Sendable () -> Void)?) { onCommit = h }
@@ -368,8 +310,6 @@ public actor MailboxEngine {
   func emit(_ stage: MailboxProgress.Stage, _ done: Int, _ total: Int) {
     onProgress?(MailboxProgress(stage: stage, done: done, total: total, thisMonthRead: thisMonthRead))
   }
-
-  // MARK: - Serialization
 
   private func acquire() async {
     if !busy {
@@ -414,17 +354,6 @@ public actor MailboxEngine {
     stopped = false
   }
 
-  // MARK: - Connect, disconnect
-
-  /// Connect the provider's mailbox (spec 04 §7.4): link challenge → OAuth with that nonce → code exchange →
-  /// step-up `mailbox.link` over SHA-256(id_token) → Keychain → `PUT /mailbox/link`. A first
-  /// connect then starts the scan over `backfillDays` (30, 90 or 365; §7.7); a reconnect or a
-  /// takeover of the same address resumes the normal cycle from the kept watermark, and another
-  /// address is a first connect, as `replacing` is.
-  ///
-  /// `replacing`: the mailbox tables hold another provider's lane (the account switches
-  /// provider). Only once the new link is made are they cleared, in the same commit as the new
-  /// state, so this is a first connect; a cancelled or failed switch leaves them as they were.
   public static func backfillDays(newestImportMs: Int64?, nowMs: Int64) -> Int {
     guard let newest = newestImportMs else { return 90 }
     let gapDays = (nowMs - newest) / 86_400_000 + 2
@@ -483,13 +412,9 @@ public actor MailboxEngine {
     guard let idToken = grant.idToken, let claims = oauth.identity(idToken: idToken) else {
       return .failed(.google)
     }
-    // The server checks the nonce for real (spec 02 §13.2); checking here too means a sheet that
-    // came back from a different attempt fails before any step-up prompt.
     guard let n = claims.nonce, constantTimeEquals(Data(n.utf8), Data(nonce.utf8)) else {
       return .failed(.nonceMismatch)
     }
-    // An account with no mailbox is refused before the step-up: linking it would replace a
-    // working link to the other provider with one that can read nothing.
     let probe = AccessToken(value: grant.accessToken, expiresAtMs: clock.nowMs() + grant.expiresIn * 1000)
     do throws(MailAPIError) { try await source(probe).checkMailbox() } catch .noMailbox {
       return .failed(.noMailbox)
@@ -568,13 +493,11 @@ public actor MailboxEngine {
     var s = fresh ? MailboxState() : (stored ?? MailboxState())
     switch s.phase {
     case .scanning, .awaitingCards, .authoringBackfill, .active:
-      break  // a re-link mid-setup (or while active) keeps its place
+      break
     case .unlinked:
       s.phase = .scanning
       s.scanStartedMs = nil
     case .reconnectRequired, .otherDevice, .halted:
-      // Reconnect / "Read them here instead": back to the phase the interruption cut short, never
-      // a fresh scan once the backfill has started.
       s.phase = resumePhase(s)
     }
     s.address = claims.email
@@ -582,9 +505,8 @@ public actor MailboxEngine {
     s.haltedOn = nil
     s.haltedDetail = nil
     s.lastHolderCheckAtMs = nil
-    s.watchExpiresAtMs = nil  // a new link starts with no watch (spec 02 §13.2 step 3)
+    s.watchExpiresAtMs = nil
     if s.phase == .scanning && s.scanStartedMs == nil {
-      // First connect. A resumed scan keeps its window: what it staged and accounted still counts.
       scanTotal = 0
       thisMonthRead = false
       s.backfillDays = [30, 90, 365].contains(backfillDays) ? backfillDays : 90
@@ -595,7 +517,6 @@ public actor MailboxEngine {
         s.readFromMs = from
       } else {
         s.scanStartedMs = clock.nowMs()
-        // h0 is captured before any listing (§7.7 step 2); best effort here, re-read by the scan.
         if let token = try? await tokens.accessToken(forceRefresh: false) {
           s.profileHistoryID = try? await source(token).changeToken()
         }
@@ -640,9 +561,6 @@ public actor MailboxEngine {
     !MailboxEngineConfig.normalized(linked ?? "").isEmpty && MailboxEngineConfig.normalized(signedIn ?? "").isEmpty
   }
 
-  /// Ends this provider's grant on this iPhone after another provider's link replaced it: stops
-  /// push, revokes the refresh token where the provider can (best effort) and forgets it and the
-  /// link's items. The mailbox tables are the new provider's and are not touched.
   public func endGrant() async {
     await exclusive {
       await stopPush()
@@ -651,10 +569,6 @@ public actor MailboxEngine {
     }
   }
 
-  /// Disconnect (Bank alerts › Disconnect): step-up `mailbox.unlink` → stop push (users.stop) →
-  /// revoke → `DELETE /mailbox/link` → delete the Keychain item → clear the mailbox tables.
-  /// A revoke that did not go through stops the disconnect there (false): the token is kept, so
-  /// the retry can still end the grant, and nothing says it ended when it didn't.
   public func retirePlan() async -> MailboxRetirePlan? {
     guard let state = try? await store.loadState(), state.phase != .unlinked, state.phase != .otherDevice else { return nil }
     var plan = await ledger.retirePlan(grantID: grant(state), provider: provider.id.rawValue)
@@ -852,7 +766,6 @@ public actor MailboxEngine {
       do throws(MailboxServerError) {
         try await server.deleteLink(stepUp: proof)
       } catch .noLink {
-        // Already gone server-side.
       } catch {
         return .failed
       }
@@ -928,10 +841,6 @@ public actor MailboxEngine {
     } catch {}
   }
 
-  // MARK: - The cycle
-
-  /// One cycle (spec 04 §7.5). `deadlineMs` is in the engine clock's epoch ms; nil = foreground
-  /// (no deadline). Never throws.
   public func runCycle(trigger: MailboxTrigger, deadlineMs: Int64? = nil) async -> CycleReport {
     await exclusive {
       let report = await cycleLocked(trigger: trigger, deadlineMs: deadlineMs)
@@ -952,8 +861,6 @@ public actor MailboxEngine {
     report.phase = state.phase
     if state.heldProvider == nil || state.phase == .reconnectRequired { await checkHeld(trigger) }
     if paused {
-      // The provider asked for a pause (`Retry-After`): every request now would count against
-      // the same limit. Nothing changes; a later trigger runs.
       report.haltedOn = .gmail
       return report
     }
@@ -962,8 +869,6 @@ public actor MailboxEngine {
         report.haltedOn = state.haltedOn
         return report
       }
-      // Resume where the halt interrupted: the normal cycle once a watermark exists, else the
-      // first-connect phase it cut short.
       state.phase = resumePhase(state)
       state.haltedOn = nil
       state.haltedDetail = nil
@@ -1007,8 +912,6 @@ public actor MailboxEngine {
         return report
       }
     case .awaitingCards:
-      // A scan staged by a build that still asked "Are these your cards?": author it now, as a
-      // finished scan does.
       state.phase = .authoringBackfill
     case .reconnectRequired:
       await forgetReader()
@@ -1024,7 +927,6 @@ public actor MailboxEngine {
     if templates.isEmpty { return await halt(&state, .templatesUnavailable, report) }
 
     let now = clock.nowMs()
-    // 1. Holder check.
     if !holderConfirmed && holderCheckDue(state, trigger) {
       do {
         switch try await server.linkStatus(provider: provider.id) {
@@ -1032,10 +934,6 @@ public actor MailboxEngine {
           await endLocalPush()
           return await setPhase(&state, .reconnectRequired, halt: .reconnectRequired, report, clearReader: true)
         case .holder(isThisDevice: false, _):
-          // Delete this phone's refresh token but do NOT revoke it at the provider: both iPhones
-          // share the iOS client id, and Google's revoke ends the whole grant for that client and
-          // Google account, which would sign the new holder out too (deviation from §7.4's
-          // "revoke OWN refresh token"; to confirm with an AT-GMAIL run on a real account).
           await endLocalPush()
           await tokens.forget()
           return await setPhase(&state, .otherDevice, halt: .notHolder, report, clearReader: true)
@@ -1052,13 +950,11 @@ public actor MailboxEngine {
       }
     }
 
-    // 2. Pull to head, so peers' ops are visible to dedup.
     do { try await ledger.syncToHead() } catch {
       report.haltedOn = .offline
       return report
     }
 
-    // 3. Token.
     let token: AccessToken
     do { token = try await tokens.accessToken(forceRefresh: false) } catch .reconnectRequired {
       return await setPhase(&state, .reconnectRequired, halt: .reconnectRequired, report)
@@ -1067,15 +963,11 @@ public actor MailboxEngine {
       return report
     }
     let source = await listingSource(token)
-    // Short runs list a page, download it, then list the next (§7.5 "one scan page per cycle in a
-    // deadline run"); the foreground lists everything first so the first-scan board has a total.
     let paged = deadlineMs != nil || trigger == .processing
 
-    // 4. Load.
     let trusted = BankDomains.effectiveTrusted(await ledger.senderTrust())
     state.lastCycleAtMs = now
 
-    // 5. Watch renewal (scan and active phases).
     await renewWatch(source, &state, now: now)
 
     switch state.phase {
@@ -1087,13 +979,11 @@ public actor MailboxEngine {
     }
     rewindCheckpointAheadOfClock(&state, now: now)
 
-    // 6. Change detector (nil: the provider has none, so every cycle lists).
     let h0: String?
     do { h0 = try await source.changeToken() } catch let e {
       return await mailFailure(e, &state, report)
     }
     if trusted.isEmpty {
-      // Nothing is listed when no sender is trusted (03c §7.2); not an error.
       state.profileHistoryID = h0
       state.lastSuccessAtMs = now
       if state.watermarkMs == nil { state.watermarkMs = now }
@@ -1110,7 +1000,6 @@ public actor MailboxEngine {
     }
     let t0 = now
 
-    // 7. List and account.
     let since = max(
       BankDomains.sinceSec(watermarkMs: state.watermarkMs ?? (now - 30 * 86_400_000)), (state.readFromMs ?? 0) / 1000)
     var run = Run(trusted: trusted, grant: grant(state), address: state.address)
@@ -1126,10 +1015,8 @@ public actor MailboxEngine {
       return await finish(&state, report)
     }
 
-    // 8. Flush.
     if let stopped = await flushOrStop(&state, report) { return stopped }
 
-    // 9. Advance only when complete.
     var c = MailboxCommit()
     if !cut {
       state.watermarkMs = max(state.watermarkMs ?? 0, t0)
@@ -1216,15 +1103,11 @@ public actor MailboxEngine {
       || now < last || now - last >= config.holderCheckIntervalMs
   }
 
-  // MARK: - First connect (§7.7)
-
   private func scan(
     _ source: any MailSource, _ state: inout MailboxState, trusted: [String], deadlineMs: Int64?, paged: Bool,
     _ report: CycleReport
   ) async -> CycleReport {
     var report = report
-    // No trusted sender yet (the Setup bank step's sender_trust_set ops have not folded): list
-    // nothing and stay scanning, rather than finish an empty scan (03c §7.2: T empty lists nothing).
     if trusted.isEmpty { return await finish(&state, report) }
     if state.scanStartedMs == nil {
       state.scanStartedMs = clock.nowMs()
@@ -1262,11 +1145,9 @@ public actor MailboxEngine {
     }
     if run.stagingFull {
       report.haltedOn = .stagingFull
-      cut = false  // the cap ends the listing; the backfill lists and authors the remainder
+      cut = false
     }
     guard !cut else { return await finish(&state, report) }
-    // The scan is complete: author what it staged in the same run. There is no cards step and
-    // no card gate (`MessageDisposer.finalize`).
     state.phase = .authoringBackfill
     try? await store.commit(commitState(state))
     return await authorBackfill(
@@ -1300,8 +1181,6 @@ public actor MailboxEngine {
     if let stopped = await flushOrStop(&state, report) { return stopped }
     var remainderDone = windowRead
     if !windowRead, ((try? await store.stagedCount()) ?? 1) == 0 {
-      // §7.7 step 7: when the scan stopped at the staging cap, the rest of its window is listed
-      // again and authored directly.
       let since = windowSinceSec(state)
       var run = Run(trusted: trusted, grant: grant(state), address: state.address)
       do {
@@ -1319,7 +1198,6 @@ public actor MailboxEngine {
     }
     let stagingEmpty = ((try? await store.stagedCount()) ?? 1) == 0
     if remainderDone && stagingEmpty {
-      // §7.7 step 6: the normal cycle's 2-day overlap catches up what arrived during the scan.
       state.watermarkMs = state.scanStartedMs ?? clock.nowMs()
       state.phase = .active
       state.lastSuccessAtMs = clock.nowMs()
@@ -1393,18 +1271,6 @@ public actor MailboxEngine {
     return max(0, LocalClock.startOfDay(first) / 1000)
   }
 
-  // MARK: - The first scan's foreground run (Setup 2 of 4)
-
-  /// Runs cycles until the connect window is listed and authored (`.active`), a stop the user
-  /// must act on, or `maxCycles`. Returns every cycle's report, in order.
-  ///
-  /// A 90-day backfill is a thousand or more mail API calls. A cycle stops at the first one that
-  /// outlives its retries (Gmail's per-user rate limit, a dropped connection, an access token
-  /// that expired mid-run), with its work so far committed, and the next cycle carries on. So a
-  /// passing stop (`gmail`, `offline`, `quota`) does not end the first scan: the next cycle runs
-  /// at once when the last one read something, and after `firstScanStallWaitsMs` (or the
-  /// provider's `Retry-After`) when it read nothing, giving up after the last wait. While this
-  /// runs, a passing stop is not reported as `.failed` progress, since the scan goes on.
   public func runFirstScan(maxCycles: Int = 50) async -> [CycleReport] {
     if firstScanFollowers != nil {
       if Task.isCancelled { return [] }
@@ -1429,8 +1295,6 @@ public actor MailboxEngine {
       let read = r.readMail
       switch r.haltedOn {
       case nil, .stagingFull?:
-        // Nothing listed and not finished: no trusted sender yet. Stop rather than spin; the
-        // next trigger resumes it.
         if r.listed == 0 && r.ops == 0 && !r.completed { return reports }
         stalls = 0
       case let code? where Self.passing(code):
@@ -1441,8 +1305,6 @@ public actor MailboxEngine {
         guard stalls < config.firstScanStallWaitsMs.count else { return reports }
         let wait = max(config.firstScanStallWaitsMs[stalls], pause.remainingMs(now: clock.nowMs()))
         stalls += 1
-        // A pause longer than the longest stall wait (a long Retry-After) is left to the later
-        // triggers: the setup board says the import goes on in the background.
         guard wait <= config.firstScanStallWaitsMs.last ?? 0 else { return reports }
         await sleep(wait)
         if Task.isCancelled || stopped { return reports }
@@ -1461,15 +1323,10 @@ public actor MailboxEngine {
     }
   }
 
-  /// A stop that passes by itself: the next cycle may read on.
   static func passing(_ code: MailboxHaltCode) -> Bool {
     code == .gmail || code == .offline || code == .quota
   }
 
-  // MARK: - Add a sender (§7.8)
-
-  /// Trusts a typed sender domain (`sender_trust_set`) and imports its mail in the connect
-  /// window through the normal gates, without moving the watermark.
   public func importSender(_ typed: String) async -> Result<CycleReport, BankDomains.TypedDomainError> {
     let domain: String
     var address: String?
@@ -1518,9 +1375,6 @@ public actor MailboxEngine {
     }
   }
 
-  /// Records the senders' window as pending, then imports it now when the lane is active. A
-  /// scan in progress lists every trusted sender itself; anything left pending is finished by
-  /// later cycles, and `completed` says the whole window was listed and read.
   private func importLocked(
     _ domains: [String], address: String? = nil, _ state: inout MailboxState, _ report: CycleReport
   ) async -> CycleReport {
@@ -1582,8 +1436,6 @@ public actor MailboxEngine {
     return report
   }
 
-  /// Lists and authors every pending import's window, sender group by sender group, and ends
-  /// each one whose listing was exhausted. A sender the ledger no longer trusts is dropped.
   func runImports(
     _ source: any MailSource, _ state: inout MailboxState, deadlineMs: Int64?, paged: Bool, _ report: CycleReport
   ) async -> (report: CycleReport, done: Bool) {
@@ -1669,10 +1521,6 @@ public actor MailboxEngine {
     }
   }
 
-  // MARK: - View the email (§7.8)
-
-  /// Re-fetches one message by id and returns its normalized text (never HTML; raw mail is
-  /// never persisted). Holder only.
   public func viewEmail(messageID: String) async -> EmailView {
     await exclusive {
       guard !stopped, let state = try? await store.loadState() else { return .offline }
@@ -1702,8 +1550,6 @@ public actor MailboxEngine {
       return .ready(subject: n.subject, text: n.text)
     }
   }
-
-  // MARK: - Status (§7.10)
 
   public func status() async -> MailboxStatus {
     guard let state = try? await store.loadState() else { return lastStatus ?? Self.stateUnread }
@@ -1762,8 +1608,6 @@ public actor MailboxEngine {
 
   public func senderAddresses() async -> [String] { (try? await store.senderAddresses()) ?? [] }
 
-  // MARK: - Internals
-
   func source(_ token: AccessToken) -> any MailSource { provider.source(accessToken: token) }
 
   func listingSource(_ token: AccessToken) async -> any MailSource {
@@ -1771,9 +1615,6 @@ public actor MailboxEngine {
     return provider.source(accessToken: token, senderAddresses: (try? await store.senderAddresses()) ?? [])
   }
 
-  /// This iPhone no longer holds the link (another took it over, or it was deleted): end this
-  /// iPhone's own push where that cannot touch the new holder's (best effort), and forget what
-  /// the link kept. The new holder's subscription replaces a leftover one in any case.
   func endLocalPush() async {
     if provider.stopIsDeviceScoped { await stopPush() }
     provider.forgetLink()
@@ -1813,22 +1654,12 @@ public actor MailboxEngine {
     case failed(id: String, error: MailAPIError)
   }
 
-  /// Whether a run must stop at this boundary: the BGTask expired (cancellation) or the
-  /// deadline's authoring margin is reached.
   func shouldStop(_ deadlineMs: Int64?) -> Bool {
     if Task.isCancelled || stopped || disconnectsWaiting > 0 { return true }
     if let d = deadlineMs, clock.nowMs() >= d - config.authoringMarginMs { return true }
     return false
   }
 
-  /// Steps 7 over every sender group. Returns whether the run was cut (a listing not exhausted,
-  /// the deadline, cancellation or the staging cap); adds the listed count to the report.
-  ///
-  /// `paged == false` (foreground): every page is listed first, then downloaded, so progress has
-  /// a total ("182 of 268"). `paged == true` (a deadline or processing run): each page is
-  /// downloaded and accounted before the next is listed, with the deadline checked before every
-  /// listing call; the page token lives only within this run (§7.5 step 7g), and a later run
-  /// re-lists the accounted pages cheaply (ids only, no downloads).
   func listAndProcess(
     _ source: any MailSource, domains: [String], sinceSec: Int64, firstSinceSec: Int64? = nil, maxPages: Int,
     mode: Mode, paged: Bool, run: inout Run, report: inout CycleReport, deadlineMs: Int64?
@@ -1874,8 +1705,6 @@ public actor MailboxEngine {
     return cut
   }
 
-  /// Lists every group, page by page. Returns the ids (deduplicated, in listing order) and
-  /// whether every group's listing was exhausted (false when cancelled between pages).
   func list(_ source: any MailSource, domains: [String], sinceSec: Int64, maxPages: Int) async throws(MailAPIError)
     -> ([String], Bool)
   {
@@ -1897,8 +1726,6 @@ public actor MailboxEngine {
     return (ids, exhausted)
   }
 
-  /// Steps 7a-7g over `ids`. Returns whether the run was cut short (deadline or staging cap).
-  /// Throws only a fatal mail API error (401/403 or a transient one that outlived its retries).
   func process(
     _ source: any MailSource, ids all: [String], mode: Mode, run: inout Run, report: inout CycleReport,
     deadlineMs: Int64?
@@ -1942,7 +1769,6 @@ public actor MailboxEngine {
     }
     emit(.downloading, base + skipped, shown)
     while i < todo.count {
-      // A BGTask expiration cancels the task: stop at this boundary, everything so far committed.
       if shouldStop(deadlineMs) {
         if mode == .stage, run.commitEvery != nil, run.sinceCommit > 0 { _ = await commitStaged(&run, &report) }
         return true
@@ -1959,7 +1785,6 @@ public actor MailboxEngine {
       let chunk = Array(todo[i..<min(i + width, i < split ? split : todo.count)])
       i += chunk.count
       let results = await fetchChunk(source, chunk, bank: run.trusted)
-      // A 429 anywhere narrows the pipe to one request for the rest of the run (fetch.ts).
       if results.contains(where: \.rateLimited) {
         run.width = 1
         run.saw429 = true
@@ -1984,8 +1809,6 @@ public actor MailboxEngine {
     let rateLimited: Bool
   }
 
-  /// Downloads a chunk concurrently; the results come back in listing order, so accounting
-  /// stays strictly sequential (fetch.ts: only the network is overlapped).
   func fetchChunk(_ source: any MailSource, _ ids: [String], bank: [String]) async -> [FetchResult] {
     let backoff = config.retryBackoffMs
     let rateBackoff = config.rateLimitBackoffMs
@@ -2009,7 +1832,6 @@ public actor MailboxEngine {
     }
   }
 
-  /// 7a-7c for one id, with the retry classes of fetch.ts; a 429 waits `rateBackoff` instead.
   static func fetchOne(
     _ source: any MailSource, _ provider: any MailProvider, _ id: String, bank: [String], maxBytes: Int,
     backoff: [Int64], rateBackoff: [Int64], sleep: @Sendable (Int64) async -> Void
@@ -2021,7 +1843,6 @@ public actor MailboxEngine {
         do { return .success(try await op()) } catch let e {
           let s = e.status
           if s == 429 { rateLimited = true }
-          // The provider named its pause: a quick retry would only count against it again.
           if case .throttled = e { return .failure(e) }
           let transient = e == .offline || s == 429 || (s ?? 0) >= 500 || (s ?? 400) < 400
           let waits = s == 429 ? rateBackoff : backoff
@@ -2043,7 +1864,6 @@ public actor MailboxEngine {
     case .failure(.tooLarge): return done(.overCap(id: id, from: nil, internalDateMs: nil))
     case .failure(let e): return done(gone(e) ? .gone(id: id) : .failed(id: id, error: e))
     }
-    // 7b: neither the claimed nor the verified domain is a bank domain: set aside, no body.
     let claimed = BankDomains.domainOf(meta.from)
     let analysis = provider.analyzeAuthResults(meta.headerBlock)
     let verified = analysis.verdict.trusted ? (analysis.domain ?? "") : ""
@@ -2062,7 +1882,6 @@ public actor MailboxEngine {
     }
   }
 
-  /// 7d-7f for one fetched message: one commit (op + accounting, or the accounting alone).
   func account(_ f: Fetched, mode: Mode, run: inout Run, report: inout CycleReport) async throws {
     let at = clock.nowMs()
     var c = MailboxCommit()
@@ -2186,9 +2005,6 @@ public actor MailboxEngine {
   }
 
   func renewWatch(_ source: any MailSource, _ state: inout MailboxState, now: Int64) async {
-    // Read once; a null setting again every holder-check interval, so a server whose push is
-    // turned on later is watched without a relaunch. A clock that went back since the last read
-    // counts as due, so a backwards jump never postpones the re-read.
     let readPush = push.map {
       $0 == .none && (now < pushReadAtMs || now - pushReadAtMs >= config.holderCheckIntervalMs)
     } ?? true
@@ -2203,7 +2019,7 @@ public actor MailboxEngine {
           topicMismatch = false
         }
       } catch {
-        return  // offline: renewed on a later cycle
+        return
       }
     }
     guard let p = push, p != .none else { return }
@@ -2214,13 +2030,10 @@ public actor MailboxEngine {
       try await server.putWatch(expiresAtMs: w.expiresAtMs)
       state.watchExpiresAtMs = w.expiresAtMs
     } catch .noWatchTopic {
-      // The server turned its push off after the settings were read: nothing relays this
-      // watch. Stop it, show no live watch, and read the settings again on the next cycle.
       try? await source.stop()
       state.watchExpiresAtMs = nil
       push = nil
     } catch {
-      // Reported next cycle; the watch itself is live at the provider.
     }
   }
 
@@ -2252,14 +2065,11 @@ public actor MailboxEngine {
     case .noMailbox:
       return await halt(&state, .noMailbox, report)
     case .filterNotApplied:
-      // The provider listed mail outside the trusted senders. The page was dropped unread; halt
-      // loudly (shown with "Try again") rather than list on as if nothing happened.
       return await halt(&state, .gmail, report)
     default: break
     }
     switch e.status {
     case 401?:
-      // A stale access token: one forced refresh decides between a blip and a dead grant.
       await tokens.invalidate()
       do { _ = try await tokens.accessToken(forceRefresh: true) } catch .reconnectRequired {
         return await setPhase(&state, .reconnectRequired, halt: .reconnectRequired, report)
@@ -2271,8 +2081,6 @@ public actor MailboxEngine {
       quotaStrikes += 1
       report.haltedOn = quotaStrikes >= 3 ? .quota : .gmail
     case let s? where (400..<500).contains(s):
-      // Any other 4xx is unrecoverable by retrying (§7.4): halt, shown on Bank alerts with "Try
-      // again", rather than silently stopping every cycle at the same message.
       return await halt(&state, .gmail, report)
     case nil:
       report.haltedOn = .offline
@@ -2337,18 +2145,14 @@ public actor MailboxEngine {
     return report
   }
 
-  /// `halted_detail` for an interrupted first-connect phase (a content-free code).
   static let resumePrefix = "resume:"
 
-  /// Records which setup phase an interruption is cutting short.
   func markResume(_ state: inout MailboxState) {
     if state.phase == .scanning || state.phase == .authoringBackfill {
       state.haltedDetail = Self.resumePrefix + state.phase.rawValue
     }
   }
 
-  /// The phase to resume after a reconnect, a takeover or a retried halt: the normal cycle once a
-  /// watermark exists, else the setup phase the interruption recorded (a scan when none was).
   func resumePhase(_ state: MailboxState) -> MailboxPhase {
     if state.watermarkMs != nil { return .active }
     if let d = state.haltedDetail, d.hasPrefix(Self.resumePrefix),

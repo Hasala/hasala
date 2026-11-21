@@ -1,81 +1,56 @@
-// Package keyproto holds the byte definitions the server shares with the
-// device (spec 01 §3, §5.1, §5.5, §10.1–§10.3, §12.2): the domain-string
-// registry, every signed-message builder, the step-up params hash and
-// challenge, the account-creation challenge, the canonical BootstrapPayload,
-// the wrap and phrase-box shape checks, the Ed25519 and P-256 key checks, the
-// address normalization and the display-name floor.
-//
-// Nothing here holds or derives a data key. The server verifies signatures over
-// these bytes and stores opaque wraps; it never opens a wrap, a phrase box or a
-// frame (spec 02 §4.4 fence 3, spec 01 §12.2). The derivations that need the
-// account master key or the phrase live in internal/cryptoref, which only the
-// vector generator and tests import.
-//
-// Every builder writes exactly the bytes spec 01 §10.1 prints, and the anchor
-// vectors of spec 01 §15.5 (A11–A26) pin them in this package's tests and in
-// conformance/api-v1/, which the Swift client reads.
 package keyproto
 
-// Domain strings, spec 01 §3. One constant per registry row; the IDs are the
-// spec's. Where a domain prefixes other fields it is followed by exactly one
-// 0x00, written out in each builder; where it is the whole input (D08, D25,
-// D35, D41) nothing is appended.
 const (
-	DomainRegister            = "hasala/v1/register"               // D01
-	DomainStepUp              = "hasala/v1/step-up"                // D02
-	DomainStepUpParams        = "hasala/v1/step-up-params"         // D03
-	DomainRecoveryKey         = "hasala/v1/recovery-key"           // D04
-	DomainWrapRecovery        = "hasala/v1/wrap/recovery"          // D05
-	DomainWrapPRF             = "hasala/v1/wrap/prf"               // D06
-	DomainWrap                = "hasala/v1/wrap"                   // D07
-	DomainPRFSaltUnlock       = "hasala/v1/prf-salt/unlock"        // D08
-	DomainAMKCommitment       = "hasala/v1/amk-commitment"         // D09
-	DomainEpochKey            = "hasala/v1/epoch-key"              // D10
-	DomainBlobKey             = "hasala/v1/blob-key"               // D11
-	DomainBlob                = "hasala/v1/blob"                   // D12
-	DomainWriterRegistration  = "hasala/v1/writer-registration"    // D13
-	DomainWriterRevocation    = "hasala/v1/writer-revocation"      // D14
-	DomainSessionBind         = "hasala/v1/session-bind"           // D15
-	DomainAccountDelete       = "hasala/v1/account-delete"         // D16
-	DomainBootstrap           = "hasala/v1/bootstrap"              // D17
-	DomainRecoverySignin      = "hasala/v1/recovery-signin"        // D18
-	DomainRecoveryRotate      = "hasala/v1/recovery-rotate"        // D19
-	DomainEpochRotate         = "hasala/v1/epoch-rotate"           // D20
-	DomainKeyringKey          = "hasala/v1/keyring-key"            // D21
-	DomainKeyring             = "hasala/v1/keyring"                // D22
-	DomainDeviceComparison    = "hasala/v1/device-comparison"      // D23
-	DomainMailboxRoute        = "hasala/v1/mailbox-route"          // D24
-	DomainMailboxRouteKeyID   = "hasala/v1/mailbox-route-key-id"   // D25
-	DomainPassword            = "hasala/v1/password"               // D26
-	DomainServerPasswordSalt  = "hasala/v1/server/password-salt"   // D27
-	DomainServerPasswordPeppr = "hasala/v1/server/password-pepper" // D28
-	DomainServerEmailCode     = "hasala/v1/server/email-code"      // D29
-	DomainServerEmailTag      = "hasala/v1/server/email-tag"       // D30
-	DomainStepUpDevice        = "hasala/v1/step-up-device"         // D31
-	DomainWriterHead          = "hasala/v1/writer-head"            // D32
-	DomainPasskeyAdd          = "hasala/v1/passkey-add"            // D33
-	DomainWrapPut             = "hasala/v1/wrap-put"               // D34
-	DomainPhraseBoxKey        = "hasala/v1/phrase-box-key"         // D35
-	DomainPhraseBox           = "hasala/v1/phrase-box"             // D36
-	DomainResetCode           = "hasala/v1/reset-code"             // D37
-	DomainResetApprove        = "hasala/v1/reset-approve"          // D38
-	DomainResetFinish         = "hasala/v1/reset-finish"           // D39
-	DomainEmailChange         = "hasala/v1/email-change"           // D40
-	DomainServerAuthKeyID     = "hasala/v1/server/auth-key-id"     // D41
-	DomainDeviceFreeze        = "hasala/v1/device-freeze"          // D42
-	DomainServerInviteMint    = "hasala/v1/server/invite-mint"     // D43
+	DomainRegister            = "hasala/v1/register"
+	DomainStepUp              = "hasala/v1/step-up"
+	DomainStepUpParams        = "hasala/v1/step-up-params"
+	DomainRecoveryKey         = "hasala/v1/recovery-key"
+	DomainWrapRecovery        = "hasala/v1/wrap/recovery"
+	DomainWrapPRF             = "hasala/v1/wrap/prf"
+	DomainWrap                = "hasala/v1/wrap"
+	DomainPRFSaltUnlock       = "hasala/v1/prf-salt/unlock"
+	DomainAMKCommitment       = "hasala/v1/amk-commitment"
+	DomainEpochKey            = "hasala/v1/epoch-key"
+	DomainBlobKey             = "hasala/v1/blob-key"
+	DomainBlob                = "hasala/v1/blob"
+	DomainWriterRegistration  = "hasala/v1/writer-registration"
+	DomainWriterRevocation    = "hasala/v1/writer-revocation"
+	DomainSessionBind         = "hasala/v1/session-bind"
+	DomainAccountDelete       = "hasala/v1/account-delete"
+	DomainBootstrap           = "hasala/v1/bootstrap"
+	DomainRecoverySignin      = "hasala/v1/recovery-signin"
+	DomainRecoveryRotate      = "hasala/v1/recovery-rotate"
+	DomainEpochRotate         = "hasala/v1/epoch-rotate"
+	DomainKeyringKey          = "hasala/v1/keyring-key"
+	DomainKeyring             = "hasala/v1/keyring"
+	DomainDeviceComparison    = "hasala/v1/device-comparison"
+	DomainMailboxRoute        = "hasala/v1/mailbox-route"
+	DomainMailboxRouteKeyID   = "hasala/v1/mailbox-route-key-id"
+	DomainPassword            = "hasala/v1/password"
+	DomainServerPasswordSalt  = "hasala/v1/server/password-salt"
+	DomainServerPasswordPeppr = "hasala/v1/server/password-pepper"
+	DomainServerEmailCode     = "hasala/v1/server/email-code"
+	DomainServerEmailTag      = "hasala/v1/server/email-tag"
+	DomainStepUpDevice        = "hasala/v1/step-up-device"
+	DomainWriterHead          = "hasala/v1/writer-head"
+	DomainPasskeyAdd          = "hasala/v1/passkey-add"
+	DomainWrapPut             = "hasala/v1/wrap-put"
+	DomainPhraseBoxKey        = "hasala/v1/phrase-box-key"
+	DomainPhraseBox           = "hasala/v1/phrase-box"
+	DomainResetCode           = "hasala/v1/reset-code"
+	DomainResetApprove        = "hasala/v1/reset-approve"
+	DomainResetFinish         = "hasala/v1/reset-finish"
+	DomainEmailChange         = "hasala/v1/email-change"
+	DomainServerAuthKeyID     = "hasala/v1/server/auth-key-id"
+	DomainDeviceFreeze        = "hasala/v1/device-freeze"
+	DomainServerInviteMint    = "hasala/v1/server/invite-mint"
 )
 
-// Domain is one row of spec 01 §3's registry.
 type Domain struct {
 	ID     string `json:"id"`
 	String string `json:"string"`
 }
 
-// Registry is spec 01 §3's first table, in ID order: 43 strings. The vector
-// generator writes it into conformance/crypto-v3/manifest.json and both
-// implementations assert their constants equal it (AT-X3). The non-crypto
-// hasala/v1/* strings of the second table are not here, on purpose.
 func Registry() []Domain {
 	return []Domain{
 		{"D01", DomainRegister},

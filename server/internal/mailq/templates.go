@@ -1,14 +1,5 @@
 package mailq
 
-// templates.go renders spec 07 §6.4's templates (and spec 02's `test`): a
-// plain-text part whose first line is the subject, and for 07's kinds an HTML
-// part in the layout every transactional email shares (internal/mail's
-// templates/layout.html.tmpl), styled by its one <style> block (Paper's
-// colours and radii, system fonts). No template carries a script, an inline
-// style, a remote stylesheet (no url() or @import), an http:// link or a
-// query string, and the only image is the layout's logo, mail.LogoURL (spec 07
-// F7-6, enforced by TestTemplatesAreContentFree here and in internal/mail).
-
 import (
 	"bytes"
 	"context"
@@ -29,28 +20,25 @@ import (
 //go:embed templates/*.tmpl
 var templateFS embed.FS
 
-// Content is every value a template may substitute. Nothing here is a secret
-// except the one the email exists to carry (a link with its token, a code).
 type Content struct {
-	Greeting     string // "Hi," or "Hi Maya,"
-	Email        string // the recipient's own address
-	BankName     string // a catalog name or "Another bank", never typed text
+	Greeting     string
+	Email        string
+	BankName     string
 	ConfirmURL   string
 	LeaveURL     string
-	Code         string // display form, groups of four
+	Code         string
 	InviteURL    string
 	FallbackText string
 	Until        string
 	ConfirmedOn  string
 	InvitedOn    string
-	Why          string // the footer's "You're getting this because …"
+	Why          string
 
 	Invited          bool
 	ManualTestFlight bool
 	AccountAudience  bool
 }
 
-// Rendered is one email's subject and parts.
 type Rendered struct {
 	Subject, Text, HTML string
 }
@@ -90,8 +78,6 @@ func loadTemplates() {
 	}
 }
 
-// RenderTemplate renders kind's template with c. The HTML part exists only for
-// kinds that define one.
 func RenderTemplate(kind string, c Content) (Rendered, error) {
 	tmplOnce.Do(loadTemplates)
 	if tmplErr != nil {
@@ -120,13 +106,10 @@ func RenderTemplate(kind string, c Content) (Rendered, error) {
 	return r, nil
 }
 
-// uae is the fixed UTC+4 clock every date in an email is written in.
 var uae = time.FixedZone("UAE", 4*60*60)
 
-// Date writes "Sunday 25 October" in UTC+4.
 func Date(t time.Time) string { return t.In(uae).Format("Monday 2 January") }
 
-// EnqueueTest queues the operator's test email (`hasalad email test`).
 func EnqueueTest(ctx context.Context, tx pgx.Tx, q *Queue, address string) (int64, error) {
 	to, err := keyproto.EmailNorm(address)
 	if err != nil {
@@ -135,7 +118,6 @@ func EnqueueTest(ctx context.Context, tx pgx.Tx, q *Queue, address string) (int6
 	return q.EnqueueTx(ctx, tx, Enqueue{Kind: "test", Lane: LaneTransactional, To: to})
 }
 
-// TestRenderer renders the `test` kind: text and HTML, no secret.
 var TestRenderer = RenderFunc(func(_ context.Context, _ pgx.Tx, row Row) (mail.Message, error) {
 	r, err := RenderTemplate("test", Content{Why: "You're getting this because the Hasala team sent a test email to this address."})
 	if err != nil {
@@ -144,10 +126,6 @@ var TestRenderer = RenderFunc(func(_ context.Context, _ pgx.Tx, row Row) (mail.M
 	return mail.Message{To: row.Recipient, Subject: r.Subject, Text: r.Text, HTML: r.HTML}, nil
 })
 
-// DeletedRenderer renders the `deleted` kind, the goodbye a purge queues
-// (spec 02 §15.2 step 4): the address and the time of the deletion, nothing
-// else. The row names no account, because the account is gone by the time it
-// is sent.
 var DeletedRenderer = RenderFunc(func(_ context.Context, _ pgx.Tx, row Row) (mail.Message, error) {
 	at := row.CreatedAt
 	if s, ok := row.Params["deleted_at"].(string); ok {

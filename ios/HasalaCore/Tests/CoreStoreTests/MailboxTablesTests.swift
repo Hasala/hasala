@@ -1,4 +1,3 @@
-// The Gmail lane's ledger.sqlite tables (spec 04 §4.2) through MailboxTableStore.
 import Foundation
 import GRDB
 import Testing
@@ -19,7 +18,6 @@ import Testing
     #expect(try t.pendingOpIDs() == ["A"])
     #expect(try t.accounted(among: ["m1", "m2"]) == ["m1"])
 
-    // A second write whose op collides (UNIQUE op_id) rolls back its accounting too.
     var bad = MailboxWrite()
     bad.pending = [op("A")]
     bad.accounted = [MailboxAccountedRow(messageID: "m2", outcome: "op", internalDate: 10, at: 11)]
@@ -181,7 +179,7 @@ import Testing
     w.health = [("dib.ae", "2026-05", 10), ("dib.ae", "2026-05", 20), ("dib.ae", "2026-06", 30)]
     try t.commit(w)
     #expect(try t.staged(limit: 10).map(\.messageID) == ["m1", "m2"])
-    #expect(try t.accounted(among: ["m1"]) == ["m1"])  // staged counts as accounted
+    #expect(try t.accounted(among: ["m1"]) == ["m1"])
     #expect(try t.bankHealth() == [BankHealthRecord(domain: "dib.ae", lastEmailAt: 30, month: "2026-06", readThisMonth: 1)])
     var p = MailboxWrite()
     p.unstage = ["m1"]

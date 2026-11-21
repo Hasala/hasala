@@ -6,13 +6,8 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// EmailTagger computes email_tag = HMAC(K_tag, email_norm) from the current
-// auth_key alone (spec 01 §4.11). It is what the waitlist and the email queue
-// need from the key file, without the password salt key the full Keys set
-// requires; both derive K_tag identically, so the tags agree.
 type EmailTagger struct{ kTag, kInvite []byte }
 
-// NewEmailTagger derives K_tag from a 32-byte auth_key.
 func NewEmailTagger(authKey []byte) (*EmailTagger, error) {
 	if len(authKey) != KeySize {
 		return nil, ErrKeyFile
@@ -28,7 +23,6 @@ func NewEmailTagger(authKey []byte) (*EmailTagger, error) {
 	return &EmailTagger{kTag: k, kInvite: inv}, nil
 }
 
-// EmailTag is HMAC(K_tag, utf8(email_norm)).
 func (t *EmailTagger) EmailTag(emailNorm string) []byte { return mac(t.kTag, []byte(emailNorm)) }
 
 func (t *EmailTagger) InviteSecrets(inviteID uuid.UUID, mailID int64) (code, link []byte) {

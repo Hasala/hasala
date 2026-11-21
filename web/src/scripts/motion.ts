@@ -1,10 +1,3 @@
-/**
- * The page's small dynamic layer ("13 · Dynamic layer"): scroll-linked
- * reveals (B), the pace bar (C) and phone parallax.
- * Nothing loops, nothing moves while text is being read, and everything has
- * a still version: with reduced motion the page is simply shown in its final
- * state.
- */
 import { onPage, observe } from './page';
 
 export const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -29,7 +22,6 @@ const inView = (el: Element) => {
   return r.top < innerHeight && r.bottom > 0;
 };
 
-/** B: each section enters once, when 15% of it is in view. Stagger 60 ms, max 4. */
 function reveals(signal: AbortSignal) {
   const els = [...document.querySelectorAll<HTMLElement>('[data-reveal]')];
   if (!els.length) return;
@@ -43,12 +35,6 @@ function reveals(signal: AbortSignal) {
     counts.set(el.parentElement, n + 1);
     el.style.setProperty('--i', String(Math.min(n, 3)));
   });
-  // Already on screen (a deep link, a restored scroll, a client-side
-  // navigation): shown as is, with no transition. The hidden state is in
-  // force from the first paint (.js, set in <head>), so measuring has already
-  // resolved it; switching to is-in under .reveal-instant (transitions off)
-  // and flushing styles before lifting it means nothing animates, including
-  // the step stories and the plan bar keyed on is-in. Read first, then write.
   const vis = els.filter(inView);
   if (vis.length) {
     const root = document.documentElement;
@@ -57,9 +43,6 @@ function reveals(signal: AbortSignal) {
     void root.offsetHeight;
     root.classList.remove('reveal-instant');
   }
-  // is-scrolled-in marks what entered while being watched, so a one-off
-  // keyframe moment (the invite coin) never plays on content that was
-  // already on screen when the page arrived.
   once(
     signal,
     els.filter((el) => !el.classList.contains('is-in')),
@@ -71,7 +54,6 @@ function reveals(signal: AbortSignal) {
 const fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
-/** C: the figure counts up with the bar (900 ms, ease-in-out), the today marker drops in, the verdict lands last. */
 function pace(signal: AbortSignal) {
   const card = document.querySelector<HTMLElement>('[data-pace]');
   if (!card || reducedMotion()) return;
@@ -81,7 +63,6 @@ function pace(signal: AbortSignal) {
   const verdict = card.querySelector<HTMLElement>('.pace__verdict');
   if (!value || !fill || !today || !verdict) return;
   const target = Number(value.dataset.count);
-  // Only arm it if it starts out of view, so nobody sees it reset.
   if (card.getBoundingClientRect().top < innerHeight) return;
   card.setAttribute('data-armed', '');
   value.textContent = fmt.format(0);
@@ -106,7 +87,6 @@ function pace(signal: AbortSignal) {
   });
 }
 
-/** Phones drift at 0.94× scroll speed, at most 40 px. */
 function parallax(signal: AbortSignal) {
   if (reducedMotion()) return;
   const els = [...document.querySelectorAll<HTMLElement>('[data-parallax]')];
@@ -135,11 +115,6 @@ function parallax(signal: AbortSignal) {
   update();
 }
 
-/**
- * Once per document: the footer calls it on every page (its top reveals), and
- * the pages with sections of their own call it too. onPage re-runs it after
- * each client-side navigation, so a second registration would run it twice.
- */
 let started = false;
 export function initMotion(): void {
   if (started) return;

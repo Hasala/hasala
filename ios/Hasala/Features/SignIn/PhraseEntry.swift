@@ -2,9 +2,6 @@ import HasalaDesign
 import SwiftUI
 import UIKit
 
-/// The 12 words as typed into the entry grid (Paper "RecoveryPhraseGrid · Entry", GDD):
-/// one string, read as cells. Lower-case letters and single spaces only, at most 12 words;
-/// the word being typed is the one after the last space. Pure, so the rules are tested.
 struct PhraseEntryState: Equatable {
   static let wordCount = 12
 
@@ -14,8 +11,6 @@ struct PhraseEntryState: Equatable {
     self.text = Self.normalised(text)
   }
 
-  /// What the field keeps of what was typed or pasted: letters in lower case, one space
-  /// between words, no space in front, nothing past the twelfth word.
   static func normalised(_ raw: String) -> String {
     var out = ""
     var words = 0
@@ -29,16 +24,13 @@ struct PhraseEntryState: Equatable {
         }
         out.append(ch)
       } else if ch.isNumber {
-        // A numbered paste ("1. orbit 2. canvas"): the numbers are the paper's, not words.
         continue
       } else if inWord {
-        // Spaces, new lines, commas and full stops all end a word.
         inWord = false
         if words == wordCount { break }
         out.append(" ")
       }
     }
-    // The twelfth word takes no space after it: there is no cell to move to.
     if words == wordCount, out.hasSuffix(" ") { out.removeLast() }
     return out
   }
@@ -47,35 +39,28 @@ struct PhraseEntryState: Equatable {
 
   private var endsWithSpace: Bool { text.hasSuffix(" ") }
 
-  /// The cell the next letter goes into, 0-based (11 once the twelfth word has started).
   var activeIndex: Int {
     guard !text.isEmpty else { return 0 }
     return min(endsWithSpace ? words.count : words.count - 1, Self.wordCount - 1)
   }
 
-  /// The word in the active cell so far ("sad").
   var current: String {
     guard !endsWithSpace, let last = words.last else { return "" }
     return last
   }
 
-  /// Words whose cell is done: everything before the active cell, and the twelfth once it
-  /// is a list word.
   var finished: Int {
     let before = endsWithSpace ? words.count : max(0, words.count - 1)
     if words.count == Self.wordCount, PhraseRules.isWord(current) { return Self.wordCount }
     return before
   }
 
-  /// The first finished word that isn't on the recovery list (its cell gets the ring).
   var unknownIndex: Int? {
     words.prefix(finished).firstIndex { !PhraseRules.isWord($0) }
   }
 
   var isComplete: Bool { finished == Self.wordCount && unknownIndex == nil }
 
-  /// Up to three list words for the active cell, the typed word itself first when it is
-  /// one (Paper: "sad" · "saddle" · "sadness").
   var suggestions: [String] { Self.suggestions(for: current) }
 
   static func suggestions(for word: String) -> [String] {
@@ -113,7 +98,6 @@ struct PhraseEntryState: Equatable {
     masked ? words.map { _ in "•••••" } : words
   }
 
-  /// The text with the active word replaced by `word`, moving on to the next cell.
   func completing(with word: String) -> String {
     var ws = words
     if !endsWithSpace, !ws.isEmpty { ws.removeLast() }
@@ -122,36 +106,19 @@ struct PhraseEntryState: Equatable {
   }
 }
 
-/// The 12-word entry (Paper GDD, GZT): one hidden field drawn as two columns of six
-/// numbered cells in a white card (one column at the accessibility sizes). The active cell
-/// turns white with an inset ring, a blue number and a caret; a word not on the list rings
-/// its own cell. Suggestions come only from the recovery word list, in a bar over the
-/// keyboard; the keyboard neither corrects nor learns. "Paste" is the system paste button,
-/// so iOS reads the clipboard once, on the person's tap, without a prompt; whoever accepts
-/// the words clears it with `clearPastedPhrase(changeCount:)`.
-///
-/// Paper draws no button under the grid: Return moves to the next cell and sends the
-/// twelfth, and the word-list suggestions sit on the keyboard. The screen owns `focused`,
-/// so while the keyboard is up its dock holds `PhraseSuggestions` (it rides on the
-/// keyboard), and its button once the keyboard goes. The screen also applies
-/// `revealsPhraseEntry(_:)`, so the title, the grid, the helper and Paste stay in sight
-/// above that bar.
 struct PhraseEdit: Equatable {
   var index: Int
   var word: String
 }
 
 struct PhraseEntryGrid: View {
-  /// Each cell, for `revealsPhraseEntry(_:)` at the accessibility sizes.
   static func cellID(_ index: Int) -> String { "phraseEntry.cell.\(index)" }
 
   @Binding var text: String
-  /// The pasteboard's `changeCount` when a paste landed here (nil until one does).
   @Binding var pastedChangeCount: Int?
   var focused: FocusState<Bool>.Binding
   var edit: Binding<PhraseEdit?> = .constant(nil)
   var identifier = "phraseEntry.field"
-  /// Return on the twelfth word.
   var onSubmit: () -> Void = {}
 
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -241,7 +208,6 @@ struct PhraseEntryGrid: View {
       if state.isComplete {
         onSubmit()
       } else {
-        // Return moves on, as "next" says.
         if !state.current.isEmpty { text = PhraseEntryState.normalised(text + " ") }
         focused.wrappedValue = true
       }
@@ -368,7 +334,6 @@ struct PhraseEntryGrid: View {
                 in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     .hContrastEdge(RoundedRectangle(cornerRadius: 10, style: .continuous))
     .overlay {
-      // Entry cells ring inside their edge (page 11 known drift: code cells ring outside).
       RoundedRectangle(cornerRadius: 10, style: .continuous)
         .strokeBorder(unknown ? HColor.fieldError : HColor.fieldFocus, lineWidth: 2)
         .opacity(active || unknown ? 1 : 0)
@@ -418,7 +383,6 @@ struct PhraseEntryGrid: View {
     .accessibilityIdentifier("phraseEntry.paste")
   }
 
-  /// "Paste": fills from the first cell (page 11 §05).
   private func paste(_ pasted: String) {
     text = PhraseEntryState.normalised(pasted)
     pastedChangeCount = PhrasePasteboard.system.changeCount()
@@ -427,24 +391,10 @@ struct PhraseEntryGrid: View {
 }
 
 extension EnvironmentValues {
-  /// The keyboard is up at a standard text size (`revealsPhraseEntry`): the grid sets its
-  /// cells 32 tall, 4 apart, in an 8 pt card, so with the system keyboard (taller than
-  /// Paper's, with the suggestion bar above it) the title still fits over the entry.
   @Entry var phraseEntryCompact = false
 }
 
 extension View {
-  /// Keeps the 12-word entry in sight above its screen's dock, under its title (Paper GDD,
-  /// GZT draw the title, the grid, the helper and Paste clear of the keyboard). The
-  /// suggestion bar sits over the keyboard, and the system keyboard is taller than Paper's,
-  /// so while it is up the grid tightens (`phraseEntryCompact`), and the page scrolls the
-  /// least that shows the whole screen body (`accountScreenBodyID`: the question, the grid,
-  /// the helper with Paste, and a failure under them) above the bar. Where all of it can't
-  /// fit (larger text, a smaller iPhone, a failure line), the body's top goes to the top of
-  /// the room instead: the title is never scrolled under the header, and the rest scrolls
-  /// (as the words go in, the page moves only as far as the cell being typed needs). At the
-  /// accessibility sizes the grid is one long column, so the active cell is kept in the
-  /// middle instead, as the words go in.
   func revealsPhraseEntry(_ text: String) -> some View {
     let state = PhraseEntryState(text)
     return modifier(PhraseEntryReveal(activeIndex: state.activeIndex, unknownIndex: state.unknownIndex))
@@ -453,12 +403,10 @@ extension View {
 
 private struct PhraseEntryReveal: ViewModifier {
   let activeIndex: Int
-  /// A word off the list adds its line under the grid: the block grows, so it is shown again.
   let unknownIndex: Int?
   @Environment(\.hMotion) private var motion
   @Environment(\.dynamicTypeSize) private var typeSize
   @State private var keyboardUp = false
-  /// The screen body fits between the header and the dock (its 16 pt foot aside).
   @State private var bodyFits = true
 
   func body(content: Content) -> some View {
@@ -473,18 +421,15 @@ private struct PhraseEntryReveal: ViewModifier {
         }
         .onGeometryChange(for: Bool.self) { $0.safeAreaInsets.bottom > 120 } action: { up in
           withAnimation(motion.animation(.fade)) { keyboardUp = up }
-          // After the tighter grid is laid out.
           if up { Task { reveal(proxy) } }
         }
         .onChange(of: activeIndex) {
-          // Where the body doesn't all fit, the cell being typed is kept in sight too.
           guard keyboardUp, typeSize.isAccessibilitySize || !bodyFits else { return }
           withAnimation(motion.animation(.fade)) {
             proxy.scrollTo(PhraseEntryGrid.cellID(activeIndex), anchor: typeSize.isAccessibilitySize ? .center : nil)
           }
         }
         .onChange(of: unknownIndex) {
-          // After the line is laid out.
           if keyboardUp { Task { reveal(proxy) } }
         }
     }
@@ -495,21 +440,14 @@ private struct PhraseEntryReveal: ViewModifier {
       if typeSize.isAccessibilitySize {
         proxy.scrollTo(PhraseEntryGrid.cellID(activeIndex), anchor: .center)
       } else if bodyFits {
-        // No anchor: the least scroll that shows the whole body.
         proxy.scrollTo(accountScreenBodyID)
       } else {
-        // Its top at the top of the room, so the title stays below the header.
         proxy.scrollTo(accountScreenBodyID, anchor: .top)
       }
     }
   }
 }
 
-/// The word-list suggestions on the keyboard (Paper "Suggestions (phrase words only)"), for
-/// an entry screen's dock while the grid is focused: a 44 glass bar of three slots split
-/// by hairlines, the middle one (or the only one) in a white pill. Only recovery-list words
-/// are offered; picking one fills the cell and moves on. Before a letter is typed the bar
-/// says which cell is next, so it doesn't come and go with each word.
 struct PhraseSuggestions: View {
   @Binding var text: String
   var edit: Binding<PhraseEdit?> = .constant(nil)
@@ -535,7 +473,6 @@ struct PhraseSuggestions: View {
 
 private struct SuggestionBar: View {
   let words: [String]
-  /// The active cell, 1-based.
   let cell: Int
   let pick: (String) -> Void
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -579,10 +516,6 @@ private struct SuggestionBar: View {
   }
 }
 
-/// After a pasted phrase is accepted, clear the pasteboard if it still holds that paste
-/// (spec 04 §6.7). Nothing is read from it: an unchanged `changeCount` means the same
-/// contents, and writing never shows iOS's paste prompt. A typed phrase leaves the
-/// pasteboard alone.
 @MainActor
 func clearPastedPhrase(changeCount: Int?, on board: PhrasePasteboard = .system) {
   guard let changeCount, board.changeCount() == changeCount else { return }

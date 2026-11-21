@@ -12,13 +12,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// ---------------------------------------------------------------------------
-// fixtures
-// ---------------------------------------------------------------------------
-
-// ledgerAmount reads one account_usage row directly, with no coalesce: a
-// MISSING row and a zero row are different states here, and a helper that hid
-// the difference would make half of this file untestable.
 func ledgerAmount(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, resource string) (int64, bool) {
 	t.Helper()
 	rows, err := pool.Query(bg,
@@ -37,8 +30,6 @@ func ledgerAmount(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, resource string
 	return amount, true
 }
 
-// storedBytes is the truth, computed by the test's own query rather than by the
-// code under test.
 func storedBytes(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, stream string) int64 {
 	t.Helper()
 	var n int64
@@ -59,7 +50,6 @@ func usageFindings(t *testing.T, pool *pgxpool.Pool, users ...uuid.UUID) []Findi
 	return f
 }
 
-// findingFor returns the one finding whose detail names this resource.
 func findingFor(t *testing.T, f []Finding, u uuid.UUID, resource string) Finding {
 	t.Helper()
 	var out []Finding
@@ -74,16 +64,6 @@ func findingFor(t *testing.T, f []Finding, u uuid.UUID, resource string) Finding
 	return out[0]
 }
 
-// ---------------------------------------------------------------------------
-// the reconciliation
-// ---------------------------------------------------------------------------
-
-// A log written by the REAL appender reconciles clean, and the number it wrote
-// is the padded stored size rather than the plaintext.
-//
-// That second half is the point of the test: the charged bytes are the padded
-// stored bytes; reconciling against a plaintext length would report drift on
-// every account of a perfectly healthy box.
 func TestTheLedgerReconcilesAgainstARealAppend(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
@@ -100,19 +80,11 @@ func TestTheLedgerReconcilesAgainstARealAppend(t *testing.T) {
 	if want := storedBytes(t, pool, u, blob.StreamHot); hot != want {
 		t.Fatalf("ledger holds %d hot bytes, stored rows total %d", hot, want)
 	}
-	// Six frames of one 1 KiB bucket each: the padded stored size, never the
-	// few dozen bytes of plaintext inside.
 	if hot != 6*1024 {
 		t.Fatalf("hot usage is %d bytes, want the six padded frames' 6144", hot)
 	}
 }
 
-// Both directions are reported, and each says which one it is.
-//
-// They are not the same failure: a ledger that reads HIGH refuses an honest
-// account writes it was entitled to, and one that reads LOW hands out budget
-// that is already spent. An operator reading a wall of findings must not have to
-// do the subtraction to tell them apart.
 func TestUsageDriftIsReportedInBothDirectionsWithBothNumbers(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
@@ -141,12 +113,6 @@ func TestUsageDriftIsReportedInBothDirectionsWithBothNumbers(t *testing.T) {
 	}
 }
 
-// A ledger row that is GONE is drift, not silence.
-//
-// This is the shape a bug in a decrement path leaves behind, and it is also
-// what an account written by a build that never charged its bytes looks like.
-// A reconciliation that only compared rows it found on both sides would report
-// a clean box while nothing at all was being counted.
 func TestStoredBytesWithNoLedgerRowAreDrift(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
@@ -166,15 +132,12 @@ func TestStoredBytesWithNoLedgerRowAreDrift(t *testing.T) {
 	}
 }
 
-// The mirror: an account with neither rows nor a ledger is silent. An audit that
-// reported every quiet account would be one nobody reads.
 func TestAnAccountWithNothingStoredIsSilent(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	if f := usageFindings(t, pool, u); len(f) != 0 {
 		t.Fatalf("an empty account produced findings: %+v", f)
 	}
-	// And a zero row means the same thing as an absent one.
 	exec(t, pool, `INSERT INTO account_usage (user_id, resource, amount)
 	  VALUES ($1, 'oplog_hot_bytes', 0)`, u)
 	if f := usageFindings(t, pool, u); len(f) != 0 {
@@ -182,8 +145,6 @@ func TestAnAccountWithNothingStoredIsSilent(t *testing.T) {
 	}
 }
 
-// Scoping answers about one account and stays silent about the other, so an
-// operator investigating one abuser is not handed the whole box.
 func TestUsageReconciliationCanBeScopedToOneAccount(t *testing.T) {
 	pool := pgtest.New(t)
 	a, b := insertUser(t, pool), insertUser(t, pool)
@@ -200,16 +161,6 @@ func TestUsageReconciliationCanBeScopedToOneAccount(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// the repair
-// ---------------------------------------------------------------------------
-
-// The repair writes the recomputed total, in both directions and for a row that
-// was missing entirely — and the reconciliation is clean afterwards.
-//
-// This is the deploy window: migrations run out of band before the new binary
-// starts, so an old binary can keep writing in between. The first run after a
-// deploy is expected to find that drift and to repair it.
 func TestRepairSetsEachDriftingRowToItsRecomputedTotal(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
@@ -239,7 +190,6 @@ func TestRepairSetsEachDriftingRowToItsRecomputedTotal(t *testing.T) {
 	if f := usageFindings(t, pool, u); len(f) != 0 {
 		t.Fatalf("the ledger still drifts after a repair: %+v", f)
 	}
-	// And a MISSING row is recreated at the truth.
 	exec(t, pool, `DELETE FROM account_usage WHERE user_id = $1`, u)
 	if _, err := RepairUsageLedger(bg, pool, []uuid.UUID{u}); err != nil {
 		t.Fatalf("RepairUsageLedger: %v", err)
@@ -249,12 +199,6 @@ func TestRepairSetsEachDriftingRowToItsRecomputedTotal(t *testing.T) {
 	}
 }
 
-// A correct ledger is left ALONE: no corrections, and no write.
-//
-// The write half matters as much as the number. A repair that rewrote every row
-// with the value it already had would churn account_usage on every run and would
-// report a repair where nothing was wrong, which is how "it repaired something"
-// stops meaning anything.
 func TestRepairLeavesACorrectLedgerUntouched(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
@@ -282,19 +226,11 @@ func TestRepairLeavesACorrectLedgerUntouched(t *testing.T) {
 	}
 }
 
-// A row that stopped drifting between the survey and its turn is skipped.
-//
-// The repair surveys first and then takes one row at a time, so a live append
-// can correct a row in between — that is the ledger working, not a repair, and
-// writing over it would report a correction that corrected nothing. The guard is
-// exercised directly here because there is no way to schedule that race from a
-// test, and a guard nothing can fail is a comment.
 func TestRepairSkipsARowThatStoppedDriftingBeforeItsTurn(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	appendHot(t, pool, u, 1)
 
-	// A stale survey result: it CLAIMS drift, the row is in fact correct.
 	stale := drift{UserID: u, Resource: budget.ResourceOplogHotBytes, Ledger: 999999, Actual: 0}
 	c, ok, err := repairOne(bg, pool, stale)
 	if err != nil {
@@ -308,12 +244,6 @@ func TestRepairSkipsARowThatStoppedDriftingBeforeItsTurn(t *testing.T) {
 	}
 }
 
-// An account purged between the survey and the repair is skipped, not an error.
-//
-// The usage rows cascade with the account, so the insert that would recreate one
-// hits the foreign key. Recreating it is not an option — that is a record of how
-// much a forgotten person stored — and failing the whole run would let one
-// deletion abandon every other account's repair.
 func TestRepairSkipsAnAccountThatWasPurgedMidRun(t *testing.T) {
 	pool := pgtest.New(t)
 	gone := uuid.New()
@@ -328,8 +258,6 @@ func TestRepairSkipsAnAccountThatWasPurgedMidRun(t *testing.T) {
 	}
 }
 
-// The report itself never writes. It is the half a cron runs unattended, and a
-// self-healing audit is indistinguishable from a correct one.
 func TestTheReconciliationReportsAndDoesNotRepair(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
@@ -342,16 +270,11 @@ func TestTheReconciliationReportsAndDoesNotRepair(t *testing.T) {
 	if got, _ := ledgerAmount(t, pool, u, budget.ResourceOplogHotBytes); got != 999999 {
 		t.Fatalf("the report changed the ledger: amount is now %d, want the drifting 999999", got)
 	}
-	// And it is still reported on the second run, rather than having been
-	// quietly healed by the first.
 	if f := usageFindings(t, pool, u); len(f) != 1 {
 		t.Fatalf("the second run reads %+v; a report that heals hides the bug it found", f)
 	}
 }
 
-// The resource name this file builds in SQL is the ledger's own: it is
-// assembled from the stream ('oplog_' || stream || '_bytes'), so a typo would
-// compare every account's bytes against a resource nothing writes.
 func TestTheReconciledResourceNamesAreTheLedgersOwn(t *testing.T) {
 	if got := "oplog_" + blob.StreamHot + "_bytes"; got != budget.ResourceOplogHotBytes {
 		t.Errorf("the hot stream builds %q, the ledger holds %q", got, budget.ResourceOplogHotBytes)

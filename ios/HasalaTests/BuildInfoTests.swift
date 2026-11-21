@@ -44,7 +44,6 @@ struct BuildInfoTests {
   }
 
   #if DEBUG
-    /// Debug runs may point at a local server through the launch environment.
     @Test func theDebugOverrideAcceptsHTTPAndHTTPS() throws {
       #expect(try BuildInfo.debugAPIBaseURLOverride([:]) == nil)
       #expect(try BuildInfo.debugAPIBaseURLOverride(["HASALA_API_BASE_URL": "  "]) == nil)
@@ -63,25 +62,20 @@ struct BuildInfoTests {
     }
   #endif
 
-  /// Without an override the Info.plist value is used.
   @Test func theAPIBaseURLDefaultsToTheBundle() {
     if ProcessInfo.processInfo.environment["HASALA_API_BASE_URL"] == nil {
       #expect(BuildInfo.apiBaseURL() == BuildInfo.current.apiBaseURL)
     }
   }
 
-  /// `BuildInfo` is not main-actor isolated: background work can read it.
   @Test nonisolated func isReadableOffTheMainActor() async {
     let footer = await Task.detached { BuildInfo.current.footer }.value
     #expect(footer.hasPrefix("Hasala QA · \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?") ("))
   }
 
-  /// The app's own Info.plist carries every key (spec 06 §4.2) and the export
-  /// compliance answer (spec 06 §6.2).
   @Test func theBundleIsComplete() throws {
     let info = try BuildInfo(infoDictionary: Bundle.main.infoDictionary ?? [:])
     #expect(info.environment == "qa")
-    // The exact origin, as inspect-ipa.sh's endpoint guard checks it: https, no port or path.
     #expect(Bundle.main.object(forInfoDictionaryKey: "HasalaAPIBaseURL") as? String == "https://api.hasala.app")
     #expect(info.apiBaseURL.absoluteString == "https://api.hasala.app")
     #expect(info.marketingVersion.wholeMatch(of: /\d+\.\d+\.\d+/) != nil)
@@ -93,9 +87,6 @@ struct BuildInfoTests {
     #expect(Bundle.main.url(forResource: "PrivacyInfo", withExtension: "xcprivacy") != nil)
   }
 
-  /// The Google iOS client is filled in, its redirect scheme is the reversed client id
-  /// (Gmail's redirect URI is `<scheme>:/oauth2redirect`), and the Pub/Sub topic is not in
-  /// the build: the server's `GET /meta` names it.
   @Test func theBundleCarriesTheGoogleClient() throws {
     let info = try BuildInfo(infoDictionary: Bundle.main.infoDictionary ?? [:])
     let suffix = ".apps.googleusercontent.com"
@@ -106,8 +97,6 @@ struct BuildInfoTests {
     #expect(info.gmailPubSubTopic == "unset")
   }
 
-  /// The Outlook redirect scheme is the contract's; the client id is a UUID once the owner
-  /// registers the Entra app, `unset` until then (Outlook is then not offered).
   @Test func theBundleCarriesTheOutlookSettings() throws {
     let info = try BuildInfo(infoDictionary: Bundle.main.infoDictionary ?? [:])
     #expect(info.outlookRedirectScheme == "msauth.app.hasala.ios")

@@ -1,12 +1,6 @@
 import XCTest
 
-/// Sign-in, unlock and Sign-in & security on the Release surface: the beta's account
-/// actions only (`AccountCapabilities.beta`), support in place of the rest, and alerts
-/// that say only what the beta does.
 final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
-  /// Sign in offers the passkey, the password and recovery with the 12 words; "Forgot
-  /// password?" becomes a support email link, and a wrong password doesn't point to a
-  /// reset it can't do.
   @MainActor
   func testSignInOffersRecoveryAndSupportInsteadOfAReset() throws {
     let app = launchRelease("signInPassword", waitForHome: false)
@@ -30,9 +24,6 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "recover.start").waitForExistence(timeout: uiWait))
   }
 
-  /// A lost passkey: Recover your account with the 12 words and the emailed code, to a
-  /// new passkey (a new password isn't in the beta), then "You're back in" says only what
-  /// happened, and Home opens.
   @MainActor
   func testRecoveryToANewPasskey() throws {
     let app = launchRelease("signInPassword", waitForHome: false)
@@ -68,10 +59,6 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
   static let phrase = ["absurd", "avoid", "scissors", "anxiety", "gather", "lottery", "category", "door", "army",
                        "half", "long", "camera"]
 
-  /// Unlocking on a new iPhone: the words only (no passkey without its capability), and
-  /// the honest end points to a person, not a start-fresh the beta can't do. A
-  /// password-only account's other device can't show the words, so the page doesn't say it
-  /// can.
   @MainActor
   func testUnlockAndTheHonestEndPromiseOnlyWhatWorks() throws {
     let app = launchRelease("unlockPasswordOnly", waitForHome: false)
@@ -89,8 +76,6 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     try audit(app)
   }
 
-  /// Sign-in & security: the beta's actions, support for the rest, and the two alerts it
-  /// shows say what signing out really does (this iPhone's data stays, S-26).
   @MainActor
   func testSecurityOffersOnlyTheBetasActions() throws {
     let app = launchRelease()
@@ -132,8 +117,6 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "security.hero").waitForExistence(timeout: uiWait))
   }
 
-  /// View your 12 words: "Confirm it's you" with Face ID, then the cover, nothing a
-  /// placeholder; Done closes it.
   @MainActor
   func testViewingTheWordsConfirmsFirst() throws {
     let app = launchRelease()

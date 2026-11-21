@@ -2,13 +2,7 @@ import AuthenticationServices
 import CoreMailbox
 import UIKit
 
-/// The browser half of "Connect Gmail" (spec 04 §7.2): ASWebAuthenticationSession with the
-/// reversed client id as a custom callback scheme. The scheme is deliberately NOT registered in
-/// `CFBundleURLTypes` (spec 06 DV-2): the session captures the redirect itself, so no other app
-/// or page can open Hasala with a forged code. Google shares Safari's session (the user is usually
-/// already signed in, PO-4) and always shows its account chooser; Microsoft gets a private session.
 final class WebAuthenticationPresenter: NSObject, GmailAuthSessionPresenter, ASWebAuthenticationPresentationContextProviding {
-  /// The running session, retained until its completion handler fires.
   private var session: ASWebAuthenticationSession?
   let ephemeral: Bool
 
@@ -60,7 +54,6 @@ final class WebAuthenticationPresenter: NSObject, GmailAuthSessionPresenter, ASW
   func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
     let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
     if let key = scenes.flatMap(\.windows).first(where: \.isKeyWindow) { return key }
-    // "Connect Gmail" is only reachable from a foreground scene, so one always exists.
     return ASPresentationAnchor(windowScene: scenes.first!)
   }
 }

@@ -8,9 +8,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// The A19 and A19-K values are pinned in internal/cryptoref's anchor test;
-// these are the package's own refusals.
-
 func TestParseKeyHexIsExact(t *testing.T) {
 	good := strings.Repeat("ab", 32)
 	for _, s := range []string{good, good + "\n", good + "\r\n"} {

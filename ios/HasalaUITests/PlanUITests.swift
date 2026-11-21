@@ -1,13 +1,10 @@
 import XCTest
 
-/// Plan on the Maya mock: Ready to assign, a category's month, Move money, a budget and where
-/// its money comes from, the project, and the large-text layouts.
 final class PlanUITests: XCTestCase {
   override func setUp() {
     continueAfterFailure = false
   }
 
-  /// The Maya mock, once Home has appeared.
   @MainActor
   private func launchHome(_ scenario: String = "maya", arguments: [String] = []) -> XCUIApplication {
     let app = launch(scenario: scenario, arguments: arguments)
@@ -15,8 +12,6 @@ final class PlanUITests: XCTestCase {
     return app
   }
 
-  /// Waits until `element` stops moving (a sheet settling into its detent), at most 5 s, so
-  /// an audit reads the frames the screen shows.
   @MainActor
   private func waitUntilStill(_ element: XCUIElement) {
     var last = element.frame
@@ -28,8 +23,6 @@ final class PlanUITests: XCTestCase {
     }
   }
 
-  /// Plan: Ready to assign, Groceries' month, Move money from Ready to assign, then Dining's
-  /// budget from Ready to assign (with the shortfall it would leave) and saved.
   @MainActor
   func testPlanMoveMoneyAndBudget() throws {
     let app = launchHome()
@@ -59,11 +52,9 @@ final class PlanUITests: XCTestCase {
     let save = el(app, "move.save")
     XCTAssertTrue(save.waitForExistence(timeout: uiWait))
     XCTAssertEqual(save.label, "Move AED 318.00")
-    // A large sheet: its Close sits at the top of the screen (page 14 §02, top 62).
     XCTAssertLessThan(el(app, "move.close").frame.minY, app.frame.height * 0.2)
     XCTAssertTrue(el(app, "move.to").label.contains("On course for 2,518 of 2,200"))
     XCTAssertTrue(el(app, "move.preview").exists)
-    // Paper's sources: Ready to assign, Travel, Shopping, Entertainment; Dining is over pace.
     for id in ["rta", "travel", "shopping", "entertainment"] {
       XCTAssertTrue(el(app, "move.from.\(id)").exists, "\(id) is not offered")
     }
@@ -79,7 +70,6 @@ final class PlanUITests: XCTestCase {
     XCTAssertTrue(scroll(app, toShow: rta))
     XCTAssertEqual(rta.label, "AED 682.00")
 
-    // Change Dining's budget to 1,800: Ready to assign follows.
     let dining = el(app, "plan.row.dining")
     XCTAssertTrue(reveal(app, dining))
     dining.tap()
@@ -89,21 +79,15 @@ final class PlanUITests: XCTestCase {
     let field = el(app, "budget.amount")
     XCTAssertTrue(field.waitForExistence(timeout: uiWait))
     XCTAssertEqual(field.value as? String, "1,600")
-    // A medium sheet that fits its content, with Dining showing above it (page 14 §02); it
-    // stays that height while the amount changes.
     let close = el(app, "budget.close")
     waitUntilStill(close)
     let top = close.frame.minY
     XCTAssertGreaterThan(top, app.frame.height * 0.25)
-    // Audited where Paper draws it, over the top of Dining (`testABudgetRiseCanComeFromAnother
-    // Category`): from down here, rows behind the scrim straddle the sheet's edge, and the audit
-    // reads their cut-off words as text no element describes.
     attach(app, "Plan · Dining budget")
     app.buttons["Add 200"].tap()
     XCTAssertEqual(close.frame.minY, top, accuracy: 1)
     XCTAssertEqual(el(app, "budget.save").label, "Set to AED 1,800")
     XCTAssertEqual(el(app, "budget.consequence").label, "Ready to assign becomes AED 482.00")
-    // Over-assigning shows the shortfall with its minus sign.
     for _ in 0..<4 { app.buttons["Add 200"].tap() }
     XCTAssertEqual(el(app, "budget.consequence").label, "Ready to assign becomes \u{2212}AED 318.00")
     for _ in 0..<8 { app.buttons["Less"].tap() }
@@ -113,8 +97,6 @@ final class PlanUITests: XCTestCase {
     XCTAssertTrue(el(app, "category.hero").label.contains("AED 1,157.25 left of 1,800 this month"))
   }
 
-  /// "Take it from" pushes the sources inside the budget sheet; a rise from Travel moves the
-  /// money from Travel, and Travel's row says what is left.
   @MainActor
   func testABudgetRiseCanComeFromAnotherCategory() throws {
     let app = launch(screen: "plan.budget")
@@ -122,8 +104,6 @@ final class PlanUITests: XCTestCase {
     XCTAssertTrue(field.waitForExistence(timeout: 15))
     waitUntilStill(el(app, "budget.close"))
     try audit(app)
-    // The medium sheet is drawn at 386/402 of its size (the system's inset sheet); its
-    // small targets still take 44 on the screen.
     for button in ["Add 200", "Less", "More", "Close"] {
       let target = app.buttons.matching(NSPredicate(format: "label == %@ AND identifier != 'plan.more'", button)).firstMatch
       XCTAssertGreaterThanOrEqual(target.frame.height, 44, button)
@@ -141,7 +121,6 @@ final class PlanUITests: XCTestCase {
     travel.tap()
     XCTAssertTrue(el(app, "budget.consequence").waitForExistence(timeout: uiWait))
     XCTAssertEqual(el(app, "budget.consequence").label, "Travel keeps AED 2,300.00")
-    // More than Travel has is refused here, before anything is sent.
     for _ in 0..<12 { app.buttons["Add 200"].tap() }
     XCTAssertTrue(el(app, "budget.refusal").waitForExistence(timeout: uiWait))
     XCTAssertFalse(el(app, "budget.save").isEnabled)
@@ -155,8 +134,6 @@ final class PlanUITests: XCTestCase {
     XCTAssertTrue(row.label.hasPrefix("Travel, AED 2,300.00 left"), row.label)
   }
 
-  /// Plan · Dining's rows: a payment opens its transaction sheet, a rule opens Categories
-  /// and rules in Your profile; Day by day is one element with its summary.
   @MainActor
   func testDiningOpensItsPaymentsAndRules() throws {
     let app = launch(screen: "plan.dining")
@@ -185,7 +162,6 @@ final class PlanUITests: XCTestCase {
     tap(app, "txn.close")
   }
 
-  /// Assign from Ready to assign: Move money with "To" to choose, pushed inside the sheet.
   @MainActor
   func testAssignChoosesWhereTheMoneyGoes() throws {
     let app = launch(screen: "plan.assign")
@@ -202,8 +178,6 @@ final class PlanUITests: XCTestCase {
     try audit(app)
   }
 
-  /// With amounts hidden, the figures are dots and the words stay; VoiceOver hears "Amount
-  /// hidden" (spec 04 §12).
   @MainActor
   func testHiddenAmountsReachEveryPlanFigure() throws {
     let app = launch(scenario: "mayaHidden", screen: "plan.dining")
@@ -215,13 +189,11 @@ final class PlanUITests: XCTestCase {
                    "Largest day Wed 7 Oct, Zuma, Amount hidden. Daily budget Amount hidden.")
     attach(app, "Plan · Dining · Amounts hidden")
     tap(app, "category.changeBudget")
-    // The chip's figure hides; the field it fills is an input and shows its real value.
     XCTAssertTrue(app.buttons["Cover the pace, Amount hidden"].waitForExistence(timeout: uiWait))
     XCTAssertEqual(el(app, "budget.amount").value as? String, "1,600")
     attach(app, "Plan · Dining budget · Amounts hidden")
   }
 
-  /// The project from its card: hero, the plan setting, By category and Transactions.
   @MainActor
   func testJapanTripFromItsCard() throws {
     let app = launchHome()
@@ -243,10 +215,6 @@ final class PlanUITests: XCTestCase {
     try audit(app)
   }
 
-  /// Day by day at AX3 and AX5 (spec 04 §17): the daily budget and the tallest day's name
-  /// leave the bars for a key above the plot, and the day numbers thin out rather than run
-  /// into each other. The chart is one element, so the audit cannot look inside it: the
-  /// shots are the check, and the chart grows by the key.
   @MainActor
   func testDayByDayKeepsItsLabelsOffTheBarsAtLargeSizes() throws {
     let plain = launch(screen: "plan.dining", motion: "off")
@@ -258,7 +226,6 @@ final class PlanUITests: XCTestCase {
       let chart = el(app, "plan.chart")
       XCTAssertTrue(chart.waitForExistence(timeout: 15))
       XCTAssertTrue(scroll(app, toShow: chart))
-      // The day numbers above the tab bar too, so the shot holds the whole chart.
       for _ in 0..<3 where chart.frame.maxY > app.frame.height - 110 {
         let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
         let over = min(300, chart.frame.maxY - (app.frame.height - 130))
@@ -271,8 +238,6 @@ final class PlanUITests: XCTestCase {
     }
   }
 
-  /// At the largest text size the "Ready to assign" overline takes two lines rather than
-  /// being cut off (the AX3 audit below lets its "may be clipped" through on this proof).
   @MainActor
   func testReadyToAssignWrapsAtTheLargestSize() throws {
     let app = launch(screen: "plan", motion: "off",
@@ -280,23 +245,16 @@ final class PlanUITests: XCTestCase {
     XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: 15))
     let overline = app.staticTexts.matching(NSPredicate(format: "label ==[c] 'Ready to assign'")).firstMatch
     XCTAssertTrue(overline.exists)
-    // One line of the overline at this size is about 44 pt; two are about 88.
     XCTAssertGreaterThan(overline.frame.height, 70, "\(overline.frame)")
     XCTAssertLessThanOrEqual(overline.frame.maxX, app.frame.width - 20)
     attach(app, "AX5 · Plan · Ready to assign")
   }
 
-  /// Plan at `.accessibility3`, down to the projects, then the detail and both sheets
-  /// (spec 04 §17).
   @MainActor
   func testPlanAtLargeTextSizes() throws {
     let large = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
     let app = launchHome(arguments: large)
 
-    // Plan, down to the projects. At the top, every check but clipped text runs as usual;
-    // then clipped text alone, where the audit reads the "READY TO ASSIGN" overline as text
-    // that may be cut off at larger sizes. It is not: it wraps
-    // (`testReadyToAssignWrapsAtTheLargestSize`). Anything else clipped still fails.
     openPlan(app)
     XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: uiWait))
     attach(app, "AX3 · Plan")
@@ -311,7 +269,6 @@ final class PlanUITests: XCTestCase {
       try audit(app, atLargeText: true)
     }
 
-    // Dining's month, down to its actions.
     let dining = el(app, "plan.row.dining")
     XCTAssertTrue(scroll(app, toShow: dining) || reveal(app, dining))
     dining.tap()
@@ -323,7 +280,6 @@ final class PlanUITests: XCTestCase {
       try audit(app, atLargeText: true)
     }
 
-    // Both sheets.
     tap(app, "category.changeBudget")
     XCTAssertTrue(el(app, "budget.amount").waitForExistence(timeout: uiWait))
     attach(app, "AX3 · Plan · Dining budget")

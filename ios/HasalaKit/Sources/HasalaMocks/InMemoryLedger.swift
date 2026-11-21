@@ -1,12 +1,6 @@
 import HasalaModels
 import Observation
 
-/// A `LedgerStore` that applies edits to an in-memory `LedgerState` (spec 04 §15.3:
-/// "MayaLedger is mutable: actions change its in-memory state and emit new snapshots,
-/// so UI tests can walk flows without a server"). Debug builds, previews and tests only.
-///
-/// The live store (TODO spec 04 §15.2) authors the same edits as ops through
-/// `OpAuthor` + `Outbox` and reads `state` back from the projection.
 @MainActor
 @Observable
 public final class InMemoryLedger: LedgerStore {
@@ -14,10 +8,6 @@ public final class InMemoryLedger: LedgerStore {
   public private(set) var now: LocalDateTime
   public private(set) var revision = 0
 
-  /// What an undo puts back: the records an edit touched, as they were before it and
-  /// right after it. Undo reverts only what is still as the edit left it, so a later
-  /// edit to another field (a note added after a categorise) survives (03c §3.8: the
-  /// inverse ops touch only the fields the edit set).
   private struct UndoRecord {
     var txnsBefore: [TxnID: Txn] = [:]
     var txnsAfter: [TxnID: Txn] = [:]
@@ -616,13 +606,11 @@ public final class InMemoryLedger: LedgerStore {
     revision += 1
   }
 
-  /// Moves the clock (UI tests and previews of other days).
   public func setNow(_ now: LocalDateTime) {
     self.now = now
     revision += 1
   }
 
-  /// Puts back each field an edit changed, unless something since has changed it again.
   private static func revertFields(_ t: inout Txn, before: Txn, after: Txn) {
     func field<V: Equatable>(_ kp: WritableKeyPath<Txn, V>) {
       if t[keyPath: kp] == after[keyPath: kp] { t[keyPath: kp] = before[keyPath: kp] }
@@ -682,8 +670,6 @@ public final class InMemoryLedger: LedgerStore {
     }
   }
 
-  /// Element by element: an element still as the edit left it goes back to how it was
-  /// (or away, if the edit added it; or back in at its old place, if the edit removed it).
   private static func revertElements<E: Identifiable & Equatable>(_ list: inout [E], before: [E], after: [E]) {
     let afterByID = Dictionary(after.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     let beforeIDs = Set(before.map(\.id))

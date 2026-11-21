@@ -1,20 +1,9 @@
-// The template format (server/internal/tmpl/v2-template-format.md; tmpl/exec.ts `Definition`),
-// read from JSON with CoreJSON. A definition is data that crossed a network or came out of the
-// bundle; every field is type-checked here, and anything malformed is refused (fail closed:
-// the mailbox routes the mail to review rather than guessing).
 import CoreJSON
 import HasalaText
 
 public enum TemplateError: Error, Equatable, Sendable {
-  /// A definition this executor cannot run (the publish gate refuses these; one here means a
-  /// template reached the device without passing it).
   case definition(String)
-  /// A pattern that violates the dialect, with Go's reason codes in scan order.
   case dialect(String, codes: [String])
-  /// The calling task was cancelled; checked before every pattern search. A run's worst case
-  /// is its pattern count times ICU's per-search limit (several seconds on a hostile 2 MB
-  /// body), so the caller's deadline is enforced by cancelling the task that runs `execute`
-  /// (inventory client-core-b §2.3). Not a verdict: nothing about the message is recorded.
   case cancelled
 }
 
@@ -37,7 +26,6 @@ public struct TemplateDefinition: Sendable, Equatable {
     public var value: String?
     public var override: Bool
     public var why: String
-    /// `on_match` in document order (applied in code-unit order of the keys).
     public var onMatch: [(key: String, value: String)]
 
     public static func == (a: Extract, b: Extract) -> Bool {
@@ -60,7 +48,6 @@ public struct TemplateDefinition: Sendable, Equatable {
   public var extract: [Extract]
   public var required: [String]
 
-  /// Decodes a definition from its JSON text.
   public init(json bytes: [UInt8]) throws(TemplateError) {
     let v: JSONValue
     do {
@@ -117,9 +104,6 @@ public struct TemplateDefinition: Sendable, Equatable {
     self.extract = extract
   }
 
-  /// The canonical encoding (Go's `Definition.Canonical`): every key at every level, present
-  /// (no omitempty) and sorted, with JSON.stringify's escaping. Pinned by
-  /// conformance/dialect/patterns.json `canonical`.
   public func canonicalJSON() -> [UInt8] {
     func strs(_ a: [String]) -> JSONValue { .array(a.map { .string($0) }) }
     let extracts: [JSONValue] = extract.map { e in
@@ -159,8 +143,6 @@ public struct TemplateDefinition: Sendable, Equatable {
     if s.isEmpty { return false }
     return match.smsSender.contains { ASCII.lowercased($0).utf8.elementsEqual(s.utf8) }
   }
-
-  // MARK: - Field access (null and absent are the same: Go's zero value)
 
   static func string(_ o: JSONObject, _ k: String) throws(TemplateError) -> String? {
     switch o[k] {

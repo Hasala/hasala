@@ -41,17 +41,12 @@ func TestLimiterKeysAreIndependent(t *testing.T) {
 }
 
 func TestLimiterUnderKeyPressureSharesABucketRatherThanDenying(t *testing.T) {
-	// The key space is attacker-chosen on the sign-in path. Refusing new keys
-	// once the map is full would let anyone with many source addresses lock
-	// every legitimate caller out — an amplification nuisance traded for an
-	// outage. Under pressure the limit gets coarser, never absolute.
 	now := time.Now()
 	l := NewLimiter(0, 2, 2, func() time.Time { return now })
 	for i := 0; i < 2; i++ {
 		l.Allow("a")
 		l.Allow("b")
 	}
-	// The map is now full and neither bucket is refillable (rate 0).
 
 	served := 0
 	for i := 0; i < 10; i++ {
@@ -65,7 +60,6 @@ func TestLimiterUnderKeyPressureSharesABucketRatherThanDenying(t *testing.T) {
 	if served > 2 {
 		t.Fatalf("the shared fallback bucket served %d, which is more than its burst of 2", served)
 	}
-	// The established keys keep their own (already spent) budgets.
 	if l.Allow("a") {
 		t.Fatal("key pressure handed an established key a fresh budget")
 	}
@@ -74,11 +68,11 @@ func TestLimiterUnderKeyPressureSharesABucketRatherThanDenying(t *testing.T) {
 func TestLimiterSweepOnlyEvictsFullyRefilledKeys(t *testing.T) {
 	now := time.Now()
 	l := NewLimiter(1, 2, 2, func() time.Time { return now })
-	l.Allow("idle") // 1 token left
+	l.Allow("idle")
 	l.Allow("busy")
-	l.Allow("busy") // 0 tokens left
+	l.Allow("busy")
 
-	now = now.Add(10 * time.Second) // "idle" is back to full; "busy" is too
+	now = now.Add(10 * time.Second)
 	if !l.Allow("new") {
 		t.Fatal("a sweep of refilled keys should have made room")
 	}
@@ -86,13 +80,12 @@ func TestLimiterSweepOnlyEvictsFullyRefilledKeys(t *testing.T) {
 		t.Fatalf("the map holds %d keys, above its cap of 2", len(l.buckets))
 	}
 
-	// Now with no time passing, a spent key must not be evicted and reborn.
 	l2 := NewLimiter(0, 1, 1, func() time.Time { return now })
 	l2.Allow("spent")
 	if l2.Allow("spent") {
 		t.Fatal("a spent key was granted a second token")
 	}
-	l2.Allow("other") // forces the sweep path
+	l2.Allow("other")
 	if l2.Allow("spent") {
 		t.Fatal("the sweep evicted a partially spent bucket, handing its key a fresh burst")
 	}

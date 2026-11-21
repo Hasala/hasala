@@ -1,16 +1,3 @@
-// A software platform authenticator for tests (spec 04 §19.3 `CoreSoftAuth`):
-// ES256 credentials, `fmt: "none"` attestation, UV and UP set, and the
-// deterministic PRF of spec 01 §12.1:
-//
-//   P = HMAC-SHA256(cred_secret, SHA256("WebAuthn PRF" ‖ 0x00 ‖ PRF_SALT))
-//
-// It produces the same raw structs as the app's AuthenticationServices adapter
-// (`RawRegistration`, `RawAssertion`), byte-for-byte in the WebAuthn formats
-// (CBOR attestation object, authenticator data, DER signature), so a server
-// verifies them like a real platform credential.
-//
-// TODO(WS-11, §19.3): a line-by-line port of server/internal/authtest/softauth.go
-// once that file exists on main; this one is written from the WebAuthn spec.
 import CoreAuth
 import CorePrimitives
 import CryptoKit
@@ -21,7 +8,6 @@ public final class SoftPasskey: PasskeyProvider {
   public struct Credential: Sendable {
     public let id: Data
     public let userHandle: Data
-    /// The credential's P-256 private key (a software stand-in for the platform's).
     let signer: P256.Signing.PrivateKey
     let prfSecret: Data
     public var signCount: UInt32
@@ -41,20 +27,16 @@ public final class SoftPasskey: PasskeyProvider {
     self.origin = origin
   }
 
-  /// Clears the UV flag on the next ceremonies (a server must refuse them).
   public func setUserVerified(_ v: Bool) { uv.withLock { $0 = v } }
-  /// Whether the authenticator evaluates PRF (an iCloud Keychain without it returns none).
   public func setPRFSupported(_ v: Bool) { prfSupported.withLock { $0 = v } }
   public func setBackup(eligible: Bool, backedUp: Bool) {
     backup.withLock { $0 = (eligible ? 0x08 : 0) | (backedUp ? 0x10 : 0) }
   }
-  /// The next ceremony fails with `error`, once.
   public func failNext(_ error: PasskeyError) { failure.withLock { $0 = error } }
 
   public var credentials: [Credential] { state.withLock { $0 } }
   public var reportedUnknown: [Data] { reported.withLock { $0 } }
 
-  /// `P` for a credential and salt (01 §12.1).
   public static func prf(secret: Data, salt: Data) -> Data {
     let input = Data(SHA256.hash(data: Data("WebAuthn PRF".utf8) + [0] + salt))
     return Data(HMAC<SHA256>.authenticationCode(for: input, using: SymmetricKey(data: secret)))
@@ -75,7 +57,7 @@ public final class SoftPasskey: PasskeyProvider {
     state.withLock { $0.append(cred) }
 
     let clientData = Self.clientData(type: "webauthn.create", challenge: options.challenge, origin: origin)
-    let pub = key.publicKey.x963Representation  // 04 ‖ X ‖ Y
+    let pub = key.publicKey.x963Representation
     let cose = CBOR.map([
       (.int(1), .int(2)), (.int(3), .int(-7)), (.int(-1), .int(1)),
       (.int(-2), .bytes(pub[1..<33])), (.int(-3), .bytes(pub[33..<65])),
@@ -83,7 +65,7 @@ public final class SoftPasskey: PasskeyProvider {
     var authData = rpIDHash()
     authData.append(flags(attested: true))
     authData.append(contentsOf: [0, 0, 0, 0])
-    authData.append(Data(count: 16))  // AAGUID
+    authData.append(Data(count: 16))
     authData.append(contentsOf: [UInt8(id.count >> 8), UInt8(id.count & 0xff)])
     authData.append(id)
     authData.append(cose)
@@ -124,7 +106,6 @@ public final class SoftPasskey: PasskeyProvider {
     state.withLock { $0.removeAll { $0.id == credentialID } }
   }
 
-  /// Forgets every credential (a new iPhone without iCloud Keychain).
   public func removeAll() { state.withLock { $0.removeAll() } }
 
   func prfFirst(secret: Data, salt: Data?) -> SecureBytes? {
@@ -135,9 +116,9 @@ public final class SoftPasskey: PasskeyProvider {
   func rpIDHash() -> Data { Data(SHA256.hash(data: Data(rpID.utf8))) }
 
   func flags(attested: Bool) -> UInt8 {
-    var f: UInt8 = 0x01  // UP
-    if uv.withLock({ $0 }) { f |= 0x04 }  // UV
-    if attested { f |= 0x40 }  // AT
+    var f: UInt8 = 0x01
+    if uv.withLock({ $0 }) { f |= 0x04 }
+    if attested { f |= 0x40 }
     f |= backup.withLock { $0 }
     return f
   }
@@ -154,13 +135,10 @@ public final class SoftPasskey: PasskeyProvider {
   }
 }
 
-/// Test randomness for ids and PRF secrets (not a key path: CryptoKit makes the keys).
 func SecRandomFill(_ b: UnsafeMutableRawBufferPointer) -> Bool {
   (try? SystemRandom().fill(b)) != nil
 }
 
-/// The CBOR subset WebAuthn needs (RFC 8949): unsigned and negative integers,
-/// byte and text strings, arrays and maps, definite lengths only.
 public indirect enum CBOR: Sendable, Hashable {
   case int(Int64)
   case bytes(Data)

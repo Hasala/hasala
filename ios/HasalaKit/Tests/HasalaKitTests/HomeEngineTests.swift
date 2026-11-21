@@ -2,7 +2,6 @@ import HasalaMocks
 import HasalaModels
 import Testing
 
-/// Home derived from MayaLedger is the Home board (spec 10, page 06 §6.4). Owned by P5.
 @Suite("Maya ledger · Home parity")
 struct HomeEngineParityTests {
   let s = MayaLedger.state
@@ -17,13 +16,11 @@ struct HomeEngineParityTests {
   }
 }
 
-/// The hero: everything spent against the needs and wants plan, the tick, the verdict and the wash.
 @Suite("Home hero")
 struct HomeHeroTests {
   let now = MayaLedger.now
   static let october = MayaLedger.october
 
-  /// Maya with her needs + wants plan changed to `budgets` (category → dirhams, others kept).
   static func maya(budgets: [CategoryID: Int64] = [:], change: (inout LedgerState) -> Void = { _ in }) -> LedgerState {
     var s = MayaLedger.state
     for (c, dirhams) in budgets { s.plan.budgets[PlanState.key(c, october)] = .aed(dirhams * 100) }
@@ -51,8 +48,6 @@ struct HomeHeroTests {
     #expect(h.tiles.map { MoneyFormat.string($0.value.minor, style: $0.style) } == ["9,040.80", "1,247.54", "5,000.00"])
   }
 
-  /// Hidden amounts (page 06 §6.3): the plan in the caption and "left" are three dots; the
-  /// verdict word stays.
   @Test func hiddenAmountsKeepTheWords() {
     let h = hero(MayaLedger.state)
     #expect(h.caption.rendered(hidden: true) == "spent of ••• planned")
@@ -61,9 +56,6 @@ struct HomeHeroTests {
     #expect(h.word.rendered(hidden: true) == "On track")
   }
 
-  /// The tick is the bills paid so far plus the rest of the plan spread over the days gone:
-  /// 8,005.89 + (19,000 − 9,045.04) × 10 ÷ 31 = 11,217.17 (Paper page 06 §6.8), 59.0% of
-  /// the bar (the board draws it at 213 of 362).
   @Test func theTickCountsTheBillsPaidThenTheDays() {
     let s = MayaLedger.state
     let bills = HomeEngine.billsThisMonth(s, month: Self.october)
@@ -73,9 +65,6 @@ struct HomeHeroTests {
     #expect(tick == 11_217_17)
     #expect(hero(s).tick == .aed(11_217_17))
     #expect(Permille.ratio(tick, of: 19_000_00).value == 590)
-    // Page 06 §6.8: with every bill of the month paid, day 22 sits at 16,109.85 and day 29 at
-    // 18,357.74 (Paper writes 18,357.75: 9,954.96 × 29 ÷ 31 is 9,312.7045, so a fil rounds up
-    // there and down here).
     var paid = s
     paid.txns.append(Txn(id: "axa-paid", merchant: "AXA", amount: .aed(550_00), postedAt: LocalDateTime(2026, 10, 9, 9, 0),
                          categoryID: "insurance", billID: "axa"))
@@ -91,7 +80,6 @@ struct HomeHeroTests {
     #expect(HomeEngine.tick(paid, month: Self.october, plan: 19_000_00, day: 31, days: 31) == 19_000_00)
   }
 
-  /// With no bills the tick is the plan × day ÷ days; savings bills never move it.
   @Test func withoutBillsTheTickIsTheShareOfTheMonth() {
     var s = MayaLedger.state
     s.txns.removeAll { $0.billID != nil }
@@ -104,10 +92,7 @@ struct HomeHeroTests {
     #expect(savingsBills.paid == 0 && savingsBills.toCome == 0)
   }
 
-  /// Past the tick and under the plan: "Ahead of pace", the sand wash, money still left.
   @Test func pastTheTickIsAheadOfPace() {
-    // Travel to 0 and Shopping to 100: the plan is 15,000 and the tick 8,005.89 + 5,954.96 ×
-    // 10 ÷ 31 = 9,926.84.
     let h = hero(Self.maya(budgets: ["travel": 0, "shopping": 100]))
     #expect(h.plan == .aed(15_000_00))
     #expect(h.tick == .aed(9_926_84))
@@ -117,8 +102,6 @@ struct HomeHeroTests {
     #expect(h.wash == .sand)
   }
 
-  /// The `home.overPace` screen's plan: 12,000 with needs and wants each still under, so the
-  /// widget stays blue while the hero is well past the tick (amber from 74.7% to 92.6%).
   @Test func aTighterPlanIsAheadOfPaceWithMoneyLeft() {
     let s = Self.maya(budgets: [
       "groceries": 0, "transport": 50, "travel": 0, "shopping": 0, "entertainment": 0, "dining": 2_350,
@@ -136,7 +119,6 @@ struct HomeHeroTests {
     #expect(pace.rows.map { MoneyFormat.string($0.left.minor, style: .rounded) } == ["259", "1,452", "0"])
   }
 
-  /// Past the plan: "Over by AED …" in one run (it hides like any amount), no "left", rose.
   @Test func pastThePlanIsOverBy() {
     let h = hero(Self.maya(budgets: ["travel": 0, "rent": 0]))
     #expect(h.plan == .aed(9_000_00))
@@ -146,12 +128,9 @@ struct HomeHeroTests {
     #expect(h.word.spoken(hidden: true) == "Over by Amount hidden")
     #expect(h.fact == nil)
     #expect(h.wash == .rose)
-    // The bills are more than the plan: the rest of the plan is nothing, so the tick is the
-    // bills paid.
     #expect(h.tick == .aed(8_005_89))
   }
 
-  /// S8: no needs or wants budget: the spending still counts, nothing to measure it against.
   @Test func noPlanYet() {
     let s = Self.maya { s in
       for key in s.plan.budgets.keys { s.plan.budgets[key] = .aed(0) }
@@ -166,7 +145,6 @@ struct HomeHeroTests {
     #expect(h.tiles[2].value == .aed(5_000_00))
   }
 
-  /// S9: the first import runs and nothing has arrived this month: zero that fills in.
   @Test func theFirstImportFillsInFromZero() {
     let s = Self.maya { s in
       s.mailbox.status = .importing
@@ -178,7 +156,6 @@ struct HomeHeroTests {
     #expect(h.spent == .aed(0))
     #expect(h.tiles.map(\.label) == ["Needs", "Wants", "Savings"])
     #expect(h.tiles.allSatisfy { $0.value.minor == 0 }, "\(h.tiles)")
-    // Once a transaction is in, the month shows (the import may still be running).
     var arrived = s
     arrived.txns.append(MayaLedger.state.txns[0])
     #expect(hero(arrived).state == .live)
@@ -219,7 +196,6 @@ struct HomeHeroTests {
     #expect(hero(MayaLedger.state).tiles.allSatisfy { $0.style == .exact })
   }
 
-  /// Savings part way shows only what was saved, so the tile never truncates.
   @Test func savingsPartWayShowsWhatWasSaved() {
     let s = Self.maya { s in s.txns.removeAll { $0.id == "standing-order" } }
     let tile = hero(s).tiles[2]
@@ -227,7 +203,6 @@ struct HomeHeroTests {
   }
 }
 
-/// The bell's list (spec 10 §4): what needs a look, newest first, from the ledger.
 @Suite("Notifications")
 struct NotificationsEngineTests {
   let now = MayaLedger.now
@@ -256,8 +231,6 @@ struct NotificationsEngineTests {
     #expect(n.needsALook[3].line.rendered(hidden: true) == "••• from ••• · accept or check")
   }
 
-  /// Sorting everything, paying AXA, accepting du's price and dismissing the found bill leaves
-  /// nothing to look at (Home · Notifications (all clear)).
   @MainActor
   @Test func nothingNeedsYouOnceEachIsDealtWith() throws {
     let ledger = InMemoryLedger(state: Scenario.mayaCaughtUp.state)
@@ -336,7 +309,6 @@ struct NotificationsEngineTests {
   }
 }
 
-/// Widgets show whole dirhams (page 06 rule 5).
 @Suite("Home widgets")
 struct HomeWidgetEngineTests {
   let home = HomeEngine.snapshot(MayaLedger.state, now: MayaLedger.now)
@@ -388,7 +360,6 @@ struct HomeWidgetEngineTests {
     #expect(pace.rows.first { $0.bucket == .savings }?.verdict == .onTrack)
   }
 
-  /// A bucket past its plan is over budget on the widget (full rose, "x over").
   @Test func aBucketPastItsPlanIsOver() {
     var s = MayaLedger.state
     s.plan.budgets[PlanState.key("dining", MayaLedger.october)] = .aed(0)

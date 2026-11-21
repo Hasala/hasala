@@ -2,31 +2,13 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// The read-only connect screen for one provider (Paper "Setup · 2 of 4 · Connect Gmail,
-/// read-only" 6RN, "Connect email · Setup 2 of 4 · Outlook, read-only" 1MRM), in setup and
-/// in the profile: where the alerts come from and who reads them, what Hasala reads and
-/// never reads, then the provider's own sign-in ("Continue with Google", "Continue with
-/// Microsoft"; Microsoft's and Google's screens are theirs, in the system web sheet).
-///
-/// Once connected it shows the mailbox and "Continue" (`mail.continue`), never a second
-/// sign-in: setup's Back from the first scan lands here (plan B3.2 rule 2). In setup it
-/// carries the step indicator; in the profile it doesn't. A failure that has its own screen
-/// (`MailConnectCoordinator.errorScreen`) is the host's to show; the rest show here.
-///
-/// When the build holds one link and the account's is to the other provider, the sign-in
-/// asks first, in the system alert the disconnect uses: "Change your email?" ("Hasala
-/// reads your bank alerts from Outlook instead of Gmail. …", "Use Outlook").
 struct ConnectProviderView: View {
   let provider: MailProviderKind
   @Bindable var coordinator: MailConnectCoordinator
   let banks: [SupportedBank]
-  /// Review accounts: "Use sample data" (`mail.sample`) instead of mail.
   var sample: (() -> Void)?
   var onConnected: (String) -> Void
   var onChooseDifferent: () -> Void
-  /// The providers are the screen behind this one (Profile › Bank alerts › Add a mailbox):
-  /// the system Back is how to pick another, so the dock doesn't offer it again, and the
-  /// screen fits above its dock inside the profile sheet.
   var choiceIsBack: Bool
   var asksSwitch: Bool
   @State private var asking: MailProviderKind?
@@ -99,7 +81,6 @@ struct ConnectProviderView: View {
             .accessibilityIdentifier("mail.status")
         }
       }
-      // Paper puts the strip 20 under the question; the template leaves 24.
       .padding(.top, -4)
       .hAnimation(.stateSwap, value: connected?.id)
       .hAnimation(.rise, value: coordinator.inlineMessage)
@@ -108,10 +89,6 @@ struct ConnectProviderView: View {
         BusyButton(title: "Continue", busy: false, identifier: "mail.continue") { onConnected(connected.id) }
           .dockPill()
       } else if let sample {
-        // A review account: the sample month is the one pill, as the foundation drew it,
-        // and the provider's sign-in is the text button under it. Nothing else to choose,
-        // so no footer link: the dock stays as tall as Paper's (a pill and a 44 line), and
-        // the caption keeps clear of it.
         BusyButton(title: "Use sample data", busy: false, identifier: "mail.sample", action: sample)
           .dockPill()
         Button(action: connect) {
@@ -130,11 +107,9 @@ struct ConnectProviderView: View {
         footerLink
       }
     }
-    // At large text sizes the screen scrolls under its dock: say so once.
     .scrollIndicatorsFlash(onAppear: true)
     .providerConnectQuestions(coordinator, provider: provider, request: $asking, run: run)
     .mailSwitchQuestion(coordinator, asks: asksSwitch)
-    // Setup moves on to the first scan; the profile's moment is Bank alerts' new row.
     .hHaptic(.success, trigger: connectedOutcome) { _, new in isSetup && new != nil }
   }
 
@@ -152,7 +127,6 @@ struct ConnectProviderView: View {
   private var subtitle: String {
     if let id = signInAgainID, coordinator.connectedMailbox(provider) == nil {
       let row = coordinator.mailbox.mailboxes.first { $0.id == id }
-      // A sign-in that the provider didn't end (live: no Outlook mailbox on that account).
       if let note = row?.note { return note }
       let address = row?.address ?? "this mailbox"
       return "\(provider.company) ended Hasala's access to \(address). Sign in again to catch up."
@@ -160,15 +134,6 @@ struct ConnectProviderView: View {
     return "Your iPhone fetches your bank alerts from \(provider.appName)."
   }
 
-  /// "Not your email? Choose a different email" (Gmail, 6RN); Outlook says first that a work
-  /// account may need its admin (1MRM). With one provider to offer there is nothing else to
-  /// choose, so it asks which email the person uses instead (plan B4.6 rule 2). A new
-  /// sign-in to one mailbox has nothing to choose, and with the providers behind this
-  /// screen Back chooses (Outlook keeps its line about accounts).
-  ///
-  /// The live Microsoft app takes personal accounts only, in every build, so the Release
-  /// surface says so (main's footnote) where Paper draws the work account's line; Debug
-  /// keeps Paper's.
   @ViewBuilder private var footerLink: some View {
     if signInAgainID != nil {
       EmptyView()
@@ -193,7 +158,6 @@ struct ConnectProviderView: View {
     }
   }
 
-  /// Outlook's line about which Microsoft accounts work.
   static var outlookAccountLine: String {
     BuildSurface.showsUnfinished
       ? "Work or school account? Your organisation may need to approve Hasala."
@@ -211,8 +175,6 @@ struct ConnectProviderView: View {
     }
   }
 
-  /// Amber for what fixes itself or waits on the person elsewhere, red for a failure, blue
-  /// for a mailbox already read here.
   static func tone(_ failure: MailConnectFailure) -> InlineStatus.Tone {
     switch failure {
     case .alreadyConnected: .accent

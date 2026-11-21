@@ -4,8 +4,6 @@ import Testing
 
 @testable import HasalaDesign
 
-/// Every icon parses and stays inside its grid (spec 01 page 05: "Keep the drawing inside about
-/// 3 to 21"), and the parser reads the path grammar Paper exports.
 @Suite("Icons")
 struct IconTests {
   @Test(arguments: HIcon.allCases)
@@ -16,7 +14,6 @@ struct IconTests {
       #expect(!path.elements.isEmpty, "\(icon): \(element.d)")
       let b = path.bounds
       let box = icon.viewBox
-      // Line icons sit in the 24 grid with a margin; the two marks fill their own boxes.
       let margin: CGFloat = icon.role == .filled ? 0 : 1.5
       #expect(b.minX >= margin - 0.01 && b.minY >= margin - 0.01, "\(icon) starts at \(b.origin)")
       #expect(b.maxX <= box - margin + 0.01 && b.maxY <= box - margin + 0.01, "\(icon) ends at \(b.maxX), \(b.maxY)")
@@ -54,8 +51,6 @@ struct IconTests {
     #expect(HIcon.microsoft.viewBox == 23)
   }
 
-  // MARK: Parser
-
   @Test func absoluteAndRelativeLines() throws {
     let p = try SVGPath(parsing: "M4 10.4 12 4l8 6.4V19H4z")
     #expect(p.elements == [
@@ -65,7 +60,6 @@ struct IconTests {
   }
 
   @Test func compactNumbers() throws {
-    // "1.5.5" is 1.5 then .5; "-.5" is a number; a sign starts the next number.
     let p = try SVGPath(parsing: "M1.5.5l-.5-1.5h2e1")
     #expect(p.elements == [.move(CGPoint(x: 1.5, y: 0.5)), .line(CGPoint(x: 1, y: -1)), .line(CGPoint(x: 21, y: -1))])
   }
@@ -85,7 +79,7 @@ struct IconTests {
       return
     }
     #expect(c2 == CGPoint(x: 1, y: 2))
-    #expect(c1b == CGPoint(x: 3, y: 2))  // the reflection of (1, 2) about (2, 2)
+    #expect(c1b == CGPoint(x: 3, y: 2))
     #expect(end == CGPoint(x: 4, y: 4))
   }
 
@@ -101,13 +95,11 @@ struct IconTests {
     #expect(abs(c2.x - 4) < 1e-9 && abs(c2.y - 2) < 1e-9)
   }
 
-  /// A circle written as two arcs comes back as a circle: its box is the circle's.
   @Test func arcsFollowTheEllipse() throws {
     let p = try SVGPath(parsing: circlePath(12, 12, 8.5))
     let b = p.bounds
     #expect(abs(b.minX - 3.5) < 0.05 && abs(b.maxX - 20.5) < 0.05)
     #expect(abs(b.minY - 3.5) < 0.05 && abs(b.maxY - 20.5) < 0.05)
-    // Flags written without separators ("0 011.5 1").
     let compact = try SVGPath(parsing: "M10 10a2 2 0 011.5 1")
     guard case .curve(let end, _, _) = compact.elements.last else {
       Issue.record("expected the arc as curves")

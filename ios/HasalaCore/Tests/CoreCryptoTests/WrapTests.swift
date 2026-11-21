@@ -1,4 +1,3 @@
-// Spec 01 §15.3's wrap cases W01-W13 (§5.4's order and error policy).
 import CorePrimitives
 import CoreWire
 import Foundation
@@ -88,7 +87,6 @@ struct WrapTests {
     #expect(throws: UnwrapError.unwrapFailed) { try Wrap.openRecovery(w + [0], entropy: f.entropy, userID: testUser) }
     let p = try f.prfWrap()
     #expect(throws: UnwrapError.unwrapFailed) { try Wrap.openRecovery(p, entropy: f.entropy, userID: testUser) }
-    // A wrap whose sealed body has version 0x02.
     let salt = Data(repeating: 5, count: 32)
     let nonce = Data(repeating: 6, count: 12)
     let header = Data([1, 1]) + salt + nonce
@@ -137,7 +135,6 @@ struct WrapTests {
   @Test("W13 a box that opens to another phrase: phraseBoxMismatch")
   func w13() throws {
     let rk = f.published.recoveryPublicKey
-    // Built for another phrase, with this account's recovery key in its AD.
     let forged = try PhraseBox.seal(
       entropy: Data(repeating: 0x80, count: 16), amk: f.body.amk, userID: testUser, recoveryPublicKey: rk,
       nonce: Data(repeating: 4, count: 12))

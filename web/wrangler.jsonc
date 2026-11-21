@@ -1,38 +1,15 @@
-// hasala.app: the marketing site, served as Workers Static Assets by the
-// existing "hasala-aasa" Worker (which already served the AASA file). There
-// is no Worker script: dist/ is the whole site, including
-// /.well-known/apple-app-site-association, _headers and _redirects.
-//
-// Cloudflare Workers Builds (the Worker's Git integration) deploys it: every
-// pull request branch gets a preview URL, and a push to main deploys
-// hasala.app. By hand, `bun run deploy` from this directory builds (with the
-// dist checks) and runs the pinned wrangler (package.json), with
-// CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID from the environment; see
-// CLAUDE.md, "Website".
 {
   "name": "hasala-aasa",
   "compatibility_date": "2026-10-01",
   "assets": {
     "directory": "./dist",
-    // dist/404.html for anything that is not a file.
     "not_found_handling": "404-page",
-    // privacy.html is served at /privacy; /privacy/ redirects to /privacy.
     "html_handling": "drop-trailing-slash"
   },
-  // A zone route, not a custom domain: the deploy token cannot manage custom
-  // domains.
   "routes": [{ "pattern": "hasala.app/*", "zone_name": "hasala.app" }],
-  // No hasala-aasa.<account>.workers.dev copy of the live site.
   "workers_dev": false,
-  // On: a preview URL per non-main branch (Workers Builds), for checking a
-  // pull request before it is merged. Kept behind Cloudflare Access.
   "preview_urls": true,
-  // Required by `wrangler preview`, which Workers Builds runs for those
-  // branches; without it every preview build fails. Empty: assets and
-  // compatibility settings stay at the top level.
   "previews": {},
-  // Off: request logs would record /i/<code> paths (invite codes must not be logged).
   "observability": { "enabled": false },
-  // No usage telemetry from wrangler itself.
   "send_metrics": false
 }

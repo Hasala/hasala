@@ -1,6 +1,3 @@
-// 03c §6: `project_defined` and `goal_defined`, versioned entities folded
-// through the reference causal engine (whole-record replacement, forks by
-// `authored_at` then writer). The decoders here check the payload grammar only.
 import CoreJSON
 import CoreWire
 

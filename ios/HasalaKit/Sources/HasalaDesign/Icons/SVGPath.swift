@@ -1,13 +1,7 @@
 import CoreGraphics
 import SwiftUI
 
-/// SVG path data, parsed once into absolute commands (spec 01 appendix B). Supports M, L, H, V,
-/// C, S, Q, T, A and Z in both cases, the compact number syntax Paper exports ("1.5.5", "-.4",
-/// "a2 2 0 0 1-2 2", arc flags without separators), and implicit repeats. Geometry is in the
-/// path's own units (a 24 × 24 box for icons); `path(in:viewBox:)` scales it into a rect.
 public struct SVGPath: Sendable, Hashable {
-  /// One drawing step, in absolute coordinates. Smooth and quadratic curves are resolved to
-  /// cubics, and arcs to cubic segments, so drawing needs only three operations.
   public enum Element: Sendable, Hashable {
     case move(CGPoint)
     case line(CGPoint)
@@ -25,14 +19,11 @@ public struct SVGPath: Sendable, Hashable {
 
   public init(elements: [Element]) { self.elements = elements }
 
-  /// Parses `d`. Throws on anything outside the grammar above.
   public init(parsing d: String) throws {
     var parser = Parser(Array(d.utf8))
     elements = try parser.parse()
   }
 
-  /// The axis-aligned box around every point the path passes through (end points and curve
-  /// extremes are inside the box of their controls, which is what icon bounds need).
   public var bounds: CGRect {
     var minX = CGFloat.infinity, minY = CGFloat.infinity, maxX = -CGFloat.infinity, maxY = -CGFloat.infinity
     func take(_ p: CGPoint) {
@@ -56,7 +47,6 @@ public struct SVGPath: Sendable, Hashable {
     return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
   }
 
-  /// The path scaled from `viewBox` into `rect`, keeping its aspect ratio and centring it.
   public func path(in rect: CGRect, viewBox: CGRect = CGRect(x: 0, y: 0, width: 24, height: 24)) -> Path {
     let scale = min(rect.width / viewBox.width, rect.height / viewBox.height)
     let dx = rect.minX + (rect.width - viewBox.width * scale) / 2 - viewBox.minX * scale
@@ -87,8 +77,6 @@ private struct Parser {
   var elements: [SVGPath.Element] = []
   var current = CGPoint.zero
   var subpathStart = CGPoint.zero
-  /// The second control point of the last cubic, or the control of the last quadratic, for
-  /// the smooth commands. Nil after any other command.
   var lastCubicControl: CGPoint?
   var lastQuadControl: CGPoint?
   var hasCurrent = false
@@ -109,7 +97,6 @@ private struct Parser {
       }
       guard let c = command else { break }
       try run(c)
-      // After a moveto, implicit repeats are linetos (SVG 1.1 §8.3.2).
       if c == UInt8(ascii: "M") { command = UInt8(ascii: "L") }
       if c == UInt8(ascii: "m") { command = UInt8(ascii: "l") }
       if c == UInt8(ascii: "Z") || c == UInt8(ascii: "z") { command = nil }
@@ -120,7 +107,7 @@ private struct Parser {
   mutating func run(_ c: UInt8) throws {
     let relative = c >= UInt8(ascii: "a")
     let base = relative ? current : .zero
-    switch c | 0x20 {  // lower-case
+    switch c | 0x20 {
     case UInt8(ascii: "m"):
       let p = try point(base)
       elements.append(.move(p))
@@ -210,7 +197,6 @@ private struct Parser {
     lastCubicControl = nil
   }
 
-  /// SVG 1.1 appendix F.6: endpoint to centre parameterisation, then one cubic per ≤ 90°.
   mutating func appendArc(rx rxIn: Double, ry ryIn: Double, rotation: Double, large: Bool, sweep: Bool,
                           to p: CGPoint)
   {
@@ -256,7 +242,6 @@ private struct Parser {
     let step = delta / Double(segments)
     let k = 4.0 / 3.0 * tan(step / 4)
     func onEllipse(_ t: Double) -> (CGPoint, CGPoint) {
-      // The point, and the derivative direction (unscaled by k).
       let x = rx * cos(t), y = ry * sin(t)
       let dx = -rx * sin(t), dy = ry * cos(t)
       let point = CGPoint(x: cosPhi * x - sinPhi * y + cx, y: sinPhi * x + cosPhi * y + cy)
@@ -268,7 +253,6 @@ private struct Parser {
     for s in 0..<segments {
       let t2 = t + step
       let (onArc, endTangent) = onEllipse(t2)
-      // The last segment ends exactly on the given point, whatever rounding did.
       let end = s == segments - 1 ? p : onArc
       let c1 = CGPoint(x: start.x + k * startTangent.x, y: start.y + k * startTangent.y)
       let c2 = CGPoint(x: end.x - k * endTangent.x, y: end.y - k * endTangent.y)
@@ -278,8 +262,6 @@ private struct Parser {
       startTangent = endTangent
     }
   }
-
-  // MARK: Lexing
 
   static func isCommand(_ b: UInt8) -> Bool {
     switch b {
@@ -310,7 +292,6 @@ private struct Parser {
     return CGPoint(x: base.x + x, y: base.y + y)
   }
 
-  /// An arc flag: a single "0" or "1", with or without a separator after it.
   mutating func flag() throws -> Bool {
     skipSeparators()
     guard i < bytes.count else { throw SVGPath.ParseError.missingNumber(at: i) }
@@ -321,8 +302,6 @@ private struct Parser {
     }
   }
 
-  /// A number in SVG's grammar: sign, digits, one point, an exponent. A second point or a sign
-  /// starts the next number ("1.5.5" is 1.5 then .5; "2-3" is 2 then -3).
   mutating func number() throws -> Double {
     skipSeparators()
     let start = i

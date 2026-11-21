@@ -3,19 +3,9 @@ import HasalaModels
 import SwiftUI
 
 extension EnvironmentValues {
-  /// Everything the account holds as a CSV, for "Keep a copy first" on Delete account; the
-  /// host that has the ledger provides it. Without it the card isn't shown (no control that
-  /// leads nowhere).
   @Entry var accountExport: CSVFile? = nil
 }
 
-/// Profile › Delete your account and Sign-in & security › Delete your account (Paper P2.5
-/// IAM "updated copy"), pushed inside the profile's large sheet; reachable from the profile
-/// itself as App Review asks (Guideline 5.1.1(v)). What deleting does, a copy to keep first,
-/// then "Delete my account": the alert asks once (page 14: deleting touches access), then
-/// "Confirm it's you" (Face ID, or the password and this iPhone's key) runs
-/// `AccountService.perform(.deleteAccount, password:)`. Once it succeeds the session signs
-/// out and the account gate shows the welcome screens.
 struct DeleteAccountView: View {
   @Environment(\.hBiometry) private var biometry
   @State private var model: SecurityModel
@@ -29,7 +19,6 @@ struct DeleteAccountView: View {
     _model = State(initialValue: SecurityModel(session: session))
   }
 
-  /// How this account confirms: the state once read, else how it signed in.
   private var confirmsWithFaceID: Bool {
     model.state?.hasPasskey ?? (session.account.profile?.method != .password)
   }
@@ -100,8 +89,6 @@ struct DeleteAccountView: View {
     }
   }
 
-  /// The step-up depends on whether the account has a passkey, which `load()` reads; a
-  /// first load that failed (offline) is tried again here.
   private func delete() async {
     if model.state == nil { await model.load() }
     guard model.state != nil else { return }
@@ -153,8 +140,6 @@ struct DeleteAccountView: View {
     .accessibilityElement(children: .combine)
   }
 
-  /// "Keep a copy first" (Paper "Card · Keep a copy first"): the info surface, radius 20,
-  /// and the on-grouped export button.
   private func keepACopy(_ file: CSVFile) -> some View {
     VStack(alignment: .leading, spacing: 14) {
       VStack(alignment: .leading, spacing: 4) {

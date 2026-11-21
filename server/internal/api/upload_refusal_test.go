@@ -9,10 +9,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/blob/blobtest"
 )
 
-// The upload half of security finding F1: a blob that does not look like a
-// sealed frame v3 is refused with 400 plaintext_refused naming the failed
-// check, before anything is stored (spec 02 §11.1 step 5, spec 01 §8).
-
 func errorDetail(t *testing.T, body []byte) (code, detail string) {
 	t.Helper()
 	var out struct {
@@ -36,15 +32,13 @@ func TestUploadRefusesEveryFrameThePredicateRefuses(t *testing.T) {
 	tried := 0
 	for _, c := range blobtest.LooksSealedCases() {
 		if !blob.IsBucket(len(c.Frame)) {
-			continue // a size the bucket check answers first, as bad_bucket
+			continue
 		}
 		b, _ := wireBlob(1, blob.ZeroHash, c.Frame)
 		w := h.req("POST", "/api/v1/sync", tok, UploadRequest{WriterID: "ios-00000000-0000-4000-8000-00000000000a", Blobs: []UploadBlob{b}})
 		wantStatus(t, w, http.StatusBadRequest)
 		code, detail := errorDetail(t, w.Body.Bytes())
 		if c.Want == "" {
-			// The predicate accepts it; it is then refused for the position
-			// its (random) AAD does not name — never stored either way.
 			if code != "aad_mismatch" {
 				t.Fatalf("%s: answered %s (%s), want aad_mismatch", c.Name, code, detail)
 			}
@@ -64,8 +58,6 @@ func TestUploadRefusesEveryFrameThePredicateRefuses(t *testing.T) {
 }
 
 func TestUploadRefusesALedgerdV1PlaintextFrame(t *testing.T) {
-	// The frame ledgerd's clients upload today: honest position, honest chain
-	// arithmetic, readable by anyone holding the database.
 	h := newHarness(t)
 	u := h.user("u")
 	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
@@ -93,7 +85,7 @@ func TestARefusedFrameRefusesTheWholeBatch(t *testing.T) {
 	good, prev := uploadChain(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, 2)
 	f := blobtest.Honest(1024, 50, 1)
 	for i := 57; i < 69; i++ {
-		f[i] = 0 // zero nonce (AT-P2)
+		f[i] = 0
 	}
 	bad, _ := wireBlob(3, prev, f)
 	w := h.req("POST", "/api/v1/sync", h.session(u), UploadRequest{
@@ -112,7 +104,6 @@ func TestUploadRefusesAFrameSealedForAnotherAccount(t *testing.T) {
 	h := newHarness(t)
 	a, b := h.user("a"), h.user("b")
 	h.writer(a, "ios-00000000-0000-4000-8000-00000000000a")
-	// Sealed honestly for b's dev-a at counter 1 and replayed into a's log.
 	stolen, _ := sealUpload(t, b, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, `{"op":1}`)
 	w := h.req("POST", "/api/v1/sync", h.session(a), UploadRequest{WriterID: "ios-00000000-0000-4000-8000-00000000000a", Blobs: []UploadBlob{stolen}})
 	wantStatus(t, w, http.StatusBadRequest)

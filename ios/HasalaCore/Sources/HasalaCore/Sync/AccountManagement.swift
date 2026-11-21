@@ -1,15 +1,3 @@
-// "Remove this iPhone" and "Delete account" (spec 04 §4.7 rows 2 and 4,
-// §6.2 C6 for the own writer; spec 01 §10.6, §10.12; `02` §9.5, §15.2).
-//
-//   remove:  flush and pull to head → #23 challenge → RevocationMessage signed by
-//            this iPhone's DWK, pinning its own VERIFIED head (final_counter,
-//            final_head; (0, 0^32) for an empty chain) → step-up writer.revoke →
-//            #25; 409 head_moved → pull and re-sign once → local wipe
-//   delete:  step-up account.delete → DeletionMessage(step_up.nonce, user_id)
-//            signed by the DWK → #41 → local wipe
-//
-// The holder's Gmail stop and token revoke come first (§4.7); they are the
-// mailbox lane's (TODO(WS-12)).
 import CoreAuth
 import CoreCrypto
 import CorePrimitives
@@ -18,9 +6,6 @@ import CoreWire
 import Foundation
 
 public enum AccountManagement {
-  /// `engine` is this account's one `SyncEngine`: the catch-up runs through
-  /// it, so it never overlaps another run's flush (a second, concurrent
-  /// flush could seal the same pending op twice).
   public static func removeThisIPhone(
     _ env: AccountEnvironment, engine: SyncEngine, factor: StepUpHelper.Factor, binding: AccountBinding,
     losingUnsent: Bool = false, beforeWipe: @Sendable () async -> Void = {}
@@ -111,8 +96,6 @@ public enum AccountManagement {
     }
   }
 
-  /// Uploads what is queued and pulls to the head, so the pinned head is
-  /// current: one engine run (coalesced with any run in flight).
   static func catchUp(_ engine: SyncEngine, losingUnsent: Bool = false) async throws(CeremonyError) {
     if let stop = await engine.run(.refresh).stop {
       throw .badResponse("sync before removal: \(stop)")

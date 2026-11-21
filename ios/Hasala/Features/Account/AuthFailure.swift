@@ -1,20 +1,14 @@
 import Foundation
 
-/// The failure taxonomy (spec 04 §6.1.5), one copy block each. Every case is content-free:
-/// it names what went wrong, never which part of a credential.
 enum AuthFailure: Error, Equatable, Sendable {
-  /// The user closed a system sheet: not an error, the screen stays.
   case cancelled
-  /// Passkey creation unavailable (no passcode, iCloud Keychain off).
   case unsupported
   case noCredential
   case notInvited
   case badName
   case badEmail
-  /// `403 passkey_rejected` on a device with no local account: the beta was reset.
   case orphanedPasskey
   case wrongCredentials
-  /// `recovery_refused` / `reset_refused`: start the ceremony again.
   case refused
   case emailInUse
   case codeWrong(triesLeft: Int)
@@ -22,44 +16,27 @@ enum AuthFailure: Error, Equatable, Sendable {
   case rateLimited
   case lastAuthenticator
   case frozen
-  /// The operator froze the account (`frozen_by`, spec 04 §6.11): only they unfreeze it.
   case frozenByOperator
-  /// The server ended this session (`401`; an operator freeze revokes every session):
-  /// this iPhone is signed out, and signs in again.
   case sessionEnded
   case stepUpFailed
-  /// "View your 12 words" with a passkey that gave no PRF output, so it can't open them.
   case passkeyCantShowPhrase
   case passkeyCantShowUnseenPhrase
   case wordsBeforeRemovingPasskey
   case wordsInSignup
   case noDeviceKey
   case offline
-  /// The local RK check failed: real words, another account (S-15).
   case phraseMismatch
-  /// `recover/begin` answered 404 (S-44).
   case noAccountForPhrase
-  /// The phrase did not validate locally (S-16), with its message.
   case badPhrase(String)
-  /// The signup ceremony's 30 minutes ran out: start again with the same invite.
   case signupExpired
   case signupExpiredPhrase
-  /// No answer from the approving iPhone before the request expired.
   case approvalExpired
-  /// The device can't run Hasala: no passcode (S-24).
   case noPasscode
-  /// The reset code doesn't match the pending request: nothing was approved.
   case codeMismatch
-  /// A ceremony this build cannot run yet (the live service binds it later).
   case notInThisBuild
-  /// The server's keys or address differ from this iPhone's after setup (E-04), or a
-  /// server value failed the client's own check: stop, never retry blind.
   case integrity
   case updateRequired
 
-  /// The copy shown for this failure; nil when nothing is shown. Two short sentences: what
-  /// happened, then what to do (spec 01 §7.4; the codes and sign-in copy verbatim from spec
-  /// 07 S4, S7 and spec 08 FWD).
   var message: String? {
     switch self {
     case .cancelled: nil

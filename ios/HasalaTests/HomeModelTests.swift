@@ -5,7 +5,6 @@ import Testing
 
 @testable import Hasala
 
-/// Home's view model over the Maya ledger: the board, the bell and where each row goes.
 @MainActor
 @Suite("Home model")
 struct HomeModelTests {
@@ -37,8 +36,6 @@ struct HomeModelTests {
     #expect(app.router.projects.isEmpty)
   }
 
-  /// The snapshot is computed once per ledger change (`AppModel`'s memo): reading it again
-  /// returns the same value without a new engine pass, and a change gives a new one.
   @Test func theSnapshotIsMemoisedByRevision() {
     let store = InMemoryLedger()
     let app = AppModel(store: store)
@@ -149,7 +146,6 @@ struct HomeModelTests {
     #expect(after.bellCount == 3)
   }
 
-  /// Mail's offer is the bell's last row (plan B4.3); Home's board stays Maya's.
   @Test func mailNeedsAreTheBellsLastRow() {
     let mailbox = MockMailbox()
     let app = AppModel(store: InMemoryLedger(), mailbox: mailbox)
@@ -161,8 +157,6 @@ struct HomeModelTests {
     #expect(row?.id == "mail.connect")
     #expect(row?.title == "Connect your email")
     #expect(row?.destination == .bankAlerts)
-    // Main's `homeOffersConnectMailboxWhenTheLaneSaysSo`: Outlook's sign-in again is the
-    // Outlook row; a working Outlook mailbox needs no row (v2 has no `.change` to offer).
     let outlook = MockMailbox.needingSignIn(MockMailbox.outlook)
     #expect(HomeViewModel.mailItem(.signInAgain(mailboxID: "outlook-1", provider: .outlook), mailboxes: [outlook])?.title
       == "Sign in again to maya.k@example.com")
@@ -179,18 +173,15 @@ struct HomeModelTests {
     #expect(row?.title == "Sign in again to maya.k@example.com")
     #expect(row?.line.rendered(hidden: false) == "Hasala can't read this mailbox right now.")
     #expect(HomeViewModel.mailItem(nil, mailboxes: mailboxes) == nil)
-    // Without the row (a mailbox the lane no longer lists), the provider's name stands in.
     #expect(HomeViewModel.mailItem(.signInAgain(mailboxID: "gmail", provider: .gmail), mailboxes: [])?.title
       == "Sign in again to Gmail")
   }
 
-  /// Each row closes the bell's sheet and opens its screen (spec 10 §4.4, plan P5 work 4).
   @Test func eachRowOpensItsScreen() {
     let app = AppModel(store: InMemoryLedger())
     let home = HomeViewModel(app: app)
     let router = app.router
 
-    // To sort: the Review tab, and the deck once the sheet has gone.
     router.open(.notifications)
     let after = home.openNotification(.review(.allTime))
     #expect(router.sheet == nil)
@@ -207,13 +198,11 @@ struct HomeModelTests {
     app.cover = nil
     app.period = .month(MayaLedger.october)
 
-    // A late bill: Home, pushed to the bill.
     router.tab = .plan
     router.open(.notifications)
     #expect(home.openNotification(.bill("axa")) == nil)
     #expect(router.sheet == nil && router.tab == .home && router.home == [.bill("axa")])
 
-    // A found bill: Bills.
     router.open(.notifications)
     #expect(home.openNotification(.bills) == nil)
     #expect(router.home == [.bills])
@@ -227,7 +216,6 @@ struct HomeModelTests {
     router.sheet = nil
     router.sheetDismissed()
 
-    // Mail: the bell's sheet closes, then Profile opens with Bank alerts pushed inside it.
     router.open(.notifications)
     #expect(home.openNotification(.bankAlerts) == nil)
     #expect(router.sheet == nil)
@@ -289,7 +277,6 @@ struct HomeModelTests {
     }
   }
 
-  /// "Earlier" is the Debug Maya mock's (plan B7.6 decision 12): three rows read and done.
   @Test func earlierComesFromTheDebugFeed() {
     let home = HomeViewModel(app: AppModel(store: InMemoryLedger()))
     #expect(home.bell.earlier.map(\.title) == [
@@ -300,7 +287,6 @@ struct HomeModelTests {
     #expect(home.bell.earlier[1].status == .success)
   }
 
-  /// Hiding amounts reaches the bell's rows (three dots, page 06 §6.3).
   @Test func hiddenAmountsReachTheBell() {
     let app = AppModel(store: InMemoryLedger(), amountsHidden: true)
     let home = HomeViewModel(app: app)
@@ -374,9 +360,6 @@ struct HomeModelTests {
     #expect(HeroMonthBar.overLine([under, unplanned], hidden: false) == nil)
   }
 
-  /// The hero's first reveal keeps the owner's sequence (motion policy): the tick starts as
-  /// the 300 ms fill lands, the verdict as the 120 ms tick lands, and the 150 ms verdict is in
-  /// by 570 ms. The steps start together on these delays, never from completion handlers.
   @Test func theRevealKeepsTheOwnersSequence() {
     let ms = { (s: Double) in Int((s * 1000).rounded()) }
     #expect(ms(HeroReveal.schedule.tick) == 300)

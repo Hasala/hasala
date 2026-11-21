@@ -1,15 +1,6 @@
-/*
- * Hasala web: tokens and shared pieces.
- * Colours, radii and figures are the app's v0.5 design tokens from the Paper
- * design file; the web adds a display type scale, section spacing, containers
- * and breakpoints ("13 · Web tokens"). Light only: the privacy section already
- * runs on navy, and a dark site is not drawn yet.
- */
-
 :root {
   color-scheme: light;
 
-  /* Palette */
   --white: #ffffff;
   --ink-950: #111113;
   --ink-900: #202023;
@@ -64,7 +55,6 @@
   --other-end: #e2e2e6;
   --other-ink: #3a3a40;
 
-  /* Roles */
   --text-primary: var(--ink-900);
   --text-secondary: var(--neutral-600);
   --text-body: var(--neutral-700);
@@ -82,7 +72,6 @@
   --pace-over: #c77700;
   --money-in: var(--green-700);
 
-  /* Liquid Glass, navigation only */
   --glass-frost: rgb(255 255 255 / 58%);
   --glass-frost-strong: rgb(255 255 255 / 78%);
   --glass-sheen: rgb(255 255 255 / 24%);
@@ -96,61 +85,42 @@
   --glass-outline: rgb(0 0 0 / 8%);
   --glass-selected: rgb(120 120 128 / 16%);
 
-  /* Gradients drawn in oklab, as in Paper */
   --wash-hero: linear-gradient(in oklab 180deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.8% -0.002 -0.024) 38%, oklab(97.3% 0.0002 -0.008) 72%, oklab(100% 0 0) 100%);
   --wash-sky: linear-gradient(in oklab 160deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.7% -0.004 -0.025) 48%, oklab(96% 0.002 -0.019) 100%);
   --wash-peach: linear-gradient(in oklab 170deg, oklab(96.2% 0.008 0.03) 0%, oklab(94.7% 0.017 0.027) 55%, oklab(91.3% 0.017 0.056) 100%);
   --wash-navy: linear-gradient(in oklab 180deg, oklab(28.7% -0.007 -0.095) 0%, oklab(25.1% -0.005 -0.081) 60%, oklab(23% -0.004 -0.069) 100%);
   --wash-pace: linear-gradient(in oklab 160deg, oklab(55.6% -0.01 -0.217) 0%, oklab(48% -0.01 -0.211) 100%);
   --wash-hero-m: linear-gradient(in oklab 180deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.8% -0.002 -0.024) 45%, oklab(97.3% 0.0002 -0.008) 80%, oklab(100% 0 0) 100%);
-  --wash-soft: linear-gradient(in oklab 180deg, oklab(94.8% -0.002 -0.024) 0%, oklab(97.3% 0.0002 -0.008) 55%, oklab(100% 0 0) 100%); /* 404 */
+  --wash-soft: linear-gradient(in oklab 180deg, oklab(94.8% -0.002 -0.024) 0%, oklab(97.3% 0.0002 -0.008) 55%, oklab(100% 0 0) 100%);
   --glow-blue: radial-gradient(circle farthest-corner at 50% 50% in oklab, oklab(62.2% -0.006 -0.203 / 35%) 0%, oklab(62.2% -0.006 -0.203 / 0%) 70%);
   --coin: linear-gradient(in oklab 180deg, oklab(90.3% 0.003 0.096) 0%, oklab(79.4% 0.028 0.132) 100%);
 
-  /* Screen edges (iOS Safari). Safari can't show a gradient or an image
-     behind the status bar or its toolbar, only a solid colour: for the
-     status bar, the document's background colour (body's if it has one,
-     else html's), and fixed strips at the screen edges (.edge-top and
-     .edge-bottom, Base.astro). So every full-bleed block declares the solid
-     colour of its top and bottom edge as --edge-t and --edge-b (white unless
-     it says otherwise), html's background is --edge-top, and as the page
-     scrolls scripts/edges.ts sets html's background colour and the strips'
-     --edge-top and --edge-bottom from the blocks under the screen edges.
-     Body's background colour stays transparent (it paints white as an
-     image) so Safari reads html's. Without JavaScript
-     they stay at the page's top colour (html[data-edge], from Base's edge
-     prop) and white. The washes' end stops as solid colours: */
-  --edge-sky: #d3e6ff; /* --wash-hero, --wash-sky */
-  --edge-soft: #e6eeff; /* --wash-soft, licences */
+  --edge-sky: #d3e6ff;
+  --edge-soft: #e6eeff;
   --edge-legal: #eef1ff;
-  --edge-navy-top: #142659; /* --wash-navy */
+  --edge-navy-top: #142659;
   --edge-navy-bottom: #0e1a3d;
   --edge-t: #ffffff;
   --edge-b: #ffffff;
   --edge-top: var(--white);
   --edge-bottom: var(--white);
 
-  /* Type */
   --font-sans: var(--font-inter), system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  /* SF Pro Rounded figures on Apple devices, Inter tabular figures elsewhere */
   --font-figure: ui-rounded, 'SF Pro Rounded', var(--font-sans);
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
 
-  /* Display sizes interpolate between 390 and 1440 with clamp() */
   --t-display-xl: clamp(46px, 33.37px + 3.238vw, 80px);
   --t-display-l: clamp(34px, 25.83px + 2.095vw, 56px);
   --t-display-panel: clamp(34px, 27.31px + 1.714vw, 52px);
   --t-card-title: clamp(21px, 19.89px + 0.286vw, 24px);
   --t-lead: clamp(17px, 15.89px + 0.286vw, 20px);
   --t-body: clamp(16px, 15.63px + 0.095vw, 17px);
-  /* Paper "P3 Web" additions (390 -> 1440). Line height is 1em + 4px unless noted. */
-  --t-display-privacy: clamp(34px, 24.34px + 2.476vw, 60px); /* 34/38 -> 60/64 */
-  --t-display-beta: clamp(44px, 33.6px + 2.667vw, 72px); /* 44/46 -> 72/74 (+2) */
-  --t-display-invite: clamp(44px, 32.11px + 3.048vw, 76px); /* 44/46 -> 76/80 */
-  --t-display-404: clamp(44px, 36.57px + 1.905vw, 64px); /* 44/48 -> 64/68 */
-  --t-copy: clamp(16px, 15.26px + 0.19vw, 18px); /* section copy 16/24 -> 18/28 */
+  --t-display-privacy: clamp(34px, 24.34px + 2.476vw, 60px);
+  --t-display-beta: clamp(44px, 33.6px + 2.667vw, 72px);
+  --t-display-invite: clamp(44px, 32.11px + 3.048vw, 76px);
+  --t-display-404: clamp(44px, 36.57px + 1.905vw, 64px);
+  --t-copy: clamp(16px, 15.26px + 0.19vw, 18px);
 
-  /* Space and shape */
   --gutter: max(20px, env(safe-area-inset-left), env(safe-area-inset-right));
   --container: 1200px;
   --container-wide: 1296px;
@@ -158,27 +128,24 @@
   --r-field: 14px;
   --r-card: 20px;
   --r-tile: 28px;
-  --r-card-lg: 28px; /* web cards: 28 on phones, 32 from 1024 */
-  --r-panel: 36px; /* hue / pace panels: 36 on phones, 48 from 768 */
+  --r-card-lg: 28px;
+  --r-panel: 36px;
   --r-pill: 999px;
-  --pad-card: 20px; /* card padding: 20 on phones, 28 from 1024 */
+  --pad-card: 20px;
   --pad-panel-x: 20px;
   --pad-panel-y: 40px;
-  --head-gap: 32px; /* section head -> content: 32 on phones, 56 from 1024 */
+  --head-gap: 32px;
   --measure-lead: 560px;
 
-  /* Surfaces on dark / blue */
   --on-navy: rgb(255 255 255 / 74%);
   --navy-card: rgb(255 255 255 / 6%);
   --navy-card-edge: rgb(255 255 255 / 10%);
-  --slate-accent: #5b6b9a; /* hero "Automatically." */
+  --slate-accent: #5b6b9a;
 
-  /* Depth */
   --shadow-form: rgb(11 26 74 / 35%) 0 30px 60px, rgb(0 0 0 / 6%) 0 0 0 0.5px;
   --shadow-float: rgb(255 255 255 / 90%) 1px 1px 0 inset, rgb(20 38 89 / 16%) 0 18px 40px, rgb(0 0 0 / 6%) 0 0 0 0.5px;
   --shadow-chip: rgb(0 0 0 / 6%) 0 0 0 0.5px, rgb(20 38 89 / 6%) 0 4px 12px;
 
-  /* Motion ("13 · Dynamic layer") */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -208,7 +175,6 @@
   }
 }
 
-/* Base */
 *,
 *::before,
 *::after {
@@ -219,8 +185,6 @@ html {
   text-size-adjust: 100%;
   scroll-padding-top: 112px;
   overflow-x: clip;
-  /* No rubber-band past the top or bottom (Safari 16+): the page stops at
-     its edges instead of showing a gap. */
   overscroll-behavior: none;
   background: var(--edge-top);
 }
@@ -245,8 +209,6 @@ body {
   margin: 0;
   min-height: 100vh;
   overscroll-behavior: none;
-  /* White, as an image: a background colour here would be the colour
-     Safari shows behind the status bar ("Screen edges" above). */
   background: linear-gradient(var(--white), var(--white));
   color: var(--text-primary);
   font-family: var(--font-sans);
@@ -343,12 +305,6 @@ table {
 .skip-link:focus {
   top: calc(16px + env(safe-area-inset-top));
 }
-/* Fixed strips over the safe areas at the top and bottom screen edges, in
-   the edge colours, for Safari to extend behind its controls (and to fill
-   the safe areas in landscape and standalone). They have no 12px minimum:
-   in iOS 27 Safari the layout viewport ends at the status bar and above the
-   toolbar, so a 12px strip there just hid 12px of the page (a line of text
-   above the toolbar) without changing the colour behind the controls. */
 .edge-top::after,
 .edge-bottom::after {
   content: '';
@@ -369,7 +325,6 @@ table {
   background: var(--edge-bottom);
 }
 
-/* Type */
 .overline {
   display: block;
   color: var(--accent);
@@ -417,25 +372,10 @@ table {
   font-family: var(--font-figure);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  /* body has overflow-wrap: anywhere; a number must never split mid-digits. */
   overflow-wrap: normal;
   white-space: nowrap;
 }
 
-/* Fit figures: a big money line (unit + number) that stays on ONE line and
-   shrinks with its card instead of wrapping or overflowing. Pure CSS:
-   - put .fig-box on the card (or any block whose width does not depend on
-     its content) so it becomes the size container;
-   - put .fig-fit on the line that holds the unit and the number, sizing the
-     unit and gaps in em so everything scales together;
-   - set on .fig-fit (or a parent):
-       --fig-max    the design size, e.g. 104px or a clamp() (default 1em)
-       --fig-k      width of the whole line in em at 1px font, measured in the
-                    widest figure font (Inter / SF Pro Rounded) plus ~4% slack
-       --fig-fixed  any part of the line that does not scale, in px (default 0)
-   font-size = min(--fig-max, (container width - --fig-fixed) / --fig-k).
-   Do not set font-size on the .fig-fit element in a scoped style: scoped
-   selectors win over this one. Size children in em instead. */
 .fig-box {
   container-type: inline-size;
 }
@@ -465,7 +405,6 @@ table {
   transition-duration: var(--t-hover-in);
 }
 
-/* Section heads: heading left, short intro bottom-right */
 .section-head {
   display: flex;
   flex-wrap: wrap;
@@ -489,7 +428,6 @@ table {
   }
 }
 
-/* The gold coin disc: step numbers, "In plain words" */
 .coin-badge {
   display: inline-flex;
   flex: none;
@@ -507,8 +445,6 @@ table {
   line-height: 20px;
 }
 
-/* Buttons. Hover 120 ms in, 200 ms out, only where a pointer can hover (a
-   tap on a phone leaves no lifted or gold button behind); press 100 ms. */
 .btn {
   --btn-h: 56px;
   --btn-px: 24px;
@@ -600,7 +536,6 @@ table {
     background: var(--red-800);
     transform: translateY(-1px);
   }
-  /* The arrow disc turns into a gold coin and the arrow nudges forward. */
   .btn:hover .btn__disc {
     background: var(--coin);
     color: var(--gold-rule);
@@ -638,7 +573,6 @@ table {
   flex: none;
 }
 
-/* Arrow disc on the hero CTA (hover above) */
 .btn__disc {
   display: inline-flex;
   align-items: center;
@@ -654,7 +588,6 @@ table {
   transition: translate var(--t-hover-out) var(--ease-out-soft);
 }
 
-/* Spinner for "Sending…" */
 .spinner {
   width: 16px;
   height: 16px;
@@ -669,7 +602,6 @@ table {
   }
 }
 
-/* Chips */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -694,8 +626,6 @@ table {
   background: currentColor;
 }
 
-/* Scroll-linked reveals (motion moment B). Only hidden when JS is running
-   and motion is allowed, so the page is complete without either. */
 @media (prefers-reduced-motion: no-preference) {
   .js [data-reveal]:not(.is-in) {
     opacity: 0;
@@ -711,17 +641,11 @@ table {
 .js [data-no-script] {
   display: none;
 }
-/* For one style flush, while motion.ts shows what is already on screen. */
 .reveal-instant *,
 .reveal-instant *::before,
 .reveal-instant *::after {
   transition: none !important;
 }
-/* Page changes (<ClientRouter />): the page fades out in place and the next
-   one rises 10 px as it fades in; going back, it settles from 10 px above.
-   The nav bar and the lockup are named in Nav.astro, so they hold still on
-   top. While the router places the new page (top, #fragment or the restored
-   position) scrolling is instant: html.vt-swap, from scripts/router.ts. */
 html.vt-swap {
   scroll-behavior: auto !important;
 }
@@ -754,8 +678,6 @@ html.vt-swap {
   }
 }
 
-/* Motion moment A, the app icon: the coin drops into the slot. Played by
-   the hero (Hero.astro) and the invite page (i.astro). */
 @keyframes hero-fade {
   from {
     opacity: 0;
@@ -778,7 +700,7 @@ html.vt-swap {
   }
   73.3% {
     transform: translateY(-18px);
-    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); /* --ease-in-out: var() is not read inside @keyframes */
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
   }
   100% {
     opacity: 1;
@@ -849,7 +771,6 @@ html.vt-swap {
   }
 }
 
-/* Hue discs: category icons on cards (36 px), floats (40 px) */
 .disc {
   display: inline-flex;
   flex: none;
@@ -884,17 +805,6 @@ html.vt-swap {
   color: var(--hue-mint-ink);
 }
 
-/* ------------------------------------------------------------------------
- * Web layer from Paper "P3 Web" (landing, legal, invite, 404).
- * Breakpoints (media queries cannot read variables): 768 (md), 1024 (lg,
- * two-column sections start), 1280 (xl). Phones are < 768.
- * ---------------------------------------------------------------------- */
-
-/* Section wrapper. Padding comes from --section-pt / --section-pb, which
-   default to --section-y (88 phones, 140 from 1024); a section sets them in
-   its own scoped CSS, so there is no inline style. Stacked white sections
-   add their paddings: Paper gives the bottom a value and the next section
-   starts flush (pt 0). */
 .section {
   position: relative;
   padding-block: var(--section-pt, var(--section-y)) var(--section-pb, var(--section-y));
@@ -912,7 +822,6 @@ html.vt-swap {
   color: var(--white);
   overflow: clip;
 }
-/* Head, then content, 32 apart on phones and 56 from 1024 */
 .section__stack {
   display: flex;
   flex-direction: column;
@@ -924,8 +833,6 @@ html.vt-swap {
   pointer-events: none;
 }
 
-/* Display headings added by P3. They share .display-l's tracking; the line
-   height is 1em + 4px (beta: + 2px) as in Paper. */
 .display-privacy {
   font-size: var(--t-display-privacy);
   font-weight: 700;
@@ -962,8 +869,6 @@ html.vt-swap {
   max-width: var(--measure-lead);
 }
 
-/* Eyebrow colours: default is --accent (blue-600). Paper tints it to the
-   section: hue ink on sand / peach, blue-300 on navy. */
 .overline--sand {
   color: var(--hue-sand-ink);
 }
@@ -974,7 +879,6 @@ html.vt-swap {
   color: var(--blue-300);
 }
 
-/* On dark / blue surfaces */
 .on-dark {
   color: var(--white);
 }
@@ -982,7 +886,6 @@ html.vt-swap {
   color: var(--on-navy);
 }
 
-/* Cards */
 .card {
   display: flex;
   flex-direction: column;
@@ -1007,8 +910,6 @@ html.vt-swap {
     border-radius: 24px;
   }
 }
-/* Glass float: bank alert, sealed sync, "place is saved". Rotation is set
-   per float in the component's scoped CSS (-2deg, 3deg). */
 .float {
   display: flex;
   align-items: center;
@@ -1029,7 +930,6 @@ html.vt-swap {
   padding: 16px;
 }
 
-/* Panels: 1296 wide on the page, radius 36 / 48, copy inset 20 / 72 */
 .panel {
   position: relative;
   overflow: clip;
@@ -1040,7 +940,6 @@ html.vt-swap {
   background: var(--wash-pace);
   color: var(--white);
 }
-/* Pace-blue panel (Beta): 48 / 12 on phones, 96 / 72 from 1024 */
 .panel--pace {
   --pad-panel-x: 12px;
   --pad-panel-y: 48px;
@@ -1052,7 +951,6 @@ html.vt-swap {
   }
 }
 
-/* Chip on glass: the beta chip in the hero and the invite code chip */
 .chip--glass {
   min-height: 36px;
   padding: 0 16px 0 14px;
@@ -1062,8 +960,6 @@ html.vt-swap {
   color: var(--text-primary);
 }
 
-/* Buttons with a trailing arrow disc: 28 left, 22 right (large primary);
-   22 left, 26 right (glass secondary with a leading icon). */
 .btn--lg.btn--trail {
   padding-inline: 28px 22px;
   gap: 12px;

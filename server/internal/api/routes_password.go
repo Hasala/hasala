@@ -9,8 +9,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/auth"
 )
 
-// routes_password.go: password sign-in, set, change, remove, C8 and the salt
-// route (spec 02 §10.8, §10.10, routes #46, #47, #55–#59). Owner: WS-3.
 func (s *Server) mountPassword(mux *http.ServeMux) {
 	if s.Accounts == nil {
 		return
@@ -24,17 +22,14 @@ func (s *Server) mountPassword(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/account/password/salt", s.requireSession(s.userLimited(s.handlePasswordSalt)))
 }
 
-// EmailRequest is a body that carries one address.
 type EmailRequest struct {
 	Email string `json:"email"`
 }
 
-// PasswordLoginBeginResponse is #46's answer, identical in shape for every
-// valid address.
 type PasswordLoginBeginResponse struct {
 	CeremonyID string `json:"ceremony_id"`
-	Salt       string `json:"salt"`  // b64
-	Nonce      string `json:"nonce"` // b64
+	Salt       string `json:"salt"`
+	Nonce      string `json:"nonce"`
 }
 
 func (s *Server) handlePasswordLoginBegin(w http.ResponseWriter, r *http.Request) {
@@ -50,10 +45,9 @@ func (s *Server) handlePasswordLoginBegin(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, PasswordLoginBeginResponse{CeremonyID: out.CeremonyID, Salt: b64(out.Salt), Nonce: b64(out.Nonce)})
 }
 
-// PasswordLoginFinishRequest is #47's body.
 type PasswordLoginFinishRequest struct {
 	CeremonyID string      `json:"ceremony_id"`
-	Verifier   string      `json:"verifier"` // b64, 32 bytes
+	Verifier   string      `json:"verifier"`
 	Device     *DeviceWire `json:"device"`
 }
 
@@ -78,19 +72,15 @@ func (s *Server) handlePasswordLoginFinish(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, signInResponse(out))
 }
 
-// VerifierStepUpRequest is the body of #55–#57.
 type VerifierStepUpRequest struct {
-	Verifier string      `json:"verifier"` // b64, 32 bytes: S_new
+	Verifier string      `json:"verifier"`
 	StepUp   *StepUpWire `json:"step_up"`
 }
 
-// StepUpOnlyRequest is the body of the routes that carry only a step-up.
 type StepUpOnlyRequest struct {
 	StepUp *StepUpWire `json:"step_up"`
 }
 
-// verifierRoute runs one of #55–#57 and, once it has committed, wakes the
-// account's other devices and the sessions it signed out (spec 02 §12.5).
 func (s *Server) verifierRoute(w http.ResponseWriter, r *http.Request,
 	do func(info auth.SessionInfo, v []byte, su *auth.StepUpObject) (auth.Wake, error)) {
 	var req VerifierStepUpRequest
@@ -167,9 +157,8 @@ func (s *Server) handlePasswordRemove(w http.ResponseWriter, r *http.Request, _ 
 	s.stepUpRoute(w, r, s.Accounts.RemovePassword)
 }
 
-// SaltResponse carries s_srv.
 type SaltResponse struct {
-	Salt string `json:"salt"` // b64
+	Salt string `json:"salt"`
 }
 
 func (s *Server) handlePasswordSalt(w http.ResponseWriter, r *http.Request, _ uuid.UUID) {

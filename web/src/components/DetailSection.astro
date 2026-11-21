@@ -1,12 +1,7 @@
 ---
-/**
- * One section of a detail page: an H2 and plain prose, with an optional
- * picture (slot "art") beside it from lg and under it on small screens.
- */
 interface Props {
   id: string;
   title: string;
-  /** A grey band behind the section, to set it apart from its neighbours. */
   tint?: boolean;
 }
 const { id, title, tint = false } = Astro.props;
@@ -64,7 +59,6 @@ const hasArt = Astro.slots.has('art');
     font-size: clamp(17px, 16.63px + 0.095vw, 18px);
     line-height: 1.6;
   }
-  /* Plain lists only: components inside (bank tiles) use role="list". */
   .dsec__prose :global(ol:not([role])),
   .dsec__prose :global(ul:not([role])) {
     display: flex;

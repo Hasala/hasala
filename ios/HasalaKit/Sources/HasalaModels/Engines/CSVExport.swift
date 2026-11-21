@@ -1,15 +1,6 @@
-// Export (CSV), spec 04 §16.2 T5 / X6: the PWA export's columns (`exportFile.ts`) plus the
-// merchant's display name, note, project and account, with spreadsheet-formula
-// neutralization on text columns only (F5, R-14).
-//
-// TODO(spec 04 §19.7): pin against `csv-neutralize.json` once CoreDomain's port and the
-// vectors land; this follows the rule as written in §16.2 T5.
-
 public struct ExportRow: Sendable, Hashable {
   public var date: LocalDate
-  /// The merchant as the bank wrote it.
   public var description: String
-  /// Signed: money out negative.
   public var amount: Money
   public var homeMinor: Int64?
   public var direction: Direction
@@ -38,7 +29,6 @@ public enum CSVExport {
     "Date", "Description", "Amount", "Currency", "\(Money.home) amount", "Direction", "Category", "Merchant", "Note", "Project", "Account",
   ]
 
-  /// The whole file, CRLF line ends and a trailing CRLF, as the PWA writes it.
   public static func csv(_ rows: [ExportRow]) -> String {
     var lines = [headers.map(field).joined(separator: ",")]
     for r in rows {
@@ -60,15 +50,10 @@ public enum CSVExport {
     return lines.joined(separator: "\r\n") + "\r\n"
   }
 
-  /// `hasala-2026-10-10.csv`.
   public static func fileName(_ today: LocalDate) -> String { "hasala-\(date(today)).csv" }
 
-  /// A text cell: neutralized, then quoted.
   public static func text(_ value: String) -> String { field(neutralize(value)) }
 
-  /// Prefixes `'` to a value a spreadsheet would run as a formula: one whose first scalar
-  /// is TAB, CR or LF, or whose first scalar after leading blanks is `= + - @` or their
-  /// full-width forms.
   public static func neutralize(_ value: String) -> String {
     guard let first = value.unicodeScalars.first else { return value }
     if first == "\t" || first == "\r" || first == "\n" { return "'" + value }
@@ -80,14 +65,12 @@ public enum CSVExport {
     return value
   }
 
-  /// RFC 4180 quoting when the value holds a quote, a comma or a line break.
   public static func field(_ value: String) -> String {
     let needs = value.unicodeScalars.contains { $0 == "\"" || $0 == "," || $0 == "\r" || $0 == "\n" }
     guard needs else { return value }
     return "\"" + value.split(separator: "\"", omittingEmptySubsequences: false).joined(separator: "\"\"") + "\""
   }
 
-  /// `-123.45`: no grouping, a leading minus.
   public static func decimal(_ minor: Int64) -> String {
     (minor < 0 ? "-" : "") + MoneyFormat.string(minor, style: .exact).replacingCommas()
   }
@@ -96,7 +79,6 @@ public enum CSVExport {
     (money.minor < 0 ? "-" : "") + MoneyFormat.string(money, style: .exact).replacingCommas()
   }
 
-  /// `2026-10-09`.
   public static func date(_ d: LocalDate) -> String {
     func two(_ n: Int) -> String { n < 10 ? "0\(n)" : "\(n)" }
     return "\(d.year)-\(two(d.month))-\(two(d.day))"

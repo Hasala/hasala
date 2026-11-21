@@ -1,13 +1,9 @@
-// Versioned entities: causality, fork resolution, ingest-id supersede and the
-// txn edit paths (replay.ts `applyCausal` and below, ported; 03c §2 adds the
-// `project` and `goal` kinds, 03b §2 the `bill` kind).
 import CoreJSON
 import CoreTime
 import CoreWire
 import HasalaText
 import OrderedCollections
 
-/// A decoded payload of a versioned op.
 enum CausalPayload {
   case txn(TxnPayload)
   case categorize(category: String?, needsReview: Bool, source: CategorySource?)
@@ -35,7 +31,6 @@ struct TxnPayload {
   var parseError: String?
   var verifiedOriginDomain: String?
   var mailboxMessageID: String?
-  // v4
   var categorySource: CategorySource?
   var entryMethod: String?
   var location: String?
@@ -60,7 +55,6 @@ struct EditPayload {
   var amountMinor: Int64?
   var currency: String?
   var direction: String?
-  /// Parse-only fields named by the edit (refused, `unsupported_edit_field`).
   var rejected: [String] = []
 
   var namedMoney: [String] {
@@ -73,12 +67,10 @@ struct EditPayload {
 }
 
 extension State {
-  // MARK: - Causality (§3.3:66)
-
   mutating func applyCausal(_ e: LogEntry) throws(PayloadError) {
     let op = e.op
     let seq = e.seq
-    let ref = op.entity!  // validateOp guarantees it
+    let ref = op.entity!
     let wantKind = op.type.entityKind!
     guard utf8Equal(ref.kind, wantKind) else {
       anomaly(seq, "entity_kind_mismatch", "\(op.type.rawValue) \(op.opID) names a \(ref.kind), but it can only address a \(wantKind)")
@@ -87,8 +79,6 @@ extension State {
     let key = State.entityKey(ref.kind, ref.id)
     let parent = op.parentVersion
 
-    // Read BEFORE any causal decision: an unreadable payload never advances a
-    // version or resolves a fork.
     let decoded = try decodeCausalPayload(e)
     let authoredMs = (try? parseInstantMs(op.authoredAt)) ?? 0
 
@@ -129,7 +119,6 @@ extension State {
       anomaly(seq, "future_parent", "\(op.opID) names parent \(parent) of \(ref.kind) \(ref.id), whose head is \(head.version)")
       return
     }
-    // A payload-level refusal consumes no version.
     var payload = decoded
     if case .bill(let b, let inherit) = decoded, inherit != .none {
       guard let old = bills[ref.id] else {
@@ -206,8 +195,6 @@ extension State {
     .txnCopyResolved,
   ]
 
-  /// Mirrors the head version onto the materialized entity (the fork-loser
-  /// branch). Exhaustive over the kinds (03b §2: no fall-through to rules).
   private mutating func setVersion(_ kind: String, _ id: String, _ version: Int64) {
     switch kind {
     case "txn": txns[id]?.version = version
@@ -219,9 +206,6 @@ extension State {
     }
   }
 
-  // MARK: - Creates
-
-  /// Returns false when the create was refused, so no head is registered.
   private mutating func create(_ e: LogEntry, _ payload: CausalPayload) -> Bool {
     let id = e.op.entity!.id
     switch payload {
@@ -256,7 +240,7 @@ extension State {
     let op = e.op
     let seq = e.seq
     let id = op.entity!.id
-    let ingestID = op.ingestID!  // validateOp requires it on both txn creates
+    let ingestID = op.ingestID!
     let previous = liveByIngestID[ingestID]
 
     if !superseding {
@@ -293,8 +277,6 @@ extension State {
     t.channel = p.channel
     t.receivedAt = p.receivedAt
 
-    // 03c §3.1: a v4 supersede links the predecessor and carries its
-    // annotations forward (only note and archived onto an unparsed successor).
     if superseding, op.v >= 4, let previous, txns[previous] != nil {
       txns[previous]!.successorID = id
       for h in liveCopies(of: previous) { txns[h]!.copyOf = id }
@@ -331,7 +313,6 @@ extension State {
     return true
   }
 
-  /// Takes a transaction out of the live indexes. It stays in `txns`, visible.
   private mutating func retire(_ id: String, by supersedeOp: String) {
     guard txns[id] != nil else { return }
     txns[id]!.supersededBy = supersedeOp
@@ -341,9 +322,6 @@ extension State {
     clearPending(t)
   }
 
-  // MARK: - Edits
-
-  /// Payload-level validity decided before causality (a refusal consumes no version).
   private mutating func precheck(_ e: LogEntry, _ payload: CausalPayload) -> Bool {
     guard case .split(let parts, let v4) = payload else { return true }
     let id = e.op.entity!.id
@@ -355,7 +333,7 @@ extension State {
       anomaly(e.seq, "split_sum", "\(e.op.opID) splits \(t.id), which is unparsed and has no amount to split")
       return false
     }
-    if v4 && parts.isEmpty { return true }  // 03c §3.3: un-split
+    if v4 && parts.isEmpty { return true }
     let sum = parts.reduce(Int128(0)) { $0 + Int128($1.amountMinor) }
     if sum != Int128(t.amountMinor) {
       anomaly(e.seq, "split_sum", "\(e.op.opID) splits \(t.id) into \(sum), but it is \(t.amountMinor)")
@@ -455,8 +433,6 @@ extension State {
     }
   }
 
-  /// `needs_review` may not be cleared on an unparsed row (the review queue is
-  /// its only surface).
   private mutating func setNeedsReview(_ id: String, _ want: Bool, seq: Int64) {
     if txns[id]!.unparsed && !want {
       anomaly(seq, "unsupported_edit_field", "\(id): needs_review cannot be cleared on an unparsed transaction")
@@ -465,8 +441,6 @@ extension State {
     txns[id]!.needsReview = want
   }
 
-  /// The money half of an edit: applied on a user-authored row, refused on an
-  /// ingest row, a split row (amount) or an unparsed row.
   private mutating func applyMoneyEdit(_ id: String, _ p: EditPayload, seq: Int64) {
     let named = p.namedMoney
     if named.isEmpty { return }
@@ -503,7 +477,6 @@ extension State {
     if let at = p.postedAt { txns[id]!.postedAt = at }
     if let c = p.category {
       if e.op.v >= 4 {
-        // 03c §3.4: one path for categories keeps `category_source` truthful.
         anomaly(seq, "unsupported_edit_field", "\(e.op.opID): category use txn_categorized")
       } else {
         txns[id]!.category = c
@@ -542,10 +515,6 @@ extension State {
     }
   }
 
-  // MARK: - Fingerprint index (§3.3:67): a notice, never a drop
-
-  /// state.ts `fingerprint`: `last4|amount|direction|merchant|utcDay`, or
-  /// `unparsed|ingest_id`.
   public func fingerprint(_ t: Txn) -> String {
     if t.unparsed { return "unparsed|" + t.ingestID }
     let day = (try? parseInstantMs(t.postedAt)).map(utcDay) ?? ""

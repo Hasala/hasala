@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-// appleBody is Apple Mail's layout: every header label sits on its own line and
-// the value follows on the NEXT line. Taken from the shape of corpus id 6855.
 const appleBody = `Sent from my iPhone
 Begin forwarded message:
 From:
@@ -23,8 +21,6 @@ DIB Notification <DIB.notification@dib.ae>
 AED 250.00
 EXAMPLE MERCHANT LLC`
 
-// gmailBody is Gmail's layout: label and value on the SAME line, under a
-// dashed marker.
 const gmailBody = `---------- Forwarded message ---------
 From: Emirates NBD <alert@emiratesnbd.com>
 Date: Mar 3, 2026 at 2:07 PM
@@ -69,11 +65,6 @@ func TestUnwrapGmailSameLineLayout(t *testing.T) {
 }
 
 func TestUnwrapQuotedForwardFindsMarkerButRecoversNoHeaders(t *testing.T) {
-	// 50 of the corpus's 56 forwards are this shape: a text/plain forward whose
-	// header block is ">"-quoted. fwdHeaderLineRe anchors on optional
-	// whitespace, and ">" is not whitespace, so no header is ever recovered and
-	// the body is returned untouched. This is v1's behavior and v2 reproduces
-	// it; see the report's "known gaps".
 	body := `Begin forwarded message:
 > From: DIB Notification <DIB.notification@dib.ae>
 > Subject: DIB Notification
@@ -135,10 +126,10 @@ func TestUnwrapMarkerVariants(t *testing.T) {
 		}
 	}
 	for _, notMarker := range []string{
-		"Begin forwarded message",            // no colon
-		"x Begin forwarded message:",         // not at line start
-		"Begin forwarded message: see below", // trailing text
-		"Forwarded message",                  // no dashes
+		"Begin forwarded message",
+		"x Begin forwarded message:",
+		"Begin forwarded message: see below",
+		"Forwarded message",
 	} {
 		got := unwrapForward("a@b.c", "s", notMarker+"\nFrom: x@y.z\n\nbody")
 		if got.Found {
@@ -148,23 +139,16 @@ func TestUnwrapMarkerVariants(t *testing.T) {
 }
 
 func TestUnwrapNeverAffectsTrust(t *testing.T) {
-	// A hostile body: anyone can type a forward header block into an email.
-	// It may change Result.From, which is diagnostic content, and nothing else.
 	hostile := "Begin forwarded message:\nFrom: alerts@dib.ae\nSubject: You have been paid\n\nAED 1.00"
 	got := unwrapForward("attacker@evil.example", "hello", hostile)
 	if got.From != "alerts@dib.ae" {
 		t.Fatalf("From = %q; the content-derived value is expected here", got.From)
 	}
-	// The forward struct carries exactly four content fields plus Found. If a
-	// future field ever looks like an identity or a verification result, this
-	// test is where the reviewer should stop.
 	res := Result{}
 	res.From = got.From
 	if res.From == "" {
 		t.Fatal("unreachable")
 	}
-	// Result must expose no verified-sender field: the trusted lane reads the
-	// signing domain from the ARC/DKIM verifier, never from here.
 	for _, forbidden := range []string{"SenderDomain", "Verified", "Trusted", "SigningDomain"} {
 		if resultHasField(forbidden) {
 			t.Fatalf("Result exposes %q; Result.From is attacker-authored content and "+
@@ -172,10 +156,6 @@ func TestUnwrapNeverAffectsTrust(t *testing.T) {
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Forward Date parsing
-// ---------------------------------------------------------------------------
 
 func TestParseForwardDateLayouts(t *testing.T) {
 	for _, tc := range []struct {
@@ -187,7 +167,6 @@ func TestParseForwardDateLayouts(t *testing.T) {
 		{"Sun, Feb 8, 2026 at 12:52 PM", time.Date(2026, 2, 8, 12, 52, 0, 0, time.UTC)},
 		{"8 February 2026 at 20:31:47", time.Date(2026, 2, 8, 20, 31, 47, 0, time.UTC)},
 		{"8 February 2026 at 20:31", time.Date(2026, 2, 8, 20, 31, 0, 0, time.UTC)},
-		// A trailing zone token is stripped and the value treated as naive.
 		{"8 February 2026 at 20:31:47 GMT+4", time.Date(2026, 2, 8, 20, 31, 47, 0, time.UTC)},
 		{"Feb 8, 2026 at 12:52 PM GST", time.Date(2026, 2, 8, 12, 52, 0, 0, time.UTC)},
 	} {
@@ -202,9 +181,6 @@ func TestParseForwardDateLayouts(t *testing.T) {
 }
 
 func TestUnwrapHandlesNarrowNoBreakSpaceBeforeAMPM(t *testing.T) {
-	// Apple Mail on recent OSes writes U+202F (narrow no-break space) before
-	// AM/PM; iCloud webmail has been seen using U+00A0. Both must normalize to
-	// U+0020 before the layouts are tried.
 	for _, in := range []string{
 		"Feb 8, 2026 at 12:52\u202fPM",
 		"Feb 8, 2026 at 12:52\u00a0PM",
@@ -221,13 +197,6 @@ func TestUnwrapHandlesNarrowNoBreakSpaceBeforeAMPM(t *testing.T) {
 }
 
 func TestParseForwardDateRejectsTheiPhoneSecondsWithAMPMShape(t *testing.T) {
-	// KNOWN GAP, ported deliberately from v1 so the corpus-equivalence gate
-	// stays clean. The Apple Mail iOS app writes "14 February 2026 at 6:12:38 PM
-	// GST" — 12-hour WITH seconds — which none of the four closed layouts
-	// covers, so the transaction silently falls back to the arrival time. Three
-	// corpus messages (ids 2554, 6853, 6854) are affected. If a later task adds
-	// "2 January 2006 at 3:04:05 PM" to the layout list, this test is the one
-	// that must be updated, and the change is a normalizer VERSION bump.
 	for _, in := range []string{
 		"14 February 2026 at 6:12:38\u202fPM GST",
 		"8 February 2026 at 11:18:51\u202fPM GST",
@@ -248,9 +217,6 @@ func TestParseForwardDateRejectsGarbage(t *testing.T) {
 }
 
 func TestUnwrapTrimsTheRemainderWithTheExplicitSet(t *testing.T) {
-	// The line after the header block is a lone U+FEFF, exactly as corpus ids
-	// 2554/6853/6854 have it. Go's strings.TrimSpace leaves U+FEFF in place;
-	// the explicit set removes it. This is a deliberate divergence from v1.
 	body := "Begin forwarded message:\nFrom: a@b.c\nSubject: s\n\ufeff\nAED 1.00"
 	got := unwrapForward("x@y.z", "Fwd: s", body)
 	if got.Body != "AED 1.00" {

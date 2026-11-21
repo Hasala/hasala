@@ -1,38 +1,10 @@
-/**
- * Glue for Astro's <ClientRouter /> (Base.astro). On a client-side
- * navigation the router gives <html> the new page's attributes, which drops
- * the classes the <head> scripts added on the first load, and a head script
- * that already ran is not run again. So the classes are put on the incoming
- * document before the swap:
- *   js         no-JS fallbacks stay hidden;
- *   hero-seen  the hero entrance still plays once per tab session;
- *   routed     this page arrived by a client-side navigation, so first-load
- *              entrances (the invite tile on /i) stay still;
- *   vt-swap    scrolling is instant while the router puts the new page at the
- *              top, at its #fragment or back where it was (a smooth scroll
- *              under the cross-fade reads as a glitch). It goes once the new
- *              page's scripts have run.
- * Page scripts re-run through onPage() in ./page.
- *
- * Every page carries the same CSP (src/lib/csp-union.mjs), because the
- * document keeps enforcing the policy it loaded with. If a fetched page
- * brings a different one (a deploy since this tab loaded), it is loaded in
- * full instead of swapped in.
- *
- * The pages whose address carries a code or a token are always loaded in
- * full: their CSP header, which keeps Cloudflare Web Analytics off them
- * (public/_headers), applies only to a document the browser loads itself.
- * Swapped into a page that already runs the beacon, they would be counted.
- */
 import { onPage } from './page';
 
 const root = document.documentElement;
 const CSP = 'meta[http-equiv="content-security-policy" i]';
-/** /i, /i/<code>, /freeze and /waitlist/*, as in public/_headers. */
 const FULL_LOAD = /^\/(?:i|freeze)(?:\/|$)|^\/waitlist\//;
 
 document.addEventListener('astro:before-preparation', (e) => {
-  // The router then sets location.href instead of swapping.
   if (FULL_LOAD.test(e.to.pathname)) return e.preventDefault();
   const load = e.loader;
   e.loader = async () => {
@@ -51,10 +23,8 @@ document.addEventListener('astro:before-swap', (e) => {
   try {
     seen ||= !!sessionStorage.getItem('hasala:hero');
   } catch {
-    /* no storage: the entrance plays, as on a full load */
   }
   if (seen) next.add('hero-seen');
 });
 
-// Once the new page's scripts have run.
 onPage(() => root.classList.remove('vt-swap'));

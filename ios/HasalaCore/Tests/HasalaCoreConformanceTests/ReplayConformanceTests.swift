@@ -1,7 +1,3 @@
-// conformance/replay (the TypeScript v3 fold oracle): every log folds to the
-// oracle's state, byte for byte, with diagnostic text blanked (A-21), through
-// the Swift fold at schema 4 (spec 03c acceptance test 2: v4 additions leave
-// every v3 case byte-identical).
 import CoreInvariants
 import CoreJSON
 import CorePrimitives
@@ -22,7 +18,6 @@ struct ReplayConformanceTests {
     case stopped(kind: String, at: Int)
   }
 
-  /// The body a log item stands for: its exact bytes, or its ops wrapped in an ops blob.
   static func body(_ item: JSONValue) throws -> [UInt8] {
     if let ops = item["ops"]?.arrayValue {
       let v = ops.compactMap { $0["v"]?.numberValue?.int64Value }.max() ?? 1
@@ -90,7 +85,6 @@ struct ReplayConformanceTests {
       let theirs = expect["state"]!.sortingKeysByUTF8()
       Issue.record("\(file): state differs\n ours: \(JSONWriter().string(ours).prefix(4000))\n want: \(JSONWriter().string(theirs).prefix(4000))")
     }
-    // The order serializeState sorts away: first declaration of banks and categories.
     if let order = expect["order"] {
       #expect(s.banks.keys.map(\.value) == (try order.array("banks")).compactMap(\.stringValue))
       #expect(s.categories.keys.map(\.value) == (try order.array("categories")).compactMap(\.stringValue))

@@ -1,13 +1,5 @@
 package auth
 
-// How this package's emails reach mailq (spec 02 §14.4, D-12):
-//   - codes and the "already has an account" notice: minted in the request's
-//     transaction, handed to SendCodes after commit, and sent by
-//     mailq.SendNow off the request path, so the answer's timing never
-//     depends on whether an email goes out;
-//   - alerts: enqueued with mailq.EnqueueTx in the event's own transaction;
-//     the alert renderer mints the freeze token at send time.
-
 import (
 	"context"
 	"crypto/sha256"
@@ -25,19 +17,15 @@ import (
 	"github.com/salehtl/hasala/server/internal/mailq"
 )
 
-// FreezeTokenTTL is how long a freeze link works.
 const FreezeTokenTTL = 7 * 24 * time.Hour
 
-// Mailer is this package's side of the outbox.
 type Mailer struct {
 	Queue     *mailq.Queue
 	Keys      *authkeys.Keys
-	FreezeURL string // default mail.DefaultFreezeURL
+	FreezeURL string
 	Now       func() time.Time
-	// Async runs post-commit sends; nil starts a goroutine. Tests run them
-	// inline so they can read the code from the fake sender.
-	Async func(func())
-	Logf  func(format string, args ...any)
+	Async     func(func())
+	Logf      func(format string, args ...any)
 
 	mu      sync.Mutex
 	sending int
@@ -57,9 +45,6 @@ func (m *Mailer) logf(format string, args ...any) {
 	}
 }
 
-// SendCodes sends each issued code (or its notice) after the request's
-// transaction committed. Codes written with Send = false and no notice send
-// nothing. A nil Mailer sends nothing.
 func (m *Mailer) SendCodes(codes ...IssuedCode) {
 	if m == nil || m.Queue == nil {
 		return
@@ -139,15 +124,12 @@ func (m *Mailer) sendEnded() {
 	}
 }
 
-// Kick wakes the worker after an alert's transaction committed.
 func (m *Mailer) Kick() {
 	if m != nil && m.Queue != nil {
 		m.Queue.Kick()
 	}
 }
 
-// enqueueAlertTx writes an alert row in the event's transaction (spec 02
-// §10.16). The address is the account's at this moment unless to is set.
 func (m *Mailer) enqueueAlertTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, subkind, to string, at time.Time) error {
 	if m == nil || m.Queue == nil {
 		return nil
@@ -166,15 +148,12 @@ func (m *Mailer) enqueueAlertTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID
 	return err
 }
 
-// Renderers are this package's renderers for queued rows: alerts.
 func (m *Mailer) Renderers() map[string]mailq.Renderer {
 	return map[string]mailq.Renderer{
 		"alert": mailq.RenderFunc(m.renderAlert),
 	}
 }
 
-// Register installs this package's renderers and the bounce hook (spec 02
-// §14.7) on q, the server's one outbox.
 func (m *Mailer) Register(q *mailq.Queue) {
 	for kind, r := range m.Renderers() {
 		q.Register(kind, r)
@@ -182,8 +161,6 @@ func (m *Mailer) Register(q *mailq.Queue) {
 	q.Bounced = BounceHook
 }
 
-// renderAlert builds an alert at send time, greeting by name, and mints the
-// freeze token for the two subkinds that carry one (spec 02 §10.13).
 func (m *Mailer) renderAlert(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Message, error) {
 	if row.UserID == nil {
 		return mail.Message{}, errors.New("auth: an alert row has no account")
@@ -234,15 +211,12 @@ func (m *Mailer) renderAlert(ctx context.Context, tx pgx.Tx, row mailq.Row) (mai
 	return mail.Alert(row.Recipient, row.Subkind, at, name, link)
 }
 
-// BounceHook marks an account's address undeliverable when a send to its
-// current address bounced (spec 02 §14.7).
 func BounceHook(ctx context.Context, tx pgx.Tx, row mailq.Row) error {
 	_, err := tx.Exec(ctx,
 		`UPDATE users SET email_undeliverable_at = now() WHERE id = $1 AND email_norm = $2`, *row.UserID, row.Recipient)
 	return err
 }
 
-// Auth events (spec 02 §10.16).
 const (
 	EventSignInNew       = "sign_in_new"
 	EventPasskeyAdded    = "passkey_added"
@@ -268,7 +242,6 @@ const (
 	MethodPassword = "password"
 )
 
-// AuthEvent is one auth_events row.
 type AuthEvent struct {
 	Kind         string
 	Method       string
@@ -276,8 +249,6 @@ type AuthEvent struct {
 	CredentialID []byte
 }
 
-// alertSubkind is the alert an event sends, or "" (spec 02 §10.16's table).
-// email_changed is handled by its route (two alerts).
 func alertSubkind(e AuthEvent) string {
 	switch e.Kind {
 	case EventSignInNew:
@@ -300,10 +271,6 @@ func nullStr(s string) any {
 	return s
 }
 
-// RecordQuietEventTx records an event that sends no alert, in the caller's
-// transaction: the mailbox link and unlink, whose actions the API runs (spec
-// 02 §10.16). An event that carries an alert is refused here; its action
-// records it.
 func RecordQuietEventTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, e AuthEvent, at time.Time) error {
 	if alertSubkind(e) != "" {
 		return fmt.Errorf("auth: %s sends an alert; its action records it", e.Kind)
@@ -311,9 +278,6 @@ func RecordQuietEventTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, e Auth
 	return recordEventTx(ctx, tx, nil, userID, e, at)
 }
 
-// recordEventTx writes the event and enqueues its alert, both in the
-// action's transaction: a rolled-back action sends nothing, and a restart
-// loses nothing.
 func recordEventTx(ctx context.Context, tx pgx.Tx, m *Mailer, userID uuid.UUID, e AuthEvent, at time.Time) error {
 	var cred any
 	if len(e.CredentialID) > 0 {

@@ -4,8 +4,6 @@ import Testing
 
 @testable import Hasala
 
-/// The onboarding store (plan B3): one set of onboarding models for the life of the
-/// process, kept through a re-made gate, dropped only when the account is gone.
 @MainActor
 @Suite("Onboarding store")
 struct OnboardingStoreTests: AccountSuite {
@@ -50,9 +48,6 @@ struct OnboardingStoreTests: AccountSuite {
     #expect(store.signup === signup && store.signup.displayName == "Maya")
   }
 
-  /// A gate made again (a body pass, the passcode wall, the launch view, a wall) asks the
-  /// store again, as its body does, and gets the same models with what was typed. (The
-  /// gate's body itself only renders in a window.)
   @Test func aRemadeGateCannotResetThem() {
     let (store, session) = store(phase: .onboarding)
     let facts = OnboardingStep.Facts(hasSession: true, keysReady: true)
@@ -71,7 +66,6 @@ struct OnboardingStoreTests: AccountSuite {
     #expect(store.setup === setup && store.storyPage == 2)
   }
 
-  /// Signing out after a signed-in phase drops every draft; the stories' page stays.
   @Test func aRemadeGateKeepsTheUnlockAsItWas() async throws {
     let account = MockAccountService(existing: .passkey, signedIn: true)
     let (store, _) = store(account, phase: .needsUnlock(passkeyCanUnlock: false))
@@ -122,7 +116,6 @@ struct OnboardingStoreTests: AccountSuite {
     store.signup.email = "maya@example.com"
     store.signIn.email = "maya@example.com"
     store.storyPage = 3
-    // A failed sign-in, Back and walls keep everything.
     store.phaseChanged(from: .signedOut, to: .signedOut)
     #expect(store.signup.email == "maya@example.com")
     store.phaseChanged(from: .signedOut, to: .onboarding)
@@ -133,15 +126,12 @@ struct OnboardingStoreTests: AccountSuite {
     #expect(store.signup.email.isEmpty && store.signIn.email.isEmpty)
     #expect(store.storyPage == 3)
     #expect(store.setupModel(displayName: "Maya", facts: .init(hasSession: true, keysReady: true)) !== setup)
-    // The gate appearing again (old phase unknown) remembers the last one it saw.
     store.phaseChanged(from: nil, to: .ready)
     store.signup.email = "someone@example.com"
     store.phaseChanged(from: nil, to: .signedOut)
     #expect(store.signup.email.isEmpty)
   }
 
-  /// After a relaunch the draft is empty: done flags come from the account (OR-ed with what
-  /// this process did), the mailbox from the lane, and the banks are read back.
   @Test func reconcileOrsTheFactsAndFillsAnEmptyDraft() {
     let account = MockAccountService(existing: .passkey, signedIn: true)
     account.delay = .zero
@@ -165,10 +155,6 @@ struct OnboardingStoreTests: AccountSuite {
     #expect(setup.step == .finished)
   }
 
-  /// A store that failed to open draws setup under its wall with the gate's placeholder
-  /// facts (the bank step), so the first `resume()` stays there; once the runtime opens on
-  /// "Try again", the real facts reach the same model, and an account already past the
-  /// email step opens Home.
   @Test func aResumeAtThePlaceholderStepWaitsForTheRealFacts() {
     let (store, session) = store(phase: .onboarding)
     let placeholder = OnboardingStep.Facts(hasSession: true, keysReady: true)
@@ -189,7 +175,6 @@ struct OnboardingStoreTests: AccountSuite {
     #expect(otherSession.phase == .ready)
   }
 
-  /// The replacement phrase is made once, not on every render of its flow.
   @Test func theReplacementPhraseIsMadeOnce() {
     let (store, _) = store(phase: .needsKeys)
     let first = store.replacementModel()
@@ -199,9 +184,6 @@ struct OnboardingStoreTests: AccountSuite {
     #expect(store.replacementModel().phraseSeen && store.replacementModel().phrase?.words == words)
   }
 
-  /// The system back button (plan decision 7) pops through `navigationPath` and leaves the
-  /// failure of the screen it left behind; a pop the model makes itself keeps the failure it
-  /// set for the screen it lands on ("We couldn't find that invite").
   @Test func goingBackLeavesTheFailureBehindButAModelPopKeepsIt() {
     let (store, _) = store()
     let signup = store.signup

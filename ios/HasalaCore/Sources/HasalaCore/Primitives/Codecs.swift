@@ -1,31 +1,16 @@
-// Strict text codecs: hex, base64, base64url, base32 (spec 01 §1; the grammar
-// of the ledgerd TypeScript client's src/platform.ts and platform.web.ts, pinned by
-// their platform tests).
-//
-// "Strict" is the point. Lenient decoders (Node's Buffer, atob, Foundation's
-// `Data(base64Encoded:)` with options) skip characters outside the alphabet and
-// return a SHORT, plausible result, which is how a corrupted 64-character hash
-// becomes a 20-byte one. Every decoder here refuses instead, and works on the
-// string's UTF-8 bytes, never on `Character`s.
 import Foundation
 
-/// A refused codec input. Carries the codec name only, never the input (it may
-/// be a key or a message body).
 public enum CodecError: Error, Equatable, Sendable {
   case notHex
   case notBase64
   case notBase64URL
-  /// base64url padding present but not the amount the body length calls for.
   case base64URLPadding
   case notBase32
 }
 
-// MARK: - Hex
-
 public enum Hex {
   private static let digits = Array("0123456789abcdef".utf8)
 
-  /// Lower-case hex, two digits per byte (a leading zero byte survives).
   public static func encode(_ bytes: some Sequence<UInt8>) -> String {
     var out = [UInt8]()
     out.reserveCapacity(bytes.underestimatedCount * 2)
@@ -36,8 +21,6 @@ public enum Hex {
     return String(decoding: out, as: UTF8.self)
   }
 
-  /// Lower-case hex, strictly: even length, `0-9a-f` only. Upper case is refused
-  /// (chain hashes are lower-case on the wire).
   public static func decode(_ s: String) throws(CodecError) -> Data {
     let u = Array(s.utf8)
     guard u.count % 2 == 0 else { throw .notHex }
@@ -60,26 +43,18 @@ public enum Hex {
   }
 }
 
-// MARK: - Base64 (RFC 4648 §4) and base64url (§5)
-
 public enum Base64 {
   private static let standard = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".utf8)
   private static let url = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".utf8)
 
-  /// Standard alphabet, padded. Never the URL-safe alphabet.
   public static func encode(_ bytes: some Sequence<UInt8>) -> String {
     encode(Array(bytes), alphabet: standard, pad: true)
   }
 
-  /// URL-safe alphabet, unpadded (spec 01 §1 "b64url").
   public static func encodeURL(_ bytes: some Sequence<UInt8>) -> String {
     encode(Array(bytes), alphabet: url, pad: false)
   }
 
-  /// Standard base64, strictly: length a multiple of four, `A-Za-z0-9+/` only,
-  /// and `=` only as one or two trailing characters. Non-zero bits in the last
-  /// character's unused low bits are accepted, as Node, `atob` and Go's
-  /// `StdEncoding` all accept them (decode-equivalence with the oracle).
   public static func decode(_ s: String) throws(CodecError) -> Data {
     let u = Array(s.utf8)
     guard u.count % 4 == 0 else { throw .notBase64 }
@@ -89,10 +64,6 @@ public enum Base64 {
     return out
   }
 
-  /// URL-safe base64, strictly, with padding OPTIONAL: `A-Za-z0-9-_` only (the
-  /// standard `+` and `/` are refused, never remapped), padding only at the end
-  /// and only in the amount the body length calls for, and never a body with
-  /// one leftover character. Gmail's `format=raw` sends this unpadded.
   public static func decodeURL(_ s: String) throws(CodecError) -> Data {
     let u = Array(s.utf8)
     let firstPad = u.firstIndex(of: 0x3d) ?? u.count
@@ -120,8 +91,6 @@ public enum Base64 {
     }
   }
 
-  /// Decodes an unpadded body (length % 4 in {0, 2, 3}); nil on any character
-  /// outside the alphabet or an impossible length.
   private static func decodeBody(_ u: ArraySlice<UInt8>, alphabet: Alphabet) -> Data? {
     guard u.count % 4 != 1 else { return nil }
     var out = Data(capacity: u.count * 3 / 4)
@@ -163,12 +132,9 @@ public enum Base64 {
   }
 }
 
-// MARK: - Base32 (RFC 4648 §6)
-
 public enum Base32 {
   private static let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".utf8)
 
-  /// Upper-case `A-Z2-7`, without padding (spec 01 §1).
   public static func encode(_ bytes: some Sequence<UInt8>) -> String {
     var out = [UInt8]()
     var acc: UInt32 = 0
@@ -186,10 +152,6 @@ public enum Base32 {
     return String(decoding: out, as: UTF8.self)
   }
 
-  /// Strict inverse of ``encode(_:)``: upper-case alphabet only, no padding, a
-  /// length that some byte count encodes to, and zero unused trailing bits (so
-  /// every byte string has exactly one accepted spelling). Normalizing user
-  /// input (hyphens, case) is the caller's job.
   public static func decode(_ s: String) throws(CodecError) -> Data {
     let u = Array(s.utf8)
     guard [0, 2, 4, 5, 7].contains(u.count % 8) else { throw .notBase32 }
@@ -216,13 +178,7 @@ public enum Base32 {
   }
 }
 
-// MARK: - UTF-8 (WHATWG)
-
 public enum UTF8Text {
-  /// WHATWG UTF-8 decode with the defaults of a bare `new TextDecoder()`:
-  /// non-fatal (each maximal invalid subpart becomes U+FFFD) and STRIPPING one
-  /// leading BOM. `String(decoding:as:)` replaces the same way but never strips
-  /// the BOM, so that is done here first.
   public static func decode(_ bytes: some Collection<UInt8>) -> String {
     if bytes.starts(with: [0xef, 0xbb, 0xbf]) {
       return String(decoding: bytes.dropFirst(3), as: UTF8.self)
@@ -230,7 +186,5 @@ public enum UTF8Text {
     return String(decoding: bytes, as: UTF8.self)
   }
 
-  /// UTF-8 bytes of `s`. A Swift `String` cannot hold a lone surrogate, so
-  /// WHATWG's "lone surrogate → U+FFFD" rule lives in the JSON parser instead.
   public static func encode(_ s: String) -> [UInt8] { Array(s.utf8) }
 }

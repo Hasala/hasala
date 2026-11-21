@@ -16,19 +16,13 @@ import (
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
-// deletableWriter is the writer every deletable account enrols.
 const deletableWriter = "ios-00000000-0000-4000-8000-000000000206"
 
-// deletable is an account set up the way a real one is: a passkey, a session,
-// an enrolled device writer, and some history worth losing.
 type deletable struct {
-	u    uuid.UUID
-	tok  string
-	priv ed25519.PrivateKey
-	// pk is the authenticator holding this account's only credential.
-	pk *authtest.Authenticator
-	// counter is where its signature counter has got to. It only ever goes up,
-	// because a counter that does not is the cloned-authenticator signal.
+	u       uuid.UUID
+	tok     string
+	priv    ed25519.PrivateKey
+	pk      *authtest.Authenticator
 	counter uint32
 }
 
@@ -44,9 +38,6 @@ func (h *harness) deletable(t *testing.T, note string) *deletable {
 	return &deletable{u: u, tok: out.SessionToken, priv: priv, pk: pk, counter: 1}
 }
 
-// stepUp begins an account.delete step-up on token's session, with params
-// naming account target, and proves it with authenticator a. It answers the
-// step-up and its nonce.
 func (d *deletable) stepUp(t *testing.T, h *harness, token string, target uuid.UUID, a *authtest.Authenticator) (*StepUpWire, []byte) {
 	t.Helper()
 	ph, _ := keyproto.ParamsHash(keyproto.ActionAccountDelete, []byte(target.String()))
@@ -61,7 +52,6 @@ func (d *deletable) stepUp(t *testing.T, h *harness, token string, target uuid.U
 		Assertion: a.AssertChallenge(t, authtest.RPID, c[:], d.counter)}}, nonce
 }
 
-// sign is the writer's signature over DeletionMessage(nonce, d.u).
 func (d *deletable) sign(t *testing.T, priv ed25519.PrivateKey, nonce []byte) string {
 	t.Helper()
 	msg, err := keyproto.DeletionMessage(nonce, d.u)
@@ -71,9 +61,6 @@ func (d *deletable) sign(t *testing.T, priv ed25519.PrivateKey, nonce []byte) st
 	return b64(ed25519.Sign(priv, msg))
 }
 
-// body is a complete, valid #41 request. Every refusal test takes this and
-// breaks exactly one thing, so a test that stops proving what it says can only
-// be one that stopped breaking anything.
 func (d *deletable) body(t *testing.T, h *harness) DeleteAccountRequest {
 	t.Helper()
 	su, nonce := d.stepUp(t, h, d.tok, d.u, d.pk)
@@ -98,12 +85,6 @@ func (h *harness) accountExists(t *testing.T, u uuid.UUID) bool {
 	return n == 1
 }
 
-// ---------------------------------------------------------------------------
-// The three factors
-// ---------------------------------------------------------------------------
-
-// A stolen session token must not be able to destroy a life's financial
-// history: without a step-up the answer is step_up_required, and nothing moves.
 func TestDeleteAccountRefusesASessionTokenAlone(t *testing.T) {
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
@@ -125,8 +106,6 @@ func TestDeleteAccountRefusesASessionTokenAlone(t *testing.T) {
 	}
 }
 
-// ledgerd's form is gone (spec 02 §2.4): its challenge route answers 404, and
-// a body that still carries its fields is malformed.
 func TestLedgerdsDeletionFormIsGone(t *testing.T) {
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
@@ -142,10 +121,7 @@ func TestLedgerdsDeletionFormIsGone(t *testing.T) {
 	}
 }
 
-// Every way of getting one factor wrong is the step-up's one refusal, so a
-// caller cannot learn which factor it is missing, and the account stays.
 func TestEveryDeletionRefusalIsTheSameAnswer(t *testing.T) {
-	// A harness per case, because the per-user attempt limiter is real.
 	for _, tc := range []struct {
 		name  string
 		build func(t *testing.T, h *harness, acc, mallory *deletable) DeleteAccountRequest
@@ -218,10 +194,6 @@ func TestEveryDeletionRefusalIsTheSameAnswer(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// The happy path
-// ---------------------------------------------------------------------------
-
 func TestDeleteAccountWithAllThreeFactorsPurgesTheAccount(t *testing.T) {
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
@@ -250,20 +222,14 @@ func TestDeleteAccountWithAllThreeFactorsPurgesTheAccount(t *testing.T) {
 	if !h.accountExists(t, bystander.u) {
 		t.Fatal("the other account went with it")
 	}
-	// The session died with the account, and says so distinguishably: a 401
-	// would look like an expired session, and the device that just deleted its
-	// own account has to know which one it is looking at before it wipes.
 	after := h.req("GET", "/api/v1/sync?stream=hot", acc.tok, nil)
 	wantStatus(t, after, http.StatusGone)
 	if got := after.Body.String(); got != `{"error":"account_deleted"}` {
 		t.Fatalf("body = %s", got)
 	}
-	// A replay of the whole request meets the same 410.
 	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, body), http.StatusGone)
 }
 
-// The signer may be any live writer of the account (spec 02 §15.2:
-// "<signer, live>"), not only the session's own.
 func TestAnotherLiveWriterMaySignTheDeletion(t *testing.T) {
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
@@ -276,17 +242,11 @@ func TestAnotherLiveWriterMaySignTheDeletion(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Shape
-// ---------------------------------------------------------------------------
-
 func TestDeleteAccountNeedsASession(t *testing.T) {
 	h := newHarness(t).passkeys()
 	wantStatus(t, h.req("DELETE", "/api/v1/account", "", DeleteAccountRequest{}), http.StatusUnauthorized)
 }
 
-// Malformed input describes the caller's own submission and reveals nothing
-// about the account, so it is a 400.
 func TestDeleteAccountAnswers400ForMalformedInput(t *testing.T) {
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")

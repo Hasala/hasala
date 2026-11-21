@@ -1,10 +1,4 @@
 ---
-/**
- * 07 Privacy (Paper AYX-0 / BQZ-0): "Only you can see your money." on the navy
- * band. Three plain points, then a link to /how-privacy-works. On phones the
- * head is left-aligned and the link is a text link with an arrow; from 1024 the
- * head is centred and the link is a white pill with a lock.
- */
 import Icon from '../Icon.astro';
 
 const points = [
@@ -51,7 +45,6 @@ const points = [
     --section-pt: 88px;
     --section-pb: 88px;
   }
-  /* The default blue-600 ring is too dark on navy; a light ring reaches 3:1. */
   .privacy :global(:focus-visible) {
     outline-color: var(--white);
   }

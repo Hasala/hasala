@@ -1,78 +1,5 @@
 package tmpl
 
-// dialect.go is the publish-time gate on template regular expressions.
-//
-// A published template is data: it is written by a human in an admin console,
-// stored server-side, shipped to every device, and then run by TWO independent
-// engines — Go's RE2 (internal/tmpl) and JavaScript's RegExp (client/). The
-// pattern text is stored once and both engines run that same text, so any
-// construct the two engines read differently is a silent cross-executor
-// disagreement: the server extracts an amount the client does not, or vice
-// versa, and neither side reports an error.
-//
-// The dialect is the subset of RE2 on which the two engines were MEASURED to
-// agree. Every ban below has a reason code, a row in the table in
-// server/internal/tmpl/v2-template-format.md naming the engine difference,
-// and a pair of tests in dialect_test.go: one showing the construct is
-// rejected, one showing the sanctioned rewrite is accepted. That pairing is
-// deliberate — the first draft of this plan banned "a quantifier applied
-// directly after `)`" with no accepted counterpart, which made the four v1
-// optional-currency-prefix patterns inexpressible and its own acceptance test
-// unsatisfiable.
-//
-// The second reason for the dialect is cost. The inbound path is
-// attacker-writable: anyone who learns a user's inbound address can send mail
-// whose body is chosen to maximise the cost of matching. Go's RE2 cannot
-// backtrack, but JavaScript's engine can, and it runs on the user's phone. So
-// the unbounded group quantifiers — `(X)*`, `(X)+`, `(X){n,}` — and any
-// unbounded quantifier nested inside a quantified group are refused. `(X)?`
-// and `(X){n,m}` are allowed: they are bounded, cannot backtrack
-// catastrophically, and the corpus needs them.
-//
-// Those two rules stop the EXPONENTIAL shape. They do not stop the POLYNOMIAL
-// one, and Task 19 measured what that costs before Task 20 closed it: two
-// unbounded quantifiers in one branch is O(n^2) work, three is O(n^3), and
-// `[0-9]+[0-9]+[0-9]+[0-9]+z` spent 88 SECONDS on a 400-character input in Bun
-// 1.3.14 while Go's RE2 finished it in microseconds. Separating them with a
-// mandatory literal does not help — `[^\n]+X[^\n]+Y` took 31.7 s on 8,000
-// characters of "aX" — it only changes which input triggers it. Hence
-// MaxUnboundedPerBranch: at most ONE unbounded quantifier along any one
-// concatenation path, counted per alternation branch because that is the unit
-// a backtracking engine explores. Every seed anchor in this corpus has exactly
-// one, and two adjacent ones always collapse: `[0-9]+[0-9]+` is `[0-9]{2,}`.
-//
-// What this does NOT bound is the cost of the one quantifier it still allows,
-// which is quadratic in a backtracking engine whenever the match fails:
-// `[0-9]+z` on 200,000 digits took 17.9 s in Bun. Whether a real template is
-// cheap is therefore a property of the TEMPLATE, not of the dialect, and there
-// are two ways to have it — a mandatory literal prefix, so the engine's prefix
-// scan discards almost every start position, or a bounded run, so each start
-// position is cheap.
-//
-// That distinction is not theoretical. The DIB anchors have the first property
-// (the merchant anchor against a hostile 1 MB body is 1.9 ms). The ENBD alert
-// anchor as v1 wrote it had NEITHER: its first mandatory atom is `[0-9]`, so
-// the engine tries every digit in the body, and its `[0-9,]*` backtracked the
-// whole remaining run at each one — 333,859 ms on a 1 MB body, on the user's
-// phone, from one message that RE2 finishes in microseconds. Task 20 found it
-// only by timing the seeds in the client engine, and fixed it by bounding the
-// run to `[0-9,]{0,24}`, which covers every amount an int64 can hold and
-// produces byte-identical extractions across all 13,798 corpus rows.
-//
-// The dialect cannot express "must have a literal prefix" without making that
-// ENBD anchor inexpressible, which is the defect the accept/reject table exists
-// to prevent. So the bound is enforced where it can be measured:
-// client/src/tmpl/cost.test.ts times every published template against hostile
-// bodies, and TestKNOWNASingleUnboundedQuantifierIsStillQuadraticInJavaScript
-// records why that file has to exist.
-//
-// The validator is a hand-written scanner over the pattern rather than a regex
-// over a regex, because it must track character-class and escape state (so
-// `[.]` and `\.` are not mistaken for a bare `.`) and group nesting with each
-// group's quantifier (so "unbounded inside quantified" can be decided at all).
-// After the structural checks pass, the pattern is additionally handed to
-// regexp.Compile, so a shape the scanner does not model still cannot ship.
-
 import (
 	"errors"
 	"fmt"
@@ -81,58 +8,19 @@ import (
 	"strings"
 )
 
-// Cost bounds. All three are counted in RUNES, not bytes, so the TypeScript
-// mirror can reproduce them from [...p] with no knowledge of UTF-8. The Arabic
-// anchors this corpus needs are 2 bytes per rune, which would otherwise make
-// the Go and TypeScript length limits different limits.
 const (
-	// MaxPatternRunes bounds the pattern text itself.
-	MaxPatternRunes = 512
-	// MaxCaptureGroups bounds the submatch vector.
-	MaxCaptureGroups = 8
-	// MaxBoundProduct bounds the product of {n,m} upper bounds along any one
-	// nesting path, and with it the maximum length a match can have.
-	MaxBoundProduct = 64
-	// MaxUnboundedPerBranch bounds how many unbounded quantifiers may appear in
-	// one alternation branch. See the polynomial-backtracking note above.
+	MaxPatternRunes       = 512
+	MaxCaptureGroups      = 8
+	MaxBoundProduct       = 64
 	MaxUnboundedPerBranch = 1
-	// MaxRepetitionWidth bounds the BACKTRACKING WIDTH of one alternation
-	// branch: the number of distinct ways the bounded quantifiers and
-	// alternations along it can carve up the same input.
-	//
-	// This is the bound MaxBoundProduct is not. That one multiplies quantifier
-	// UPPER bounds and so bounds how LONG a match can be; this one multiplies
-	// the SIZE OF EACH CHOICE — (hi - lo + 1) per repetition, the branch count
-	// per alternation — and so bounds how many times the engine can re-split
-	// the same characters. See the ReDoS note above the reason codes.
-	//
-	// 1,024 is 5.1x the widest pattern the seed set ships (the ENBD credit
-	// anchor is exactly 200) and 16x below the smallest measured blow-up. It
-	// is also, independently, the widest pair MaxBoundProduct still lets you
-	// write instead of collapsing: {1,a}{1,b} collapses to {2,a+b}, and
-	// a + b <= 64 maximises a*b at 32*32. The full measured table lives in the
-	// TypeScript mirror's doc comment, which is the one a reader of the client
-	// finds first.
-	MaxRepetitionWidth = 1024
+	MaxRepetitionWidth    = 1024
 )
 
-// Saturation caps for the length and width accumulators. Both rules report a
-// single yes/no, so the only thing an exact value would buy over "past the cap"
-// is an overflow: a{99999} nested ten deep is 10^49 and (?:(?:a{1,9}){9}){9} is
-// 9^81. Go's int would WRAP, and a wrapped product that lands back under the
-// limit is an accepted pattern. The TypeScript mirror saturates identically —
-// its Number would go to Infinity rather than wrap, so saturating in both is
-// what keeps them the same function rather than two that happen to agree on
-// small inputs.
 const (
 	lenCap   = 1 << 30
 	widthCap = MaxRepetitionWidth + 1
 )
 
-// Reason codes. These are the contract with the TypeScript mirror (Task 20),
-// which must reject the same pattern with the same code; they are compared
-// mechanically through conformance/dialect/patterns.json. Treat them as a wire
-// format: add codes, never rename them.
 const (
 	ReasonEmptyPattern                   = "empty_pattern"
 	ReasonPatternTooLong                 = "pattern_too_long"
@@ -168,10 +56,6 @@ const (
 	ReasonNotCompilable                  = "not_compilable"
 )
 
-// AllReasonCodes lists every code the validator can emit. dialect_test.go
-// asserts that each one has a row in the dialect table carrying both a
-// rejected construct and its accepted rewrite, so a ban can never be added
-// without an expressible alternative.
 func AllReasonCodes() []string {
 	return []string{
 		ReasonEmptyPattern, ReasonPatternTooLong, ReasonTooManyCaptureGroups,
@@ -188,8 +72,6 @@ func AllReasonCodes() []string {
 	}
 }
 
-// PatternError is one dialect violation. Offset is a RUNE index into the
-// pattern (see the note on the cost bounds above).
 type PatternError struct {
 	Code    string
 	Offset  int
@@ -200,8 +82,6 @@ func (e *PatternError) Error() string {
 	return fmt.Sprintf("%s at %d: %s", e.Code, e.Offset, e.Message)
 }
 
-// Codes reduces a validator result to its reason codes. This is the form the
-// TypeScript mirror compares against.
 func Codes(errs []error) []string {
 	out := make([]string, 0, len(errs))
 	for _, err := range errs {
@@ -215,33 +95,17 @@ func Codes(errs []error) []string {
 	return out
 }
 
-// escapeWhitelist is every single-character escape MEASURED to mean the same
-// thing in Go's RE2 and in JavaScript compiled with the u flag. A whitelist,
-// not a blacklist: the banned list in the spec names the escapes that are
-// known-divergent, but an escape nobody thought about (\a is BEL in Go and a
-// SyntaxError in JS) must fail closed rather than fall through.
 const escapeWhitelist = `nrtfv` + `dDwW` + `\.+*?()[]{}|^$/`
 
-// escapeClassOnly is allowed inside a character class and nowhere else. Under
-// the u flag JavaScript's IdentityEscape outside a class is restricted to the
-// SyntaxCharacters and "/", so `\-` at top level is a SyntaxError there while
-// Go accepts it.
 const escapeClassOnly = `-`
 
 var groupNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// ValidatePattern reports every way p (compiled with flags) violates the
-// dialect. An empty result means the pattern is safe to publish: both engines
-// were measured to agree on every construct it contains, and its match cost is
-// bounded.
 func ValidatePattern(p string, flags []string) []error {
 	v := &patternScanner{src: []rune(p)}
 	v.checkFlags(flags)
 	v.scan()
 	if len(v.errs) == 0 {
-		// The scanner models the dialect, not the whole grammar. Go's own
-		// parser is the backstop for everything it does not model, such as a
-		// reversed character-class range.
 		if _, err := CompileGo(p, flags); err != nil {
 			v.add(0, ReasonNotCompilable, "does not compile in Go RE2: "+err.Error())
 		}
@@ -249,18 +113,6 @@ func ValidatePattern(p string, flags []string) []error {
 	return v.errs
 }
 
-// CompileGo compiles a stored pattern for the Go executor, applying the
-// declared flags.
-//
-// Stored patterns carry no inline flags — the dialect bans them because
-// JavaScript has none — so "i" is applied here, as the (?i) prefix that is
-// Go's only spelling of it. The JavaScript side is the mirror of this
-// function: new RegExp(ToJS(p), flags.join("") + "u"). The trailing "u" there
-// is not optional and is the whole reason the two engines fold case the same
-// way; see server/internal/tmpl/v2-template-format.md.
-//
-// Both executors go through their own one of these, so "how a flag is applied"
-// has exactly one implementation per language rather than one per call site.
 func CompileGo(p string, flags []string) (*regexp.Regexp, error) {
 	prefix := ""
 	for _, f := range flags {
@@ -271,14 +123,6 @@ func CompileGo(p string, flags []string) (*regexp.Regexp, error) {
 	return regexp.Compile(prefix + p)
 }
 
-// ToJS rewrites a stored pattern into the text JavaScript must compile:
-// (?P<name>...) becomes (?<name>...). Nothing else changes, which is the
-// point — the published text is what both engines run.
-//
-// It is a scanner rather than a string replace because `\(` followed by `?P<`
-// is an escaped parenthesis, an optional quantifier and three literal
-// characters; a ReplaceAll would turn that into a named group and silently
-// change what JavaScript matches.
 func ToJS(p string) string {
 	r := []rune(p)
 	var b strings.Builder
@@ -315,52 +159,20 @@ func ToJS(p string) string {
 	return b.String()
 }
 
-// ---------------------------------------------------------------------------
-// the scanner
-// ---------------------------------------------------------------------------
-
-// frame is one group's accumulated state. hasUnbounded, best and the unbounded
-// count all propagate to the parent when the group closes, which is what lets
-// the three nesting rules be decided in a single left-to-right pass.
 type frame struct {
-	// hasUnbounded records that a *, + or {n,} appears somewhere inside this
-	// group at any depth. Quantifying such a group is the (a+)+ shape.
-	hasUnbounded bool
-	// best is the largest product of {n,m} upper bounds along any path inside
-	// this group. A group's own quantifier multiplies it on the way out.
-	best int
-	// branchUnbounded counts the unbounded quantifiers in the alternation
-	// branch currently being scanned, including those contributed by nested
-	// groups that have already closed.
+	hasUnbounded    bool
+	best            int
 	branchUnbounded int
-	// maxUnbounded is the largest branchUnbounded of any branch that has
-	// already ended at a '|'. worstBranch combines the two.
-	maxUnbounded int
+	maxUnbounded    int
 
-	// The length and width accumulators below are the two ReDoS cost rules.
-	// They are kept per BRANCH and folded at every '|', for the same reason
-	// branchUnbounded is: a backtracking engine explores one branch at a time,
-	// so `a|bcd` is two alternatives rather than a four-rune atom.
-
-	// branchMin and branchMax are the match length in runes of the branch being
-	// scanned, saturating at lenCap.
 	branchMin, branchMax int
-	// min and max are folded across the branches already ended at a '|': the
-	// shortest and the longest this group can match.
-	min, max int
-	// folded records that at least one branch has been folded, so min is a
-	// measurement rather than its zero value.
-	folded bool
-	// branchWidth is the backtracking width of the branch being scanned: the
-	// product of every choice along it. width is the SUM of the widths of the
-	// branches already folded — alternatives add, they do not multiply.
-	branchWidth, width int
+	min, max             int
+	folded               bool
+	branchWidth, width   int
 }
 
 func newFrame() *frame { return &frame{best: 1, branchWidth: 1} }
 
-// endBranch closes the branch at a '|' (or at the group's end), folding it into
-// the frame's totals.
 func (f *frame) endBranch() {
 	f.maxUnbounded = f.worstBranch()
 	f.branchUnbounded = 0
@@ -375,14 +187,8 @@ func (f *frame) endBranch() {
 	f.branchMin, f.branchMax, f.branchWidth = 0, 0, 1
 }
 
-// variable reports whether this group can match more than one LENGTH, which is
-// what makes repeating it explosive.
 func (f *frame) variable() bool { return f.min != f.max }
 
-// worstBranch is the number of unbounded quantifiers in this group's most
-// expensive alternation branch, including the branch still being scanned.
-// Branches are independent — a backtracking engine explores one at a time — so
-// `a+|b+` costs what `a+` costs and counts as one, not two.
 func (f *frame) worstBranch() int {
 	if f.branchUnbounded > f.maxUnbounded {
 		return f.branchUnbounded
@@ -396,8 +202,6 @@ type patternScanner struct {
 	stack    []*frame
 	captures int
 	names    map[string]bool
-	// each of these is reported at most once, so a 500-rune pattern with a
-	// systematic mistake yields a readable result rather than a wall.
 	reported map[string]bool
 }
 
@@ -413,8 +217,6 @@ func (v *patternScanner) add(offset int, code, msg string) {
 	v.errs = append(v.errs, &PatternError{Code: code, Offset: offset, Message: msg})
 }
 
-// addOnce reports a code at most once per pattern regardless of offset, for
-// the bounds that describe the whole pattern rather than a position in it.
 func (v *patternScanner) addOnce(offset int, code, msg string) {
 	if v.reported == nil {
 		v.reported = map[string]bool{}
@@ -476,9 +278,6 @@ func (v *patternScanner) scan() {
 			v.add(i, ReasonBareDot, `a bare '.' matches \r, U+2028 and U+2029 in Go but not in JavaScript; write [^\n]`)
 			i = v.quantify(i+1, atomSimple, nil)
 		case c == '*' || c == '+' || c == '?':
-			// Quantifiers are always consumed together with the atom they
-			// apply to, so reaching one here means it applies to nothing (or
-			// to another quantifier, i.e. a possessive form).
 			v.add(i, ReasonMalformedRepetition, fmt.Sprintf("'%c' has no atom to repeat", c))
 			i++
 		case c == '{':
@@ -523,9 +322,6 @@ const (
 	atomGroup
 )
 
-// quantify reads the quantifier (if any) at index next, applies the two
-// nesting rules, folds the atom's cost into the enclosing frame, and returns
-// the index just past the quantifier.
 func (v *patternScanner) quantify(next int, kind atomKind, child *frame) int {
 	q, after := v.readQuant(next)
 	cur := v.top()
@@ -547,13 +343,6 @@ func (v *patternScanner) quantify(next int, kind atomKind, child *frame) int {
 		}
 	}
 
-	// The bounded analogue of the rule above. A group that can repeat MORE THAN
-	// ONCE re-splits its own contents on every repeat, so a variable-length
-	// interior is raised to the power of the repeat count. '?' and {0,1} are
-	// exempt because one repetition multiplies nothing — and that exemption is
-	// load-bearing rather than a nicety: ([0-9]{1,4})? is this dialect's own
-	// sanctioned rewrite for ([0-9]+)?, and a rule that refused it would make
-	// the ban above inexpressible.
 	if child != nil && q.present && !q.unbounded && q.max >= 2 && child.variable() {
 		v.add(next, ReasonNestedVariableRepetition,
 			fmt.Sprintf("this group repeats up to %d times and its contents match between %d and %d runes; "+
@@ -572,9 +361,6 @@ func (v *patternScanner) quantify(next int, kind atomKind, child *frame) int {
 		cur.hasUnbounded = true
 	}
 
-	// The polynomial-backtracking bound. The atom contributes its own unbounded
-	// quantifier plus, for a group, that group's most expensive branch — so
-	// `(a+|b+)c+` counts two and `(a+|b+)c` counts one.
 	added := 0
 	if q.present && q.unbounded {
 		added++
@@ -601,8 +387,6 @@ func (v *patternScanner) quantify(next int, kind atomKind, child *frame) int {
 		cur.best = prod
 	}
 
-	// Length and width. A simple atom is one rune wide and offers one choice; a
-	// group carries whatever its own branches folded to.
 	atomMin, atomMax, atomWidth := 1, 1, 1
 	if child != nil {
 		atomMin, atomMax, atomWidth = child.min, child.max, child.width
@@ -610,14 +394,9 @@ func (v *patternScanner) quantify(next int, kind atomKind, child *frame) int {
 	addMin, addMax, addWidth := atomMin, atomMax, atomWidth
 	if q.present {
 		if q.unbounded {
-			// Quadratic, not exponential, and already counted by
-			// MaxUnboundedPerBranch. Its LENGTH is still unbounded, which is
-			// what makes an enclosing group variable.
 			addMin, addMax = satMul(q.min, atomMin), lenCap
 		} else {
 			addMin, addMax = satMul(q.min, atomMin), satMul(q.max, atomMax)
-			// Repeating the atom q.max times re-splits its interior that many
-			// times, and the repetition count is itself a choice.
 			addWidth = satMul(satPow(atomWidth, q.max), q.max-q.min+1)
 		}
 	}
@@ -644,13 +423,12 @@ func satMul(a, b int) int {
 	return a * b
 }
 
-// satPow is a^n, saturating at widthCap. n is a repeat count, so a^0 is 1.
 func satPow(a, n int) int {
 	if a <= 1 {
 		if a == 0 {
 			return 0
 		}
-		return 1 // a{99999} on a fixed-width atom must not loop 99,999 times
+		return 1
 	}
 	out := 1
 	for k := 0; k < n; k++ {
@@ -665,8 +443,6 @@ func satPow(a, n int) int {
 	return out
 }
 
-// mulCapped keeps the running product from overflowing on a pattern that is
-// rejected anyway (a{99999} nested ten deep).
 func mulCapped(a, b int) int {
 	if a > MaxBoundProduct || b > MaxBoundProduct {
 		return MaxBoundProduct + 1
@@ -681,15 +457,9 @@ func mulCapped(a, b int) int {
 type quant struct {
 	present   bool
 	unbounded bool
-	// min and max are the repetition's own bounds. min is read by the width
-	// rule, which counts (max - min + 1) alternatives per repetition; max is
-	// also the bound-product multiplier. For an unbounded form max is unset and
-	// only min is meaningful.
-	min, max int
+	min, max  int
 }
 
-// readQuant reads a quantifier at i, including its optional non-greedy '?'
-// suffix, and returns the index just past it.
 func (v *patternScanner) readQuant(i int) (quant, int) {
 	if i >= len(v.src) {
 		return quant{}, i
@@ -714,9 +484,6 @@ func (v *patternScanner) skipLazy(i int) int {
 	return i
 }
 
-// readBraceQuant parses {n}, {n,} and {n,m}. Anything else is rejected: Go
-// reads a{,3} as five literal characters while JavaScript under the u flag
-// makes it a SyntaxError, so the two engines do not agree on what it is.
 func (v *patternScanner) readBraceQuant(i int) (quant, int) {
 	j := i + 1
 	start := j
@@ -739,7 +506,7 @@ func (v *patternScanner) readBraceQuant(i int) (quant, int) {
 		v.add(i, ReasonMalformedRepetition, "unterminated repetition")
 		return quant{}, i + 1
 	}
-	j++ // past ','
+	j++
 	hiStart := j
 	for j < len(v.src) && v.src[j] >= '0' && v.src[j] <= '9' {
 		j++
@@ -748,7 +515,7 @@ func (v *patternScanner) readBraceQuant(i int) (quant, int) {
 		v.add(i, ReasonMalformedRepetition, "unterminated repetition")
 		return quant{}, i + 1
 	}
-	if hiStart == j { // {n,}
+	if hiStart == j {
 		return quant{present: true, unbounded: true, min: lo}, v.skipLazy(j + 1)
 	}
 	hi, err := strconv.Atoi(string(v.src[hiStart:j]))
@@ -763,8 +530,6 @@ func (v *patternScanner) readBraceQuant(i int) (quant, int) {
 	return quant{present: true, min: lo, max: hi}, v.skipLazy(j + 1)
 }
 
-// escape validates the escape sequence starting at i (which points at the
-// backslash) and returns the index just past it.
 func (v *patternScanner) escape(i int, inClass bool) int {
 	if i+1 >= len(v.src) {
 		v.add(i, ReasonMalformedEscape, "pattern ends with a backslash")
@@ -795,9 +560,7 @@ func (v *patternScanner) escape(i int, inClass bool) int {
 	case c == 'k':
 		v.add(i, ReasonEscapeBackreference, `\k is a named backreference in JavaScript and not supported in RE2`)
 	case strings.ContainsRune(escapeWhitelist, c):
-		// measured identical in both engines
 	case inClass && strings.ContainsRune(escapeClassOnly, c):
-		// `\-` is a valid ClassEscape in JavaScript and only inside a class
 	default:
 		v.add(i, ReasonEscapeNotAllowed,
 			fmt.Sprintf(`\%c is not in the dialect's escape whitelist; the two engines were not measured to agree on it`, c))
@@ -805,8 +568,6 @@ func (v *patternScanner) escape(i int, inClass bool) int {
 	return i + 2
 }
 
-// hexEscape allows \xHH, which both engines read as one code point, and
-// rejects \x{...}, which is a SyntaxError in JavaScript under the u flag.
 func (v *patternScanner) hexEscape(i int) int {
 	if i+2 < len(v.src) && v.src[i+2] == '{' {
 		v.add(i, ReasonEscapeUnicodeCodepoint, `\x{...} is a SyntaxError in JavaScript under the u flag; write \xHH or the character itself`)
@@ -828,16 +589,12 @@ func isHex(r rune) bool {
 	return (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
 }
 
-// charClass validates the character class starting at i (which points at '[')
-// and returns the index just past the closing ']'.
 func (v *patternScanner) charClass(i int) int {
 	j := i + 1
 	if j < len(v.src) && v.src[j] == '^' {
 		j++
 	}
 	if j < len(v.src) && v.src[j] == ']' {
-		// Go rejects `[]` outright; JavaScript under u reads it as a class
-		// that never matches. Neither is what an author meant.
 		v.add(i, ReasonEmptyCharClass, `an empty character class; a literal ']' is written \]`)
 		return j + 1
 	}
@@ -860,8 +617,6 @@ func (v *patternScanner) charClass(i int) int {
 	return len(v.src)
 }
 
-// openGroup validates a group opener at i (which points at '('), pushes its
-// frame, and returns the index just past the opener.
 func (v *patternScanner) openGroup(i int) int {
 	push := func(next int) int {
 		v.stack = append(v.stack, newFrame())
@@ -916,8 +671,6 @@ func (v *patternScanner) openGroup(i int) int {
 	}
 }
 
-// groupName validates the name starting at i (just past "(?P<") and returns
-// the index just past the '>'.
 func (v *patternScanner) groupName(i int) int {
 	j := i
 	for j < len(v.src) && v.src[j] != '>' {
@@ -944,8 +697,6 @@ func (v *patternScanner) groupName(i int) int {
 	return j + 1
 }
 
-// GroupNames returns the named capture groups of a pattern, in order of
-// appearance. It assumes the pattern already passed ValidatePattern.
 func GroupNames(p string) []string {
 	re, err := regexp.Compile(p)
 	if err != nil {

@@ -1,6 +1,3 @@
-// The sync routes (`02` #28–#30, §11): ledgerd's `Row` and `UploadBlob` field
-// names, blobs in standard base64, hashes in hex, counters and seqs as decimal
-// strings; `Row.head_sig` is b64 or null, and one upload carries one `head_sig`.
 @_exported import CoreAuth
 import CorePrimitives
 import CoreWire
@@ -99,7 +96,6 @@ public struct UploadBlobJSON: Codable, Sendable, Hashable {
   }
 }
 
-/// The fields of one in-flight blob the upload needs.
 public struct InflightBlobWire: Sendable, Hashable {
   public let counter: Int64
   public let prevHash: Hash32
@@ -135,7 +131,6 @@ public struct UploadResponse: Codable, Sendable, Hashable {
   public init(seqs: [String]) { self.seqs = seqs }
 }
 
-/// The `conflict` detail the server pins verbatim (`02` §6.3).
 public let partiallyAppliedDetail = "read the chain head and resend only the rows above it"
 
 extension AuthClient {
@@ -147,7 +142,6 @@ extension AuthClient {
     try await api.call(.get, "/api/v1/sync/hashes?stream=hot&after=\(after)&limit=\(limit)", bearer: bearer)
   }
 
-  /// `POST /api/v1/sync`, raw: the push applies §5.5's table to the status.
   public func upload(_ r: UploadRequest, bearer: String) async throws(APIError) -> APIResponse {
     try await api.send(APIRequest(method: .post, path: "/api/v1/sync", body: try APIClient.encode(r), bearer: bearer))
   }

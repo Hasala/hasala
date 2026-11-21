@@ -1,9 +1,3 @@
-// conformance/categorize (the TypeScript v3 matcher oracle) and
-// conformance/dict/matching.json (Go's canonicalization and match answers),
-// read by the v4 matcher as the categorize README says: every rule is one
-// enabled alternative, every category active, no direction gate. Cases that
-// need a regex executor (`requires: ["regex"]`) are skipped: the v4 matcher has
-// no regex (spec 04 §2.2).
 import CoreCategorize
 import CoreJSON
 import CorePrimitives

@@ -1,10 +1,5 @@
 package invites
 
-// email.go is the emailed invite (spec 07 §3.2, §4.4, §6.4.2): an invite in
-// state queued gets its code and link key minted by the mail worker at send
-// time, inside the render transaction, so neither is ever stored or logged;
-// only their hashes are.
-
 import (
 	"bytes"
 	"context"
@@ -24,13 +19,8 @@ import (
 	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
-// ErrNotApprovable is an entry that is not confirmed (or has no address).
 var ErrNotApprovable = errors.New("invites: only a confirmed waitlist entry can be approved")
 
-// EnqueueEmailed is `hasalad invite mint --email <address>` (spec 07 §14.3):
-// a queued CLI invite and its invite email, both without email_tag (the CLI
-// holds no auth key; the worker fills both tags). It returns the invite id;
-// the code is minted at send and never shown to the operator.
 func EnqueueEmailed(ctx context.Context, tx pgx.Tx, q *mailq.Queue, address, note string, ttl time.Duration) (uuid.UUID, error) {
 	email, err := keyproto.EmailNorm(address)
 	if err != nil {
@@ -55,9 +45,6 @@ func EnqueueEmailed(ctx context.Context, tx pgx.Tx, q *mailq.Queue, address, not
 	return id, nil
 }
 
-// ApproveEntry is the console's approve (C5, TestFlight by hand): a confirmed
-// entry gets an admin invite addressed to its tag, queued for the worker, and
-// moves to invited.
 func ApproveEntry(ctx context.Context, tx pgx.Tx, q *mailq.Queue, entry uuid.UUID, note string, ttl time.Duration) (uuid.UUID, error) {
 	if err := CheckTTL(ttl); err != nil {
 		return uuid.Nil, err
@@ -96,11 +83,8 @@ func ApproveEntry(ctx context.Context, tx pgx.Tx, q *mailq.Queue, entry uuid.UUI
 	return id, nil
 }
 
-// Renderer is the `invite` kind's renderer.
 type Renderer struct {
-	WebBase string
-	// ManualTestFlight selects the email's "we'll add you ourselves" step:
-	// true until the App Store Connect automation exists (spec 07 §7).
+	WebBase          string
 	ManualTestFlight bool
 	Minter           Minter
 }
@@ -111,16 +95,12 @@ type Minter interface {
 
 var ErrAddressGone = errors.New("invites: the invite's email address is no longer kept; revoke it and mint a new invite")
 
-// ErrStale is a queued invite email whose invite is no longer sendable, or
-// that a newer email for the invite has replaced.
 var ErrStale error = mailq.Stale("invites: the invite is closed")
 
 var ErrMintLimit = errors.New("invites: the invite has been resent as many times as it can be; revoke it and mint a new invite")
 
 const inviteSendable = `(i.state = 'queued' OR (i.state = 'active' AND i.expires_at > now()))`
 
-// Render mints the code and link key, stores their hashes, and renders the
-// email. A resend (an active invite) re-mints: the earlier code dies.
 func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Message, error) {
 	if row.InviteID == nil {
 		return mail.Message{}, ErrStale
@@ -210,8 +190,6 @@ func (r Renderer) secrets(inviteID uuid.UUID, mailID int64) (code, linkKey strin
 	return alphabet.EncodeToString(rawCode), base64.RawURLEncoding.EncodeToString(rawLink), sum[:], nil
 }
 
-// Resend re-queues an active or queued invite's email (C9): the worker
-// re-mints, so the code the person had stops working.
 func Resend(ctx context.Context, tx pgx.Tx, q *mailq.Queue, id uuid.UUID) error {
 	var (
 		entry    *uuid.UUID
@@ -243,5 +221,4 @@ func Resend(ctx context.Context, tx pgx.Tx, q *mailq.Queue, id uuid.UUID) error 
 	return err
 }
 
-// ShortID is an invite id's first 8 hex characters, as `invite list` shows it.
 func ShortID(id uuid.UUID) string { return strings.ReplaceAll(id.String(), "-", "")[:8] }

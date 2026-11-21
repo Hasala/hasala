@@ -19,11 +19,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// keyFixture is one account taken through spec 01 §10.3's C1 the way a device
-// does it: an authority key generated first, a passkey registration whose
-// challenge binds it (C_reg), a session, an address, and — unless the test
-// asks otherwise — the bootstrap that publishes the keys and registers the
-// first writer under the pending authority.
 type keyFixture struct {
 	t        *testing.T
 	pool     *pgxpool.Pool
@@ -35,15 +30,13 @@ type keyFixture struct {
 	keys     *AccountKeys
 	sessions *Sessions
 
-	user   uuid.UUID
-	authn  *authtest.Authenticator
-	credID []byte
-	acct   *authtest.Account
-	email  string
-	token  string
-	device *authtest.Device
-	// counter is the authenticator's next signature counter: it must rise, or
-	// the assertion reads as a cloned authenticator.
+	user    uuid.UUID
+	authn   *authtest.Authenticator
+	credID  []byte
+	acct    *authtest.Account
+	email   string
+	token   string
+	device  *authtest.Device
 	counter atomic.Uint32
 }
 
@@ -124,8 +117,6 @@ func (f *keyFixture) nonce() []byte {
 	return n
 }
 
-// bootstrap builds the request a device sends (with a PRF wrap for the
-// creating credential when prf is set).
 func (f *keyFixture) bootstrap(d *authtest.Device, kind byte, authHash []byte, prf bool) Bootstrap {
 	f.t.Helper()
 	var cred, secret []byte
@@ -152,14 +143,12 @@ func toBootstrap(b authtest.Bootstrap) Bootstrap {
 	return out
 }
 
-// registration builds a writer registration for d signed by the AAK.
 func (f *keyFixture) registration(d *authtest.Device) Registration {
 	n := f.nonce()
 	return Registration{WriterID: d.WriterID, Alg: AlgEd25519, PubKey: d.DWKPub(), DAKPubkey: d.DAKPub(),
 		Nonce: n, Sig: f.acct.Registration(f.t, d, n)}
 }
 
-// enrol registers d on a new session and returns that session's token.
 func (f *keyFixture) enrol(d *authtest.Device) string {
 	f.t.Helper()
 	tok := f.newSession()
@@ -169,8 +158,6 @@ func (f *keyFixture) enrol(d *authtest.Device) string {
 	return tok
 }
 
-// stepUpPasskey begins a step-up for action on token's session and proves it
-// with the fixture's passkey.
 func (f *keyFixture) stepUpPasskey(token string, action keyproto.Action, fields ...[]byte) *StepUpObject {
 	f.t.Helper()
 	b := f.begin(token, action, keyproto.ProofPasskey, fields...)
@@ -178,9 +165,6 @@ func (f *keyFixture) stepUpPasskey(token string, action keyproto.Action, fields 
 		Assertion: f.authn.AssertChallenge(f.t, authtest.RPID, b.Challenge[:], f.counter.Add(1))}}
 }
 
-// reprove makes a fresh assertion over an existing step-up's challenge: the
-// nonce stays usable after an action that failed past a good proof, but an
-// assertion is single use (its signature counter must rise).
 func (f *keyFixture) reprove(su *StepUpObject, action keyproto.Action, fields ...[]byte) *StepUpObject {
 	f.t.Helper()
 	ph, _ := keyproto.ParamsHash(action, fields...)
@@ -203,8 +187,6 @@ func (f *keyFixture) begin(token string, action keyproto.Action, kind keyproto.P
 	return b
 }
 
-// appendRows appends n sealed rows to d's chain, head-signed by d's DWK, and
-// returns the new head.
 func (f *keyFixture) appendRows(d *authtest.Device, n int) (int64, []byte) {
 	f.t.Helper()
 	if err := f.tryAppend(d, n); err != nil {
@@ -217,7 +199,6 @@ func (f *keyFixture) appendRows(d *authtest.Device, n int) (int64, []byte) {
 	return c, h[:]
 }
 
-// tryAppend appends n sealed, chained, head-signed rows to d's chain.
 func (f *keyFixture) tryAppend(d *authtest.Device, n int) error {
 	f.t.Helper()
 	a := &oplog.Appender{Pool: f.pool}
@@ -244,8 +225,6 @@ func (f *keyFixture) tryAppend(d *authtest.Device, n int) error {
 	return err
 }
 
-// revocation builds a revocation of target signed by signer's DWK over a
-// fresh writer nonce, pinning (counter, head).
 func (f *keyFixture) revocation(target string, signer *authtest.Device, counter int64, head []byte, su *StepUpObject) Revocation {
 	f.t.Helper()
 	n := f.nonce()

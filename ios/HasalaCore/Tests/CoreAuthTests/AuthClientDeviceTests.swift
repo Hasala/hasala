@@ -1,6 +1,3 @@
-// AuthClient's device and account routes (`02` #31-#33, #74, #76): method,
-// path, bearer and the exact body the server's strict decoder accepts, and
-// refusals surfacing as `APIError.refused` with the server's code.
 import Foundation
 import Synchronization
 import Testing

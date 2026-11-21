@@ -3,8 +3,6 @@ import HasalaModels
 import Observation
 import SwiftUI
 
-/// The approving iPhone (C9 side A; Paper P2.4 KJZ "Approve a password reset"; spec 04
-/// §6.12): checks the code from the new iPhone, then this iPhone's key approves.
 @MainActor
 @Observable
 final class ResetApprovalModel {
@@ -20,7 +18,6 @@ final class ResetApprovalModel {
     self.request = request
   }
 
-  /// 16 characters of `A-Z2-7` once spaces and hyphens are dropped.
   var codeReady: Bool {
     let n = normalizedCode
     return n.count == 16 && InviteCode.isAlphabet(n)
@@ -55,15 +52,9 @@ final class ResetApprovalModel {
   }
 }
 
-/// "Password reset" (Paper KJZ): a floating medium sheet over the app on the iPhone that is
-/// still signed in. Paper matches a two-digit number; the reset code it binds to is the new
-/// iPhone's 16 characters (spec 04 §6.1.4), so this sheet asks for them: the code is
-/// compared in constant time before any Face ID prompt (`approveReset`), and a person who
-/// can't read the new iPhone's screen can't approve it.
 struct ResetApprovalSheet: View {
   @Environment(\.hBiometry) private var biometry
   @State private var model: ResetApprovalModel
-  /// "No, that's not me": the presenter opens "Let's lock it down" once this sheet is gone.
   var onNotMe: () -> Void
   @Environment(\.dismiss) private var dismiss
   @FocusState private var codeFocused: Bool
@@ -130,7 +121,6 @@ struct ResetApprovalSheet: View {
           .accessibilityIdentifier("approval.failure")
       }
       Button(biometry.name.map { "Yes, approve with \($0)" } ?? "Yes, approve with your passkey") {
-        // The keyboard goes first, so the answer (the line) isn't hidden under it.
         codeFocused = false
         Task { await model.approve() }
       }
@@ -144,8 +134,6 @@ struct ResetApprovalSheet: View {
     }
   }
 
-  /// Paper "Match and effect": what the new iPhone shows (here, typed), then what saying
-  /// yes does.
   private var matchCard: some View {
     VStack(spacing: 0) {
       VStack(alignment: .leading, spacing: 10) {
@@ -164,7 +152,6 @@ struct ResetApprovalSheet: View {
           .background(HColor.fieldSurface, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
           .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
           .overlay { FieldRing(color: model.failure == .codeMismatch ? HColor.fieldError : codeFocused ? HColor.fieldFocus : .clear) }
-          // A tap anywhere in the box focuses the field, alongside the field's own tap.
           .contentShape(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
           .simultaneousGesture(TapGesture().onEnded { codeFocused = true })
           .environment(\.layoutDirection, .leftToRight)
@@ -193,7 +180,6 @@ struct ResetApprovalSheet: View {
     .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
   }
 
-  /// Not on a board: the sheet says it's done in its own words, then closes.
   private var approved: some View {
     VStack(spacing: 14) {
       HeroDisc(icon: .check, hue: .mint, shadow: false)

@@ -1,10 +1,6 @@
 import XCTest
 
-/// The profile on the Release surface: only rows that work, the beta's account actions,
-/// and support in place of the rest.
 final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
-  /// The profile and every page it opens in the app (Sign-in & security is
-  /// `ReleaseSurfaceSignInTests`', Bank alerts `ReleaseSurfaceMailboxTests`').
   @MainActor
   func testProfileShowsOnlyWhatWorks() throws {
     let app = launchRelease()
@@ -21,7 +17,6 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
                         "profile.buildFooter"], "Profile")
     try audit(app)
 
-    // The bank alerts card is a button that opens Bank alerts.
     XCTAssertTrue(app.buttons["profile.bankAlerts"].exists, "the bank alerts card is not a button")
     tap(app, "profile.bankAlerts")
     XCTAssertTrue(el(app, "bankAlerts.hero").waitForExistence(timeout: uiWait), "Bank alerts did not open")
@@ -40,8 +35,6 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait))
     attach(app, "Release · Recurring")
     assertNoPlaceholders(app, "Profile › Recurring")
-    // "All schedules" opens a screen that doesn't exist yet: matched by its identifier,
-    // since its label ("All schedules, 9") is not the text it draws.
     assertAbsent(app, ["bills.remind.axa", "bills.allSchedules"], "Profile › Recurring")
     assertPresent(app, ["bills.add"], "Profile › Recurring")
     assertNoButtons(app, ["Remind me"], "Profile › Recurring")
@@ -113,8 +106,6 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "profile.plan").waitForExistence(timeout: uiWait))
   }
 
-  /// With no mailbox the card says so, and it is still the way to Bank alerts, where
-  /// connecting starts (the card itself offers no second button).
   @MainActor
   func testNoMailboxCardOpensBankAlerts() throws {
     let app = launchRelease("noMailbox")
@@ -130,7 +121,6 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     assertPersonalAccountsOnly(app, "Profile › Bank alerts")
   }
 
-  /// Profile › Delete your account deletes it (Guideline 5.1.1(v)) and lands on Welcome.
   @MainActor
   func testDeleteYourAccountFromTheProfile() throws {
     let app = launchRelease()
@@ -143,7 +133,6 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     let alert = app.alerts["Delete your Hasala account?"]
     XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
     alert.buttons["Delete"].tap()
-    // "Confirm it's you" (Paper P2.6, spec 09 §12) asks before the passkey's Face ID.
     let confirm = el(app, "confirm.submit")
     XCTAssertTrue(confirm.waitForExistence(timeout: 10), "Confirm it's you did not ask")
     attach(app, "Release · Confirm it's you")
@@ -152,7 +141,6 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Deleted")
   }
 
-  /// Sign out from the profile ends the session and lands on Welcome.
   @MainActor
   func testSignOutFromTheProfile() throws {
     let app = launchRelease()
@@ -163,7 +151,6 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     signOut.tap()
     let alert = app.alerts["Sign out of this iPhone?"]
     XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
-    // Sign-in & security's words for the same action (P4); Paper's "erased" isn't said.
     XCTAssertTrue(alert.staticTexts[
       "Your data stays here, locked. Sign in again to open it."
     ].exists)

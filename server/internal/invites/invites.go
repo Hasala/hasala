@@ -1,17 +1,3 @@
-// Package invites is the beta's invite state machine (spec 07 §2.5, §3.2,
-// §4.4; spec 02 §14.1): codes and link keys, minting, the redeemability rule,
-// revocation and the sweeps. It moved out of internal/auth (ledgerd's
-// single-use code), which now calls RedeemTx inside the account transaction.
-//
-// # What a code proves
-//
-// A code is 120 bits from crypto/rand; possession lets an account be created.
-// It never proves an address by itself: only the link key, which only the
-// invite email carries (in the URL fragment), does, and only together with an
-// address whose email_tag equals the invite's (Resolve). An addressed invite
-// is redeemable only with its own address; any mismatch is the same "not
-// invited" as an unknown code, so the answer says nothing about whom an
-// invite was for.
 package invites
 
 import (
@@ -34,9 +20,8 @@ import (
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
-// Sizes and defaults.
 const (
-	codeBytes    = 15 // 120 bits → 24 base32 characters, no padding
+	codeBytes    = 15
 	CodeLen      = 24
 	LinkKeyBytes = 32
 	DefaultTTL   = 14 * 24 * time.Hour
@@ -46,21 +31,16 @@ const (
 	MaxMints     = 20
 )
 
-// ErrNotInvited is the one distinguishable signup refusal (spec 02 §14.1):
-// unknown, spent, expired, revoked, or addressed to someone else.
 var ErrNotInvited = errors.New("invites: not a redeemable invite")
 
 var alphabet = base32.StdEncoding.WithPadding(base32.NoPadding)
 
-// Querier is the surface of a pool and a transaction this package uses.
 type Querier interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
-// Normalize is the one definition of "the same code": upper case, separators
-// (spaces, tabs, newlines, hyphens, underscores) dropped.
 func Normalize(raw string) string {
 	var b strings.Builder
 	b.Grow(len(raw))
@@ -74,8 +54,6 @@ func Normalize(raw string) string {
 	return strings.ToUpper(b.String())
 }
 
-// CodeHash is SHA-256(Normalize(code)), the only stored form; nil for an empty
-// code, so "no code" never hashes to something a row could hold.
 func CodeHash(code string) []byte {
 	n := Normalize(code)
 	if n == "" {
@@ -85,7 +63,6 @@ func CodeHash(code string) []byte {
 	return sum[:]
 }
 
-// Display groups a code in fours: ABCD-EFGH-IJKL-MNOP-QRST-UVWX.
 func Display(code string) string {
 	n := Normalize(code)
 	var parts []string
@@ -96,7 +73,6 @@ func Display(code string) string {
 	return strings.Join(append(parts, n), "-")
 }
 
-// NewCode returns a fresh code (24 characters of RFC 4648 base32).
 func NewCode() (string, error) {
 	raw := make([]byte, codeBytes)
 	if _, err := rand.Read(raw); err != nil {
@@ -105,8 +81,6 @@ func NewCode() (string, error) {
 	return alphabet.EncodeToString(raw), nil
 }
 
-// NewLinkKey returns 32 random bytes, their b64url form (43 characters, the
-// URL fragment) and the stored SHA-256.
 func NewLinkKey() (raw []byte, encoded string, hash []byte, err error) {
 	raw = make([]byte, LinkKeyBytes)
 	if _, err := rand.Read(raw); err != nil {
@@ -116,7 +90,6 @@ func NewLinkKey() (raw []byte, encoded string, hash []byte, err error) {
 	return raw, base64.RawURLEncoding.EncodeToString(raw), sum[:], nil
 }
 
-// LinkKeyMatches compares SHA-256(raw) with a stored hash in constant time.
 func LinkKeyMatches(raw, stored []byte) bool {
 	if len(raw) != LinkKeyBytes || len(stored) != 32 {
 		return false
@@ -125,18 +98,15 @@ func LinkKeyMatches(raw, stored []byte) bool {
 	return subtle.ConstantTimeCompare(sum[:], stored) == 1
 }
 
-// Link is https://hasala.app/i/<CODE>#<LINK_KEY> on the given web base.
 func Link(webBase, code, linkKey string) string {
 	return strings.TrimSuffix(webBase, "/") + "/i/" + Normalize(code) + "#" + linkKey
 }
 
-// FallbackText is the email's typed form, hasala.app/i/<CODE with hyphens>.
 func FallbackText(webBase, code string) string {
 	host := strings.TrimPrefix(strings.TrimPrefix(webBase, "https://"), "http://")
 	return strings.TrimSuffix(host, "/") + "/i/" + Display(code)
 }
 
-// CheckTTL bounds an invite's lifetime (invite_codes_ttl_is_bounded).
 func CheckTTL(ttl time.Duration) error {
 	if ttl < MinTTL || ttl > MaxTTL {
 		return fmt.Errorf("invites: ttl %s is outside 24h–720h", ttl)
@@ -144,7 +114,6 @@ func CheckTTL(ttl time.Duration) error {
 	return nil
 }
 
-// CheckNote bounds an operator's note.
 func CheckNote(note string) error {
 	if len([]rune(note)) > MaxNote {
 		return fmt.Errorf("invites: a note is at most %d characters", MaxNote)
@@ -161,9 +130,6 @@ func nullable(s string) any {
 
 func pgInterval(d time.Duration) string { return fmt.Sprintf("%d seconds", int64(d/time.Second)) }
 
-// MintPrinted creates an active, unaddressed CLI invite and returns its id and
-// code, printed once (spec 07 §14.3: `invite mint [--review]`). A review
-// invite marks the account it creates as a review account (spec 07 §2.5).
 func MintPrinted(ctx context.Context, q Querier, note string, ttl time.Duration, review bool, now time.Time) (uuid.UUID, string, error) {
 	if err := CheckTTL(ttl); err != nil {
 		return uuid.Nil, "", err
@@ -187,7 +153,6 @@ func MintPrinted(ctx context.Context, q Querier, note string, ttl time.Duration,
 	return id, code, nil
 }
 
-// Summary is one row of `invite list`.
 type Summary struct {
 	ID         uuid.UUID
 	State      string
@@ -203,7 +168,6 @@ type Summary struct {
 	RedeemedBy *uuid.UUID
 }
 
-// List returns every invite, newest first.
 func List(ctx context.Context, q Querier) ([]Summary, error) {
 	rows, err := q.Query(ctx,
 		`SELECT id, state, origin, review, email_tag IS NOT NULL, created_at, expires_at, mint_count,
@@ -222,14 +186,10 @@ func List(ctx context.Context, q Querier) ([]Summary, error) {
 	})
 }
 
-// ErrNoSuchInvite is a revoke whose prefix matches no open invite.
 var ErrNoSuchInvite = errors.New("invites: no open invite matches")
 
-// ErrAmbiguous is a prefix that matches more than one invite.
 var ErrAmbiguous = errors.New("invites: the id prefix matches more than one invite")
 
-// Revoke closes an open invite by id prefix (≥ 8 hex characters) and moves an
-// invited entry back to confirmed (spec 07 §3.2, C10). It returns the id.
 func Revoke(ctx context.Context, tx pgx.Tx, prefix string, now time.Time) (uuid.UUID, error) {
 	prefix = strings.ToLower(strings.TrimSpace(prefix))
 	if len(prefix) < 8 || strings.Trim(prefix, "0123456789abcdef-") != "" {
@@ -297,19 +257,12 @@ func Revoked(ctx context.Context, q Querier, prefix string) (uuid.UUID, time.Tim
 	}
 }
 
-// Resolution is what Resolve learned about a code at signup/begin.
 type Resolution struct {
 	InviteID uuid.UUID
-	// Proven is true when the link key matched and the address is the one the
-	// invite was mailed to: no signup code is needed (spec 07 §4.4).
-	Proven bool
-	Review bool
+	Proven   bool
+	Review   bool
 }
 
-// Resolve applies spec 02 §14.1 / spec 07 §2.5 at signup/begin: the code must
-// be redeemable; an addressed invite must be used with its own address
-// (emailTag); the address is proven only by a matching link key. linkKey may be
-// nil. Every refusal is ErrNotInvited.
 func Resolve(ctx context.Context, q Querier, code string, linkKey, emailTag []byte, now time.Time) (Resolution, error) {
 	h := CodeHash(code)
 	if h == nil {
@@ -337,20 +290,12 @@ func Resolve(ctx context.Context, q Querier, code string, linkKey, emailTag []by
 	return r, nil
 }
 
-// Redeemed is what RedeemTx spent.
 type Redeemed struct {
 	InviteID uuid.UUID
 	EntryID  *uuid.UUID
 	Review   bool
 }
 
-// RedeemTx spends the invite inside the account-creation transaction (spec 02
-// §14.1): exactly one row moves active → redeemed, else ErrNotInvited and the
-// caller rolls the whole account back. An addressed invite redeems only for
-// the account whose address has its tag (emailTag, the new account's
-// email_tag); a nil emailTag redeems only an unaddressed invite. Two
-// transactions presenting one code serialize on the row; the loser's
-// predicate fails after the winner commits.
 func RedeemTx(ctx context.Context, tx pgx.Tx, codeHash, emailTag []byte, userID uuid.UUID, now time.Time) (Redeemed, error) {
 	if len(codeHash) == 0 {
 		return Redeemed{}, ErrNotInvited
@@ -370,10 +315,6 @@ func RedeemTx(ctx context.Context, tx pgx.Tx, codeHash, emailTag []byte, userID 
 	return r, nil
 }
 
-// Sweep runs spec 07 §2.11's invite sweeps: unsent (a queued invite with no
-// email left to send is revoked), expiry (an expired invite's entry goes back
-// to confirmed), forget (30 days after closing, the tag, note and
-// link key go) and delete. It reports what it did.
 func Sweep(ctx context.Context, q *pgxpool.Pool, hold purgeledger.HoldFunc, record func(purgeledger.Entry)) (string, error) {
 	unsent, err := sweepUnsent(ctx, q, hold, record)
 	if err != nil {

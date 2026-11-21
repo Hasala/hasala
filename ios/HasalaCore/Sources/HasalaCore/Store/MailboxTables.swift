@@ -1,10 +1,3 @@
-// The Gmail lane's tables in ledger.sqlite (spec 04 §4.2: mailbox_state, mailbox_accounted,
-// mailbox_set_aside, mailbox_unreadable, mailbox_staging, bank_health), plus the `pending_ops`
-// insert that must share their transaction (§7.5 step 7f: a message's op and its accounting row
-// commit together, so a crash can neither lose a message nor author it twice).
-//
-// Row-level and content-agnostic: CoreMailbox (L4) maps its values onto these rows (it may not
-// import GRDB, R6), and the op JSON arrives already authored (CoreDomain's OpAuthor, R5).
 import Foundation
 import GRDB
 
@@ -132,7 +125,6 @@ public struct BankHealthRecord: Sendable, Equatable {
   public var readThisMonth: Int
 }
 
-/// One authored op for `pending_ops` (§4.2), canonical JSON already validated by its author.
 public struct MailboxPendingOpRow: Sendable, Equatable {
   public var opID: String
   public var opJSON: Data
@@ -150,7 +142,6 @@ public struct MailboxPendingOpRow: Sendable, Equatable {
   }
 }
 
-/// Everything one mailbox step writes, applied in ONE transaction.
 public struct MailboxWrite: Sendable {
   public var pending: [MailboxPendingOpRow] = []
   public var accounted: [MailboxAccountedRow] = []
@@ -159,7 +150,6 @@ public struct MailboxWrite: Sendable {
   public var stage: [MailboxStagingRow] = []
   public var unstage: [String] = []
   public var pruneAccountedBelow: Int64?
-  /// (domain, local month `YYYY-MM`, internalDate ms) per read message.
   public var health: [(domain: String, month: String, internalDate: Int64)] = []
   public var addImports: [(domain: String, sinceMs: Int64)] = []
   public var senderAddresses: [(address: String, at: Int64)] = []
@@ -185,14 +175,12 @@ public final class MailboxTableStore: Sendable {
 
   public init(writer: any DatabaseWriter) { db = writer }
 
-  /// A store over a private in-memory database with `schema` applied (tests, previews).
   public static func inMemory() throws -> MailboxTableStore {
     let q = try DatabaseQueue()
     try q.write { db in for s in schema { try db.execute(sql: s) } }
     return MailboxTableStore(writer: q)
   }
 
-  /// §4.2's DDL for the tables this store touches (identical to LedgerSchema's migration "v1").
   public static let schema: [String] =
     LedgerSchema.v1.filter { sql in
       ["pending_ops", "mailbox_", "bank_health"].contains { sql.hasPrefix("CREATE TABLE \($0)") }
@@ -289,7 +277,6 @@ public final class MailboxTableStore: Sendable {
     }
   }
 
-  /// Which of `ids` are accounted or staged.
   public func accounted(among ids: [String]) throws -> Set<String> {
     guard !ids.isEmpty else { return [] }
     return try db.read { db in
@@ -347,7 +334,6 @@ public final class MailboxTableStore: Sendable {
     }
   }
 
-  /// message_id -> outcome (tests and diagnostics).
   public func accountedRowsForTests() throws -> [String: String] {
     try db.read { db in
       Dictionary(
@@ -357,7 +343,6 @@ public final class MailboxTableStore: Sendable {
     }
   }
 
-  /// `pending_ops` rows (tests; the outbox reads them through LedgerStore).
   public func pendingOpIDs() throws -> [String] {
     try db.read { db in try String.fetchAll(db, sql: "SELECT op_id FROM pending_ops ORDER BY local_seq") }
   }

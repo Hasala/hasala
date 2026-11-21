@@ -1,17 +1,9 @@
 ---
-/**
- * /licenses: the third-party software the site ships to the browser, with
- * each licence's full text (src/data/licenses.ts keeps the list), and how
- * Hasala's own code is licensed. No script of its own: the licence texts
- * open with <details>.
- */
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
 import { SITE } from '../data/site';
 import { THIRD_PARTY, mitLicense } from '../data/licenses';
 import interOfl from '../assets/fonts/Inter-OFL.txt?raw';
-// Verbatim, from the installed packages (relative paths: the packages'
-// export maps don't list their LICENSE files).
 import astroLicense from '../../node_modules/astro/LICENSE?raw';
 import uqrLicense from '../../node_modules/uqr/LICENSE?raw';
 

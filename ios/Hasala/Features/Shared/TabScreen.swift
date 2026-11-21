@@ -2,21 +2,11 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// A tab's root screen (Paper "Template · Tab screen" K2-0; Plan · October, Activity ·
-/// Overview, Review · Tab): the main header on the system bar, the wash that scrolls away
-/// with the content, then a column 20 under the header: the large title block (34/40 bold,
-/// with what sits under it, `header`, 10 below: the period pill or a count line), and the
-/// sections, 32 apart. The column ends 160 above the bottom so the last card clears the tab
-/// bar, under the soft scroll edge. Pull to refresh, and the toast 14 above the bar.
-///
-/// Home has no title (`title: nil`): it leads with the figure.
 struct TabScreen<Header: View, Content: View>: View {
   @Bindable var app: AppModel
   let title: String?
   var wash: HWash
-  /// Between the title block and each section (Paper 32; Review draws 24).
   var spacing: CGFloat
-  /// Between the large title and what sits under it (Paper 10; Review's count line 4).
   var titleGap: CGFloat
   @ViewBuilder let header: () -> Header
   @ViewBuilder let content: () -> Content
@@ -60,8 +50,6 @@ struct TabScreen<Header: View, Content: View>: View {
       .padding(.bottom, HSpacing.scrollContentBottom)
       .frame(maxWidth: .infinity, alignment: .leading)
     }
-    // The wash starts at the top of the screen, behind the bar, and scrolls away with the
-    // content (Paper: absolute, 420 tall); a pull or a refresh doesn't carry it down.
     .washBehind(wash)
     .settlesAfterRefresh()
     .onScrollGeometryChange(for: Bool.self) { geo in
@@ -227,8 +215,6 @@ extension TabScreen where Header == EmptyView {
 }
 
 extension HWash {
-  /// The wash for a screen's hue: sky, sand and rose are the three verdict washes (on track,
-  /// over pace, over budget); the other hues tint a category or project.
   init(_ hue: Hue) {
     switch hue {
     case .sky: self = .onTrack

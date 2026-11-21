@@ -1,47 +1,3 @@
-// Package budget is the admission gate of
-// 2026-08-09-account-isolation-design (ledgerd design archive).
-//
-// Its whole job is one sentence from that document:
-//
-//	Every durable byte must be attributable to exactly one account at the
-//	moment it is admitted, and admission must fail closed against that
-//	account's budget — in one place, not per endpoint.
-//
-// So there is exactly one exported operation, [Gate.Admit], and it is called
-// from the one seam where attacker-scale durable bytes can accumulate: the op
-// log append (internal/oplog). It is deliberately NOT called from an endpoint. An
-// endpoint check is the thing the next feature forgets; a check inside the
-// appender cannot be forgotten, because there is no second way to append.
-//
-// # Three tables, three jobs
-//
-//   - account_usage is the ledger: one row per (account, resource), maintained
-//     INSIDE the caller's transaction so the bytes and the number that counts
-//     them commit together or not at all. A rolled-back append leaves the
-//     ledger exactly as it found it, and that property is what makes the
-//     accounting survive every future caller rather than only the careful ones.
-//   - account_limits is the policy: one default row plus optional per-account
-//     overrides, so raising a ceiling is an UPDATE and not a deploy.
-//   - account_refusals is the receipt: a content-free (user, day, resource)
-//     count of every denial. See the note on [Gate.recordRefusal] for why it is
-//     the one write here that does NOT join the caller's transaction.
-//
-// # The vocabulary (spec 02 §5.4)
-//
-// One ledger resource, oplog_hot_bytes, bounded by account_limits.oplog_bytes
-// (default 256 MiB). ledgerd's oplog_cold_bytes, quarantine_* and smtp_daily
-// went with the cold stream, the quarantine and SMTP. Refusal-only resources
-// (upload_bytes, headroom, suspended) name no ledger row and no ceiling.
-//
-// # Lock ordering
-//
-// Admit locks every row of the target's family with a single ORDER BY resource
-// ... FOR UPDATE, so two transactions touching the same family take the same
-// rows in the same order and cannot deadlock against each other. The caller's
-// own ordering rule matters as much: oplog's
-// appendTx calls Admit only AFTER allocSeq has taken the per-account counter
-// lock, which serializes same-account appends one step earlier and leaves this
-// gate contending on a row that is already exclusively held.
 package budget
 
 import (
@@ -56,58 +12,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// The ledger's resources. This is the whole closed set — it matches the CHECK
-// constraint on account_usage.resource, and adding a value is a migration,
-// which is the correct amount of friction for a claim that a new write path can
-// fill the disk.
 const (
-	// ResourceOplogHotBytes counts durable bytes in the op log.
 	ResourceOplogHotBytes = "oplog_hot_bytes"
 )
 
-// The refusal-only resources: things that decline a write without the ledger
-// ever being touched, so they name no account_usage row and no ceiling.
-//
-// They exist here — rather than in the packages that produce them — because
-// [CountRefusals] is the one writer of account_refusals, and a writer that
-// cannot name every legal resource forces a second writer to be built beside
-// it. That is exactly how this table ended up with two writers and two day
-// clocks once already.
 const (
-	// ResourceUploadBytes is the byte-weighted limiter on POST /api/v1/sync,
-	// charged BEFORE the append. It is the flow shaper, not the ceiling: a
-	// refusal here says "too soon", where a ceiling refusal says "too much".
 	ResourceUploadBytes = "upload_bytes"
-	// ResourceHeadroom is the box-level free-space fuse, which refuses every
-	// account's durable writes rather than one account's.
-	ResourceHeadroom = "headroom"
-	// ResourceSuspended is a refusal because the account is suspended.
-	ResourceSuspended = "suspended"
+	ResourceHeadroom    = "headroom"
+	ResourceSuspended   = "suspended"
 )
 
-// refusalResources is the closed set account_refusals.resource accepts.
-//
-// It is DELIBERATELY wider than the ledger resource above, and the width is the
-// point: no refusal is silently dropped, so every source of a refusal must have
-// somewhere to be counted — the ceiling, the upload-byte limiter, the headroom
-// fuse, and suspension. The baseline migration states the same set as a CHECK
-// constraint (account_refusals_resource_is_closed) and is the authority; this
-// slice exists so a wrong name is a Go error naming the resource rather than a
-// constraint violation inside a buffered retry loop that then retries forever.
-//
-// Adding a member here without adding it to the CHECK constraint moves the
-// failure back into the database, so the two change together or not at all.
 var refusalResources = []string{
 	ResourceOplogHotBytes,
 	ResourceUploadBytes,
 	ResourceHeadroom, ResourceSuspended,
 }
 
-// family is the set of ledger resources one ceiling bounds together, plus the
-// account_limits column holding that ceiling.
-//
-// members is stored SORTED, because it is also the lock order (see the package
-// doc). Do not reorder it for readability.
 type family struct {
 	limitColumn string
 	members     []string
@@ -120,37 +40,16 @@ var families = map[string]family{
 	},
 }
 
-// ErrRefused reports that a write was declined because the account is at or
-// over its ceiling. Callers map it to a status: 413 account_full on the API. Match it with errors.Is; the concrete [RefusedError] carries the
-// numbers an operator wants.
-//
-// It is deliberately distinct from every other failure Admit can return: a
-// refusal is a policy outcome the user can be told about, while a missing
-// policy row or a locked-out ledger is a server fault, and answering the two
-// with one error would let an outage be rendered to a user as "you are out of
-// space".
 var ErrRefused = errors.New("budget: refused")
 
-// ErrLedgerUnderflow reports that a release (a negative delta) was larger than
-// what the ledger says the account holds.
-//
-// It is NOT a refusal and is NOT counted in account_refusals: nothing a user
-// did was declined. It means the ledger and reality have drifted, which is a
-// server bug — so it is loud, it leaves the ledger untouched, and it is the
-// signal to run internal/verify's reconciliation. Clamping at zero instead
-// would convert the accounting bug into free quota, silently and permanently,
-// which is why account_usage.amount also carries a non-negative CHECK.
 var ErrLedgerUnderflow = errors.New("budget: ledger underflow")
 
-// RefusedError is the concrete form of [ErrRefused].
 type RefusedError struct {
 	UserID   uuid.UUID
 	Resource string
-	// Have is the family's total BEFORE this delta, Delta is what was asked
-	// for, and Limit is the ceiling that bounds the family.
-	Have  int64
-	Delta int64
-	Limit int64
+	Have     int64
+	Delta    int64
+	Limit    int64
 }
 
 func (e *RefusedError) Error() string {
@@ -158,47 +57,17 @@ func (e *RefusedError) Error() string {
 		e.UserID, e.Have, e.Limit, e.Resource, e.Delta)
 }
 
-// Is makes errors.Is(err, ErrRefused) true for every RefusedError, so callers
-// can switch on the class without depending on the struct.
 func (e *RefusedError) Is(target error) bool { return target == ErrRefused }
 
-// Gate is the admission gate. Pool is required and is used for exactly one
-// thing — writing the refusal receipt outside the caller's doomed transaction
-// (see [Gate.recordRefusal]). Every other statement runs on the caller's tx.
 type Gate struct {
 	Pool *pgxpool.Pool
-	// now overrides the refusal day bucket in THIS PACKAGE'S TESTS only. It is
-	// unexported and New never sets it, so the one production day clock is the
-	// database's — see [CountRefusals].
-	now func() time.Time
+	now  func() time.Time
 }
 
-// New returns a Gate over pool.
 func New(pool *pgxpool.Pool) *Gate { return &Gate{Pool: pool} }
 
-// Admit accounts delta against userID's budget for resource, INSIDE tx, and
-// fails closed if the resulting family total would exceed the account's
-// ceiling.
-//
-// The caller must roll tx back when Admit returns an error, and then pass the
-// error to [Gate.RecordRefusal]. It is the caller's transaction, so Admit
-// cannot and does not end it — but every increment Admit wrote is only durable
-// if the caller's own write is, which is the entire point of taking a tx rather
-// than a pool.
-//
-// delta may be negative: that is a release (an expiry sweep, a future
-// compaction). A release is never refused by a ceiling — an account
-// already over a lowered limit must still be able to shrink — but a release
-// larger than the stored amount returns [ErrLedgerUnderflow] and changes
-// nothing.
-//
-// delta == 0 is a no-op that takes no lock and creates no row.
 func (g *Gate) Admit(ctx context.Context, tx pgx.Tx, userID uuid.UUID, resource string, delta int64) error {
 	if g == nil || g.Pool == nil {
-		// Fail closed and loudly. A Gate without a pool could still do the
-		// arithmetic, but it could not record a refusal anywhere the rollback
-		// does not erase — and an uncounted refusal is the silent drop
-		// account_refusals exists to prevent.
 		return errors.New("budget: admit: gate has no pool")
 	}
 	if tx == nil {
@@ -220,11 +89,6 @@ func (g *Gate) Admit(ctx context.Context, tx pgx.Tx, userID uuid.UUID, resource 
 		return err
 	}
 
-	// Every member row must exist before the FOR UPDATE below, or a family
-	// whose sibling has never been written would lock one row here and the
-	// other on a later call, in whichever order the calls happened to arrive.
-	// unnest preserves the array's order, and fam.members is sorted, so the
-	// insert takes the same order as the lock.
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO account_usage (user_id, resource)
 		 SELECT $1, r FROM unnest($2::text[]) AS r
@@ -257,9 +121,6 @@ func (g *Gate) Admit(ctx context.Context, tx pgx.Tx, userID uuid.UUID, resource 
 	return nil
 }
 
-// Usage reads one resource's current amount. It exists for tests, the
-// reconciliation check and the operator console; nothing on a write path needs
-// it, because Admit reads under its own lock.
 func (g *Gate) Usage(ctx context.Context, userID uuid.UUID, resource string) (int64, error) {
 	if g == nil || g.Pool == nil {
 		return 0, errors.New("budget: usage: gate has no pool")
@@ -274,15 +135,6 @@ func (g *Gate) Usage(ctx context.Context, userID uuid.UUID, resource string) (in
 	return amount, nil
 }
 
-// limitFor resolves the ceiling that applies to this account: its override if
-// it has one, otherwise the default row.
-//
-// ORDER BY user_id NULLS LAST puts the override first, so LIMIT 1 picks it and
-// falls through to the default only when there is none. A missing default row
-// is an error rather than a fallback constant: the migration makes that row
-// undeletable precisely so this cannot happen, and the two ways to guess at it
-// are "refuse every write on the box" and "allow every write on the box" —
-// neither is a thing to decide silently.
 func (g *Gate) limitFor(ctx context.Context, tx pgx.Tx, userID uuid.UUID, fam family) (int64, error) {
 	var limit int64
 	err := tx.QueryRow(ctx,
@@ -298,13 +150,6 @@ func (g *Gate) limitFor(ctx context.Context, tx pgx.Tx, userID uuid.UUID, fam fa
 	return limit, nil
 }
 
-// lockFamily takes an exclusive row lock on every member of the family and
-// returns their amounts.
-//
-// ORDER BY resource is the lock order, not a presentation choice: FOR UPDATE
-// locks rows as the plan emits them, and the sort sits below the LockRows node,
-// so two transactions on the same family always take the same rows in the same
-// sequence. See the package doc.
 func (g *Gate) lockFamily(ctx context.Context, tx pgx.Tx, userID uuid.UUID, fam family) (map[string]int64, error) {
 	rows, err := tx.Query(ctx,
 		`SELECT resource, amount FROM account_usage
@@ -328,10 +173,6 @@ func (g *Gate) lockFamily(ctx context.Context, tx pgx.Tx, userID uuid.UUID, fam 
 	}
 	for _, m := range fam.members {
 		if _, ok := amounts[m]; !ok {
-			// The INSERT above created them, so this can only mean the row was
-			// deleted between the two statements — i.e. the account was
-			// purged mid-append. Refusing is right; inventing a zero would
-			// write a usage row for a user that no longer exists.
 			return nil, fmt.Errorf("budget: admit: usage row %s is missing for %s", m, userID)
 		}
 	}
@@ -352,33 +193,12 @@ func (g *Gate) RecordRefusal(ctx context.Context, err error) error {
 	return err
 }
 
-// recordRefusal increments the (user, day, resource) count.
-//
-// It runs on the POOL, on its own connection and its own transaction, and that
-// is the single most important line in this package. Admit refuses by returning
-// an error; the caller's only correct response is to roll its transaction back;
-// a refusal written inside that transaction would be rolled back with it. The
-// receipt would then exist only in the moment before it was erased, and
-// account_refusals — the table whose entire purpose is that nothing is silently
-// dropped — would read zero forever while writes were being declined all day.
-//
-// The context is detached from the caller's, so a refusal is still counted when
-// the request that provoked it has already been cancelled, and bounded so a
-// wedged server cannot pin the connection.
-//
-// It runs only after the doomed transaction has rolled back, so a request
-// never holds that transaction's connection and locks while it waits for a
-// second connection from the pool.
 func (g *Gate) recordRefusal(ctx context.Context, userID uuid.UUID, resource string) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	return countRefusals(ctx, g.Pool, userID, resource, 1, g.overrideDay())
 }
 
-// overrideDay is the TEST-ONLY day override. It is nil in every process that
-// was not built by a test in this package, because g.now is unexported and New
-// never sets it — so the production day is always the database's. See
-// [CountRefusals].
 func (g *Gate) overrideDay() *string {
 	if g.now == nil {
 		return nil
@@ -387,36 +207,6 @@ func (g *Gate) overrideDay() *string {
 	return &day
 }
 
-// CountRefusals adds n to (userID, today in UTC, resource) in account_refusals.
-//
-// It is the ONE writer of that table. Every refusal path — this package's
-// ceilings and the API's refusal-only resources — goes through it, and that
-// is not tidiness. The two used to be separate statements with two
-// different day clocks (one computed in Go, one in the database) and only one
-// of them carried the purged-account guard, so the same table could record two
-// different "todays" an hour apart and could also write a row for an account
-// that no longer exists.
-//
-// # One day clock, and it is the database's
-//
-// The day is `(now() AT TIME ZONE 'UTC')::date`, computed by Postgres, for two
-// reasons. It is one stamp for every table an operator joins, so "what
-// happened on the 2nd" means one thing everywhere; and a count buffered in
-// memory is stamped when it LANDS rather than when the process that buffered
-// it thought the day was, which is the only stamp every writer can agree on. day is a test-only override, nil in production.
-//
-// # It must not run in the caller's transaction
-//
-// The parameter is a *pgxpool.Pool and not a pgx.Tx on purpose. A refusal's
-// caller has no correct response except to roll back, so a receipt written
-// inside that transaction is erased with it and account_refusals — the table
-// whose entire purpose is that nothing is silently dropped — reads zero forever
-// while writes are being declined all day. Taking a pool makes that a
-// compile-time property rather than a comment somebody has to obey.
-//
-// A row naming a purged account is SKIPPED rather than reported: a caller
-// that retries these writes out of a buffer would otherwise retry, forever,
-// an error that can never succeed.
 func CountRefusals(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, resource string, n int64) error {
 	return countRefusals(ctx, pool, userID, resource, n, nil)
 }

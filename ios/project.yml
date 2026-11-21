@@ -1,14 +1,3 @@
-# XcodeGen source of truth for ios/Hasala.xcodeproj (spec 06 §2.1). The project is
-# generated from this file and committed; regenerate it with
-#
-#   ios/scripts/generate-project.sh
-#
-# which needs XcodeGen 2.46.0, pinned in the flake (`nix build .#xcodegen`; the
-# darwin devShell puts it on PATH). Every target root is a
-# synchronized folder, so adding or removing a Swift file never changes the
-# .pbxproj (spec 04 §1.2). Build settings live in Config/*.xcconfig, not here,
-# except target wiring. The widget extension (HasalaWidgets) is embedded in the app; the
-# dormant notification service extension joins at A1 (spec 06 §15.2).
 name: Hasala
 options:
   bundleIdPrefix: app.hasala
@@ -48,16 +37,11 @@ targets:
         product: HasalaModels
       - package: HasalaKit
         product: HasalaDesign
-      # Linked in Debug only: Config/Shared.xcconfig excludes it from every other
-      # configuration (EXCLUDED_SOURCE_FILE_NAMES), and the code that uses it is
-      # behind HASALA_MOCKS, which only Config/Debug.xcconfig sets.
       - package: HasalaKit
         product: HasalaMocks
       - package: HasalaKit
         product: HasalaWidgetData
       - target: HasalaWidgets
-      # Every HasalaCore L0-L4 product and HasalaModel (spec 04 §1.3), never
-      # CoreTestSupport or CoreSoftAuth.
       - package: HasalaCore
         product: CorePrimitives
       - package: HasalaCore
@@ -106,7 +90,6 @@ targets:
         product: HasalaModel
       - package: HasalaCore
         product: HasalaCloud
-      # The Keychain adapter for the live account service (WS-14).
       - package: HasalaCore
         product: HasalaKeychain
   HasalaWidgets:

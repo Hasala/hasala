@@ -10,10 +10,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// conformance/api-v1/messages.json and stepup.json (spec 02 §22): every
-// signed message of spec 01 §10.1 and every step-up action of §10.2, from the
-// anchor inputs, reproducing A11–A26.
-
 type messageVector struct {
 	Name      string         `json:"name"`
 	Domain    string         `json:"domain"`
@@ -22,11 +18,11 @@ type messageVector struct {
 	Bytes     H              `json:"bytes"`
 	Length    int            `json:"length"`
 	SHA256    H              `json:"sha256"`
-	Signer    string         `json:"signer,omitempty"` // which key signs it
-	Seed      H              `json:"seed,omitempty"`   // Ed25519 signers: the 32-byte seed
+	Signer    string         `json:"signer,omitempty"`
+	Seed      H              `json:"seed,omitempty"`
 	Pubkey    H              `json:"pubkey,omitempty"`
-	Signature H              `json:"signature,omitempty"` // Ed25519: Go's deterministic signature; P-256: a sample that verifies
-	Alg       string         `json:"alg,omitempty"`       // ed25519 | p256
+	Signature H              `json:"signature,omitempty"`
+	Alg       string         `json:"alg,omitempty"`
 	Extra     map[string]H   `json:"extra,omitempty"`
 }
 

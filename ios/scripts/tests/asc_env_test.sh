@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# asc-env.sh's asc_resolve_key (spec 06 §9): ids from the environment or a 0600
-# asc.env, a key file named AuthKey_<ASC_KEY_ID>.p8 with mode 0600, outside the
-# repository. Offline: HOME is an empty temporary directory and the "keys" are text
-# files; the real ~/.appstoreconnect and ~/.config/hasala are never read. Runs under
-# GNU coreutils too (devshell_test.sh), where a bare `stat -f` broke the 0600 case.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ios="$(cd "$here/.." && pwd)"
@@ -17,8 +12,6 @@ trap cleanup EXIT
 fail=0
 issuer=00000000-0000-0000-0000-000000000000
 
-# resolve NAME WANT [VAR=value...]: asc_resolve_key in a fresh shell with HOME empty
-# and only the given ASC_* variables; WANT is its status. Prints ASC_KEY_PATH on success.
 resolve() {
 	local name="$1" want="$2" rc=0
 	shift 2
@@ -60,7 +53,6 @@ chmod 400 "$key"
 resolve "a key file with mode 0400" 0 ASC_KEY_ID=TESTKEY000 ASC_ISSUER_ID="$issuer" ASC_KEY_PATH="$key"
 chmod 600 "$key"
 
-# Inside the repository: ios/build is git-ignored, and the "key" is removed on exit.
 mkdir -p "$ios/build"
 inrepo="$(mktemp -d "$ios/build/asc-env-test.XXXXXX")"
 cp "$key" "$inrepo/AuthKey_TESTKEY000.p8"
@@ -70,7 +62,6 @@ said "is inside the repository" "refused for where it is"
 rm -rf "$inrepo"
 inrepo=""
 
-# asc.env, sourced as shell when an id is missing: the owner's, mode 0600 (or 0400).
 cp "$key" "$work/home/.appstoreconnect/private_keys/AuthKey_TESTKEY000.p8"
 chmod 600 "$work/home/.appstoreconnect/private_keys/AuthKey_TESTKEY000.p8"
 printf 'ASC_KEY_ID=TESTKEY000\nASC_ISSUER_ID=%s\n' "$issuer" >"$work/home/.config/hasala/asc.env"

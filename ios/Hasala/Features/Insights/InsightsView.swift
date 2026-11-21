@@ -68,8 +68,6 @@ struct InsightsView: View {
       .accessibilityIdentifier("insights.status")
   }
 
-  // MARK: Analyze by
-
   private func analyze(_ snap: InsightsSnapshot) -> some View {
     let all = snap.rows(model.lens)
     let collapsible = model.lens == .categories && all.count > InsightsEngine.collapsedCategories
@@ -131,8 +129,6 @@ struct InsightsView: View {
     }
   }
 
-  // MARK: Biggest changes
-
   @ViewBuilder private func changes(_ snap: InsightsSnapshot) -> some View {
     VStack(alignment: .leading, spacing: 12) {
       SectionTitle(title: "Biggest changes", note: snap.comparison?.label)
@@ -159,8 +155,6 @@ struct InsightsView: View {
       }
     }
   }
-
-  // MARK: Reports
 
   private func reports(_ snap: InsightsSnapshot) -> some View {
     let tiles = snap.reports.filter { unfinished || $0.opens }

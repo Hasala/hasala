@@ -1,10 +1,3 @@
-// Pull (spec 04 §5.2): `GET /sync?stream=hot&after=<cursor>&limit=500` until
-// `complete`, each page through spec 01 §6.6's reader (R0–R10 in order, the
-// first failing step decides), then the fold hook, then ONE transaction that
-// stores the rows, the heads and the cursor. A hard stop persists nothing.
-//
-// The reader's two network steps are taken here, each at most once per page:
-// R1's roster re-fetch (`refreshRoster`) and R4's `GET /keys` (`refreshEpoch`).
 import CoreAuth
 import CoreCrypto
 import CorePrimitives
@@ -13,7 +6,6 @@ import CoreWire
 import Foundation
 import HasalaText
 
-/// One decided row of a page, handed to the fold hook before persistence.
 public struct PulledRow: Sendable, Hashable {
   public let seq: Int64
   public let writerID: WriterID
@@ -21,16 +13,6 @@ public struct PulledRow: Sendable, Hashable {
   public let outcome: PageReader.RowOutcome
 }
 
-/// The fold seam (§5.2 steps 4–5): the fold and the incremental invariants run
-/// here, before the page is persisted. Throwing (e.g.
-/// `.halted(.inconsistent(...))`) keeps the whole page out.
-///
-/// The fold works on a copy: the page's transaction writes the rows, the
-/// cursor and the snapshot change `fold` returns together, and only then does
-/// `pageCommitted` make the copy current (`pageAbandoned` drops it when the
-/// transaction failed). `pullEnded` follows every pull, whatever its outcome:
-/// the observer projects there, once per pull rather than once per page.
-/// `LedgerPageObserver` is the production observer.
 public protocol PageObserver: Sendable {
   func fold(_ rows: [PulledRow]) async throws(SyncStop) -> FoldSnapshotChange
   func pageCommitted() async
@@ -50,7 +32,6 @@ public struct PullSummary: Sendable, Hashable {
   public var rowsStored = 0
   public var opsOpened = 0
   public var setAside = 0
-  /// AEAD failures on chain-valid rows (R7): each raises the integrity alarm.
   public var alarms = 0
   public var pages = 0
 }
@@ -120,8 +101,6 @@ enum Puller {
     _ page: PullPage, state: SyncStateRow, bearer: String, ctx: SyncContext, observer: (any PageObserver)?,
     plaintextBudget: Int, summary: inout PullSummary
   ) async throws(SyncStop) -> StoredPage {
-    // R0's page-level checks the row checker cannot see: seqs strictly
-    // increasing above the cursor (I1), `next` = the last seq.
     var seqs: [Int64] = []
     var last = state.cursorHot
     for r in page.rows {
@@ -199,7 +178,6 @@ enum Puller {
         break
       }
 
-      // Fold seam, then ONE transaction.
       var decided: [PulledRow] = []
       var records: [WireRowRecord] = []
       var newHeads: [WriterID: Chain.Head] = [:]

@@ -20,8 +20,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/mailq"
 )
 
-// accounts enables the account ceremonies with fixed keys and a fake mail
-// sender whose sends run inline.
 func (h *harness) accounts() (*authkeys.Keys, *mail.Fake, *mailq.Queue) {
 	h.t.Helper()
 	keys, err := authkeys.New(bytes.Repeat([]byte{1}, 32), map[int][]byte{1: bytes.Repeat([]byte{2}, 32)}, 1)
@@ -34,7 +32,6 @@ func (h *harness) accounts() (*authkeys.Keys, *mail.Fake, *mailq.Queue) {
 	m.Register(q)
 	q.Register("deleted", mailq.DeletedRenderer)
 	h.srv.EnableAccounts(keys, nil, m)
-	// Tests make more device-freeze attempts per writer than the hourly burst.
 	h.srv.DevFreezeWriter = NewLimiter(100, 100, 16, nil)
 	h.h = h.srv.Handler()
 	return keys, fake, q
@@ -54,9 +51,6 @@ func lastCodeTo(t *testing.T, fake *mail.Fake, addr string) string {
 	return ""
 }
 
-// passwordAccount signs an account up over HTTP with a printed invite, a
-// signup code and a password (C1-P), and answers its address, S, device and
-// session.
 type pwAccount struct {
 	addr   string
 	s      []byte
@@ -75,7 +69,6 @@ func (h *harness) passwordSignup(keys *authkeys.Keys, fake *mail.Fake, addr stri
 	return h.passwordSignupWith(keys, fake, addr, code)
 }
 
-// passwordSignupWith is passwordSignup with a given invite code.
 func (h *harness) passwordSignupWith(keys *authkeys.Keys, fake *mail.Fake, addr, code string) pwAccount {
 	h.t.Helper()
 	w := h.req("POST", "/api/v1/auth/signup/begin", "", SignupBeginRequest{InviteCode: code, Email: addr, DisplayName: "Maya Rahman"})
@@ -129,7 +122,6 @@ func TestPasswordAccountOverHTTP(t *testing.T) {
 	keys, fake, q := h.accounts()
 	a := h.passwordSignup(keys, fake, "maya@example.com")
 
-	// GET /account (#40).
 	w := h.req("GET", "/api/v1/account", a.token, nil)
 	wantStatus(t, w, http.StatusOK)
 	acct := decodeJSON[AccountResponse](t, w)
@@ -137,13 +129,11 @@ func TestPasswordAccountOverHTTP(t *testing.T) {
 		acct.Frozen || acct.Restricted || !acct.EmailDeliverable || acct.PasswordSalt != b64(keys.PasswordSalt(a.addr)) {
 		t.Fatalf("GET /account %+v", acct)
 	}
-	// GET /auth/session (#14).
 	w = h.req("GET", "/api/v1/auth/session", a.token, nil)
 	wantStatus(t, w, http.StatusOK)
 	if s := decodeJSON[SessionWire](t, w); s.MintedBy != "password_signup" || s.WriterID == nil || *s.WriterID != a.device.WriterID {
 		t.Fatalf("session %+v", s)
 	}
-	// The display name (#76).
 	wantStatus(t, h.req("PUT", "/api/v1/account/display-name", a.token, DisplayNameRequest{DisplayName: "Maya"}), http.StatusNoContent)
 	w = h.req("PUT", "/api/v1/account/display-name", a.token, DisplayNameRequest{DisplayName: "maya.example.com"})
 	wantStatus(t, w, http.StatusBadRequest)
@@ -151,7 +141,6 @@ func TestPasswordAccountOverHTTP(t *testing.T) {
 		t.Fatalf("bad name %s", w.Body.String())
 	}
 
-	// Password sign-in (#46, #47) and its uniform failures.
 	w = h.passwordLogin(a, a.s)
 	wantStatus(t, w, http.StatusOK)
 	in := decodeJSON[SignInResponse](t, w)
@@ -170,8 +159,6 @@ func TestPasswordAccountOverHTTP(t *testing.T) {
 	}
 	wantStatus(t, h.req("POST", "/api/v1/auth/password/login/begin", "", EmailRequest{Email: "café@example.com"}), http.StatusBadRequest)
 
-	// The new sign-in alert carries a freeze link; #64 takes it as text/plain
-	// and answers 204 whatever it is given.
 	if _, err := q.Drain(bg); err != nil {
 		t.Fatal(err)
 	}
@@ -194,8 +181,6 @@ func TestPasswordAccountOverHTTP(t *testing.T) {
 	h.h.ServeHTTP(rec, r)
 	wantStatus(t, rec, http.StatusNoContent)
 
-	// Frozen: every session was revoked; a new sign-in is restricted and
-	// reaches only GET /account, the unfreeze step-up and unfreeze.
 	wantStatus(t, h.req("GET", "/api/v1/account", a.token, nil), http.StatusUnauthorized)
 	w = h.passwordLogin(a, a.s)
 	wantStatus(t, w, http.StatusOK)
@@ -216,9 +201,8 @@ func TestPasswordAccountOverHTTP(t *testing.T) {
 	wantStatus(t, h.req("POST", "/api/v1/auth/step-up/begin", restricted.SessionToken, StepUpBeginRequest{
 		Action: "account.unfreeze", ParamsHash: hexs(ph[:]), ProofKind: "passkey"}), http.StatusOK)
 
-	// Auth events (#68).
 	w = h.req("GET", "/api/v1/auth/events", restricted.SessionToken, nil)
-	wantStatus(t, w, http.StatusForbidden) // not on §9.8's list
+	wantStatus(t, w, http.StatusForbidden)
 }
 
 func TestSignupAnswersAreUniform(t *testing.T) {
@@ -247,7 +231,6 @@ func TestSignupAnswersAreUniform(t *testing.T) {
 	if w.Body.String() != `{"error":"bad_email"}` {
 		t.Fatalf("bad address %s", w.Body.String())
 	}
-	// Reset begin (#49) is uniform too.
 	r1 := h.req("POST", "/api/v1/auth/password/reset/begin", "", EmailRequest{Email: "maya@example.com"})
 	r2 := h.req("POST", "/api/v1/auth/password/reset/begin", "", EmailRequest{Email: "nobody@example.com"})
 	wantStatus(t, r1, http.StatusOK)

@@ -1,17 +1,3 @@
-// The Lane A scenarios against a real hasalad (spec 04 §19.1 T4), run by
-// ios/scripts/e2e-hasalad.sh with a throwaway Postgres:
-//
-//   LiveSampleSeedTests     A loads the sample seed and uploads; B pulls and
-//                           projects Maya's month, bills, review, trip and card
-//   LiveGmailToReplayTests  FakeGmail alerts → the real MailboxEngine on A (stub
-//                           link server and step-up) → the real Outbox and
-//                           SyncEngine → hasalad → B pulls, folds and projects
-//   LiveOutlookToReplayTests  the same with FakeGraph and an OutlookProvider
-//
-// The account comes the way LiveHasaladTests' does: seeded in Postgres until
-// this base mounts the signup and sign-in routes (#43-#47, server PR #22), then
-// the REAL bootstrap (#23, #18) on A, and on B the REAL phrase unlock and
-// writer registration (#17, #23, #24) behind a seeded session.
 import CoreAuth
 import CoreCrypto
 import CoreSoftAuth
@@ -22,7 +8,6 @@ import Testing
 @testable import CoreSync
 
 extension Live {
-  /// Two enrolled iPhones of one fresh account, both on `clock`.
   static func twoRuntimes(clock: FakeClock) async throws -> (Runtime, Runtime) {
     let random = SystemRandom()
     let user = try #require(UserID(try random.uuidV4()))
@@ -73,9 +58,6 @@ struct LiveSampleSeedTests {
         if review { _ = try Live.sql("UPDATE users SET review_account = true WHERE id = '\(a.context.userID.string)'") }
         return try await a.context.client.account(bearer: bearer)
       } catch {
-        // This base's hasalad has neither `users.review_account` nor GET /account
-        // (#40; both land with server #22): stand in for its answer, the flag
-        // absent (which the gate refuses) or on.
         guard (error as? Live.LiveError) != nil || (error as? APIError).map(Self.notMounted) == true else { throw error }
         return AccountInfo(user_id: a.context.userID.string, review_account: review ? true : nil)
       }
@@ -84,7 +66,6 @@ struct LiveSampleSeedTests {
 }
 
 extension LiveSampleSeedTests {
-  /// A 404 for a route this server does not mount.
   static func notMounted(_ e: APIError) -> Bool {
     if case .refused(let f) = e { return f.status == 404 }
     return false

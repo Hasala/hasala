@@ -1,14 +1,3 @@
-// The HTTP seam the Gmail lane talks through (spec 04 §2.3: CoreMailbox may use URLSession via
-// Foundation; §7.2: every Google request uses an ephemeral session, no cookies, no URL cache).
-//
-// One protocol serves two hosts: Google (OAuth token endpoint and the Gmail REST API, through
-// `URLSessionHTTPExchange.ephemeral()`), and hasalad's mailbox routes (through whatever
-// session-authenticated exchange the composition root supplies, spec 02 routes 34-38). Tests
-// answer it in process (CoreTestSupport's `FakeGmail`), so the request building and response
-// parsing under test are the production code.
-//
-// Nothing here logs. A request may carry a bearer token or a refresh token; neither ever
-// reaches a log line, an error value or a report (spec 04 §2.4 R7).
 import Foundation
 
 public struct HTTPRequest: Sendable, Equatable {
@@ -38,7 +27,6 @@ public struct HTTPRequest: Sendable, Equatable {
 public struct HTTPResponse: Sendable, Equatable {
   public var status: Int
   public var body: Data
-  /// The response headers a caller reads (`Retry-After`); empty where the transport keeps none.
   public var headers: [(String, String)]
   public init(status: Int, body: Data = Data(), headers: [(String, String)] = []) {
     self.status = status
@@ -54,9 +42,7 @@ public struct HTTPResponse: Sendable, Equatable {
   }
 }
 
-/// Transport failures only: a non-2xx answer is a response, never a throw.
 public enum HTTPExchangeError: Error, Sendable, Equatable {
-  /// No route to the host, timed out, TLS refused: retried by the next trigger.
   case offline
   case cancelled
   case tooLarge
@@ -66,8 +52,6 @@ public protocol HTTPExchange: Sendable {
   func send(_ request: HTTPRequest) async throws(HTTPExchangeError) -> HTTPResponse
 }
 
-/// `URLSession` with the `.ephemeral` configuration: no cookie store, no URL cache, no
-/// credential storage (spec 04 §7.2).
 public final class URLSessionHTTPExchange: HTTPExchange {
   let session: URLSession
   let maxResponseBytes: Int?
@@ -77,7 +61,6 @@ public final class URLSessionHTTPExchange: HTTPExchange {
     self.maxResponseBytes = maxResponseBytes
   }
 
-  /// The configuration every Google request uses.
   public static func ephemeral(timeout: TimeInterval = 30, maxResponseBytes: Int? = nil) -> URLSessionHTTPExchange {
     let c = URLSessionConfiguration.ephemeral
     c.httpCookieStorage = nil
@@ -132,8 +115,6 @@ public final class URLSessionHTTPExchange: HTTPExchange {
   }
 }
 
-// MARK: - Encoding helpers
-
 @inline(__always) func asciiLower(_ b: UInt8) -> UInt8 { (b >= 0x41 && b <= 0x5a) ? b + 0x20 : b }
 
 func asciiLowered(_ s: String) -> String { String(decoding: s.utf8.map(asciiLower), as: UTF8.self) }
@@ -143,9 +124,6 @@ private func headerValue(_ headers: [(String, String)], _ name: String) -> Strin
   return headers.first { Array($0.0.utf8).map(asciiLower) == want }?.1
 }
 
-/// `application/x-www-form-urlencoded` and query-string encoding: every byte outside the RFC 3986
-/// unreserved set is percent-encoded (space as `%20`, never `+`), so a Gmail query such as
-/// `{from:a.ae from:b.ae} after:1700000000 -in:trash` reaches Google exactly as built.
 public enum FormEncoding {
   static let unreserved: Set<UInt8> = Set(
     Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~".utf8))
@@ -166,7 +144,6 @@ public enum FormEncoding {
     pairs.map { "\(escape($0.0))=\(escape($0.1))" }.joined(separator: "&")
   }
 
-  /// Parses `a=b&c=d` (query or form body); `+` is a space; malformed escapes are kept verbatim.
   public static func decode(_ s: String) -> [(String, String)] {
     guard !s.isEmpty else { return [] }
     return s.split(separator: "&", omittingEmptySubsequences: true).map { part in
@@ -190,10 +167,8 @@ extension String {
 }
 
 extension URL {
-  /// `base` + path + `?` + encoded query (no query when `query` is empty).
   static func build(_ base: String, _ path: String, _ query: [(String, String)] = []) -> URL {
     let q = query.isEmpty ? "" : "?" + FormEncoding.encode(query)
-    // The pieces are fixed ASCII plus percent-encoded values, so this never fails.
     return URL(string: base + path + q)!
   }
 }

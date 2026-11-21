@@ -1,49 +1,21 @@
-// The template executor: a port of the ledgerd TypeScript client's src/tmpl/exec.ts (the mirror of
-// server/internal/tmpl/exec.go), byte-identical on conformance/templates.
-//
-// The body is ATTACKER-WRITABLE and this runs on the phone with a backtracking engine. Three
-// separate things hold the line: the dialect (applied at LOAD time by `compile`), the input
-// bounds (over them the message is REFUSED, never truncated), and the capture bound (a single
-// group may hand back at most 512 runes). ICU's time limit is a fourth, backstop layer: a
-// match it stops is reported as `too_large`, the same refusal as an over-size body.
-//
-// Every place where platforms differ by default is pinned: the trim cutset is " \t\n\v\f\r",
-// only ASCII a-z is upper-cased, lengths are runes or UTF-8 bytes, money is an integer parsed
-// from a digit string that already passed a shape check, the date layouts are parsed by hand,
-// and every text comparison is on bytes.
-//
-// The sender-domain gate is NOT applied here: it belongs to the trusted lane (CoreMail's
-// verified domain), and giving this function a domain would invite a caller to hand it the
-// body's own From line, which anyone can author.
 import HasalaText
 
-/// Why an execution produced no transaction.
 public enum ExecError: String, Sendable, Equatable {
   case none = ""
-  /// Routine: this mail is not for this template.
   case noMatch = "no_match"
-  /// The drift signal: the template matched and a required field did not extract.
   case missingField = "missing_field"
-  /// The input was over a bound (or ICU's time limit stopped a match): refused, not truncated.
   case tooLarge = "too_large"
 }
 
-/// What one template read out of one message. Presence is derived from the values (a
-/// non-empty `currency` says an amount was extracted).
 public struct Extraction: Sendable, Equatable {
   public var amountMinor: Int64 = 0
   public var currency = ""
-  /// "debit", "credit" or "".
   public var direction = ""
-  /// RFC 3339 UTC (zoneless UAE wall clock read as UTC, as the oracle does), or "" when no body
-  /// date was produced (including `date_from: "email"`).
   public var postedAt = ""
   public var merchant = ""
   public var last4 = ""
   public var isTransfer = false
-  /// The capture groups that MATCHED and captured nothing, as `<field>_<group>`, sorted.
   public var emptyGroups: [String] = []
-  /// The template matched and every required field was produced.
   public var matched = false
   public var error: ExecError = .none
 
@@ -54,22 +26,15 @@ public struct Extraction: Sendable, Equatable {
   }
 }
 
-/// Bounds: part of the cross-executor contract (different numbers extract different values).
 public enum TemplateBounds {
-  /// The normalized text, in UTF-8 bytes.
   public static let maxBodyBytes = 2_000_000
-  /// The effective subject, in UTF-8 bytes.
   public static let maxSubjectBytes = 64_000
-  /// One captured group, in runes.
   public static let maxCaptureRunes = 512
-  /// The empty-group diagnostic.
   public static let maxEmptyGroups = 32
 }
 
 @inline(__always) func same(_ a: String, _ b: String) -> Bool { a.utf8.elementsEqual(b.utf8) }
 
-/// A definition with its patterns compiled once. Immutable; safe to share across tasks (each
-/// match runs on its own clone of the compiled ICU pattern).
 public struct CompiledTemplate: Sendable {
   public let definition: TemplateDefinition
 
@@ -80,9 +45,6 @@ public struct CompiledTemplate: Sendable {
 
   let entries: [Entry]
 
-  /// Checks everything execution depends on, runs the dialect gate over every pattern, and
-  /// compiles them (`compileDefinition`). Throws `.dialect` for a pattern the dialect refuses
-  /// and `.definition` for anything else malformed.
   public init(_ d: TemplateDefinition) throws(TemplateError) {
     guard Self.isCurrency(d.defaultCurrency) else {
       throw .definition("default_currency is not three upper-case letters, so no amount could carry a currency")
@@ -133,7 +95,6 @@ public struct CompiledTemplate: Sendable {
     self.entries = entries
   }
 
-  /// Decodes and compiles a definition from its JSON text.
   public init(json: [UInt8]) throws(TemplateError) {
     try self.init(try TemplateDefinition(json: json))
   }
@@ -147,7 +108,6 @@ public struct CompiledTemplate: Sendable {
       self = f
     }
 
-    /// The legal types for this field.
     var types: [ValueType] {
       switch self {
       case .amount: [.amount]
@@ -168,7 +128,6 @@ public struct CompiledTemplate: Sendable {
       self = t
     }
 
-    /// The named groups the executor reads for this type: it reads exactly these.
     var requiredGroups: [String] {
       switch self {
       case .amount: ["amt"]
@@ -207,7 +166,6 @@ public struct CompiledTemplate: Sendable {
 
     var res: [ICURegex] = []
     for (j, p) in x.patterns.enumerated() {
-      // The load-time dialect gate: before the pattern is compiled, never after.
       let (codes, compiled) = Dialect.validateAndCompile(p, flags: x.flags)
       guard codes.isEmpty, let compiled else {
         let list = codes.map(\.rawValue)
@@ -218,7 +176,6 @@ public struct CompiledTemplate: Sendable {
       for want in type.requiredGroups where !names.contains(where: { same($0, want) }) {
         throw fail("patterns[\(j)] does not capture (?P<\(want)>...), so a \(x.type) entry could never read a value from it")
       }
-      // Every named group can become a diagnostics label, which must be a bounded identifier.
       for n in names where !isLabel(emptyGroupLabel(x.field, n)) {
         throw fail("patterns[\(j)] group \(n) would produce a diagnostics label that is not a bounded identifier")
       }
@@ -227,7 +184,6 @@ public struct CompiledTemplate: Sendable {
     return Entry(x: x, res: res)
   }
 
-  /// Validates a value written into a field verbatim; nil when it is acceptable.
   static func checkLiteral(_ field: String, _ value: String) -> String? {
     switch Field(field) {
     case .direction?:
@@ -243,13 +199,6 @@ public struct CompiledTemplate: Sendable {
     }
   }
 
-  // MARK: - Execution
-
-  /// Runs the template over one message (its effective subject and normalized text). On
-  /// `missing_field` the extraction carries everything that DID extract; on `no_match` it is
-  /// the zero value. Throws `.cancelled` when the calling task is cancelled (checked before
-  /// every pattern search), and otherwise only for a state no correct executor reaches
-  /// (`.definition`).
   public func execute(subject: String, normalizedBody: String) throws(TemplateError) -> Extraction {
     if normalizedBody.utf8.count > TemplateBounds.maxBodyBytes { return .zero(.tooLarge) }
     if subject.utf8.count > TemplateBounds.maxSubjectBytes { return .zero(.tooLarge) }
@@ -260,8 +209,6 @@ public struct CompiledTemplate: Sendable {
     var st = State()
     do {
       for ce in entries {
-        // First entry that produces a value for a field wins; later entries for it are
-        // SKIPPED (not evaluated), unless they override.
         if st.refused.contains(ce.x.field) || (st.isSet(ce.x.field) && !ce.x.override) { continue }
         let src = same(ce.x.source, "subject") ? subject16 : body16
         if try !runEntry(&st, ce, src) { continue }
@@ -287,11 +234,8 @@ public struct CompiledTemplate: Sendable {
     return out
   }
 
-  /// Code-unit order of two keys (`byCodeUnit`); the keys are ASCII identifiers.
   static func byCodeUnit(_ a: String, _ b: String) -> Bool { a.utf16.lexicographicallyPrecedes(b.utf16) }
 
-  /// The content half of `match`: every listed string present (or, for body_not_contains,
-  /// absent). Substring tests are on UTF-8 bytes.
   func gate(subject: String, body: String) -> Bool {
     let s = Array(subject.utf8)
     let b = Array(body.utf8)
@@ -324,20 +268,14 @@ public struct CompiledTemplate: Sendable {
 
   static func runError(_ e: EngineError) -> RunError { e == .limitExceeded ? .limitExceeded : .definition }
 
-  /// Evaluates one entry; whether it produced a value. A pattern that does not match, or
-  /// whose capture fails typed conversion, moves on to the next pattern. A currency the format
-  /// refuses ends the field for the run.
   func runEntry(_ st: inout State, _ ce: Entry, _ src: [UInt16]) throws(RunError) -> Bool {
     let x = ce.x
-    // A const or flag entry with no patterns is an unconditional default.
     if ce.res.isEmpty {
       do { try st.setLiteral(x.field, x.value ?? "") } catch { throw .definition }
       return true
     }
     guard let type = ValueType(x.type) else { throw .definition }
     for re in ce.res {
-      // Each search is bounded by ICU's limit; the run as a whole is bounded by the caller's
-      // deadline, which arrives as cancellation.
       if Task.isCancelled { throw .cancelled }
       let m: ICURegex.Match?
       do { m = try re.firstMatch(in: src) } catch { throw Self.runError(error) }
@@ -384,8 +322,6 @@ public struct CompiledTemplate: Sendable {
     return false
   }
 
-  /// The second gate (`validateExtraction`): every required field produced, and the extraction
-  /// internally coherent.
   func validate(_ e: Extraction) throws(TemplateError) -> ExecError {
     for f in definition.required {
       guard let field = Field(f), field != .isTransfer else { throw .definition("required names \(f)") }
@@ -402,7 +338,6 @@ public struct CompiledTemplate: Sendable {
     return .none
   }
 
-  /// Whether the field was extracted (`is_transfer` never counts: false looks like unset).
   static func produced(_ e: Extraction, _ f: Field) -> Bool {
     switch f {
     case .amount: !e.currency.isEmpty
@@ -413,8 +348,6 @@ public struct CompiledTemplate: Sendable {
     case .isTransfer: false
     }
   }
-
-  // MARK: - State
 
   struct State {
     var amountMinor: Int64 = 0
@@ -445,8 +378,6 @@ public struct CompiledTemplate: Sendable {
 
     enum LiteralError: Error { case notSettable }
 
-    /// A value that needs no conversion: a const/flag value, an on_match entry, or an
-    /// already-converted capture.
     mutating func setLiteral(_ field: String, _ value: String) throws(LiteralError) {
       guard let f = Field(field) else { throw .notSettable }
       switch f {
@@ -459,8 +390,6 @@ public struct CompiledTemplate: Sendable {
       mark(f)
     }
 
-    /// Records the named groups that MATCHED and captured nothing. A group that did not
-    /// participate at all is not empty.
     mutating func recordEmptyGroups(_ field: String, _ re: ICURegex, _ m: ICURegex.Match) {
       for (k, name) in re.groups.enumerated() {
         guard let name, let r = m.groups[k], r.isEmpty else { continue }
@@ -476,7 +405,6 @@ public struct CompiledTemplate: Sendable {
       e.amountMinor = amountMinor
       e.currency = currency
       e.direction = direction
-      // Go's zero time is not a date (`Time.IsZero`).
       e.postedAt = same(postedAt, "0001-01-01T00:00:00Z") ? "" : postedAt
       e.merchant = merchant
       e.last4 = last4
@@ -485,8 +413,6 @@ public struct CompiledTemplate: Sendable {
       return e
     }
   }
-
-  // MARK: - Typed conversion
 
   static func isCurrency(_ s: String) -> Bool {
     let u = Array(s.utf8)
@@ -505,7 +431,6 @@ public struct CompiledTemplate: Sendable {
     return head(f) && u.dropFirst().allSatisfy { head($0) || ($0 >= 0x30 && $0 <= 0x39) }
   }
 
-  /// The executor's own cutset, " \t\n\v\f\r" (Go's strings.Trim with it).
   static func trimCapture(_ s: String) -> String { s.trimming(.asciiSpace) }
 
   static func resolveCurrency(_ ccy: String?, _ defaultCurrency: String) -> String? {
@@ -519,15 +444,10 @@ public struct CompiledTemplate: Sendable {
     "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "UGX", "UYI", "VND", "VUV", "XAF", "XOF", "XPF",
   ]
 
-  /// Rule 5: the `amt` group holds the NUMBER only: commas removed, exactly two decimals, no
-  /// sign, at most Int64.max minor units. An optional `ccy` group overrides the default
-  /// currency and must then be three letters (ASCII-upper-cased first). A currency whose minor
-  /// exponent is not 2 (ISO 4217, the same table as CoreMoney's) is refused.
   static func convertAmount(_ amt: String, _ ccy: String?, _ defaultCurrency: String) -> (minor: Int64, currency: String)? {
     let trimmed = trimCapture(amt)
     if runeCountExceeds(trimmed, TemplateBounds.maxCaptureRunes) { return nil }
     let digits = trimmed.utf8.filter { $0 != 0x2c }
-    // ^[0-9]+\.[0-9]{2}$
     guard digits.count >= 4, digits[digits.count - 3] == 0x2e else { return nil }
     let whole = digits[0..<(digits.count - 3)]
     let frac = digits[(digits.count - 2)...]
@@ -552,8 +472,6 @@ public struct CompiledTemplate: Sendable {
     resolveCurrency(ccy, defaultCurrency).map(nonTwoDecimalCurrencies.contains) ?? false
   }
 
-  /// Rule 6: each declared layout in order, on the whole trimmed capture and then on the text
-  /// before its first U+0020.
   static func convertDate(_ text: String, _ layouts: [String]) -> String? {
     let trimmed = trimCapture(text)
     if runeCountExceeds(trimmed, TemplateBounds.maxCaptureRunes) { return nil }
@@ -568,10 +486,6 @@ public struct CompiledTemplate: Sendable {
   static let shortMonths: [[UInt16]] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
     .map { Array($0.utf16) }
 
-  /// One layout, whole string, no trailing text: the hand-written mirror of Go's time.Parse for
-  /// exactly the layouts in `layouts` (month names fold ASCII case, AM/PM does not; every numeric
-  /// field is fixed-width except the hour of "DD-MM-YYYY HH:mm", which takes one or two digits as
-  /// Go's `15` does; calendar ranges checked; no zone, so UTC).
   static func parseExact(_ s: ArraySlice<UInt16>, _ layout: String) -> String? {
     var i = s.startIndex
     func num(_ n: Int) -> Int? {
@@ -609,7 +523,6 @@ public struct CompiledTemplate: Sendable {
       }
     } else {
       guard let d = num(2), lit(0x2f) else { return nil }
-      // Go's lookup(shortMonthNames): exactly three characters, ASCII-case-insensitive.
       guard i + 3 <= s.endIndex else { return nil }
       var name: [UInt16] = []
       for k in 0..<3 {
@@ -634,7 +547,7 @@ public struct CompiledTemplate: Sendable {
         if !pm && hour == 12 { hour = 0 }
       }
     }
-    guard i == s.endIndex else { return nil }  // trailing text
+    guard i == s.endIndex else { return nil }
     guard month >= 1 && month <= 12 else { return nil }
     guard day >= 1 && day <= daysIn(month, year) else { return nil }
     return "\(pad(year, 4))-\(pad(month, 2))-\(pad(day, 2))T\(pad(hour, 2)):\(pad(minute, 2)):00Z"
@@ -653,13 +566,11 @@ public struct CompiledTemplate: Sendable {
     return s.utf8.count >= width ? s : String(repeating: "0", count: width - s.utf8.count) + s
   }
 
-  /// A trimmed, non-empty capture of at most 512 runes.
   static func convertText(_ s: String) -> String? {
     let t = trimCapture(s)
     return t.isEmpty || runeCountExceeds(t, TemplateBounds.maxCaptureRunes) ? nil : t
   }
 
-  /// Rule 7: drop every non-ASCII-digit, keep the last four; none is a failure.
   static func convertLast4(_ s: String) -> String? {
     if runeCountExceeds(s, TemplateBounds.maxCaptureRunes) { return nil }
     var digits: [UInt8] = []
@@ -673,7 +584,6 @@ public struct CompiledTemplate: Sendable {
 
 func emptyGroupLabel(_ field: String, _ group: String) -> String { field + "_" + group }
 
-/// Whether `s` is longer than `max` runes (Go's utf8.RuneCountInString(s) > max).
 func runeCountExceeds(_ s: String, _ max: Int) -> Bool {
   var n = 0
   for _ in s.unicodeScalars {

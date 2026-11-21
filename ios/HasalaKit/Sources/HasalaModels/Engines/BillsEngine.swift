@@ -1,10 +1,3 @@
-// Bills · Coming up and found: what is due, what needs a look, what the
-// detector found in the history, upcoming and recently paid; and one bill's detail
-// (Bills · AXA Insurance (late)).
-//
-// TODO(03b §3.12): the detector, late and price-change logic come from CoreDomain's
-// Bills engine; here they are read from the bill records as the mock stores them.
-
 public struct BillAttention: Sendable, Hashable, Identifiable {
   public enum Kind: Sendable, Hashable { case late(days: Int), priceChange(usual: Money) }
 
@@ -12,14 +5,9 @@ public struct BillAttention: Sendable, Hashable, Identifiable {
   public var name: String
   public var glyph: Glyph
   public var kind: Kind
-  /// What the bill pays for, as the ledger names it ("Car insurance", "Mobile and internet");
-  /// the poster's glyph follows it where Paper's card does (du's wifi).
   public var billKind: String
   public var amount: Money
-  /// "Car insurance usually arrives on the 7th. No bank email yet."
   public var body: MoneyPhrase
-  /// The poster's pill: "3 days past usual" for a bill that may be late (a short chip says
-  /// what we noticed, never "late"), "Price change" for a new amount.
   public var pill: StatusPill
 
   public var id: String {
@@ -34,17 +22,13 @@ public struct BillCandidateModel: Sendable, Hashable, Identifiable {
   public var id: String
   public var name: String
   public var amount: Money
-  /// "Seen 5×", "Every ~30 days", "Last on 8 Oct".
   public var evidence: [String]
   public var seenCount: Int
 }
 
-/// The hero's income line: "Salary +25,000.00 expected Wed 28 Oct".
 public struct BillsIncome: Sendable, Hashable {
-  /// "Salary".
   public var label: String
   public var amount: Money
-  /// "expected Wed 28 Oct".
   public var expected: String
 
   public init(label: String, amount: Money, expected: String) {
@@ -61,12 +45,9 @@ public struct BillsSnapshot: Sendable, Hashable {
     public var title: String { "\(rawValue) days" }
   }
 
-  /// Bills due in the next 14 days, late ones included.
   public var next14: Money
   public var next14Mark: TotalMark?
-  /// "+25,000.00 expected Wed 28 Oct".
   public var incomeLine: MoneyPhrase?
-  /// The same line in its parts, for the hero (label, figure and date are drawn apart).
   public var income: BillsIncome?
   public var needsALook: [BillAttention]
   public var found: [BillCandidateModel]
@@ -74,9 +55,7 @@ public struct BillsSnapshot: Sendable, Hashable {
   public var range: Range
   public var tracked: Int
   public var recentlyPaid: [BillRowModel]
-  /// Bills paid this month.
   public var paidThisMonth: Money
-  /// A tag after a row's title, by row id ("Price change" on du's payment).
   public var tags: [String: StatusPill]
   public var paidMark: TotalMark?
   public var paused: [BillRowModel] = []
@@ -88,17 +67,11 @@ public struct BillsSnapshot: Sendable, Hashable {
   public var ended: [BillRowModel] = []
 }
 
-/// One bill (Bills · AXA Insurance (late)): what we noticed, its payment history and what
-/// can be done about it.
 public struct BillDetail: Sendable, Hashable, Identifiable {
   public enum State: Sendable, Hashable {
-    /// Past its usual day with no bank email yet.
     case late(days: Int)
-    /// The last charge was outside the usual range.
     case priceChange(usual: Money)
-    /// Expected, and not yet due.
     case upcoming
-    /// Money in (a salary), expected.
     case income
     case paused(since: LocalDate?, until: LocalDate?)
     case ended(on: LocalDate?)
@@ -106,26 +79,17 @@ public struct BillDetail: Sendable, Hashable, Identifiable {
 
   public var id: BillID
   public var name: String
-  /// The overline: "Car insurance".
   public var kind: String
   public var glyph: Glyph
-  /// The hero disc's hue (the category's bucket).
   public var hue: Hue
   public var state: State
-  /// "3 days past usual", "Price change", "Due in 4 days", "Expected in 18 days".
   public var pill: StatusPill
   public var amount: Money
-  /// Shown with "~" (DEWA varies).
   public var approximate: Bool
-  /// "every month · usually the 7th · Emirates NBD".
   public var cadence: String
-  /// "What we noticed": a bill that may be late or changed price says why we think so.
   public var noticed: MoneyPhrase?
-  /// The expected payment first (when one is due), then past payments, newest first.
   public var history: [BillHistoryStep]
-  /// "6 on time" beside the Payment history title.
   public var historyNote: String?
-  /// "Recurring payments are found from your history. Nothing is shared with AXA Insurance."
   public var footnote: String
   public var source: Bill.Source = .detected
   public var banners: [BillBanner] = []
@@ -157,10 +121,8 @@ public struct BillDetail: Sendable, Hashable, Identifiable {
   public var isIncome: Bool { state == .income }
 }
 
-/// One step of a bill's payment history timeline.
 public struct BillHistoryStep: Sendable, Hashable, Identifiable {
   public enum Kind: Sendable, Hashable {
-    /// The payment we expect: `late` when its day has passed with no bank email.
     case expected(late: Bool)
     case paid
   }
@@ -168,11 +130,9 @@ public struct BillHistoryStep: Sendable, Hashable, Identifiable {
   public var id: String { "\(kind == .paid ? "paid" : "expected").\(date.ordinal)" }
   public var date: LocalDate
   public var kind: Kind
-  /// Under the date of an expected step: "Expected · no bank email yet", "Expected · in 4 days".
   public var note: String?
   public var amount: Money?
 
-  /// "Wed 7 Oct".
   public var title: String { date.short }
 }
 
@@ -367,7 +327,6 @@ public enum BillsEngine {
   static func upcomingRow(_ b: Bill, _ s: LedgerState, today: LocalDate) -> BillRowModel {
     let detail: [PlanDetailPart]
     if b.nextDue < today {
-      // A short chip says what we noticed (page 16 §12): "Expected the 7th".
       detail = [.status("Expected the \(PlanEngine.ordinal(b.usualDay))", .error)]
     } else {
       detail = [.text(MoneyPhrase(stringLiteral:
@@ -379,12 +338,10 @@ public enum BillsEngine {
     )
   }
 
-  /// "3 days past usual" (a day, or days).
   static func pastUsual(_ days: Int) -> String {
     "\(days) day\(days == 1 ? "" : "s") past usual"
   }
 
-  /// "Charged 38.90 more than usual (389.00) on Mon 5 Oct."
   static func priceChange(_ b: Bill, usual: Money) -> MoneyPhrase {
     charged(b.amount, usual: usual, currency: Money.home, after: b.history.first.map { " on \($0.short)" } ?? "")
   }
@@ -397,9 +354,6 @@ public enum BillsEngine {
     ])
   }
 
-  // MARK: One bill
-
-  /// A payment counts as on time within this many days of its due.
   static let onTimeWindow = 3
 
   public static func detail(_ s: LedgerState, now: LocalDateTime, bill id: BillID) -> BillDetail? {
@@ -572,7 +526,6 @@ public enum BillsEngine {
     }
   }
 
-  /// "Your last 6 payments arrived between the 6th and 8th." (or on one day, or the usual day).
   static func lateNotice(_ b: Bill) -> String {
     let order = arrivals(b).sorted { ($0.offset, $0.date.day) < ($1.offset, $1.date.day) }
     guard let low = order.first?.date.day, let high = order.last?.date.day else {
@@ -589,15 +542,12 @@ public enum BillsEngine {
     b.history.map { ($0, BillDueDates.nearest(b, to: $0).days(until: $0)) }
   }
 
-  /// What a past payment was: the bill's own transaction that day, or else the amount it
-  /// had then (the usual one before a price change).
   static func paidAmount(_ b: Bill, _ s: LedgerState, on date: LocalDate, index: Int) -> Money {
     if let t = s.txns.first(where: { $0.billID == b.id && $0.postedAt.date == date }) { return t.amount }
     if let usual = b.priceChangeFrom, index > 0 { return usual }
     return b.amount
   }
 
-  /// Who the bill is paid to: "Al Habtoor" in "Rent · Al Habtoor", else the bill's name.
   static func payee(_ b: Bill) -> String {
     guard let range = b.name.firstRange(of: " · ") else { return b.name }
     return String(b.name[range.upperBound...])

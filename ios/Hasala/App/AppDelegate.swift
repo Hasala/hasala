@@ -1,9 +1,6 @@
 import OSLog
 import UIKit
 
-/// The UIKit half the SwiftUI app needs (spec 04 §2.3): the APNs token callbacks and
-/// silent pushes. A silent push (`content-available`, sent when a peer uploads) is one
-/// `WorkCoordinator` run of at most 25 s; its outcome is what iOS is told.
 final class AppDelegate: NSObject, UIApplicationDelegate {
   func application(
     _ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
@@ -11,8 +8,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     OnScreen.shared.follow(application.applicationState)
     TabBadge.apply()
     #if HASALA_MOCKS
-      // A mock scenario or a launched screen: the live graph never starts (no Keychain
-      // purge, no network).
       if ScreenLaunch.isMockLaunch(ProcessInfo.processInfo.arguments) { return true }
     #endif
     let boot = AppGraph.live()
@@ -33,8 +28,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
   }
 
   func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-    // No token (the simulator, or APNs unreachable): foreground and background refresh
-    // still catch up.
     let code = (error as NSError).code
     Logger(subsystem: "app.hasala.ios", category: "push").notice("APNs registration failed, code \(code, privacy: .public)")
   }

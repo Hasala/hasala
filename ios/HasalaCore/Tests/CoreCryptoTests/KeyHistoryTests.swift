@@ -1,5 +1,3 @@
-// AT-C7 (spec 01 §17): KeyHistoryVerifier over a history built here, signed
-// with fresh keys (signatures are verified, never compared).
 import CorePrimitives
 import CoreWire
 import CryptoKit
@@ -60,7 +58,6 @@ struct KeyHistoryTests {
     #expect(roster.writers[a.writer] == .init(dwkPublicKey: a.dwk.publicKey, dakPublicKey: a.dak, final: nil))
     #expect(roster.writers[b.writer]?.final == Chain.Head(counter: 7, hash: headB))
     #expect(roster.forReader[b.writer] == HeadCheck.RosterWriter(dwkPublicKey: b.dwk.publicKey, revokedAt: .init(counter: 7, hash: headB)))
-    // A writer may revoke itself; continuing from an earlier roster gives the same result.
     let partial = try verify(Array(history.prefix(2)))
     #expect(try KeyHistoryVerifier.verify(entries: [history[2]], authorityPublicKey: aak.publicKey, previous: partial) == roster)
     #expect(try verify([try registered(1, a), try revoked(2, a, by: a, counter: 0, head: .zero)]).writers[a.writer]?.isLive == false)
@@ -78,7 +75,6 @@ struct KeyHistoryTests {
       authorizedBy: r.authorizedBy, authorizerWriterID: nil, finalCounter: nil, finalHead: nil, nonce: r.nonce,
       signature: Data(count: 64))
     #expect(throws: KeyHistoryVerifier.Alarm.keyHistoryInvalid(entryID: 2)) { try verify([try registered(1, a), unsigned]) }
-    // A device-authorized registration is not one.
     let byDevice = KeyHistoryVerifier.Entry(
       id: 2, writerID: r.writerID, alg: r.alg, publicKey: r.publicKey, dakPublicKey: r.dakPublicKey, event: r.event,
       authorizedBy: "device", authorizerWriterID: nil, finalCounter: nil, finalHead: nil, nonce: r.nonce, signature: r.signature)
@@ -100,7 +96,6 @@ struct KeyHistoryTests {
     #expect(throws: KeyHistoryVerifier.Alarm.keyHistoryInvalid(entryID: 3)) {
       try verify([try registered(1, a), try registered(2, b), try revoked(3, b, by: a, counter: 7, head: headB, served: other)])
     }
-    // Revoked by a writer that is not in the roster, or no longer live.
     #expect(throws: KeyHistoryVerifier.Alarm.keyHistoryInvalid(entryID: 2)) {
       try verify([try registered(1, a), try revoked(2, a, by: b, counter: 1, head: headB)])
     }
@@ -139,7 +134,7 @@ struct KeyHistoryTests {
       .init(writerID: d.writer.string, publicKey: d.dwk.publicKey, dakPublicKey: dak ?? d.dak, revoked: revoked)
     }
     try KeyHistoryVerifier.compare(writers: [w(a, revoked: false), w(b, revoked: true)], roster: roster)
-    try KeyHistoryVerifier.compare(writers: [w(a, revoked: false)], roster: roster)  // a subset is fine
+    try KeyHistoryVerifier.compare(writers: [w(a, revoked: false)], roster: roster)
     let c = Device(
       writer: WriterID("ios-2a1b2c3d-4e5f-4a6b-ac7d-9e0f1a2b3c4d")!, dwk: Ed25519.generate(),
       dak: P256.Signing.PrivateKey().publicKey.x963Representation)

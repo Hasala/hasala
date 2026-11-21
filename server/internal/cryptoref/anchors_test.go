@@ -16,11 +16,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// Every anchor of spec 01 §15.5 (A01–A26) reproduced byte for byte from the
-// inputs table. Go's Ed25519 signatures are deterministic, so the printed ones
-// are compared as well as verified; P-256 signatures are randomized and are
-// verify-only (spec 01 §1).
-
 func want(t *testing.T, key string, got []byte) {
 	t.Helper()
 	exp, ok := Anchors[key]
@@ -78,7 +73,6 @@ func a19Keys(t *testing.T, authKey []byte) *authkeys.Keys {
 	return k
 }
 
-// a19S is S of A19 (600,000 iterations).
 func a19S(t *testing.T) []byte {
 	t.Helper()
 	norm := must[string](t)(keyproto.EmailNorm(AnchorEmailInput))
@@ -90,7 +84,7 @@ func TestAnchorsA01ToA08(t *testing.T) {
 	want(t, "A01 PRF_SALT", salt[:])
 	wantStr(t, "A02 phrase", strings.Join(Words(AnchorE), " "))
 	want(t, "A03 RK_seed", RKSeed(AnchorE))
-	want(t, "A03 RK_seed", HKDF(AnchorE, nil, []byte(keyproto.DomainRecoveryKey))) // "same with an empty salt"
+	want(t, "A03 RK_seed", HKDF(AnchorE, nil, []byte(keyproto.DomainRecoveryKey)))
 	want(t, "A03 RK.pub", RKPub(AnchorE))
 	want(t, "A04 AAK.pub", AAKPub(AnchorAAKSeed))
 	want(t, "A04 DWK.pub", AAKPub(AnchorDWKSeed))
@@ -103,7 +97,6 @@ func TestAnchorsA01ToA08(t *testing.T) {
 	want(t, "A08 prf_wrap", SealPRFWrap(AnchorP, AnchorPRFSalt, AnchorPRFNonce, body, AnchorUser, AnchorCredentialID))
 }
 
-// AnchorRegion is the synthetic R of A09/A10: u32be(16) ‖ 00..0f ‖ zeros.
 func anchorRegion(n int) []byte {
 	r := make([]byte, n)
 	binary.BigEndian.PutUint32(r, 16)
@@ -290,7 +283,6 @@ func TestAnchorsA19ServerKeysAndPassword(t *testing.T) {
 		key []byte
 	}{{"A19 ", AnchorAuthKeyA19}, {"A19-K ", AnchorAuthKeyA19K}} {
 		k := a19Keys(t, c.key)
-		// The subkeys themselves, from the spec's HKDF construction.
 		if c.pfx == "A19 " {
 			want(t, "A19 K_salt", HKDF(AnchorSaltKey, make([]byte, 32), []byte(keyproto.DomainServerPasswordSalt)))
 			wantStr(t, "A19 auth_key_id", k.AuthKeyID[1])

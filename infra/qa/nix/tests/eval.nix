@@ -1,17 +1,3 @@
-# checks.x86_64-linux.module-eval (spec 05 §14, AT-E1–E3).
-#
-# Everything here happens at evaluation time: a failure throws with the case's
-# name, so `nix flake check --no-build` (which is all a Mac can run of the
-# Linux checks) already enforces it. The derivation only records the result.
-#
-#   AT-E1  a minimal system, a fully configured one, one with the Gmail
-#          mailbox link but no Pub/Sub push and one with the Outlook mailbox
-#          link alone evaluate their toplevel with no failed assertion;
-#   AT-E2  each misuse fails the named module assertion (M1–M24), and each
-#          ill-typed value (a Nix path literal for a secret, an unknown key
-#          kind, a tester limit of 0) fails the option's type, via tryEval;
-#   AT-E3  the rendered units carry exactly the environment and credentials the
-#          specs fix, and no secret reaches an Environment= line.
 {
   self,
   nixpkgs,
@@ -21,10 +7,8 @@ let
   inherit (nixpkgs) lib;
   t = import ./lib.nix { inherit self nixpkgs; };
 
-  # Paths only: nothing is read at evaluation, and none of these exist.
   secret = name: "/run/secrets/hasala/${name}";
   recipient = "age1uqtdju3geshs2ad6fc6jj0eg22g8xwhe74w09vdwlp5vpfqazpnq779v4u";
-  # Not a real account: the module checks the shape (32 lowercase hex).
   accountId = lib.fixedWidthString 32 "0" "";
   consoleHost = "console.example.test";
 
@@ -58,7 +42,6 @@ let
     };
   };
 
-  # The [gmail] group's two parts.
   gmailLink = {
     google.iosClientId = "000000000000-test.apps.googleusercontent.com";
     mailboxRouteKeyFile = secret "mailbox_route_key";
@@ -72,7 +55,6 @@ let
     };
   };
 
-  # The [outlook] group's two parts. The client id is a made-up UUID.
   outlookLink = {
     outlook.clientId = "00000000-0000-4000-8000-0000000000aa";
     mailboxRouteKeyFile = secret "mailbox_route_key";
@@ -83,7 +65,6 @@ let
   };
   outlookOn = lib.recursiveUpdate outlookLink { outlook = outlookPushUrls; };
 
-  # Every option group set: the shape of the QA host's configuration.
   full = {
     services.hasala =
       lib.recursiveUpdate (tunnelOn // consoleOn // gmailLink // gmailPush // outlookOn)
@@ -122,7 +103,6 @@ let
             "-/var/lib/neighbour"
           ];
         };
-    # The console behind a tailnet-gated nginx vhost (M19's positive case).
     services.tailscale.enable = true;
     services.nginx = {
       enable = true;
@@ -136,7 +116,6 @@ let
 
   hasala = extra: { services.hasala = extra; };
 
-  # AT-E2: name → the assertion that must fail, and the configuration.
   negatives = {
     "listen.address 0.0.0.0" = [
       "M1"
@@ -517,8 +496,6 @@ let
         networking.firewall.backend = "iptables";
       })
     ];
-    # M19: nginx is the one user the kernel rule lets through, so a second,
-    # ungated vhost reaching the console by any loopback spelling is refused.
     "second vhost to localhost:8472" = [
       "M19"
       (lib.recursiveUpdate full {
@@ -576,7 +553,6 @@ let
         services.nginx.virtualHosts."other.example.test".locations."/".proxyPass = "http://console";
       })
     ];
-    # M22 (review 2 F-22): a secret under the Nix store is world-readable.
     "authKeyFile under the Nix store" = [
       "M22"
       (hasala { authKeyFile = "${builtins.storeDir}/x-auth-key"; })
@@ -610,9 +586,6 @@ let
     ];
   };
 
-  # AT-E2, type errors: name → [ the option to force, the configuration ].
-  # Forcing the option itself (not the toplevel) proves the type, not an
-  # assertion, refused it.
   typeErrors = {
     "asc.keyKind developer" = [
       (c: c.asc.keyKind)
@@ -622,7 +595,6 @@ let
       (c: c.asc.testerLimit)
       (hasala { asc.testerLimit = 0; })
     ];
-    # A path literal would be copied into the store; the type refuses it.
     "authKeyFile as a Nix path literal" = [
       (c: c.authKeyFile)
       (hasala { authKeyFile = ./lib.nix; })
@@ -665,9 +637,7 @@ let
 
   minimal = t.evalSystem { };
   fullSys = t.evalSystem full;
-  # The QA host before its Pub/Sub push exists: the mailbox link alone.
   linkOnlySys = t.evalSystem (hasala gmailLink);
-  # Outlook's link alone: the route key without a Google client id.
   outlookLinkOnlySys = t.evalSystem (hasala outlookLink);
   manualSys = t.evalSystem (lib.recursiveUpdate full { services.hasala.asc.enable = false; });
 
@@ -682,7 +652,6 @@ let
     ) "AT-E1 outlook link only: ${builtins.toJSON (failedAny outlookLinkOnlySys)}";
 
   svc = sys: name: sys.config.systemd.services.${name};
-  # NixOS adds PATH to every unit; it is not part of the contract.
   envOf = sys: name: removeAttrs (svc sys name).environment [ "PATH" ];
   credsOf =
     sys: name:
@@ -715,8 +684,6 @@ let
   allEnvValues = lib.concatMap (s: map toString (lib.attrValues (s.environment or { }))) (
     lib.attrValues fullSys.config.systemd.services
   );
-  # §5.5: the fixed keys of `serve` (the [gmail], [outlook], [email], APNs,
-  # auth-key and Turnstile ones included, since `full` sets every group).
   serveKeys = [
     "HASALA_HTTP_LISTEN"
     "HASALA_METRICS_LISTEN"
@@ -798,7 +765,6 @@ let
     "HASALA_ASC_REQUEST_BUDGET"
   ];
   sameSet = a: b: lib.sort lib.lessThan a == lib.sort lib.lessThan b;
-  # The long-running units and every oneshot: each takes the §5.2 hardening.
   hardenedUnits = [
     "hasala-postgresql"
     "hasala-db-setup"
@@ -1092,8 +1058,6 @@ let
 
   errors = negativeErrors ++ typeErrorErrors ++ positiveErrors ++ envErrors ++ retentionErrors;
 
-  # AT-E1: both toplevels evaluate. The paths are recorded without their
-  # context, so the check builds nothing of either system.
   toplevels = map (s: builtins.unsafeDiscardStringContext s.config.system.build.toplevel.drvPath) [
     minimal
     fullSys

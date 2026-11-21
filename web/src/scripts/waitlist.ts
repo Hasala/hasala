@@ -1,20 +1,3 @@
-/**
- * The waitlist form ("Request an invite"). It is also how people ask for a
- * bank Hasala doesn't read yet: "Another bank", then its name.
- *
- * Waitlist: validates on submit, then live once a field has an error; never
- * clears what was typed; errors are red-700 text with an icon, never colour
- * alone; focus moves to the first field with a problem. Submitting keeps the
- * button's width, says "Sending…" and locks the fields; after 8 s it says
- * "Still trying". Posts JSON to PUBLIC_API_BASE/v1/waitlist. Every accepted
- * submission shows the same "Request sent" card: the server answers
- * 202 whether the address is new or already on the list.
- *
- * In "email" mode (PUBLIC_WAITLIST_MODE, see src/lib/env.ts; the markup then
- * carries data-mail instead of data-api), the form validates the same way
- * and then, instead of posting, opens a pre-filled email to that address in
- * the visitor's email app and shows how to finish if it didn't open.
- */
 import { reducedMotion } from './motion';
 import { onPage, pageTimer } from './page';
 import { bankText, postWithTurnstile, renderTurnstile, waitText, type ApiAnswer } from './api';
@@ -38,7 +21,6 @@ function breakableEmail(el: Element, addr: string): void {
   el.replaceChildren(...addr.replace(/@/g, '@\0').split(/\0|(?=\.)/).flatMap((part, i) => (i ? [document.createElement('wbr'), part] : [part])));
 }
 
-/** The status line for answers that are not about one field. */
 function answerText(a: ApiAnswer): { text: string; retry: boolean } {
   if (a.status === 0) return { text: 'We couldn’t reach Hasala. Check your connection.', retry: true };
   if (a.error === 'turnstile_failed') return { text: 'We couldn’t check that you’re not a bot. Try again.', retry: true };
@@ -49,12 +31,10 @@ function answerText(a: ApiAnswer): { text: string; retry: boolean } {
   return { text: 'Something went wrong on our side.', retry: true };
 }
 
-/** A mailto: URL with a subject and a plain-text body (CRLF line breaks, as RFC 6068 asks). */
 function mailto(to: string, subject: string, lines: string[]): string {
   return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\r\n'))}`;
 }
 
-/** Points the "Try again" link at the email and opens it in the visitor's email app. */
 function openMail(card: HTMLElement, url: string): void {
   const again = card.querySelector<HTMLAnchorElement>('[data-mailto]');
   if (again) again.href = url;
@@ -69,11 +49,9 @@ function setup(signal: AbortSignal): void {
   const root = document.querySelector<HTMLElement>('[data-waitlist]');
   const form = root?.querySelector<HTMLFormElement>('[data-waitlist-form]');
   if (!root || !form) return;
-  // The script validates; without it, the browser's own checks run.
   form.noValidate = true;
   const done = root.querySelector<HTMLElement>('.wl-done')!;
   const coin = root.querySelector<SVGElement>('.wl-coin');
-  // By id: in "email" mode the fields have no names.
   const email = form.elements.namedItem('wl-email') as HTMLInputElement;
   const bank = form.elements.namedItem('wl-bank') as HTMLSelectElement;
   const other = form.elements.namedItem('wl-other') as HTMLInputElement;
@@ -103,7 +81,6 @@ function setup(signal: AbortSignal): void {
   };
   bank.addEventListener('change', showOther, { signal });
 
-  // Errors
   type Field = 'email' | 'bank' | 'other';
   const fields: Field[] = ['email', 'bank', 'other'];
   const controls: Record<Field, HTMLInputElement | HTMLSelectElement> = { email, bank, other };
@@ -148,7 +125,6 @@ function setup(signal: AbortSignal): void {
     const first = fields.find((f) => controls[f].getAttribute('aria-invalid'));
     if (first) controls[first].focus();
   };
-  // Once every field is fixed, the coin stops sulking.
   const settle = () => {
     const anyInvalid = fields.some((f) => controls[f].getAttribute('aria-invalid'));
     if (!anyInvalid && root.dataset.state === 'error') setState(form.contains(document.activeElement) ? 'focus' : 'default');
@@ -157,7 +133,6 @@ function setup(signal: AbortSignal): void {
   bank.addEventListener('change', () => touched && (setError('bank', bank.value ? null : MSG.bankEmpty), settle()), { signal });
   other.addEventListener('input', () => touched && (setError('other', otherProblem()), settle()), { signal });
 
-  // The coin follows focus
   form.addEventListener(
     'focusin',
     () => {
@@ -201,7 +176,6 @@ function setup(signal: AbortSignal): void {
   const showDone = (bankShown = BANK_NAMES[bank.value] ?? '') => {
     const addr = email.value.trim();
     done.querySelectorAll('[data-done-email]').forEach((el) => breakableEmail(el, addr));
-    // "api": the catalog name only, as in the confirmation email. "email": what the email says.
     done.querySelector('[data-done-bank]')!.textContent = bankShown;
     form.hidden = true;
     done.hidden = false;
@@ -223,7 +197,6 @@ function setup(signal: AbortSignal): void {
         return;
       }
       settle();
-      // A filled honeypot is a bot: pretend it worked and send nothing.
       if (honeypot.value) {
         showDone();
         return;
@@ -274,7 +247,6 @@ function setup(signal: AbortSignal): void {
     { signal },
   );
 
-  // "Copy link for a friend", or (in "email" mode) "Copy <address>".
   document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
     const text = btn.querySelector('span')!;
     const label = text.textContent;
@@ -296,7 +268,6 @@ function setup(signal: AbortSignal): void {
     );
   });
 
-  // Every "Request an invite" button scrolls here and focuses Email.
   const goToForm = () => {
     const target = document.getElementById('invite');
     target?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });

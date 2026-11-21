@@ -1,18 +1,5 @@
 package tmpl
 
-// def.go is the template definition format: the JSON a bank parser is written
-// in (spec section 3.5), the strict reader for it, the canonical byte form
-// used for hashing, and the publish-time validator.
-//
-// Templates are data, not code. One definition is authored once, published
-// once, and then executed by two independent engines — the Go executor in this
-// package and the TypeScript executor in client/. Everything here exists to
-// make those two executors see the same template: a strict reader so a
-// misspelled key is an error rather than a silently ignored field, a canonical
-// encoder whose bytes Go and JavaScript both produce, and a validator that
-// runs the regex dialect gate (dialect.go) over every pattern before anything
-// is stored.
-
 import (
 	"bytes"
 	"encoding/json"
@@ -25,7 +12,6 @@ import (
 	"unicode/utf8"
 )
 
-// Definition is one published bank template.
 type Definition struct {
 	ID                string    `json:"id"`
 	Version           int       `json:"version"`
@@ -40,11 +26,6 @@ type Definition struct {
 	Required          []string  `json:"required"`
 }
 
-// Match gates whether a definition is tried against a message at all.
-//
-// SenderDomain is matched against the CRYPTOGRAPHICALLY VERIFIED signing
-// domain supplied by the trusted-lane check, never against a From header and
-// never against norm.Result.From, which is attacker-authored body text.
 type Match struct {
 	SenderDomain    []string `json:"sender_domain"`
 	SMSSender       []string `json:"sms_sender,omitempty"`
@@ -53,24 +34,19 @@ type Match struct {
 	BodyNotContains []string `json:"body_not_contains,omitempty"`
 }
 
-// Extract is one field-producing rule. Entries are evaluated in order and the
-// first entry to produce a value for a field wins, unless Override is set.
 type Extract struct {
-	Field    string            `json:"field"`  // amount|date|merchant|last4|direction|is_transfer
-	Type     string            `json:"type"`   // amount|date|text|last4|const|flag
-	Source   string            `json:"source"` // body|subject
+	Field    string            `json:"field"`
+	Type     string            `json:"type"`
+	Source   string            `json:"source"`
 	Patterns []string          `json:"patterns,omitempty"`
-	Flags    []string          `json:"flags,omitempty"`   // only {"i"} is permitted
-	Layouts  []string          `json:"layouts,omitempty"` // date only, closed enum, tried in order
-	Value    string            `json:"value,omitempty"`   // const/flag only
+	Flags    []string          `json:"flags,omitempty"`
+	Layouts  []string          `json:"layouts,omitempty"`
+	Value    string            `json:"value,omitempty"`
 	Override bool              `json:"override,omitempty"`
-	Why      string            `json:"why,omitempty"` // mandatory when Override is set
+	Why      string            `json:"why,omitempty"`
 	OnMatch  map[string]string `json:"on_match,omitempty"`
 }
 
-// The date layouts. This is a closed enum: both executors implement
-// exactly these and nothing else, because a layout one executor understands
-// and the other does not is a silent per-device date difference.
 const (
 	LayoutDDMMYYYY       = "DD-MM-YYYY"
 	LayoutDDMonYYYYHHMMA = "DD/Mon/YYYY hh:mm A"
@@ -110,7 +86,6 @@ func (d Definition) channelKnown() bool {
 	return d.Channel == "" || d.Channel == ChannelMail || d.Channel == ChannelSMS
 }
 
-// Field, type, source and date-source enums.
 const (
 	FieldAmount     = "amount"
 	FieldDate       = "date"
@@ -134,9 +109,6 @@ const (
 	DateFromReceived = "received"
 )
 
-// fieldTypes is the legal (field, type) pairing. A pairing table rather than
-// two independent enums, because "amount extracted as text" would parse, pass
-// two enum checks and then never produce an int64.
 var fieldTypes = map[string][]string{
 	FieldAmount:     {TypeAmount},
 	FieldDate:       {TypeDate},
@@ -146,9 +118,6 @@ var fieldTypes = map[string][]string{
 	FieldIsTransfer: {TypeFlag},
 }
 
-// groupNamesByType is the executor's contract with the pattern author: the
-// executor reads exactly these named groups, so a pattern that captures under
-// any other name has captured nothing as far as extraction is concerned.
 var groupNamesByType = map[string]struct{ required, optional []string }{
 	TypeAmount: {required: []string{"amt"}, optional: []string{"ccy"}},
 	TypeDate:   {required: []string{"d"}},
@@ -165,12 +134,6 @@ var (
 	smsSenderRe = regexp.MustCompile(`^[A-Za-z0-9+](?:[A-Za-z0-9._ -]{0,30}[A-Za-z0-9])?$`)
 )
 
-// ParseDefinition reads a definition from JSON, strictly.
-//
-// Unknown keys are an error. A template is authored by hand, and a key nobody
-// reads is exactly how a template "compiles, validates, publishes and silently
-// matches nothing" — the failure mode the seed-transcription warning in the
-// plan is about.
 func ParseDefinition(b []byte) (Definition, error) {
 	var d Definition
 	dec := json.NewDecoder(bytes.NewReader(b))
@@ -184,37 +147,6 @@ func ParseDefinition(b []byte) (Definition, error) {
 	return d, nil
 }
 
-// ---------------------------------------------------------------------------
-// Canonical
-// ---------------------------------------------------------------------------
-
-// Canonical renders the definition as the byte string used for hashing and
-// signing. It is not the storage form: it is a TOTAL, key-sorted encoding that
-// a TypeScript mirror can reproduce with a sort and a JSON.stringify.
-//
-// Three properties, each of which exists because getting it wrong produces a
-// silent Go/TypeScript hash difference on a template that works fine in both:
-//
-//  1. Keys are sorted lexicographically at every level, including on_match.
-//     Go marshals a struct in field-declaration order and JavaScript
-//     stringifies in insertion order; neither is reproducible from the other,
-//     but both can sort.
-//
-//  2. Every key is always present. No omitempty, nil slices render as [], the
-//     empty string as "". A TypeScript mirror therefore never has to reproduce
-//     Go's emptiness rules.
-//
-//  3. Strings are escaped exactly as JSON.stringify escapes them. Go's
-//     encoding/json is wrong here twice over: by default it escapes &, < and >
-//     (so a merchant anchor containing & would hash differently), and even with
-//     SetEscapeHTML(false) it still escapes U+2028 and U+2029, which
-//     JSON.stringify emits raw. Both were measured; see
-//     server/internal/tmpl/v2-template-format.md. JSON.stringify's algorithm
-//     is fixed by the ECMAScript spec and Go's is configurable, so Go is the
-//     side that moves.
-//
-// It returns an error if any string is not valid UTF-8: Go would silently
-// substitute U+FFFD and JavaScript would not.
 func (d Definition) Canonical() ([]byte, error) {
 	if err := d.checkUTF8(); err != nil {
 		return nil, err
@@ -267,9 +199,6 @@ func (d Definition) checkUTF8() error {
 	bad := func(where, s string) error {
 		return fmt.Errorf("template %s: %s is not valid UTF-8", d.ID, where)
 	}
-	// A slice, not a map: the field named in the error must not depend on Go's
-	// map iteration order, or the same definition produces different errors on
-	// different runs.
 	type group struct {
 		where  string
 		values []string
@@ -370,10 +299,6 @@ func canonicalBool(v bool) []byte {
 
 func canonicalInt(n int) []byte { return []byte(strconv.Itoa(n)) }
 
-// canonicalString implements ECMAScript's QuoteJSONString: escape only the
-// quote, the backslash and the C0 controls, using the short forms where they
-// exist and \u00xx (lowercase hex) otherwise. Everything else, including &, <,
-// >, U+2028, U+2029 and every non-ASCII rune, is emitted verbatim as UTF-8.
 func canonicalString(s string) []byte {
 	b := make([]byte, 0, len(s)+2)
 	b = append(b, '"')
@@ -404,16 +329,6 @@ func canonicalString(s string) []byte {
 	return append(b, '"')
 }
 
-// ---------------------------------------------------------------------------
-// ValidateDefinition
-// ---------------------------------------------------------------------------
-
-// ValidateDefinition reports every reason the definition must not be
-// published. An empty result is the only thing that may reach the store: the
-// dialect check is a publish-time gate (spec section 3.5), not a lint, because
-// an invalid pattern that reaches a device is a pattern the device must
-// either run or refuse at load time, and neither is recoverable from the
-// device's side.
 func ValidateDefinition(d Definition) []error {
 	var errs []error
 	add := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
@@ -595,7 +510,6 @@ func validateExtract(i int, e Extract) []error {
 		}
 	}
 
-	// The dialect gate. Every pattern, every entry, before anything is stored.
 	for j, p := range e.Patterns {
 		for _, err := range ValidatePattern(p, e.Flags) {
 			errs = append(errs, fmt.Errorf("extract[%d].patterns[%d]: %w", i, j, err))
@@ -607,14 +521,10 @@ func validateExtract(i int, e Extract) []error {
 	return errs
 }
 
-// validateGroupNames enforces the executor's contract: the executor reads
-// exactly the named groups listed for the entry's type, so a pattern that is
-// missing one can never produce a value and a pattern that captures under an
-// extra name has written a capture nothing will ever read.
 func validateGroupNames(i, j int, typ, p string, required, optional []string) []error {
 	names := GroupNames(p)
 	if names == nil && !regexpCompiles(p) {
-		return nil // the dialect gate already reported it
+		return nil
 	}
 	var errs []error
 	have := map[string]bool{}

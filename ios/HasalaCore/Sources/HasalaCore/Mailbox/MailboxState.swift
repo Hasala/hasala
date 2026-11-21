@@ -1,11 +1,3 @@
-// The device-local mailbox state (spec 04 §4.2: `mailbox_state`, `mailbox_accounted`,
-// `mailbox_set_aside`, `mailbox_unreadable`, `mailbox_staging`, `bank_health`) and the ports the
-// engine reaches the rest of the app through.
-//
-// Persistence is a port, not GRDB: CoreMailbox may not import GRDB (spec 04 §2.4 R6). CoreStore
-// implements `MailboxPersistence` over `ledger.sqlite`, where `pending_ops` lives too, so that
-// `commit` can write a message's op AND its accounting row in ONE transaction (§7.5 step 7f).
-// `InMemoryMailboxPersistence` is the reference implementation the tests run against.
 import CoreJSON
 import CoreTime
 import Foundation
@@ -22,7 +14,6 @@ public enum MailboxPhase: String, Sendable, Codable, CaseIterable {
   public var isImporting: Bool { self == .scanning || self == .authoringBackfill }
 }
 
-/// Content-free error codes (spec 04 §7.11).
 public enum MailboxHaltCode: String, Sendable, Codable {
   case reconnectRequired = "reconnect_required"
   case notHolder = "not_holder"
@@ -31,24 +22,14 @@ public enum MailboxHaltCode: String, Sendable, Codable {
   case templatesUnavailable = "templates_unavailable"
   case stagingFull = "staging_full"
   case offline
-  /// The mail provider refused in a way retrying won't fix (named for the first provider; the
-  /// stored value stays "gmail" for every provider).
   case gmail
-  /// The account has no mailbox the provider's API reads (Outlook: a Microsoft account on a
-  /// non-Microsoft address).
   case noMailbox = "no_mailbox"
 }
 
-/// The `mailbox_state` row, column for column (§4.2; `list_page_token` is not kept: a listing
-/// never resumes across runs, the accounted set makes the re-list cheap).
 public struct MailboxState: Sendable, Equatable, Codable {
   public var phase: MailboxPhase = .unlinked
-  /// The Gmail address from the id_token; shown on Bank alerts. Device-local only.
   public var address: String?
-  /// Every message of the sender-filtered listing with internalDate < watermark − OVERLAP is
-  /// accounted (the checkpoint, PO G).
   public var watermarkMs: Int64?
-  /// A change detector only (§7.5 step 6).
   public var profileHistoryID: String?
   public var backfillDays: Int?
   public var readFromMs: Int64?
@@ -106,8 +87,6 @@ public struct UnreadableRecord: Sendable, Equatable, Codable {
   public var atMs: Int64
 }
 
-/// A sender's mail in the connect window that Add a sender or a new bank still has to import:
-/// kept until its listing is exhausted, so a later cycle finishes what an earlier one could not.
 public struct PendingImport: Sendable, Equatable, Codable {
   public var domain: String
   public var sinceMs: Int64
@@ -137,7 +116,6 @@ public struct UnparsedSenderRecord: Sendable, Equatable, Codable {
 public struct BankHealthRow: Sendable, Equatable, Codable {
   public var domain: String
   public var lastEmailAtMs: Int64?
-  /// `YYYY-MM` (local month).
   public var month: String
   public var readThisMonth: Int
 
@@ -149,23 +127,17 @@ public struct BankHealthRow: Sendable, Equatable, Codable {
   }
 }
 
-/// Everything one engine step writes, in one transaction.
 public struct MailboxCommit: Sendable {
-  /// Authored as `txn_ingested` ops (OpAuthor) and enqueued in `pending_ops`.
   public var drafts: [MailboxIngestDraft] = []
   public var accounted: [AccountedRecord] = []
   public var setAside: [SetAsideRecord] = []
   public var unreadable: [UnreadableRecord] = []
   public var stage: [ParsedMail] = []
   public var unstage: [String] = []
-  /// Delete accounted rows with internal_date below this (ms).
   public var pruneAccountedBelowMs: Int64?
-  /// Count one read message for its domain's `bank_health` (domain, internalDate).
   public var healthBumps: [(domain: String, internalDateMs: Int64)] = []
-  /// Adds pending imports; a domain already pending keeps the earlier start.
   public var addImports: [PendingImport] = []
   public var senderAddresses: [String] = []
-  /// Ends the pending imports of these domains.
   public var doneImports: [String] = []
   public var unparsedSenders: [UnparsedSenderRecord] = []
   public var strikes: [MessageStrike] = []
@@ -173,9 +145,7 @@ public struct MailboxCommit: Sendable {
   public var holdRetire: MailboxRetirePlan?
   public var endRetire: MailboxRetirePlan?
   public var reader: MailReaderState?
-  /// Replaces the state row when set.
   public var state: MailboxState?
-  /// Clears every mailbox table (Disconnect).
   public var clearAll = false
   public var clearReader = false
 
@@ -194,12 +164,9 @@ public struct MailboxPersistenceError: Error, Sendable, Equatable {
 
 public protocol MailboxPersistence: Sendable {
   func loadState() async throws(MailboxPersistenceError) -> MailboxState
-  /// Which of `ids` already have an accounted row (or a staging row).
   func accounted(among ids: [String]) async throws(MailboxPersistenceError) -> Set<String>
-  /// The staged scan results, oldest internalDate first.
   func staged(limit: Int) async throws(MailboxPersistenceError) -> [ParsedMail]
   func stagedCount() async throws(MailboxPersistenceError) -> Int
-  /// One transaction: ops enqueued, accounting, set-aside, unreadable, staging, health, state.
   func commit(_ c: MailboxCommit) async throws(MailboxPersistenceError)
   func setAsideRecords() async throws(MailboxPersistenceError) -> [SetAsideRecord]
   func unreadableRecords() async throws(MailboxPersistenceError) -> [UnreadableRecord]
@@ -217,8 +184,6 @@ public protocol MailboxPersistence: Sendable {
   func loadReader() async throws(MailboxPersistenceError) -> MailReaderState?
 }
 
-/// The reference `MailboxPersistence`: the semantics a GRDB implementation must keep, in memory.
-/// Rings: set-aside keeps the newest 200, unreadable the newest 50 (§4.2).
 public actor InMemoryMailboxPersistence: MailboxPersistence {
   public private(set) var state = MailboxState()
   public private(set) var accountedRows: [String: AccountedRecord] = [:]
@@ -226,9 +191,7 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   public private(set) var unreadable: [UnreadableRecord] = []
   public private(set) var staging: [String: ParsedMail] = [:]
   public private(set) var health: [String: BankHealthRow] = [:]
-  /// Drafts enqueued, in order (the tests' view of `pending_ops`).
   public private(set) var enqueued: [MailboxIngestDraft] = []
-  /// Fails the next commit (tests: a crash between steps).
   public var failNextCommit = false
   private var failNextReaderClear = false
 
@@ -404,7 +367,6 @@ public struct MailboxMoveNote: Sendable, Equatable {
 }
 
 enum MailboxClock {
-  /// `YYYY-MM` of the instant's local (+04:00) month.
   static func localMonth(_ ms: Int64) -> String {
     LocalClock.localMonth(ms)?.description ?? "0000-01"
   }

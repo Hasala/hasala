@@ -1,10 +1,3 @@
-// The bundled UAE merchant dictionary (spec 03c §8.5; A-11, C10: bundled, no
-// over-the-air feed).
-//
-// Load (§8.5.3): the bytes must hash to `DictionaryManifest.sha256`, else the
-// tier is disabled with the diagnostic `dictionary_digest_mismatch` (never a
-// crash); the file is parsed strictly, each entry validated (defects counted,
-// content-free); the entries are prepared at priority 0 in the §5.2 order.
 import CoreJSON
 import CorePrimitives
 import CoreResources
@@ -14,7 +7,6 @@ import HasalaText
 public struct MerchantDictionary: Sendable, Equatable {
   public let bundle: String
   public let entries: [DictEntry]
-  /// Entries refused at load (count shown in Settings › Diagnostics, never content).
   public let defects: [Defect]
 
   public static let empty = MerchantDictionary(bundle: "", entries: [], defects: [])
@@ -25,7 +17,6 @@ public struct MerchantDictionary: Sendable, Equatable {
     case malformed(String)
   }
 
-  /// The bundled dictionary, or the reason the tier is disabled.
   public static func bundled() -> Result<MerchantDictionary, LoadError> {
     guard let url = CoreResources.bundle.url(forResource: "merchant-dictionary", withExtension: "json"),
       let data = try? Data(contentsOf: url)
@@ -33,7 +24,6 @@ public struct MerchantDictionary: Sendable, Equatable {
     return load([UInt8](data), expectedSHA256: DictionaryManifest.sha256)
   }
 
-  /// Parses and validates dictionary bytes (03c §8.5.1).
   public static func load(_ bytes: [UInt8], expectedSHA256: String?) -> Result<MerchantDictionary, LoadError> {
     if let expected = expectedSHA256, Hex.encode(sha256(bytes)) != expected { return .failure(.digestMismatch) }
     guard let doc = try? JSONParser.parse(bytes), let o = doc.objectValue else { return .failure(.malformed("not a JSON object")) }
@@ -78,12 +68,10 @@ public struct MerchantDictionary: Sendable, Equatable {
   }
 
   private static func isBundle(_ s: String) -> Bool {
-    // `^[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]{1,3}$`
     let u = Array(s.utf8)
     guard (12...14).contains(u.count), u[4] == 0x2e, u[7] == 0x2e, u[10] == 0x2d else { return false }
     return u.enumerated().allSatisfy { i, b in i == 4 || i == 7 || i == 10 || ASCII.isDigit(b) }
   }
 
-  /// The `category_source.entry` of a dictionary decision: `<match>:<pattern>`.
   public static func sourceEntry(_ hit: MatchHit) -> String { "\(hit.match.rawValue):\(hit.pattern)" }
 }

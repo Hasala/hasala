@@ -1,10 +1,5 @@
 package api
 
-// routes_bankrequests.go: spec 07's P4, POST /api/v1/bank-requests (spec 02
-// §7 #74): "Bank with someone else? Tell us" from the website (anonymous,
-// source web) and "Another bank? Tell us" from the app (signed in, source app,
-// once per bank per account).
-
 import (
 	"errors"
 	"net/http"
@@ -16,11 +11,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/banks"
 )
 
-// mountBankRequests mounts #74 always: the app's signed-in request (source
-// app) needs no website group, so a server without [email] or the auth key
-// still records it. The anonymous website request (source web), its CORS
-// and its preflight exist only with the website routes (s.Web); without
-// them an unauthenticated request is the API's 404.
 func (s *Server) mountBankRequests(mux *http.ServeMux) {
 	if s.BankUser == nil && s.Web != nil {
 		s.BankUser = s.Web.BankUser

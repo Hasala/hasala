@@ -1,36 +1,3 @@
-// The sample-data loader (spec 04 §4.6; 06 §13.5; owner decision 5 of the
-// TestFlight plan): "Use sample data" on a review account authors the Maya
-// scenario as ordinary ops, through `OpAuthor`, so it uploads, folds, projects
-// and syncs to a second iPhone exactly like data read from Gmail.
-//
-// The seed (`CoreResources/sample/maya-v1.json`, digest in `SampleManifest`) is
-// a `Document`: op drafts (type, entity, ingest id, payload) with the wall time
-// of the moment each describes. It is generated from HasalaMocks' MayaLedger by
-// `Tools/SampleSeedExport` and never edited by hand.
-//
-// `batches` turns it into blobs for the outbox:
-//   - ids: every `@<kind>:<name>` placeholder becomes a fresh id of its kind
-//     (ULIDs for txn/rule/project/goal, `c_` + ULID for a category, `ac_` / `ck_`
-//     + 128 random bits, a manual-style ingest id), one per name, so two loads
-//     never collide; literal ids (`ac_cash`, card-derived `ac_…`, `bd_…`) stay;
-//   - dates: every date, month and instant shifts by whole months so the
-//     document's anchor (Saturday 10 October 2026, 13:40 in Dubai) lands on the
-//     latest 10th at 13:40 at or before `now`; a day past the target month's
-//     end clamps to its last day;
-//   - rows whose shifted moment is after that target are dropped;
-//   - `@message:<name>` becomes `sample-<n>` (n = order of first use): the
-//     transaction sheet shows "This is sample data" for those ids;
-//   - at most `maxOpsPerBatch` ops per blob.
-//
-// The seed carries no `home_currency_set` and no rate: the account's open
-// authors those (04 §6.2), and a second home currency is an anomaly.
-//
-// The gate (04 §6.13; 06 R-REV-3, AT-34): the server cannot refuse sealed ops,
-// so the app's check is the only one. `batches` takes a `Permit`, and the only
-// way to get one is `permit(...)` with the three facts: a live `GET /account`
-// that says `review_account: true`, no transaction in the projection (outbox
-// included), and no sample row. CoreSync's `LedgerPageObserver.sampleBatches`
-// gathers the facts itself; that is the app's way in.
 import CoreJSON
 import CorePrimitives
 import CoreResources
@@ -40,38 +7,26 @@ import Foundation
 import HasalaText
 
 public enum SampleSeedError: Error, Sendable, Equatable {
-  /// The bundled file is missing or its digest is not `SampleManifest.sha256`.
   case unavailable
-  /// The document is not this format (detail is content-free).
   case malformed(String)
   case author(AuthorError)
-  /// The gate refused; nothing was authored.
   case refused(SampleSeedRefusal)
 }
 
-/// Why "Use sample data" is refused (04 §6.13; 06 AT-34).
 public enum SampleSeedRefusal: String, Error, Sendable, Equatable, CaseIterable {
-  /// `GET /account` did not say `review_account: true` for this account.
   case notReviewAccount = "not_review_account"
-  /// A sample row is already in the ledger (or the outbox): the load is one-shot.
   case alreadyLoaded = "already_loaded"
-  /// The ledger holds a transaction, folded or still in the outbox.
   case hasTransactions = "has_transactions"
 }
 
 public enum SampleSeed {
-  /// Ops per blob.
   public static let maxOpsPerBatch = 200
 
-  /// One op of the document.
   public struct Draft: Sendable, Equatable {
     public var type: OpType
-    /// `(kind, id)`; nil for a parent-free op.
     public var entity: EntityRefDraft?
     public var ingestID: String?
     public var payload: JSONObject
-    /// The instant the op describes (canonical UTC), shifted with the dates and
-    /// compared with the target to drop rows from the future.
     public var at: String
 
     public init(type: OpType, entity: EntityRefDraft? = nil, ingestID: String? = nil, payload: JSONObject, at: String) {
@@ -92,14 +47,11 @@ public enum SampleSeed {
     }
   }
 
-  /// The seed file: `{"format","format_version","name","anchor","ops":[…]}`,
-  /// written one op per line so a regenerated seed diffs by row.
   public struct Document: Sendable, Equatable {
     public static let format = "hasala.sample"
     public static let formatVersion: Int64 = 1
 
     public var name: String
-    /// The scenario clock (canonical UTC instant).
     public var anchor: String
     public var ops: [Draft]
 
@@ -136,7 +88,6 @@ public enum SampleSeed {
       self.init(name: name, anchor: anchor, ops: ops)
     }
 
-    /// The canonical bytes: a header line, one line per op, a closing line.
     public func encoded() -> Data {
       let w = JSONWriter()
       var out = "{\"format\":\"\(Self.format)\",\"format_version\":\(Self.formatVersion),"
@@ -153,9 +104,6 @@ public enum SampleSeed {
     }
   }
 
-  // MARK: The bundled seed
-
-  /// `sample/maya-v1.json` from CoreResources, refused unless its SHA-256 is the manifest's.
   public static func bundled() throws(SampleSeedError) -> Data {
     guard
       let url = CoreResources.bundle.url(forResource: SampleManifest.name, withExtension: "json", subdirectory: "sample"),
@@ -164,17 +112,10 @@ public enum SampleSeed {
     return data
   }
 
-  // MARK: The gate
-
-  /// Proof that the gate passed; minted only by `permit(...)`.
   public struct Permit: Sendable {
     fileprivate init() {}
   }
 
-  /// The gate (04 §6.13): `reviewAccount` is `review_account` from a live
-  /// `GET /account` of this account's session (nil, the field missing, refuses);
-  /// `holdsTransactions` and `sampleLoaded` are read from the projected ledger
-  /// with the outbox overlaid. The refusal order is the one the screens show.
   public static func permit(reviewAccount: Bool?, holdsTransactions: Bool, sampleLoaded: Bool) throws(SampleSeedError)
     -> Permit
   {
@@ -184,17 +125,10 @@ public enum SampleSeed {
     return Permit()
   }
 
-  /// Whether `messageID` marks a sample row (it starts with `sample-`, as
-  /// every `sample-<n>` does; Gmail ids are hex, so no real row matches).
   public static func isSampleMessageID(_ messageID: String?) -> Bool {
     messageID?.hasPrefix("sample-") == true
   }
 
-  // MARK: Loading
-
-  /// Where the document lands: whole months to shift, and the target instant
-  /// (the latest local wall time at or before `nowMs` with the anchor's day of
-  /// month, clamped, and time of day).
   public static func target(anchorMs: Int64, nowMs: Int64) -> (months: Int, targetMs: Int64)? {
     guard let anchor = LocalWall(utcMs: anchorMs), let now = LocalWall(utcMs: nowMs) else { return nil }
     for back in 0...1 {
@@ -207,7 +141,6 @@ public enum SampleSeed {
     return nil
   }
 
-  /// The document as blobs of authored ops, ready for `Outbox.enqueue` in order.
   public static func batches(_ data: Data, nowMs: Int64, context: AuthorContext, permit: Permit) throws(SampleSeedError)
     -> [AuthoredBlob]
   {
@@ -246,9 +179,6 @@ public enum SampleSeed {
     return out
   }
 
-  // MARK: Ids
-
-  /// Mints one id per placeholder name, of the placeholder's kind.
   struct IDMinter {
     let random: any RandomSource
     let nowMs: Int64
@@ -262,11 +192,8 @@ public enum SampleSeed {
 
     static let kinds: Set<String> = ["txn", "rule", "project", "goal", "category", "account", "checkin", "ingest", "message"]
 
-    /// `@<kind>:<name>` → its id; any other string is returned as it is. A
-    /// string shaped like a placeholder (`@`, lower-case letters, `:`) whose
-    /// kind is unknown, or whose name is empty, is a malformed document.
     mutating func remap(_ s: String) throws(SampleSeedError) -> String {
-      guard s.utf8.first == 0x40 else { return s }  // "@"
+      guard s.utf8.first == 0x40 else { return s }
       if let done = minted[s] { return done }
       let body = s.dropFirst()
       guard let colon = body.firstIndex(of: ":"), body.startIndex < colon,
@@ -314,9 +241,6 @@ public enum SampleSeed {
     }
   }
 
-  // MARK: Dates
-
-  /// A local (+04:00) wall time: a civil date and milliseconds into the day.
   struct LocalWall {
     let date: CivilDate
     let msOfDay: Int64
@@ -336,7 +260,6 @@ public enum SampleSeed {
     var utcMs: Int64 { date.daysSinceEpoch * Civil.msPerDay + msOfDay - LocalClock.offsetMs }
   }
 
-  /// The date-valued payload fields per op type, and how they shift.
   enum Shift {
     enum Kind { case instant, date, month }
 
@@ -370,7 +293,6 @@ public enum SampleSeed {
         guard let ms = try? parseInstantMs(s), let shifted = instant(ms, months: months) else { return nil }
         return Instant.iso(shifted)
       case .date:
-        // Re-read through the wire grammar: a shift out of 2000-2099 is refused.
         return CivilDate(wire: s).flatMap { date($0, months: months) }.flatMap { CivilDate(wire: $0.wire) }?.wire
       case .month:
         return CivilMonth(wire: s).flatMap { $0.adding(months: months) }.flatMap { CivilMonth(wire: $0.wire) }?.wire
@@ -396,7 +318,7 @@ public enum SampleSeed {
         o[key] = .object(inner)
         return
       }
-      guard let s = v.stringValue else { return }  // null stays null
+      guard let s = v.stringValue else { return }
       guard let shifted = value(s, kind, months: months) else { throw .malformed("a date outside 2000-2099") }
       o[key] = .string(shifted)
     }
@@ -404,7 +326,6 @@ public enum SampleSeed {
 }
 
 extension OpAuthor {
-  /// A draft whose payload the caller built whole (the sample loader; `build()` checks it).
   mutating func add(_ type: OpType, entity: (String, String)?, ingestID: String?, _ payload: JSONObject) {
     add(type, entity: entity, parent: nil, ingestID: ingestID, payload.keys.map { ($0, payload[$0]!) })
   }

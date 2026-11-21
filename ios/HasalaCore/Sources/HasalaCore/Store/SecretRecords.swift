@@ -1,24 +1,12 @@
-// The value formats of spec 04 §4.4's Keychain items, and typed access to them.
-//
-//   .session        {"token","user_id","pending_logout","expires_at":<epoch s>,"tag":"<16 hex>"}
-//   .accountBinding {"user_id","writer_id","api_base","key_epoch","email_norm","s_srv","display_name"}
-//   .epochKey       32 bytes K_e
-//   .writerKey      [alg u8][key bytes]; alg 0x01 = Ed25519, 32-byte seed
-//
-// No secret beyond these bytes is ever stored (01 §11.1 "Never at rest").
 import CorePrimitives
 import CoreWire
 import Foundation
 
-/// `.session(apiHost)` (§4.4).
 public struct SessionRecord: Codable, Sendable, Hashable {
   public var token: String
   public var user_id: String
-  /// Set when sign-out could not reach the server (§4.7 row 1).
   public var pending_logout: Bool
-  /// The 90-day cap, epoch seconds.
   public var expires_at: Int64
-  /// 8 random bytes in hex, minted per new session; local only (§6.4 notice).
   public var tag: String
   public var signup_email_norm: String?
 
@@ -30,7 +18,6 @@ public struct SessionRecord: Codable, Sendable, Hashable {
     pending_logout = pendingLogout
   }
 
-  /// A record for a session a sign-in just minted, with a fresh tag.
   public static func minted(
     token: String, userID: String, expiresAt: Int64, random: some RandomSource, signupEmailNorm: String? = nil
   ) throws(PrimitivesError) -> SessionRecord {
@@ -40,14 +27,12 @@ public struct SessionRecord: Codable, Sendable, Hashable {
   }
 }
 
-/// `.accountBinding` (§4.4): ids and the account's salt; no secrets.
 public struct AccountBinding: Codable, Sendable, Hashable {
   public var user_id: String
   public var writer_id: String
   public var api_base: String
   public var key_epoch: UInt32
   public var email_norm: String
-  /// `s_srv`, b64 32.
   public var s_srv: String
   public var display_name: String?
 
@@ -69,7 +54,6 @@ public struct AccountBinding: Codable, Sendable, Hashable {
   public var serverSalt: Data? { try? Base64.decode(s_srv) }
 }
 
-/// Typed reads and writes over a `SecretStore` for one API host.
 public struct Secrets: Sendable {
   public let store: any SecretStore
   public let apiHost: String
@@ -89,8 +73,6 @@ public struct Secrets: Sendable {
     do { return try e.encode(v) } catch { throw .failed(status: -1) }
   }
 
-  // MARK: Session
-
   public func session() throws(SecretStoreError) -> SessionRecord? {
     guard let d = try store.read(.session(apiHost: apiHost)) else { return nil }
     return try Self.decode(d)
@@ -107,8 +89,6 @@ public struct Secrets: Sendable {
 
   public func deleteSession() throws(SecretStoreError) { try store.delete(.session(apiHost: apiHost)) }
 
-  // MARK: Binding
-
   public func binding() throws(SecretStoreError) -> AccountBinding? {
     guard let d = try store.read(.accountBinding) else { return nil }
     return try Self.decode(d)
@@ -118,9 +98,6 @@ public struct Secrets: Sendable {
     try store.write(.accountBinding, try Self.encode(b))
   }
 
-  // MARK: Keys
-
-  /// `K_e` for `epoch`, or `nil` when this device has not unlocked it.
   public func epochKey(userID: UserID, epoch: UInt32) throws(SecretStoreError) -> Data? {
     try store.read(.epochKey(userID: userID, epoch: epoch))
   }
@@ -129,7 +106,6 @@ public struct Secrets: Sendable {
     try store.write(.epochKey(userID: userID, epoch: epoch), key.withUnsafeBytes { Data($0) })
   }
 
-  /// The DWK seed (alg `0x01`, Ed25519), or `nil` when absent.
   public func writerSeed(userID: UserID, writerID: WriterID) throws(SecretStoreError) -> SecureBytes? {
     guard let d = try store.read(.writerKey(userID: userID, writerID: writerID)) else { return nil }
     guard d.count == 33, d.first == 0x01 else { throw .failed(status: -2) }
@@ -146,8 +122,6 @@ public struct Secrets: Sendable {
     try store.write(.writerKey(userID: userID, writerID: writerID), v)
   }
 
-  /// Deletes every item of an account (§4.7 row 2): session, binding, keys,
-  /// the DAK handle and the mail tokens. Absent items are fine.
   public func wipeAccount(userID: UserID, writerID: WriterID?, epochs: ClosedRange<UInt32> = 1...1)
     throws(SecretStoreError)
   {

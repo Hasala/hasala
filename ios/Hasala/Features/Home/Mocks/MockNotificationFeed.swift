@@ -1,10 +1,6 @@
 #if HASALA_MOCKS
   import HasalaModels
 
-  /// The "Earlier" list of Home · Notifications (11Y9-0) for the Maya mock: three things Hasala
-  /// told Maya before, read and done. Synthetic, like the rest of her month. Debug only: a
-  /// Release build keeps no notification history, so it shows "Needs a look" alone (plan B7.6,
-  /// decision 12).
   struct MockNotificationFeed: NotificationFeed {
     func earlier(now: LocalDateTime) -> [NotificationItem] {
       [

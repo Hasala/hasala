@@ -10,13 +10,6 @@ import Foundation
 import HasalaModels
 import Synchronization
 
-/// One screen gesture (`LedgerEdit`) as ops (spec 04 §15.1 `LedgerActions`; 03a/03b/03c):
-/// one blob per edit through CoreDomain's `OpAuthor`, built under the account's shared
-/// stamps, made durable by `Outbox.enqueue`, then re-projected so the screens read it at
-/// once. The outbox's debounced trigger uploads it (`WorkCoordinator`'s `authored` run).
-///
-/// Device-local edits (skip review, notifications, Face ID lock, dismissing a proposal)
-/// author nothing: `LiveLedgerStore` keeps them in the device's preferences.
 nonisolated struct LedgerEditAuthor: Sendable {
   let observer: LedgerPageObserver
   let outbox: Outbox
@@ -76,13 +69,9 @@ nonisolated struct LedgerEditAuthor: Sendable {
 
   var reader: LedgerReader { observer.reader }
 
-  /// What an undo writes back: the fields an edit changed, as they were (03c §3.8
-  /// "Undo (toast)": inverse ops that touch only those fields).
   enum Inverse: Sendable, Equatable {
     case category(txn: String, category: String?, needsReview: Bool)
     case note(txn: String, note: String)
-    /// The merchant's name as it was shown before a rename: a user rename is put back,
-    /// a name that was the dictionary's or the prettified one clears the rename.
     case displayName(txn: String, shown: String)
     case project(txn: String, project: String?)
     case refundOf(txn: String, of: String?)
@@ -112,8 +101,6 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case refused(String)
   }
 
-  /// Authors `edit`. `before` is the screens' state the gesture was made on (a bill's due
-  /// date, the current amount).
   @discardableResult
   func author(_ edit: LedgerEdit, before: LedgerState, today: LocalDate) async throws -> [Inverse] {
     try await observer.writes.run { try await authorNow(edit, before: before, today: today) }
@@ -411,7 +398,6 @@ nonisolated struct LedgerEditAuthor: Sendable {
 
   static let undoChunk = Sweep.maxOpsPerBlob / 2
 
-  /// Writes an undo back.
   func undo(_ inverses: [Inverse]) async throws {
     try await observer.writes.run {
       let size = max(1, undoChunkSize)
@@ -572,9 +558,6 @@ nonisolated struct LedgerEditAuthor: Sendable {
     }
   }
 
-  // MARK: Building
-
-  /// One blob under the account's shared stamps; enqueued, then re-projected.
   @discardableResult
   func build(_ body: (inout OpAuthor) throws(AuthorError) -> Void) async throws -> [Op] {
     let ctx = try await observer.authorContext()
@@ -584,8 +567,6 @@ nonisolated struct LedgerEditAuthor: Sendable {
     return blob.ops
   }
 
-  /// The name a merchant shows with no rename (03c §3.6: the dictionary's, else the
-  /// prettified raw merchant).
   static func unrenamed(_ merchantRaw: String) -> String {
     let dictionary = Categorizer(rules: [], dictionary: AccountRuntime.dictionary, categories: BuiltinCategories())
       .dictionaryDisplay(merchantRaw: merchantRaw)
@@ -602,7 +583,6 @@ nonisolated struct LedgerEditAuthor: Sendable {
     return c
   }
 
-  /// A whole-record bill edit from the projected record.
   private func editBill(_ id: String, _ change: (inout OpAuthor.BillDraft) throws -> Void) async throws
     -> OpAuthor.BillDraft
   {

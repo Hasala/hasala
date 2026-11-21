@@ -2,15 +2,9 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// "Let's lock it down" (Paper P2.5 IF5 "Secure your account"; spec 04 §6.12): the steps,
-/// in order, after something on the account wasn't the person. Sign out everywhere first;
-/// the rest are done once signed in again. A sheet after "No, that's not me" on a reset
-/// approval, or pushed from Sign-in & security.
 struct LockdownView: View {
   enum Context {
-    /// "No, that's not me" on a password reset another iPhone asked for.
     case afterApproval
-    /// "Something not right? Lock it down" on Sign-in & security.
     case fromSecurity
   }
 
@@ -60,7 +54,6 @@ struct LockdownView: View {
   static let signOutEverywhereMessage =
     "Every device signs out, this one too. Your data and sealed backup stay."
 
-  /// Paper "NumberedChecklist": the first step is the one to do now.
   private var checklist: some View {
     HListCard {
       step(1, "Sign out everywhere", "Ends every session, even unknown ones.")
@@ -73,7 +66,6 @@ struct LockdownView: View {
     }
   }
 
-  /// Paper "StepBadge": 26 at the default size, growing with the numeral.
   @ScaledMetric(relativeTo: .subheadline) private var badge: CGFloat = 26
 
   private func step(_ n: Int, _ title: String, _ text: String) -> some View {

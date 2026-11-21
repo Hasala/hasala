@@ -1,14 +1,3 @@
-// Copies the published seed templates (server/internal/tmpl/seed/*.json) into the app bundle's
-// resources (ios/HasalaCore/Sources/HasalaCore/Resources/templates/) and writes
-// TemplatesManifest.swift beside them: {file, id, version, sha256} per template (spec 04 §4.6).
-//
-//   swift ios/tools/templates/sync.swift           # copy and rewrite the manifest
-//   swift ios/tools/templates/sync.swift --check   # exit 1 if either has drifted
-//
-// Run from the repository root. The copies are byte-for-byte (no re-encoding: the Arabic
-// anchors were extracted from v1's source and must never pass through a keyboard or a JSON
-// re-serializer). CoreTemplateTests also compares the bundle with the seed directory, so a
-// drift fails `swift test` even when nobody runs this script.
 import CryptoKit
 import Foundation
 

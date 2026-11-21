@@ -4,13 +4,6 @@
   import CryptoKit
   import Foundation
 
-  /// The device approval key for Debug simulator runs only (the simulator has no Secure
-  /// Enclave). A software P-256 key with the Secure Enclave key's formats: a 65-byte X9.63
-  /// public key and 64-byte raw signatures, so the server cannot tell them apart.
-  ///
-  /// The key lives in the app's UserDefaults domain, readable after first unlock: the
-  /// Keychain's approval-key class needs a device passcode, which a simulator lacks. It
-  /// signs without a prompt. Never compiled into a device or Release build.
   nonisolated final class SimulatorApprovalKey: ApprovalKeySigner, @unchecked Sendable {
     private let defaults: UserDefaults
 
@@ -24,7 +17,6 @@
       "\(prefix)\(userID.string):\(writerID.string)"
     }
 
-    /// Every simulator approval key goes with the account's data (`LocalAccountData.forget`).
     static func forgetAll(_ defaults: UserDefaults) {
       for k in defaults.dictionaryRepresentation().keys where k.hasPrefix(prefix) {
         defaults.removeObject(forKey: k)

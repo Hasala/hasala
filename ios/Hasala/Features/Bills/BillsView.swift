@@ -7,7 +7,6 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// Bills · Coming up and found (Paper 1K9-0) and one bill (Bills · AXA Insurance (late)).
 @MainActor
 protocol BillsModel: AnyObject, Observable {
   var snapshot: BillsSnapshot { get }
@@ -77,13 +76,8 @@ final class BillsViewModel: BillsModel {
 
   func setRange(_ range: BillsSnapshot.Range) { self.range = range }
 
-  // TODO(spec 04 §16.2 B1): "I paid it" opens FindPaymentSheet to link the payment; for now
-  // it marks this occurrence paid (`bill_occurrence_set{paid}`), with Undo.
   func markPaid(_ bill: BillID) { app.perform(.markBillPaid(bill)) }
 
-  // TODO(03b §3.3): "Remind me tomorrow" snoozes the occurrence (`bill_occurrence_set` snooze)
-  // and plans a local notification (spec 04 §9).
-  // Debug only: a Release build doesn't show "Remind me" (`BuildSurface`).
   func remind(_ bill: BillID) { app.say("Reminders aren't in this build yet", icon: .bell) }
 
   func acceptAmount(_ bill: BillID) { app.perform(.acceptBillAmount(bill)) }
@@ -94,14 +88,9 @@ final class BillsViewModel: BillsModel {
   @discardableResult func perform(_ edit: LedgerEdit) -> Bool { app.perform(edit) }
 }
 
-/// Recurring, pushed from Home (the Next bill widget) and Profile › Recurring: the next 14 days, the bills
-/// that need a decision, the ones found in the history, what's coming and what's been paid.
-/// A row or "Details" opens the bill, on the stack the list is in.
 struct BillsView: View {
   @Bindable var app: AppModel
   let model: any BillsModel
-  /// Off inside the profile sheet, which hosts the toast itself (the page reads the sheet's
-  /// environment too; this stays for the frozen `BillsScreen` initializer).
   var showsToast = true
   @Environment(\.inProfileSheet) private var inProfileSheet
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -112,8 +101,6 @@ struct BillsView: View {
   private var unfinished: Bool { BuildSurface.showsUnfinished }
 
   var body: some View {
-    // Sand while bills are due or need a look (Paper "Ambient wash · Bills due"); sky when
-    // nothing is.
     PushedPage(app: app, title: "Recurring", wash: snap.next14.isZero && snap.needsALook.isEmpty ? .onTrack : .overPace,
                spacing: 28, top: 12) {
       hero.padding(.horizontal, HSpacing.insetPage)
@@ -182,9 +169,6 @@ struct BillsView: View {
     .accessibilityIdentifier("bills.section.ended")
   }
 
-  // MARK: Next 14 days
-
-  /// "NEXT 14 DAYS / AED 1,039.15 to pay / Salary +25,000.00 expected Wed 28 Oct".
   private var hero: some View {
     VStack(alignment: .leading, spacing: 6) {
       Text("Next 14 days").hType(.overline).foregroundStyle(HColor.textOnWashSecondary)
@@ -231,8 +215,6 @@ struct BillsView: View {
     }
   }
 
-  // MARK: Needs a look
-
   private var needsALook: some View {
     VStack(alignment: .leading, spacing: 12) {
       HSectionHeader("Needs a look", trailing: .count(snap.needsALook.count))
@@ -240,8 +222,6 @@ struct BillsView: View {
     }
   }
 
-  /// A bill that may be late (rose: "I paid it", and "Remind me" in Debug) or that changed
-  /// price (sand: "Accept new amount", "Details" opens the bill).
   private func attentionCard(_ item: BillAttention) -> some View {
     let isLate = if case .late = item.kind { true } else { false }
     let secondary: BillCard<EmptyView>.Action? = isLate
@@ -257,8 +237,6 @@ struct BillsView: View {
   }
 
   static func posterGlyph(_ item: BillAttention) -> PosterGlyph { .icon(item.glyph.icon) }
-
-  // MARK: Found in your history
 
   static let foundPill = "Looks recurring"
   static let trackTitle = "Track it"
@@ -281,7 +259,6 @@ struct BillsView: View {
             }
             .accessibilityElement(children: .combine)
             if unfinished {
-              // TODO(spec 04 §16.2 B1): the payments the detector saw.
               Button { app.say("The payments list comes in a later build", icon: .receipt) } label: {
                 HStack(spacing: 2) {
                   Text("See the \(candidate.seenCount) payments").hType(.subheadline.weight(.semibold))
@@ -292,7 +269,6 @@ struct BillsView: View {
                 .contentShape(Rectangle())
               }
               .buttonStyle(.plain)
-              // Paper's link is 24 tall; the target is 44, 10 over each edge.
               .padding(.vertical, -10)
             }
           }
@@ -301,12 +277,8 @@ struct BillsView: View {
     }
   }
 
-  // MARK: Upcoming
-
   private var upcoming: some View {
     VStack(alignment: .leading, spacing: 12) {
-      // TODO(spec 04 §16.2 B1): "All schedules · N ›" opens AllSchedulesView (Debug only until
-      // it exists); a Release build says how many bills are tracked instead.
       if unfinished {
         ReflowingRow(alignment: .firstTextBaseline) {
           Text("Upcoming").hType(.section).foregroundStyle(HColor.textPrimary).accessibilityAddTraits(.isHeader)
@@ -357,8 +329,6 @@ struct BillsView: View {
     .accessibilityIdentifier("bills.add")
   }
 
-  /// Paper 7U6-0 "Link · All schedules": 17/24 500 in the link colour, then the 16 chevron,
-  /// 2 apart (the kit's section link draws neither the size nor the chevron). 44 tall.
   private var allSchedules: some View {
     Button { app.say("Every schedule comes in a later build", icon: .calendar) } label: {
       HStack(spacing: 2) {
@@ -373,8 +343,6 @@ struct BillsView: View {
     .accessibilityLabel("All schedules, \(snap.tracked)")
     .accessibilityIdentifier("bills.allSchedules")
   }
-
-  // MARK: Recently paid
 
   private var recentlyPaid: some View {
     VStack(alignment: .leading, spacing: 12) {

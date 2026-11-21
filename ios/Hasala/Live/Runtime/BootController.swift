@@ -7,69 +7,34 @@ import HasalaModels
 import Observation
 import UIKit
 
-/// The live account gate (spec 04 §6.5, §3): decides the first screen from what is on
-/// this iPhone (`InstallCheck`, then `Boot.gather` / `Boot.decide`), opens the account's
-/// runtime whenever the gate reaches setup or the app, closes it when the account leaves
-/// this iPhone, and acts on what only the gate can act on (deleted elsewhere, signed out
-/// by the server, frozen, an update required).
-///
-///   signedOut, signedOutBound   → Welcome (a bound iPhone signs in again, C2b/C2b-P)
-///   foreignData, unenrolled     → a wall: "Remove this iPhone's data"
-///   restoring                   → a wall: "Remove this iPhone's data" (this build can't
-///                                  rebuild the store under the writer's verified head)
-///   onboardingKeys, needsUnlock → "Opening Hasala" (the server's has_keys decides)
-///   opening                     → the app, or setup where it left off
-///   waitingForUnlock            → nothing yet; retried when protected data is available
-///
-/// One account per iPhone: a signup, or a sign-in to another address, while this iPhone
-/// holds an account's data opens the "Remove this iPhone's data" wall first.
 @MainActor
 @Observable
 final class BootController {
   enum State: Equatable {
-    /// Before first unlock (or while the fresh-install purge can't finish): the Keychain
-    /// can't be read yet.
     case waiting
     case decided
   }
 
-  /// A wall in front of the account gate (spec 04 §6.5's walls this build carries out).
   enum Wall: Equatable {
-    /// A signup, or a sign-in to another address, while this iPhone holds the data of the
-    /// account at `email`.
     case otherAccount(email: String?)
-    /// The binding, the store and the session disagree about the account (§4.4).
     case foreignData
-    /// The account's key is here but this iPhone's writer key is gone.
     case unenrolled
-    /// The binding and keys are here but the store is not (a restore to this iPhone).
     case restoring
-    /// The account's store could not be opened.
     case openFailed
-    /// The server needs a newer build (`min_ios_build`, or `426`; RD-1).
     case updateRequired
   }
 
   @ObservationIgnored let env: AppEnvironment
-  /// The account gate's state. Replaced once, when the first phase is decided.
   private(set) var session: AccountSession
-  /// Everything onboarding remembers, for the life of the process (plan B3): it outlives
-  /// the gate's rebuild for a new session, the launch view and the walls.
   @ObservationIgnored let onboarding: OnboardingStore
   private(set) var state: State = .waiting
-  /// The open account, while the gate is at setup or the app.
   private(set) var runtime: AccountRuntime?
-  /// The screens' app model over the runtime's ledger (one per opened runtime).
   private(set) var app: AppModel?
   @ObservationIgnored private var widgets: WidgetPublisher?
   @ObservationIgnored private var badge: AppIconBadge?
-  /// Bumped per opened runtime, so the tab shell is rebuilt for a new account.
   private(set) var generation = 0
-  /// Where setup resumes after a relaunch mid-setup.
   private(set) var setupFacts = OnboardingStep.Facts(hasSession: true, keysReady: true)
-  /// The wall on screen, if any.
   private(set) var wall: Wall?
-  /// "Remove this iPhone's data" is running.
   private(set) var erasing = false
   private(set) var syncHalt: HaltKind?
   private(set) var retryingSync = false
@@ -112,8 +77,6 @@ final class BootController {
       },
       otherAccountHere: { [weak self] email in self?.wall = .otherAccount(email: email) },
       deviceUnenrolled: { [weak self] in self?.wall = .unenrolled })
-    // The BGTaskScheduler tasks run the open account's coordinator (spec 04 §7.9). A task
-    // can launch the app cold, before the account has opened: it waits for the opening.
     BackgroundScheduler.shared.install { kind, _ in await BootController.backgroundTask(kind) }
   }
 
@@ -121,8 +84,6 @@ final class BootController {
     await BackgroundEntry.task(BackgroundEntry.live()) { await $0.backgroundWork(kind) }
   }
 
-  /// Setup and the root view wait for the runtime: setup authors into it, and resumes
-  /// from what it holds.
   var waitingForRuntime: Bool {
     guard state == .decided, runtime == nil, wall == nil else { return false }
     switch session.phase {
@@ -131,14 +92,9 @@ final class BootController {
     }
   }
 
-  // MARK: Launch
-
-  /// Decides the first screen. Called when the process starts (`AppDelegate`) and when
-  /// the window appears; only the first call that can read the Keychain decides.
   func start() {
     guard state == .waiting else { return }
     guard case .done = env.retryInstallCheck() else { return waitForProtectedData() }
-    // The Keychain may be read from here on (§4.4, R-03).
     let facts = Boot.gather(env.account)
     let boot = Boot.decide(facts)
     if boot == .waitingForUnlock { return waitForProtectedData() }
@@ -160,9 +116,6 @@ final class BootController {
     Task { await LiveAccountService.retryPendingLogout(env) }
   }
 
-  /// Launched before first unlock, or the purge couldn't finish: decide once protected
-  /// data is available. A purge that failed while protected data IS available gets no
-  /// such notification, so it is retried on a backing-off timer too.
   private func waitForProtectedData() {
     if !observingProtectedData {
       observingProtectedData = true
@@ -188,24 +141,17 @@ final class BootController {
     marker.remove()
   }
 
-  /// The gate's first phase and wall from what is on this iPhone (§6.5, no network).
   static func initialPhase(_ boot: BootState, finished: Bool) -> (AccountSession.Phase, Wall?) {
     switch boot {
     case .signedOut, .signedOutBound, .waitingForUnlock: (.signedOut, nil)
     case .foreignData: (.signedOut, .foreignData)
     case .unenrolled: (.signedOut, .unenrolled)
     case .restoring: (.signedOut, .restoring)
-    // A session without keys here: a sign-in killed before unlock, or C1 killed before
-    // its bootstrap. The server's `has_keys` tells them apart (`AccountSession.resume`).
     case .onboardingKeys, .needsUnlock: (.checking, nil)
     case .opening: (finished ? .ready : .onboarding, nil)
     }
   }
 
-  // MARK: Phase changes
-
-  /// The gate moved: open the account when it reaches setup or the app, close it when
-  /// it leaves.
   func phaseChanged(_ phase: AccountSession.Phase) {
     Self.noteReached(phase)
     switch phase {
@@ -224,16 +170,11 @@ final class BootController {
     if phase == .ready { LocalAccountData.markSetupFinished(defaults) }
   }
 
-  /// The open runtime, waiting for one that is opening (a silent push or a background
-  /// task that launched the app). Returns once the account is open, without waiting for
-  /// its launch run (a caller's run coalesces with it).
   func openedRuntime() async -> AccountRuntime? {
     if let runtime { return runtime }
     return await turns.opened()
   }
 
-  /// The app came to the foreground: catch up (at most once a minute), and finish a
-  /// sign-out that couldn't reach the server.
   func foreground() {
     if state == .waiting { start() }
     let env = self.env.account
@@ -246,9 +187,6 @@ final class BootController {
 
   private func openRuntimeIfNeeded() {
     guard runtime == nil, !turns.isOpening, wall == nil, let binding = try? env.account.secrets.binding() else { return }
-    // The binding and keys are here but the store isn't (a restore to this iPhone, §4.7
-    // row 8). A fresh store would restart this writer's chain at zero; this build can't
-    // set it from the verified server head, so it asks to start this iPhone again.
     if account.enrolled?.userID.string != binding.user_id, !Self.storeExists(env.account, binding) {
       wall = .restoring
       return
@@ -264,8 +202,6 @@ final class BootController {
           env: env.account, binding: binding, enrolled: account.enrolled, build: env.build, profile: profile,
           usesPasskey: { await account.usesPasskey() }, stopped: stopped)
       } catch {
-        // The store or projection could not open (a disk or protection failure, or a
-        // store left half-made): a wall offers Try again and starting this iPhone over.
         guard let self, self.turns.isCurrent(turn) else { return nil }
         self.turns.finishOpening(turn)
         if self.session.phase != .signedOut { self.wall = .openFailed }
@@ -289,7 +225,6 @@ final class BootController {
       app.syncNotices.eraseThisIPhone = { [weak self] in await self?.eraseThisIPhone() }
       app.syncNotices.acknowledge = { [weak rt] in await rt?.engine.acknowledgeAlarms() }
       self.watchSync(rt.engine, notices: app.syncNotices)
-      // Pull to refresh waits at most 20 s; the run carries on without it.
       app.refreshWork = { [weak rt] in _ = await rt?.coordinator.run(.refresh, budget: .seconds(20)) }
       self.app = app
       self.widgets = WidgetPublisher(app: app, locked: { [weak app] in app?.store.state.prefs.faceIDLock ?? false })
@@ -314,7 +249,6 @@ final class BootController {
     }
   }
 
-  /// The launch run, then APNs registration for the account that is still open.
   private func launch(_ rt: AccountRuntime, binding: AccountBinding, turn: RuntimeTurns<AccountRuntime>.Turn) async {
     await rt.start(buildNumber: env.buildNumber, stopped: { [weak self] stop in await self?.stopped(stop, turn: turn) })
     guard runtime === rt else { return }
@@ -330,18 +264,13 @@ final class BootController {
     }
   }
 
-  /// This iPhone left the account (signed out, removed, the account deleted): the
-  /// runtime closes and the gate goes back to Welcome, whichever screen asked.
   private func left() async {
     await closeRuntime()
     wall = nil
     if session.phase != .signedOut { session.signedOut() }
   }
 
-  /// Closes the open account's runtime (sign-out, removal, deletion, a wipe).
   func closeRuntime() async {
-    // What was searched belongs to the account that is closing (merchant names): the next
-    // account opened in this process starts with none.
     SearchHistory.shared.clear()
     WidgetLinkInbox.shared.pending = nil
     widgets?.stop()
@@ -366,13 +295,10 @@ final class BootController {
     await turns.close(rt) { await $0.close() }
   }
 
-  // MARK: Walls
-
   static func wallAfterClosing(_ wall: Wall?) -> Wall? {
     wall == .updateRequired ? nil : wall
   }
 
-  /// "Try again" on a wall that offers it.
   func tryAgain() {
     switch wall {
     case .openFailed:
@@ -417,15 +343,10 @@ final class BootController {
     return kind
   }
 
-  /// "Back" on the other-account wall: Welcome, as it was.
   func dismissWall() {
     if case .otherAccount = wall { wall = nil }
   }
 
-  /// "Remove this iPhone's data" (spec 04 §4.7 row 2 without the server's revocation,
-  /// which needs a store this iPhone can't open or a session for that account): sign the
-  /// session out, wipe every account's items and files here, then Welcome. The old
-  /// writer stays in Devices, for removal from another iPhone.
   func eraseThisIPhone() async {
     guard !erasing else { return }
     erasing = true
@@ -440,15 +361,10 @@ final class BootController {
     start()
   }
 
-  // MARK: Stops only the gate can act on
-
   private func stopped(_ stop: SyncStop, turn: RuntimeTurns<AccountRuntime>.Turn) async {
     guard turns.isCurrent(turn) else { return }
     switch stop {
     case .wipe:
-      // `410 account_deleted`, or a revocation the pinned key history shows: the account was
-      // deleted, or this iPhone removed, on another device (§4.7 row 3). The Google grant is
-      // revoked before the wipe, while its token is still here.
       let binding = try? env.account.secrets.binding()
       await closeRuntime()
       if let b = binding, let u = b.userID {
@@ -462,16 +378,10 @@ final class BootController {
       account.forgetAll()
       session.signedOut()
     case .needsSignIn, .needsRebind:
-      // The session is gone (expired, signed out everywhere): sign in again. The data and
-      // keys stay; the next sign-in re-binds this iPhone's writer (C2b, C2b-P).
       await closeRuntime()
       try? env.account.secrets.deleteSession()
       session.signedOut()
     case .frozen:
-      // Who froze it decides whether the wall offers Unfreeze (spec 04 §6.11), so it is
-      // read from `GET /account` first. Unknown (offline) keeps what the app knew, else
-      // shows the holder's wall; its Unfreeze reads `frozen_by` again before any #66.
-      // After "Leave it frozen" the banner stays.
       let info = await account.freezeInfo()
       guard turns.isCurrent(turn), session.phase != .signedOut else { return }
       session.runFoundFrozen(info)
@@ -489,10 +399,6 @@ final class BootController {
     }
   }
 
-  // MARK: Setup
-
-  /// Where setup resumes, from what the account's ledger already holds (§6.6: derived
-  /// from facts, never stored).
   static func facts(_ rt: AccountRuntime, texts: (any BankTextsConnecting)?) -> OnboardingStep.Facts {
     var f = OnboardingStep.Facts(hasSession: true, keysReady: true)
     f.textsChosen = BankTexts.setUpHere(texts)
@@ -502,25 +408,20 @@ final class BootController {
     return f
   }
 
-  /// The mailbox step's fact from the lane's own state: a relaunch mid-scan resumes at the
-  /// scan or the cards, and a linked mailbox skips the mailbox step.
   static func mailboxFact(_ phase: MailboxPhase) -> OnboardingStep.Facts.Mailbox {
     switch phase {
     case .unlinked: .unlinked
-    // A scan left at the retired cards step is filed on the lane's next run.
     case .scanning, .awaitingCards: .scanning
     case .otherDevice: .otherDevice
     case .authoringBackfill, .active, .reconnectRequired, .halted: .linked
     }
   }
 
-  /// Whether the account's store file is on this iPhone.
   static func storeExists(_ env: AccountEnvironment, _ binding: AccountBinding) -> Bool {
     guard let u = binding.userID, let dir = env.storeDirectory(for: u) else { return true }
     return FileManager.default.fileExists(atPath: dir.appendingPathComponent("ledger.sqlite").path)
   }
 
-  /// The profile row's identity from the account service's profile (or the binding).
   static func profileInfo(_ p: AccountProfile?, binding: AccountBinding) -> ProfileInfo {
     ProfileInfo(
       displayName: p?.displayName.isEmpty == false ? p!.displayName : (binding.display_name ?? ""),
@@ -529,7 +430,6 @@ final class BootController {
   }
 }
 
-/// The setup services are built before the controller that owns the runtime they use.
 @MainActor
 private final class RuntimeHolder {
   weak var boot: BootController?
@@ -558,13 +458,10 @@ extension BackgroundEntry where Runtime == AccountRuntime {
   static func live() -> BackgroundEntry? { AppGraph.boot.map(BackgroundEntry.init) }
 }
 
-/// The live graph, once per process, and its entry point for UIKit callbacks
-/// (`AppDelegate`).
 @MainActor
 enum AppGraph {
   private(set) static var boot: BootController?
 
-  /// The process's live graph, built on first use.
   static func live() -> BootController {
     if let boot { return boot }
     let made = BootController(env: .live())

@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# Checks the live site after a deploy (CLAUDE.md, "Website"): the security
-# headers, one CSP per page, Web Analytics shut out of the pages whose address
-# carries a code or a token, the AASA file and the 404 page. Exits non-zero,
-# naming every check that failed.
-#
-#   web/scripts/verify-live.sh [base URL, default https://hasala.app]
 set -euo pipefail
 
 base="${1:-https://hasala.app}"
@@ -16,15 +10,12 @@ fail() {
   failed=1
 }
 ok() { echo "ok   $*"; }
-# check OK-MESSAGE FAIL-MESSAGE TEST...: runs TEST (a `[` expression).
 check() {
   local good="$1" bad="$2"
   shift 2
   if "$@"; then ok "$good"; else fail "$bad"; fi
 }
 
-# headers PATH: the response headers of one request, redirects not followed,
-# lowercased and without CRs. Retries transient network errors.
 headers() {
   curl -sS -D- -o /dev/null --max-redirs 0 --retry 3 --retry-all-errors "$base$1" |
     tr -d '\r' | tr '[:upper:]' '[:lower:]' || true
@@ -32,13 +23,12 @@ headers() {
 status() { head -n1 <<<"$1" | awk '{print ($2 == "" ? "none" : $2)}'; }
 count() { grep -c -- "$1" <<<"$2" || true; }
 
-expect_status() { # PATH WANT HEADERS
+expect_status() {
   local got
   got="$(status "$3")"
   if [[ "$got" == "$2" ]]; then ok "$1: $got"; else fail "$1: status $got, want $2"; fi
 }
 
-# /: security headers and exactly one CSP, as header and as <meta>.
 h="$(headers /)"
 expect_status / 200 "$h"
 for name in strict-transport-security permissions-policy; do
@@ -53,7 +43,6 @@ fi
 metas="$(curl -sS --retry 3 --retry-all-errors "$base/" | grep -c 'http-equiv="content-security-policy"' || true)"
 check "/: one CSP <meta>" "/: $metas CSP <meta> tags, want 1" [ "$metas" -eq 1 ]
 
-# The legal pages, and their trailing-slash redirect.
 expect_status /privacy 200 "$(headers /privacy)"
 h="$(headers /privacy/)"
 loc="$(grep '^location:' <<<"$h" | awk '{print $2}' || true)"
@@ -63,7 +52,6 @@ else
   fail "/privacy/: status $(status "$h"), location ${loc:-none}, want a redirect to /privacy"
 fi
 
-# The TestFlight link in our emails.
 h="$(headers /testflight)"
 loc="$(grep '^location:' <<<"$h" | awk '{print $2}' || true)"
 if [[ "$(status "$h")" == 302 && "$loc" == https://apps.apple.com/app/testflight/id899247664 ]]; then
@@ -72,7 +60,6 @@ else
   fail "/testflight: status $(status "$h"), location ${loc:-none}, want a 302 to TestFlight on the App Store"
 fi
 
-# Pages whose address carries a code or a token: no Web Analytics.
 for path in /i/test /freeze /waitlist/confirm; do
   h="$(headers "$path")"
   expect_status "$path" 200 "$h"
@@ -92,7 +79,6 @@ for path in /i/test /freeze /waitlist/confirm; do
   fi
 done
 
-# The AASA file: served directly, as JSON.
 h="$(headers /.well-known/apple-app-site-association)"
 expect_status /.well-known/apple-app-site-association 200 "$h"
 check "AASA: application/json" "AASA: content-type is not application/json" \

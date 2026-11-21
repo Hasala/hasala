@@ -1,36 +1,3 @@
-// Package pgtest boots a throwaway PostgreSQL cluster for tests. It never
-// touches a system cluster, never binds TCP, and needs no running service.
-//
-// Host requirement: initdb and postgres, from $HASALA_TEST_PG_BINDIR, then
-// PATH (the repo's devShell, or Homebrew), then Debian's
-// /usr/lib/postgresql/*/bin. See postgresBinDir.
-// Set HASALA_TEST_POSTGRES_URL to reuse an already-running server instead —
-// scripts/check.sh does exactly that so one cluster serves the whole run.
-// Per-package boot remains the fallback when that variable is unset, so
-// `go test ./internal/pg/` in isolation still works standalone.
-//
-// # Roles (spec 02 §5.2, §5.7)
-//
-// Every cluster gets the production roles: hasala_migrate (owns each test
-// database and its public schema, and applies the migrations) and
-// hasala_runtime (DML only, the session timeouts of the QA host). New returns
-// a pool connected AS hasala_runtime, so every test exercises the runtime
-// grants — the append-only op_log and key_history, the revoke-once writers —
-// exactly as serve does. NewWithOwner also returns the owner's pool, for the
-// few tests that must show what the schema owner can and cannot do.
-//
-// # One migration per test process
-//
-// New, NewOwner and NewWithOwner do not run the migrations for every test. The
-// first of them in a test process builds one template database exactly as a
-// test database used to be built (newDatabase's setup.sql steps, then
-// pg.Migrate as hasala_migrate), closes every connection to it, and from then
-// on each test gets CREATE DATABASE ... TEMPLATE of it, owned by
-// hasala_migrate, with the database-level grants newDatabase makes (they live
-// in pg_database, so a copy does not carry them). The copy is the same schema,
-// grants, triggers and goose_db_version rows, made in a fraction of the time.
-// Nothing ever connects to the template after it is built, and Main drops it.
-// NewEmpty still creates an unmigrated database from scratch.
 package pgtest
 
 import (
@@ -57,19 +24,14 @@ import (
 
 var (
 	adminDSN  string
-	adminPool *pgxpool.Pool // shared for the whole run: CREATE/DROP DATABASE only
+	adminPool *pgxpool.Pool
 	dbSeq     atomic.Int64
 
-	// The migrated template (see migratedTemplate): built on first use, once
-	// per test process, and dropped by Main after m.Run.
 	tmplOnce sync.Once
 	tmplName string
 	tmplErr  error
 )
 
-// EnsureRoles creates hasala_migrate and hasala_runtime on the cluster behind
-// adminDSN if they do not exist yet. It is idempotent and safe to race: test
-// packages sharing one cluster all call it.
 func EnsureRoles(ctx context.Context, admin *pgxpool.Pool) error {
 	const ddl = `DO $$
 BEGIN
@@ -88,14 +50,11 @@ END $$`
 		if _, err = admin.Exec(ctx, ddl); err == nil {
 			return nil
 		}
-		// Two packages creating the same role at once: one wins, the other
-		// sees a unique violation on pg_authid. Retry; the second pass finds it.
 		time.Sleep(time.Duration(50*(attempt+1)) * time.Millisecond)
 	}
 	return fmt.Errorf("pgtest: create roles: %w", err)
 }
 
-// Main boots one cluster for the whole package run and tears it down after.
 func Main(m *testing.M) int {
 	stop, dsn, err := boot()
 	if err != nil {
@@ -123,26 +82,18 @@ func Main(m *testing.M) int {
 	return code
 }
 
-// New returns a pool connected as hasala_runtime on a freshly created
-// database, owned by hasala_migrate and migrated as hasala_migrate. The
-// database is dropped when the test (and any subtests holding it open)
-// finishes.
 func New(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	runtime, _ := NewWithOwner(t)
 	return runtime
 }
 
-// NewOwner returns a pool connected as hasala_migrate, the schema owner, on a
-// freshly created and migrated database.
 func NewOwner(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	_, owner := NewWithOwner(t)
 	return owner
 }
 
-// NewWithOwner returns two pools on one freshly created, migrated database:
-// the runtime role's and the schema owner's.
 func NewWithOwner(t *testing.T) (runtime, owner *pgxpool.Pool) {
 	t.Helper()
 	tmpl, err := migratedTemplate()
@@ -155,12 +106,6 @@ func NewWithOwner(t *testing.T) (runtime, owner *pgxpool.Pool) {
 	return runtime, owner
 }
 
-// migratedTemplate returns the name of this process's migrated template,
-// building it on the first call: a database prepared by prepareDatabase (what
-// newDatabase does for a test) and migrated by pg.Migrate as hasala_migrate,
-// with every connection to it closed, and their backends gone, before it is
-// returned: CREATE DATABASE refuses a template that anyone is connected to
-// (after waiting up to 5 s for them itself).
 func migratedTemplate() (string, error) {
 	tmplOnce.Do(func() {
 		ctx := context.Background()
@@ -169,7 +114,7 @@ func migratedTemplate() (string, error) {
 			tmplErr = fmt.Errorf("pgtest: create the migrated template: %w", err)
 			return
 		}
-		tmplName = name // from here on Main drops it, whatever fails below
+		tmplName = name
 		if err := prepareDatabase(ctx, name); err != nil {
 			tmplErr = err
 			return
@@ -190,7 +135,6 @@ func migratedTemplate() (string, error) {
 	return tmplName, tmplErr
 }
 
-// dropTemplate drops this process's template, if it was built.
 func dropTemplate() {
 	if tmplName == "" {
 		return
@@ -200,10 +144,6 @@ func dropTemplate() {
 	}
 }
 
-// copyDatabase creates a copy of the template tmpl, owned by hasala_migrate,
-// with the database-level grants prepareDatabase makes (pg_database holds
-// them, so CREATE DATABASE does not copy them; everything inside the database
-// is copied). It is dropped when the test finishes.
 func copyDatabase(t *testing.T, tmpl string) string {
 	t.Helper()
 	ctx := context.Background()
@@ -220,21 +160,12 @@ func copyDatabase(t *testing.T, tmpl string) string {
 	return name
 }
 
-// NewEmpty creates a database prepared exactly as infra's setup.sql leaves
-// one (spec 02 §5.2) but NOT migrated, and returns the DSNs of the schema
-// owner and of the runtime role on it: what `hasalad migrate` and then
-// `hasalad serve` are pointed at on a fresh host.
 func NewEmpty(t *testing.T) (migrateDSN, runtimeDSN string) {
 	t.Helper()
 	name := newDatabase(t)
 	return dsnFor(adminDSN, pg.RoleMigrate, name), dsnFor(adminDSN, pg.RoleRuntime, name)
 }
 
-// newDatabase creates a database owned by hasala_migrate and does what
-// infra's setup.sql does as the bootstrap superuser (spec 02 §5.2): the
-// schema owned by hasala_migrate, PUBLIC with no rights on the database or
-// the schema, and CONNECT for the runtime role. It is dropped when the test
-// finishes.
 func newDatabase(t *testing.T) string {
 	t.Helper()
 	ctx := context.Background()
@@ -242,9 +173,6 @@ func newDatabase(t *testing.T) string {
 	if _, err := adminPool.Exec(ctx, "CREATE DATABASE "+name+" OWNER hasala_migrate"); err != nil {
 		t.Fatal(err)
 	}
-	// Registered immediately after CREATE succeeds, before anything below can
-	// fail: t.Fatal runs only the cleanups already registered. Cleanups run
-	// last-registered-first, so every pool opened later is closed before this.
 	t.Cleanup(func() { dropDatabase(t, name) })
 	if err := prepareDatabase(ctx, name); err != nil {
 		t.Fatal(err)
@@ -252,12 +180,6 @@ func newDatabase(t *testing.T) string {
 	return name
 }
 
-// dropDatabase drops a test's database. Its cleanup runs after the test's pools
-// are closed, but a closed connection's backend exits a moment later, and
-// DROP DATABASE waits for the backends still on the database in steps of
-// 100 ms. So it first waits (awaitNoBackends) for them to go; whatever is still
-// connected after that (a connection the test leaked) is what WITH (FORCE)
-// terminates, exactly as before.
 func dropDatabase(t *testing.T, name string) {
 	t.Helper()
 	ctx := context.Background()
@@ -267,10 +189,6 @@ func dropDatabase(t *testing.T, name string) {
 	}
 }
 
-// awaitNoBackends polls, every millisecond for at most backendExitWait, until
-// no backend is connected to the database name. It only shortens a wait: what
-// follows it (CREATE DATABASE ... TEMPLATE, DROP DATABASE ... WITH (FORCE))
-// still handles a backend that is left, as it always did.
 func awaitNoBackends(ctx context.Context, name string) {
 	for deadline := time.Now().Add(backendExitWait); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
 		var n int
@@ -281,13 +199,8 @@ func awaitNoBackends(ctx context.Context, name string) {
 	}
 }
 
-// backendExitWait bounds awaitNoBackends.
 const backendExitWait = 250 * time.Millisecond
 
-// prepareDatabase does, as the bootstrap superuser, what infra's setup.sql
-// does to a new database (spec 02 §5.2): the public schema owned by
-// hasala_migrate, PUBLIC with no rights on the schema or the database, and
-// CONNECT for the runtime role.
 func prepareDatabase(ctx context.Context, name string) error {
 	su, err := pg.Open(ctx, dsnFor(adminDSN, "", name))
 	if err != nil {
@@ -305,8 +218,6 @@ func prepareDatabase(ctx context.Context, name string) error {
 	return nil
 }
 
-// databaseGrants are prepareDatabase's statements on the database itself,
-// which a copy made with CREATE DATABASE ... TEMPLATE does not inherit.
 func databaseGrants(name string) []string {
 	return []string{
 		"REVOKE ALL ON DATABASE " + name + " FROM PUBLIC",
@@ -324,39 +235,19 @@ func openPool(t *testing.T, dsn string) *pgxpool.Pool {
 	return p
 }
 
-// OpenAs returns a pool connected as role to the same database as p. The role
-// must already exist and be allowed to log in.
 func OpenAs(t *testing.T, p *pgxpool.Pool, role string) *pgxpool.Pool {
 	t.Helper()
 	return openPool(t, dsnFor(adminDSN, role, p.Config().ConnConfig.Database))
 }
 
-// Superuser returns a pool connected as the cluster's bootstrap superuser to
-// the same database as p. It is for the handful of tests that must show what
-// even a superuser cannot do (an append-only trigger binds every role) or
-// that must set up a hostile schema; nothing else should use it.
 func Superuser(t *testing.T, p *pgxpool.Pool) *pgxpool.Pool {
 	t.Helper()
 	return OpenAs(t, p, "")
 }
 
-// dsnFor swaps the user (when non-empty) and the database name in a DSN of
-// the form produced by boot(): postgres://postgres@/postgres?host=...&port=...&sslmode=disable.
-// The admin DSN always connects to the "postgres" maintenance database as the
-// bootstrap superuser, so this replaces the URL's user and path.
-//
-// This is NOT the same as pgxpool.ParseConfig + mutating cfg.ConnConfig.Database
-// + cfg.ConnString(): pgx's ConnConfig.ConnString() returns the exact string
-// it was originally parsed from (a cached field), not a re-serialization of
-// the mutated struct, so that approach silently keeps connecting to
-// "postgres" no matter what Database is set to. Rewriting the URL path
-// directly is what actually changes which database pgx connects to.
 func dsnFor(adminDSN, user, name string) string {
 	u, err := url.Parse(adminDSN)
 	if err != nil || u.Scheme == "" {
-		// Fallback for keyword/value DSNs (e.g. "host=... user=... dbname=x"),
-		// which HASALA_TEST_POSTGRES_URL could in principle be set to. pgx
-		// takes the last value it sees for a key, so appending wins.
 		out := adminDSN + " dbname=" + name
 		if user != "" {
 			out += " user=" + user
@@ -386,45 +277,16 @@ func boot() (func(), string, error) {
 	return stop, dsn, nil
 }
 
-// BootStandalone starts a cluster that outlives the calling process: the
-// postgres server is started in its own session (SysProcAttr.Setsid) so it
-// is not in the caller's process group and is not killed by any signal the
-// caller's group receives, and is left running (no Signal/Wait) when
-// BootStandalone returns. It is used by cmd/boot, whose whole purpose is to
-// print connection info and exit while the server keeps running — see
-// scripts/check.sh, which does `eval "$(go run ./internal/pgtest/cmd/boot)"`
-// to share one cluster across every v2 package's test run instead of each
-// package's own TestMain (via boot() above) paying for its own initdb.
-//
-// It returns the admin DSN and the path to a self-contained shell script
-// that stops the server and removes its data directory; the caller is
-// responsible for eventually running that script.
 func BootStandalone(owner int) (dsn string, stopScript string, err error) {
 	dir, srv, dsn, err := bootCluster(true, owner)
 	if err != nil {
 		return "", "", err
 	}
-	// Reap the child the moment it exits, whatever the caller's own
-	// lifetime looks like. cmd/boot's process exits right after this
-	// function returns, so on that path the postgres child is reparented to
-	// init and reaped automatically anyway — but a caller that stays alive
-	// longer (e.g. a test invoking BootStandalone directly, in-process)
-	// would otherwise leave an exited child as an unreaped zombie, which
-	// still answers `kill -0` as "running". stop.sh below polls exactly
-	// that, so an unreaped zombie makes it wait out its full ~10s timeout
-	// on every stop instead of noticing the shutdown immediately.
 	go func() { _, _ = srv.Process.Wait() }()
 	script := filepath.Join(dir, "stop.sh")
 	contents := fmt.Sprintf("#!/bin/sh\nkill -QUIT %d 2>/dev/null\nfor i in $(seq 1 100); do kill -0 %d 2>/dev/null || break; sleep 0.1; done\nrm -rf %s\n",
 		srv.Process.Pid, srv.Process.Pid, dir)
 	if err := os.WriteFile(script, []byte(contents), 0o700); err != nil {
-		// The server is already running and detached at this point (that's
-		// the whole point of bootCluster(true)) — without an explicit kill
-		// here, a WriteFile failure (e.g. disk full) would leak it running
-		// forever with nothing left holding a reference to stop it. The
-		// reaper goroutine above already owns the Wait(); calling it again
-		// here would race that goroutine for no benefit, since both discard
-		// the result anyway.
 		_ = srv.Process.Kill()
 		_ = os.RemoveAll(dir)
 		return "", "", fmt.Errorf("write stop script: %w", err)
@@ -432,10 +294,6 @@ func BootStandalone(owner int) (dsn string, stopScript string, err error) {
 	return dsn, script, nil
 }
 
-// bootCluster does the actual initdb + postgres start shared by boot() and
-// BootStandalone; detach controls whether the server process is placed in
-// its own session (required when the caller is a short-lived `go run`
-// process that must not take the server down with it on exit).
 func bootCluster(detach bool, owner int) (dir string, srv *exec.Cmd, dsn string, err error) {
 	binDir, err := postgresBinDir()
 	if err != nil {
@@ -445,18 +303,6 @@ func bootCluster(detach bool, owner int) (dir string, srv *exec.Cmd, dsn string,
 	if err != nil {
 		return "", nil, "", err
 	}
-	// From here on, dir exists on disk. Every early return below on error
-	// must not leak it — found by literally forcing one of these paths
-	// (HASALA_TEST_PG_USER pointed at a nonexistent user) and finding a
-	// stray /tmp/pgtest-* directory afterward, which is exactly the kind of
-	// leak that only shows up after enough failed/flaky boots accumulate.
-	//
-	// bootDir, not dir, is what the cleanup defer below closes over: dir is
-	// this function's named return value, and every early "return "", nil,
-	// "", err" below assigns "" to it before the deferred function runs —
-	// os.RemoveAll(dir) at that point would silently remove nothing. A
-	// plain local variable can't be reassigned out from under the defer by
-	// a return statement, so it stays correct.
 	bootDir := dir
 	ok := false
 	defer func() {
@@ -470,18 +316,10 @@ func bootCluster(detach bool, owner int) (dir string, srv *exec.Cmd, dsn string,
 		return "", nil, "", err
 	}
 	if cred != nil {
-		// initdb refuses to run as root; the whole tree must be owned by the
-		// unprivileged user that will own the server process.
 		if err := os.Chown(dir, int(cred.Uid), int(cred.Gid)); err != nil {
 			return "", nil, "", err
 		}
 	}
-	// cmd returns a fresh, never-yet-run *exec.Cmd with no Stdout/Stderr set.
-	// That matters: exec.Cmd.CombinedOutput panics with "exec: Stdout already
-	// set" if either stream is already assigned, so the one-shot initdb call
-	// below (which wants captured output) and the long-running postgres
-	// process (which wants to stream to os.Stderr) each set the streams
-	// exactly once, on their own Cmd, and never reuse a Cmd across the two.
 	cmd := func(name string, args ...string) *exec.Cmd {
 		c := exec.Command(filepath.Join(binDir, name), args...)
 		if cred != nil || detach {
@@ -489,27 +327,15 @@ func bootCluster(detach bool, owner int) (dir string, srv *exec.Cmd, dsn string,
 		}
 		return c
 	}
-	// --locale=C.UTF-8 matches the production cluster (Task D5), not the
-	// initdb default. If this is ever changed to --locale=C for expediency,
-	// note it here: `C` collates byte-wise and does not match the
-	// linguistic/case-folding behavior C.UTF-8 gives production, so
-	// ORDER BY, LIKE and index usability on text columns could diverge
-	// between test and prod. Do not make that change silently.
 	if out, err := cmd("initdb", "-D", data, "-U", "postgres", "-A", "trust",
 		"--encoding=UTF8", "--locale=C.UTF-8").CombinedOutput(); err != nil {
 		return "", nil, "", fmt.Errorf("initdb: %v: %s", err, out)
 	}
-	// 5433 is hardcoded and reused by every cluster this package boots,
-	// concurrently or not: listen_addresses="" (below) means postgres never
-	// binds a TCP port at all, so "port" only names the unix socket file
-	// (.s.PGSQL.5433) inside this cluster's own -k dir. Two clusters in two
-	// different temp dirs using the same number don't collide — there is no
-	// shared namespace to collide in.
 	port := 5433
 	srv = cmd("postgres", "-D", data, "-k", dir, "-p", strconv.Itoa(port),
 		"-c", "listen_addresses=", "-c", "fsync=off", "-c", "full_page_writes=off",
 		"-c", "synchronous_commit=off")
-	srv.Stdout, srv.Stderr = os.Stderr, os.Stderr // long-running: stream, never capture
+	srv.Stdout, srv.Stderr = os.Stderr, os.Stderr
 	if owner > 0 {
 		if err := os.WriteFile(filepath.Join(dir, ownerFile), []byte(strconv.Itoa(owner)), 0o644); err != nil {
 			return "", nil, "", fmt.Errorf("write owner file: %w", err)
@@ -521,21 +347,13 @@ func bootCluster(detach bool, owner int) (dir string, srv *exec.Cmd, dsn string,
 	dsn = fmt.Sprintf("postgres://postgres@/postgres?host=%s&port=%d&sslmode=disable", dir, port)
 	if err := waitReady(dsn); err != nil {
 		_ = srv.Process.Kill()
-		_, _ = srv.Process.Wait() // reap now: nothing else is going to
+		_, _ = srv.Process.Wait()
 		return "", nil, "", err
 	}
 	ok = true
 	return dir, srv, dsn, nil
 }
 
-// postgresBinDir returns the directory holding initdb and postgres.
-//
-// PATH comes first: the Hasala devShell (flake.nix) puts postgresql_17 there,
-// and so does Homebrew when its postgresql bin directory is on PATH. initdb
-// and postgres must sit side by side, because bootCluster runs both from one
-// directory; a symlink farm that links only initdb is resolved to the real
-// install directory. Debian keeps the server binaries off PATH, under
-// /usr/lib/postgresql/<major>/bin, so that remains the fallback ledgerd had.
 func postgresBinDir() (string, error) {
 	hasPostgres := func(dir string) bool {
 		_, err := os.Stat(filepath.Join(dir, "postgres"))
@@ -564,8 +382,6 @@ func postgresBinDir() (string, error) {
 		"run inside the devShell: `direnv exec . <cmd>` or `nix develop`")
 }
 
-// unprivileged returns the credential to run the server under, or nil when
-// this process is already unprivileged.
 func unprivileged() (*syscall.Credential, error) {
 	if os.Geteuid() != 0 {
 		return nil, nil

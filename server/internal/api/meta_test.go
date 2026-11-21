@@ -7,10 +7,6 @@ import (
 	"time"
 )
 
-// Spec 02 §7 #2: unauthenticated, exactly the seven fields, gmail_watch_topic
-// null unless the Pub/Sub push is configured and the Outlook URLs null unless
-// the Graph push is (a mailbox link alone is not enough), log_generation 1
-// when no file says otherwise.
 func TestMetaReportsTheServersPublicFacts(t *testing.T) {
 	h := newHarness(t)
 	h.srv.Now = func() time.Time { return time.Date(2026, 10, 11, 9, 30, 15, 999, time.FixedZone("GST", 4*3600)) }
@@ -41,7 +37,6 @@ func TestMetaReportsTheServersPublicFacts(t *testing.T) {
 		}
 	}
 
-	// The mailbox link without the push: still no topic.
 	h.srv.Gmail = &GmailOptions{IOSClientID: testClientID}
 	if m := decodeJSON[MetaResponse](t, h.req(http.MethodGet, "/api/v1/meta", "", nil)); m.GmailWatchTopic != nil {
 		t.Fatalf("a link without the push offered the topic %q", *m.GmailWatchTopic)
@@ -56,7 +51,6 @@ func TestMetaReportsTheServersPublicFacts(t *testing.T) {
 		t.Fatalf("meta offers Outlook URLs without the Graph push: %+v", m)
 	}
 
-	// The Outlook link without its push: no URLs; with it, both.
 	h.srv.Outlook = &OutlookOptions{ClientID: testOutlookClient}
 	if m := decodeJSON[MetaResponse](t, h.req(http.MethodGet, "/api/v1/meta", "", nil)); m.OutlookNotificationURL != nil ||
 		m.OutlookLifecycleURL != nil {
@@ -78,7 +72,6 @@ func TestMetaReportsTheServersPublicFacts(t *testing.T) {
 	}
 }
 
-// meta-ip: 1/s per client, burst 20.
 func TestMetaIsRateLimitedPerClient(t *testing.T) {
 	h := newHarness(t)
 	h.srv.MetaPerIP = NewLimiter(0, 2, metaMaxKeys, h.srv.now)

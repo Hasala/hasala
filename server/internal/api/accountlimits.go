@@ -9,8 +9,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/authkeys"
 )
 
-// The account routes' in-memory limiters (spec 02 §16.2). Every one has a
-// bounded key space; unauthenticated limiters run before any DB work.
 const (
 	accountLimiterKeys = 65536
 
@@ -49,10 +47,6 @@ func (s *Server) defaultAccountLimiters() {
 	s.ensureLimiter(&s.DevFreezeGlobal, devFreezeGl, devFreezeGlB, 1)
 }
 
-// EnableAccounts wires the server's key set, the PBKDF2 gate and the mailer
-// into the account ceremonies and mounts their routes (spec 02 §7 #7, #8,
-// #43–#68, #76–#78). serve calls it after loading HASALA_SALT_KEY_FILE and
-// HASALA_AUTH_KEY_FILE; without it those routes are not mounted.
 func (s *Server) EnableAccounts(keys *authkeys.Keys, gate *authkeys.Gate, mailer *auth.Mailer) {
 	if s.StepUp == nil {
 		s.StepUp = &auth.StepUp{Pool: s.Pool, Passkeys: s.Passkeys}
@@ -86,7 +80,6 @@ func (s *Server) EnableAccounts(keys *authkeys.Keys, gate *authkeys.Gate, mailer
 		StepUp: s.StepUp, Mail: mailer, Now: s.Now, Record: s.recordRestore, Hold: s.holdRestore}
 }
 
-// limited runs the unauthenticated limiters in order, before any DB work.
 func (s *Server) limited(h http.HandlerFunc, ls ...*Limiter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := clientKey(r)
@@ -120,7 +113,6 @@ func prefixAllow(r *http.Request, prefix *Limiter) bool {
 	return !ok || prefix.Allow(k)
 }
 
-// userLimited is account-user (spec 02 §16.2) on a session route.
 func (s *Server) userLimited(h authedHandler) authedHandler {
 	return func(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
 		if !s.AccountPerUser.Allow(userID.String()) {

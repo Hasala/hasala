@@ -1,27 +1,3 @@
-# services.hasala: the Hasala QA backend as a NixOS module (spec 05 §5).
-#
-# Exported as nixosModules.hasala (and .default) by the repository's flake.
-# It is system-agnostic and takes its packages from this flake's own
-# packages.<system>, so a host runs exactly the closure the hasala CI built,
-# whatever nixpkgs the host itself follows.
-#
-# What it runs (every unit PartOf hasala.target, in hasala.slice):
-#   hasala-postgresql         Hasala's OWN PostgreSQL 17 (never the host's
-#                             services.postgresql); unix socket only, peer auth
-#   hasala-db-setup           roles and database, idempotent (infra/qa/db/setup.sql)
-#   hasala-backup-premigrate  an encrypted dump before a migration that has work to do
-#   hasala-migrate            `hasalad migrate` as hasala_migrate, before every start
-#   hasala-purge-replay       `hasalad purge-user --replay-ledger`, after every migrate
-#   hasalad                   `hasalad serve` on 127.0.0.1 (the API)
-#   hasala-console            `hasalad console` on 127.0.0.1, its own OS user (spec 07)
-#   cloudflared-hasala        the tunnel; the only path in from the internet
-#   hasala-backup(+timer), hasala-backup-offsite, hasala-backup-check(+timer)
-#   hasala-health(+timer), hasala-email-token-check(+timer)
-#
-# Secrets are only ever absolute string paths given as options, never Nix
-# path literals and never under the Nix store (M22). Each reaches exactly one
-# unit through LoadCredential= and is passed to the process as a *_FILE path
-# into $CREDENTIALS_DIRECTORY; no secret is ever in Environment=.
 self:
 {
   config,
@@ -61,12 +37,9 @@ let
   backupDSN = "host=${socketDir} dbname=hasala user=hasala_backup";
 
   hasalad = lib.getExe cfg.package;
-  # The app id the AASA must name (P5): team id + bundle id.
   appId = "${cfg.apns.teamId}.${cfg.apns.topic}";
   loopback = port: "127.0.0.1:${toString port}";
 
-  # ---------------------------------------------------------------- hardening
-  # §5.2: every long-running Hasala unit starts from this.
   hardening = {
     NoNewPrivileges = true;
     ProtectSystem = "strict";
@@ -99,15 +72,10 @@ let
     UMask = "0077";
     RemoveIPC = true;
     Slice = "hasala.slice";
-    # No core dump of a process that holds a key (spec 05 §5.2, review 2 F-22).
     LimitCORE = 0;
-    # Never reach the neighbours: the host's Postgres, the host's secrets, and
-    # whatever the host adds (its other services' state).
     InaccessiblePaths = cfg.hardening.inaccessiblePaths;
   };
 
-  # Loopback and the internet stay reachable; the LAN, the tailnet (CGNAT),
-  # link-local and ULA do not.
   denyLanAndTailnet = [
     "10.0.0.0/8"
     "172.16.0.0/12"
@@ -118,7 +86,6 @@ let
     "fe80::/10"
   ];
 
-  # ----------------------------------------------------------------- postgres
   hbaFile = pkgs.writeText "hasala-pg_hba.conf" pgLib.hba;
   identFile = pkgs.writeText "hasala-pg_ident.conf" (pgLib.ident { console = cfg.console.enable; });
   pgConf = pkgs.writeText "hasala-postgresql.conf" (
@@ -129,23 +96,13 @@ let
   );
   setupSql = ../db/setup.sql;
 
-  # ------------------------------------------------------------------- tunnel
   tunnelConfig = pkgs.writeText "cloudflared-hasala.yml" cfg.tunnel.renderedConfig;
 
-  # ---------------------------------------------------------------- hasalad env
-  # §5.5: the complete, non-secret environment of `hasalad serve`. Secrets are
-  # *_FILE paths into the credentials directory (%d).
   apnsOn = cfg.apns.keyFile != null;
-  # The [gmail] group's two parts (M8a, M8b): the mailbox link, and the
-  # Pub/Sub push that needs it.
   gmailLinkOn = cfg.google.iosClientId != null;
   gmailPushOn = cfg.gmail.pubsubTopic != null;
-  # The [outlook] group's two parts (M8c, M8d), the same shape: the mailbox
-  # link (the Entra client id and the shared route key), and the Graph
-  # change-notification push that needs it.
   outlookLinkOn = cfg.outlook.clientId != null;
   outlookPushOn = cfg.outlook.notificationUrl != null;
-  # The route key keys AddressHMAC for both providers; either link mounts it.
   mailboxRouteKeyOn = gmailLinkOn || outlookLinkOn;
   emailOn = cfg.email.apiTokenFile != null;
   turnstileOn = cfg.web.turnstile.secretFile != null;
@@ -240,18 +197,9 @@ let
     ++ optional emailOn "email-api-token:${cfg.email.apiTokenFile}"
     ++ optional turnstileOn "turnstile-secret:${cfg.web.turnstile.secretFile}";
 
-  # ---------------------------------------------------------------- console env
-  # §5.13 / spec 07 §14.1: the console's complete environment. None of serve's
-  # secrets; serve never gets any of these (fence F7-4, M20).
   consoleEnv = {
-    # Deviates from spec 05 review 2 row 1 (F-10), which moves the console and
-    # the CLI to their own role, hasala_console, until spec 02/07's grant split
-    # exists: today the baseline migration grants DML to hasala_runtime only,
-    # so a hasala_console DSN would leave the console with no table access.
     HASALA_PG_DSN = runtimeDSN;
     HASALA_RP_ID = cfg.rpId;
-    # Not in spec 07 §14.1's table, but the server's shared configuration
-    # check refuses HASALA_RP_ID without HASALA_RP_ORIGINS in every mode.
     HASALA_RP_ORIGINS = concatStringsSep "," cfg.rpOrigins;
     HASALA_CONSOLE_LISTEN = loopback cfg.console.port;
     HASALA_CONSOLE_METRICS_LISTEN = loopback cfg.console.metricsPort;
@@ -298,7 +246,6 @@ let
   retrying = "${lib.getExe retryScript} 4 15";
   migrateRunSec = 600;
 
-  # ------------------------------------------------------------------- backups
   offsiteFilter = "--filter '- *.part' --filter '+ hasala-*.age*' --filter '- *'";
   ageRecipientFlags = concatStringsSep " " (map (r: "-r ${r}") cfg.backup.ageRecipients);
   backupText = ''
@@ -385,9 +332,6 @@ let
     CPUQuota = "100%";
   };
 
-  # ------------------------------------------------------------------- admin
-  # §5.7: first word of the mode → OS user (→ role through pg_ident). Only the
-  # modes this hasalad has; 02 §18.3's later modes join as they are built.
   adminModes = {
     invite = "hasala";
     waitlist = "hasala";
@@ -483,14 +427,6 @@ let
     fi
   '';
 
-  # ------------------------------------------------------------------ health
-  # §5.9.3, the probes this build can answer: P1 (local API), P2–P4 and P9
-  # (through Cloudflare, when the tunnel is on), P5 (the AASA, headers and
-  # body), and with the console on P8 (its /healthz) and P10 (the kernel rule
-  # still resets a non-nginx connection to the console port, on 127.0.0.1 and
-  # ::1; this unit runs as hasala-health, never nginx). P6 (mail metrics) and P7
-  # (apex token pages) need the metrics listener and the website's live
-  # checks; they join when those land.
   healthProbes = [
     "P1"
   ]
@@ -671,7 +607,6 @@ let
     '';
   };
 
-  # --------------------------------------------------------------- assertions
   uuidRe = "[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}";
   matches = re: s: s != null && builtins.match re s != null;
   firewallPorts =
@@ -720,8 +655,6 @@ let
     cfg.outlook.notificationUrl
     cfg.outlook.lifecycleUrl
   ];
-  # The Graph hook routes (WP3b). The subscription's URLs must be these, on
-  # the tunnel's host: the ingress allowlist routes nothing else.
   outlookNotificationUrl = "https://${cfg.publicHostname}/hooks/outlook/graph";
   outlookLifecycleUrl = "https://${cfg.publicHostname}/hooks/outlook/graph/lifecycle";
   gmailPushValues = [
@@ -738,10 +671,6 @@ let
     port = cfg.listen.port;
   };
 
-  # M19: a virtual host "reaches the console" when any of its proxy text
-  # names the console port on any host (127.0.0.1, localhost, [::1], ...) or
-  # names an upstream that does. nginx is the one user the kernel rule lets
-  # through, so every such vhost must be the tailnet-gated one.
   namesConsolePort =
     text: text != null && builtins.match ".*:${toString cfg.console.port}([^0-9].*)?" text != null;
   consoleUpstreams = lib.attrNames (
@@ -806,9 +735,6 @@ let
       inherit description;
     };
 
-  # Spec 05 §5.1, M22 (review 2 F-22): a string, never types.path, so a Nix
-  # path literal (which would copy the secret into the world-readable store)
-  # is a type error, and M22 refuses any string under the store.
   secretPath =
     description:
     mkOption {
@@ -898,15 +824,12 @@ in
     };
 
     google.iosClientId = nullStr "The iOS OAuth client id (<n>-<x>.apps.googleusercontent.com), the audience of the app's Google ID token. With mailboxRouteKeyFile it is the [gmail] mailbox link (M8a): the link routes are mounted, and without gmail.* the app fetches mail without wakes (no watch topic, no Pub/Sub hook).";
-    # The Pub/Sub push: all four or none, and only with the link (M8b).
     gmail = {
       pubsubTopic = nullStr "projects/<P>/topics/<topic>; offered to the app as the watch topic. Part of the Pub/Sub push (M8b).";
       pubsubAudience = nullStr "The push subscription's OIDC audience (the hook URL). Part of the Pub/Sub push (M8b).";
       pubsubServiceAccount = nullStr "The push subscription's service account email (<name>@<P>.iam.gserviceaccount.com); the hook refuses a push token whose email differs. Part of the Pub/Sub push (M8b).";
       pubsubSubscription = nullStr "projects/<P>/subscriptions/<name>. Part of the Pub/Sub push (M8b).";
     };
-    # The Graph change-notification push: both or none, and only with the
-    # link (M8d).
     outlook = {
       clientId = nullStr "The Entra app's client id (a UUID; not secret, it ships in the app), the audience of the app's Microsoft ID token (personal accounts only). With mailboxRouteKeyFile it is the [outlook] mailbox link (M8c): the link routes accept provider \"outlook\", and without the URLs the app fetches mail without wakes (no Graph subscription, no hook).";
       notificationUrl = nullStr "The Graph subscription's notificationUrl, exactly https://<publicHostname>/hooks/outlook/graph; offered to the app in /api/v1/meta. Part of the Graph push (M8d).";
@@ -1186,7 +1109,6 @@ in
 
   config = mkIf cfg.enable (mkMerge [
     {
-      # ------------------------------------------------------------- §5.12
       assertions =
         let
           a = n: assertion: message: {
@@ -1389,7 +1311,6 @@ in
           ) "monitoring.healthCheck alerts through monitoring.onFailure: set it too.")
         ];
 
-      # ------------------------------------------------------------- §5.11
       systemd.targets.hasala = {
         description = "Hasala QA backend";
         wantedBy = [ "multi-user.target" ];
@@ -1457,7 +1378,6 @@ in
         };
       };
 
-      # §5.8.1: setgid, so every file in it keeps the hasala-ledger group.
       systemd.tmpfiles.settings.hasala-ledger = {
         ${ledgerDir}.d = {
           user = "hasala";
@@ -1488,7 +1408,6 @@ in
       security.pki.caCertificateBlacklist = cfg.hardening.distrustedCARoots;
       services.journald.extraConfig = lib.mkDefault "SystemMaxUse=1G";
 
-      # ----------------------------------------------------------- §5.3.6
       systemd.services.hasala-postgresql = {
         description = "Hasala PostgreSQL ${pgMajor} (own cluster, unix socket only)";
         wantedBy = [ "hasala.target" ];
@@ -1496,9 +1415,6 @@ in
         after = [ "local-fs.target" ];
         onFailure = cfg.monitoring.onFailure;
         path = [ pg ];
-        # A major-version change can never silently start an empty cluster:
-        # the data directory is named after the major, and an older one present
-        # stops the start until it is dumped and restored.
         preStart = ''
           set -euo pipefail
           shopt -s nullglob
@@ -1565,7 +1481,6 @@ in
         restartTriggers = [ pgConf ];
       };
 
-      # ----------------------------------------------------------- §5.3.7
       systemd.services.hasala-db-setup = {
         description = "Hasala database roles and database (idempotent)";
         wantedBy = [ "hasala.target" ];
@@ -1586,9 +1501,6 @@ in
         };
       };
 
-      # ------------------------------------------------------------- §5.4
-      # No RemainAfterExit: every start of hasalad (or the console) enqueues a
-      # fresh run, so migrations always run first, as the schema owner.
       systemd.services.hasala-migrate = {
         description = "Hasala schema migrations (as hasala_migrate)";
         requires = [
@@ -1601,7 +1513,6 @@ in
         ++ optional cfg.backup.enable "hasala-backup-premigrate.service";
         partOf = [ "hasala.target" ];
         onFailure = cfg.monitoring.onFailure;
-        # Spec 02 §5.5: migrate never reads HASALA_PG_DSN.
         environment = {
           HASALA_MIGRATE_DSN = migrateDSN;
           TZ = "UTC";
@@ -1653,7 +1564,6 @@ in
         };
       };
 
-      # ------------------------------------------------------------- §5.5
       systemd.services.hasalad = {
         description = "Hasala API (blind sync server)";
         wantedBy = [ "hasala.target" ];
@@ -1682,7 +1592,6 @@ in
           ];
           ExecStart = "${hasalad} serve";
           LoadCredential = hasaladCredentials;
-          # serve never sees the console's credentials (App Store Connect key).
           InaccessiblePaths = hardening.InaccessiblePaths ++ [ "-/run/credentials/hasala-console.service" ];
           StateDirectory = "hasala";
           StateDirectoryMode = "0700";
@@ -1708,7 +1617,6 @@ in
         };
       };
 
-      # --------------------------------------------------------- §5.9.1
       services.prometheus.scrapeConfigs =
         mkIf (cfg.monitoring.prometheus && config.services.prometheus.enable)
           (
@@ -1729,7 +1637,6 @@ in
           );
     }
 
-    # --------------------------------------------------------------- §5.6
     (mkIf cfg.tunnel.enable {
       systemd.services.cloudflared-hasala = {
         description = "Cloudflare Tunnel for ${cfg.publicHostname} (to ${loopback cfg.listen.port} only)";
@@ -1786,7 +1693,6 @@ in
       '';
     })
 
-    # ------------------------------------------------------- §5.13, §5.14
     (mkIf cfg.console.enable {
       systemd.services.hasala-console = {
         description = "Hasala operator console (tailnet only, through the host's nginx)";
@@ -1816,8 +1722,6 @@ in
           ];
           ExecStart = "${hasalad} console";
           LoadCredential = optional cfg.asc.enable "asc-key.p8:${cfg.asc.keyFile}";
-          # The console never sees serve's credentials (auth key, email token,
-          # APNs key, route key, Turnstile secret).
           InaccessiblePaths = hardening.InaccessiblePaths ++ [ "-/run/credentials/hasalad.service" ];
           ReadWritePaths = [ ledgerDir ];
           Restart = "on-failure";
@@ -1839,12 +1743,6 @@ in
         };
       };
 
-      # Only restrictToUser (the host's nginx) may open a TCP connection to the
-      # console port; every other local process, root included, gets a reset.
-      # It filters locally generated packets to one loopback port and opens
-      # nothing. The metrics port is not filtered (it serves no console route).
-      # The ip6tables twin covers ::1 (spec 05 §5.14, review 2 F-11): the
-      # console always listens on 127.0.0.1, so it is defence in depth.
       networking.firewall.extraCommands = ''
         iptables -w -N hasala-console-out 2>/dev/null || true
         iptables -w -F hasala-console-out
@@ -1869,7 +1767,6 @@ in
       '';
     })
 
-    # --------------------------------------------------------------- §5.8
     (mkIf cfg.backup.enable {
       systemd.tmpfiles.settings.hasala-backup.${cfg.backup.dir}.d = {
         user = "hasala-backup";
@@ -1902,17 +1799,6 @@ in
         };
       };
 
-      # §5.4: a dump before a migration that has work to do. A failed dump
-      # fails hasala-migrate, so the new binary never starts on an unbacked-up
-      # schema change. `migrate --pending` is read-only and prints 0 for a
-      # fresh cluster.
-      #
-      # RequiresMountsFor on the backup disk is deliberate, and it means a
-      # missing backup disk stops hasalad (and the console) from starting even
-      # when nothing is pending: the unit cannot know that before the mount
-      # dependency is resolved, and failing closed (with onFailure alerting)
-      # beats a migration that could not be backed up. Mount the disk, or
-      # set backup.enable = false, to start without it.
       systemd.services.hasala-backup-premigrate = {
         description = "Hasala encrypted backup before pending migrations";
         requires = [ "hasala-db-setup.service" ];
@@ -1942,8 +1828,6 @@ in
         description = "Hasala backup freshness and retention check";
         partOf = [ "hasala.target" ];
         onFailure = cfg.monitoring.onFailure;
-        # Like every backup unit: an unmounted backup disk is a failure, never
-        # an empty directory on / that looks fresh or clean.
         unitConfig.RequiresMountsFor = [ cfg.backup.dir ];
         serviceConfig =
           hardening
@@ -2030,7 +1914,6 @@ in
       };
     })
 
-    # ------------------------------------------------------------- §5.9.3
     (mkIf cfg.monitoring.healthCheck.enable {
       systemd.services.hasala-health = {
         description = "Hasala health probes";
@@ -2048,7 +1931,6 @@ in
             "AF_INET6"
             "AF_UNIX"
           ];
-          # ntfy may live on loopback; the LAN and the tailnet stay out of reach.
           IPAddressDeny = denyLanAndTailnet;
         };
       };
@@ -2067,7 +1949,6 @@ in
       };
     })
 
-    # ------------------------------------------------------------- §5.9.4
     (mkIf (cfg.monitoring.healthCheck.enable && emailOn) {
       systemd.services.hasala-email-token-check = {
         description = "Fail if the Cloudflare email send token is inactive or about to expire";

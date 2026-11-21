@@ -1,18 +1,3 @@
-// Package vectors writes conformance/crypto-v3/ (spec 01 §15.1, owned by Go,
-// WS-2) and conformance/api-v1/messages.json and stepup.json (spec 02 §22,
-// the key half of WS-3). Go writes the expectations; the Swift client reads
-// them and never regenerates them, and no harness recomputes its own
-// expectation (critic §5.5).
-//
-// Generate is deterministic: every input is fixed (the anchors of spec 01
-// §15.5 and seeded or patterned values), Go's Ed25519 signatures are
-// deterministic, and the only randomized primitive, P-256 signing, is used
-// with a fixed-stream reader so that even the sample DAK signatures are
-// stable bytes (they are still verify-only: CryptoKit's differ every run).
-// TestCommittedVectorsAreCurrent regenerates everything and compares it with
-// the files on disk byte for byte.
-//
-// TEST AND VECTORS ONLY: cmd/hasalad never links this package.
 package vectors
 
 import (
@@ -27,8 +12,6 @@ import (
 	"sort"
 )
 
-// CryptoDir and APIDir are the two output directories, relative to the
-// repository root.
 const (
 	CryptoDir = "conformance/crypto-v3"
 	APIDir    = "conformance/api-v1"
@@ -36,10 +19,8 @@ const (
 	regen     = "cd server && go run ./cmd/gen-crypto-vectors"
 )
 
-// H is binary data that encodes as lowercase hex in JSON.
 type H []byte
 
-// MarshalJSON writes lowercase hex; nil is JSON null.
 func (h H) MarshalJSON() ([]byte, error) {
 	if h == nil {
 		return []byte("null"), nil
@@ -47,7 +28,6 @@ func (h H) MarshalJSON() ([]byte, error) {
 	return json.Marshal(hex.EncodeToString(h))
 }
 
-// UnmarshalJSON reads lowercase hex or null.
 func (h *H) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		*h = nil
@@ -67,7 +47,6 @@ func (h *H) UnmarshalJSON(b []byte) error {
 
 func sum(b []byte) H { s := sha256.Sum256(b); return s[:] }
 
-// Files is the generated tree: repository-relative path → bytes.
 type Files map[string][]byte
 
 func (f Files) json(path string, v any) error {
@@ -82,8 +61,6 @@ func (f Files) json(path string, v any) error {
 	return nil
 }
 
-// Generate builds every file. root is the repository root; it is read only for
-// ledgerd's v1 fixture conformance/blob/hot-dev-a-7.bin (tamper case T25).
 func Generate(root string) (Files, error) {
 	f := Files{}
 	steps := []func(Files, string) error{
@@ -152,8 +129,6 @@ func genManifest(f Files) error {
 	})
 }
 
-// Write writes every file under root, creating directories, and removes
-// nothing.
 func Write(root string, f Files) error {
 	for p, b := range f {
 		full := filepath.Join(root, p)
@@ -167,9 +142,6 @@ func Write(root string, f Files) error {
 	return nil
 }
 
-// stream is a deterministic byte stream: SHA-256 in counter mode over a label.
-// It feeds P-256 signing (so the sample signatures are reproducible here) and
-// any filler that must be "random-looking" yet byte-stable.
 type stream struct {
 	label string
 	n     uint64

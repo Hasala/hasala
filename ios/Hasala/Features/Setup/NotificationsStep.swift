@@ -2,13 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Setup · Notifications · Lock Screen stays generic (Paper GMV-0): what a notification
-/// looks like on the Lock Screen by default, before iOS asks. No header.
-///
-/// This build writes no notifications yet (`CoreSignals` is empty; the owner kept the step),
-/// so a Release build says so before the system asks (Guideline 5.1.1). Nor can it change
-/// the Lock Screen choice later (Profile has no Notifications row), so it offers none:
-/// notes show no amounts or names.
 struct NotificationsStep: View {
   let today: LocalDate
   @Binding var showDetails: Bool
@@ -18,7 +11,6 @@ struct NotificationsStep: View {
   private var subtitle: String {
     BuildSurface.showsUnfinished
       ? "New transactions, due bills, budgets at 80%."
-      // Paper's sentence (GP4-0), then what this build does (Release copy exception).
       : "New transactions, due bills, budgets at 80%. This beta doesn't send them yet."
   }
 
@@ -62,8 +54,6 @@ struct NotificationsStep: View {
   }
 }
 
-/// "Show amounts and merchants" (Paper "Setting · Show amounts and merchants"): off by
-/// default, the native switch.
 private struct DetailsSwitch: View {
   @Binding var isOn: Bool
 
@@ -85,22 +75,15 @@ private struct DetailsSwitch: View {
   }
 }
 
-/// The Lock Screen as it will look (Paper "Lock Screen preview"): today's date, "9:41", and
-/// Hasala's banner, which says only the kind of thing that happened unless the person
-/// turned details on. An illustration of the system's own screen at its own size; it grows
-/// with the text a little, then stops (a capped figure, like the hero).
 private struct LockScreenPreview: View {
   let date: LocalDate
   let details: Bool
 
-  // The board's wallpaper, converted from its OKLab stops (spec 05 §0); an illustration of
-  // the system's Lock Screen, not a Hasala surface, so no token names it.
   private static let wallpaper = [
     Color(HRGBA(0x1F, 0x2C, 0x5C, 1)), Color(HRGBA(0x44, 0x48, 0x8A, 1)), Color(HRGBA(0xA9, 0x80, 0x9A, 1)),
   ]
 
   var body: some View {
-    // The cap sits outside the face, so the clock's scaled size stops with the text.
     LockScreenFace(date: date, details: details, wallpaper: Self.wallpaper)
       .dynamicTypeSize(...DynamicTypeSize.accessibility1)
       .accessibilityElement(children: .ignore)
@@ -109,9 +92,6 @@ private struct LockScreenPreview: View {
   }
 }
 
-/// The preview's face: the date, the clock (SF Pro Rounded 64, growing with the large
-/// title up to the cap) and Hasala's banner, in the system's own type. Each text stops
-/// growing at the cap on purpose, so it carries the capped-figure marker too.
 private struct LockScreenFace: View {
   let date: LocalDate
   let details: Bool
@@ -131,7 +111,6 @@ private struct LockScreenFace: View {
         .minimumScaleFactor(0.5)
         .lineLimit(1)
         .cappedText()
-        // Paper's 64/70: the clock's line, not the face's taller natural one.
         .frame(height: clock * 70 / 64)
         .padding(.bottom, 14)
       banner
@@ -171,7 +150,5 @@ private struct LockScreenFace: View {
 }
 
 extension View {
-  /// Marks text that stops growing at a cap on purpose (spec 04 §14.4), as the kit's
-  /// capped figures are marked.
   fileprivate func cappedText() -> some View { accessibilityIdentifier(hasalaCappedFigureIdentifier) }
 }

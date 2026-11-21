@@ -1,9 +1,5 @@
 import XCTest
 
-/// Plan on the Release surface: Assign and New project, no Auto-assign; a budget row opens
-/// its month with Change budget (also in More) and Move money in and no "Add a rule"; the
-/// budget sheet has no "Match September"; the project's switch, Add transactions and Mark
-/// complete all work.
 final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
   @MainActor
   func testPlanShowsOnlyWhatWorks() throws {
@@ -17,14 +13,11 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(app.buttons["plan.assign"].exists)
     try audit(app)
 
-    // Dining's month.
     let row = app.buttons["plan.row.dining"]
     XCTAssertTrue(reveal(app, row))
     row.tap()
     XCTAssertTrue(el(app, "category.hero").waitForExistence(timeout: uiWait))
 
-    // Its budget sheet, from More, over the top of Dining as Paper draws it: no "Match
-    // September" (no last month's figure in a Release build).
     tap(app, "plan.more")
     let changeBudget = app.buttons.matching(
       NSPredicate(format: "label == 'Change budget' AND identifier != 'category.changeBudget'")).firstMatch
@@ -37,7 +30,6 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     try audit(app)
     tap(app, "budget.close")
 
-    // Down to its actions: Change budget and Move money in, the rules, no "Add a rule".
     XCTAssertTrue(reveal(app, app.buttons["category.moveMoney"]))
     XCTAssertTrue(app.buttons["category.changeBudget"].exists)
     assertNoPlaceholders(app, "Plan › Dining")
@@ -107,7 +99,6 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "project.hero").waitForExistence(timeout: uiWait))
   }
 
-  /// Waits until `element` stops moving (a sheet settling into its detent), at most 5 s.
   @MainActor
   private func waitUntilStill(_ element: XCUIElement) {
     var last = element.frame
@@ -119,8 +110,6 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     }
   }
 
-  /// Assign opens Move money, whose sources and preview show and whose words promise only
-  /// what it does.
   @MainActor
   func testAssignAndMoveMoney() throws {
     let app = launchRelease()

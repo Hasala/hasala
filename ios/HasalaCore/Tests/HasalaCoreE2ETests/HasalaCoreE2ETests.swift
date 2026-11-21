@@ -1,6 +1,3 @@
-// T3/T4 protocol scenarios (spec 04 §19.1, §19.4) against the in-process
-// FakeServer: creation, enrolment, sync, the resend rules and the tamper
-// stops. Owner: WS-11.
 import CoreAuth
 import CoreCrypto
 import CoreSoftAuth
@@ -27,7 +24,6 @@ struct AccountTests {
     #expect(try ctx.store.meta()?.writerID == account.writerID)
     let roster = try #require(PinnedRoster.decode(try ctx.store.syncState().rosterJSON))
     #expect(roster.writers.keys.contains(account.writerID.string))
-    // The session is bound to the new writer (#45).
     let s = try await a.env.client.session(bearer: try #require(try a.env.secrets.session()).token)
     #expect(s.writer_id == account.writerID.string)
   }
@@ -58,7 +54,7 @@ struct AccountTests {
     try await AccountCreation.verifySignup(a.env, signup, code: try #require(w.server.lastCode))
     let keys = try NewAccountKeys.generate(random: a.env.random)
     let reg = try await AccountCreation.registerPasskey(a.env, signup: signup, keys: keys)
-    #expect(try a.env.secrets.session() != nil)  // R-04: before the phrase is even shown
+    #expect(try a.env.secrets.session() != nil)
     #expect(try a.env.secrets.binding() == nil)
     #expect(reg.prf != nil)
     let account = try await AccountCreation.bootstrapPasskey(a.env, registered: reg, keys: keys)
@@ -116,7 +112,7 @@ struct AccountTests {
     try await AccountCreation.verifySignup(a.env, signup, code: try #require(w.server.lastCode))
     let lost = try NewAccountKeys.generate(random: a.env.random)
     _ = try await AccountCreation.registerPasskey(a.env, signup: signup, keys: lost)
-    lost.wipe()  // the app was killed while the words were on screen
+    lost.wipe()
     #expect(Boot.decide(Boot.gather(a.env)) == .onboardingKeys)
     let token = try #require(try a.env.secrets.session()).token
     #expect(try await a.env.client.account(bearer: token).has_keys == false)
@@ -128,10 +124,8 @@ struct AccountTests {
     #expect(try a.binding?.display_name == "Maya")
     #expect(try await a.env.client.account(bearer: token).has_keys == true)
     #expect(try await a.env.client.keyWraps(bearer: token).wraps.count == 1)
-    // Bound now (in-memory stores read as "restoring"; never the keys step again).
     #expect(Boot.decide(Boot.gather(a.env)) == .restoring)
 
-    // The NEW words open the account on another iPhone.
     let b = w.phone("b", passkeys: a.passkeys)
     let r = try await AccountSignIn.withPasskey(b.env, bound: nil, wantPRF: false)
     let body = try await Enrolment.unlockWithPhrase(b.env, userID: try #require(r.userID), typed: words.joined(separator: " "))
@@ -141,7 +135,7 @@ struct AccountTests {
   @Test("C2b: a bound iPhone signs in with its writer; C2: a new iPhone unlocks with the passkey's PRF")
   func passkeySignIn() async throws {
     let w = World()
-    let shared = SoftPasskey()  // iCloud Keychain: both iPhones see the credential
+    let shared = SoftPasskey()
     let a = w.phone("a", passkeys: shared)
     let signup = try await AccountCreation.beginSignup(
       a.env, inviteCode: invite, email: "maya@example.com", displayName: "Maya", inviteLinkKey: nil)
@@ -150,11 +144,9 @@ struct AccountTests {
     let reg = try await AccountCreation.registerPasskey(a.env, signup: signup, keys: keys)
     let account = try await AccountCreation.bootstrapPasskey(a.env, registered: reg, keys: keys)
 
-    // C2b on A.
     let again = try await AccountSignIn.withPasskey(a.env, bound: a.binding, wantPRF: false)
     #expect(again.boundWriter == account.writerID)
 
-    // C2 on B: unbound sign-in with PRF, unlock, enrol.
     let b = w.phone("b", passkeys: shared)
     let r = try await AccountSignIn.withPasskey(b.env, bound: nil, wantPRF: true)
     #expect(r.boundWriter == nil && r.hasKeys)
@@ -180,14 +172,11 @@ struct AccountTests {
     let body = try await Enrolment.unlockWithPhrase(b.env, userID: account.userID, typed: words.joined(separator: " "))
     let enrolled = try await Enrolment.enrolWriter(
       b.env, userID: account.userID, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
-    // B's roster lists both writers.
     let ctx = Enrolment.context(b.env, account: enrolled)
     let roster = try #require(PinnedRoster.decode(try ctx.store.syncState().rosterJSON))
     #expect(Set(roster.writers.keys) == [account.writerID.string, enrolled.writerID.string])
-    // C2b-P from A: bound to A's writer.
     let bound = try await AccountSignIn.withPassword(a.env, email: "maya@example.com", password: password, bound: a.binding)
     #expect(bound.boundWriter == account.writerID)
-    // A wrong password is the uniform refusal.
     do {
       _ = try await AccountSignIn.withPassword(a.env, email: "maya@example.com", password: "nope nope nope", bound: nil)
       Issue.record("expected password_rejected")
@@ -362,7 +351,6 @@ struct StepUpTests {
   }
 }
 
-/// Answers one route with a fixed body, passing everything else through.
 struct OverrideTransport<B: Encodable & Sendable>: Transport {
   let inner: any Transport
   let route: String
@@ -422,7 +410,6 @@ struct BootLaunchTests {
     try enqueue(ctx, [op(1)])
     #expect(await SyncEngine(context: ctx).run(.authored).stop == nil)
     #expect(try ctx.store.syncState().authoredHead.counter == 1)
-    // The DWK is lost: boot says unenrolled; the phrase enrols a new writer.
     try p.keychain.delete(.writerKey(userID: first.userID, writerID: first.writerID))
     #expect(Boot.decide(Boot.gather(env)) == .unenrolled)
     _ = try await AccountSignIn.withPassword(env, email: "maya@example.com", password: password, bound: nil)
@@ -453,8 +440,7 @@ struct AccountManagementTests {
       b.env, userID: account.userID, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
     try await AccountManagement.removeThisIPhone(
       a.env, engine: SyncEngine(context: ctxA), factor: .device(password: password), binding: try #require(a.binding))
-    #expect(a.keychain.count == 0)  // §4.7 row 2: every item gone
-    // B's verified roster: A revoked at counter 1 (the op A flushed first).
+    #expect(a.keychain.count == 0)
     let ctxB = Enrolment.context(b.env, account: enrolledB)
     _ = await SyncEngine(context: ctxB).run(.launch)
     let token = try #require(try b.env.secrets.session()).token

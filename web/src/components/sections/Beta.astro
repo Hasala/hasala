@@ -1,11 +1,4 @@
 ---
-/**
- * 10 Beta · Request an invite (Paper B58-0 desktop, BUS-0 phone). The pace-blue
- * panel: copy on the left (beta chip, H2, subline, three requirements), the
- * coin over its slot and the form card on the right. On phones the copy is
- * shorter (no "so we can fix problems quickly", no requirements list) and the
- * form follows in one column. The form's states live in WaitlistForm.astro.
- */
 import WaitlistForm from '../WaitlistForm.astro';
 import Icon from '../Icon.astro';
 import { MAIL_PERSONAL } from '../../data/site';
@@ -43,10 +36,8 @@ import { MAIL_PERSONAL } from '../../data/site';
     display: flex;
     flex-direction: column;
     align-items: center;
-    /* Paper BUS-0: 48 top, 12 sides, 12 bottom on phones. */
     padding-bottom: 12px;
   }
-  /* Glow behind the coin (desktop only; the phone panel has none). */
   .beta__glow {
     display: none;
     right: -104px;
@@ -173,10 +164,6 @@ import { MAIL_PERSONAL } from '../../data/site';
     }
   }
 
-  /* As the form arrives (scrolled in, not already on screen) the coin drops
-     from above and settles into its slot; the slot's clip swallows the
-     overshoot. Only here, not on /joined or the confirm pages. `translate`
-     composes with the coin's focus lift (transform). SVG user units. */
   @media (prefers-reduced-motion: no-preference) {
     .beta__form:global(.is-scrolled-in) :global(.wl-coin-body) {
       animation: wl-settle 640ms 240ms both;
@@ -197,7 +184,7 @@ import { MAIL_PERSONAL } from '../../data/site';
     }
     75% {
       translate: 0 -12px;
-      animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); /* --ease-in-out: var() is not read inside @keyframes */
+      animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
     }
     100% {
       opacity: 1;

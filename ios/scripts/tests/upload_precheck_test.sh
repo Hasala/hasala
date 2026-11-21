@@ -1,17 +1,4 @@
 #!/usr/bin/env bash
-# upload.sh refuses, before it reads a key or touches the network, any .ipa that is
-# not archive.sh's own export for its build, whose inspection did not pass for that
-# very file, or that is a local trial, and any build number that is not newer than the
-# last upload; and it records the build number before the upload starts (spec 06
-# §10.3–§10.4).
-#
-# Offline. The builds are fake .ipa files under HASALA_BUILD_DIR in a temporary
-# directory (with HASALA_TEST_MODE=1, without which upload.sh refuses it), so the real
-# ios/build (and its last-build-number) is never read or written; HOME is an empty
-# temporary directory. The cases that get past the key
-# check use a fake key file and a stub `xcrun` first on PATH that records its
-# arguments and never runs altool; DEVELOPER_DIR points nowhere, so the real xcrun
-# could not run altool either.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../release-common.sh
@@ -22,7 +9,6 @@ fail=0
 root="$work/build"
 mkdir -p "$root" "$work/home" "$work/stub" "$work/keys"
 
-# The stub only stands in for altool if upload.sh reaches it through PATH.
 if grep -nE '/usr/bin/xcrun|/altool' "$here/upload.sh"; then
 	echo "FAIL upload.sh calls xcrun or altool by path; the stub cannot replace it, so this test stops here"
 	exit 1
@@ -54,7 +40,6 @@ echo "not a key" >"$key"
 chmod 600 "$key"
 issuer=00000000-0000-0000-0000-000000000000
 
-# make_build BUILD: a fake $root/BUILD/export/Hasala.ipa.
 make_build() {
 	local dir="$root/$1"
 	mkdir -p "$dir/export" "$dir/stage/Payload/Hasala.app"
@@ -62,8 +47,6 @@ make_build() {
 	(cd "$dir/stage" && zip -qr "$dir/export/Hasala.ipa" Payload)
 	rm -rf "$dir/stage"
 }
-# summary BUILD KIND: writes $root/BUILD/summary.txt as inspect-ipa.sh would, or cut
-# short or tampered with.
 summary() {
 	local build="$1" kind="$2" s="$root/$1/summary.txt" sha
 	sha="$(hasala_sha256 "$root/$build/export/Hasala.ipa")"
@@ -87,10 +70,6 @@ summary() {
 		esac
 	} >"$s"
 }
-# upload NAME WANT [VAR=value...] -- ARG...: runs upload.sh ARG... with HOME empty,
-# no ASC_* variables, HASALA_BUILD_DIR=$root in test mode, the stub xcrun first on PATH
-# and DEVELOPER_DIR nowhere, plus the given variables; WANT is the exit code it must
-# give.
 upload() {
 	local name="$1" want="$2" rc=0
 	shift 2
@@ -159,7 +138,6 @@ echo "local trial, not for upload: dirty tree" >"$root/$b/TRIAL"
 upload "a local trial" 40 -- "$ipa"
 rm "$root/$b/TRIAL"
 
-# Build numbers (21): the .ipa's must be newer than ios/build/last-build-number.
 echo "$b" >"$root/last-build-number"
 upload "a build equal to the last upload" 21 -- "$ipa"
 echo 991231.12358 >"$root/last-build-number"
@@ -167,7 +145,6 @@ upload "a build older than the last upload" 21 -- "$ipa"
 echo 991231.12356 >"$root/last-build-number"
 upload "a clean, inspected, newer build reaches the key check" 14 -- "$ipa"
 
-# The key (14). asc.env is sourced as shell, so a group- or world-readable one is refused.
 mkdir -p "$work/home/.config/hasala"
 printf 'ASC_KEY_ID=TESTKEY000\nASC_ISSUER_ID=%s\n' "$issuer" >"$work/home/.config/hasala/asc.env"
 chmod 644 "$work/home/.config/hasala/asc.env"
@@ -176,8 +153,6 @@ said "must be yours with mode 0600" "refused for its mode"
 upload "a key file not named AuthKey_<ASC_KEY_ID>.p8" 14 ASC_KEY_ID=OTHERKEY00 ASC_ISSUER_ID="$issuer" ASC_KEY_PATH="$key" -- "$ipa"
 said "is not named AuthKey_OTHERKEY00.p8" "refused for its name"
 
-# Past the key: the stub altool. An asc.env with mode 0600 and the key at its
-# default path under HOME (this is the case GNU stat used to break).
 chmod 600 "$work/home/.config/hasala/asc.env"
 mkdir -p "$work/home/.appstoreconnect/private_keys"
 cp "$key" "$work/home/.appstoreconnect/private_keys/"
@@ -209,8 +184,6 @@ upload "a newer build uploads" 0 STUB_UPLOAD_RC=0 -- "$root/$b2/export/Hasala.ip
 equal "$(cat "$root/last-build-number")" "$b2" "...and is recorded"
 equal "$(cat "$root/$b2/upload-state")" uploaded "...and its upload state says uploaded"
 
-# HASALA_BUILD_DIR outside test mode: refused (2) before anything, even for a newer,
-# inspected build with a key that would upload.
 b3=991231.12359
 make_build "$b3"
 summary "$b3" pass

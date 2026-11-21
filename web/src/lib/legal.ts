@@ -1,6 +1,5 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
 
-/** The four pages rendered from docs/legal/*.md, in footer order. */
 export const LEGAL_PAGES = [
   { slug: 'privacy', label: 'Privacy Policy', fallbackTitle: 'Privacy Policy', fallbackDescription: 'What stays on your iPhone, what our server keeps sealed, and the few things it can see.' },
   { slug: 'terms', label: 'Terms of Service', fallbackTitle: 'Terms of Service', fallbackDescription: 'The terms for using Hasala during the TestFlight beta.' },
@@ -18,7 +17,6 @@ export async function legalForLlms() {
   const out: { title: string; url: string; body: string }[] = [];
   for (const p of LEGAL_PAGES) {
     const e = await legalEntry(p.slug);
-    // Drafts (with notes for the owner still in them) stay out until published.
     if (e?.body && e.data.status !== 'draft') out.push({ title: e.data.title, url: `https://hasala.app/${p.slug}`, body: e.body });
   }
   return out;

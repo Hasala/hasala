@@ -3,12 +3,9 @@ import Testing
 
 @testable import Hasala
 
-/// The Debug launch hook (plan B6): every registered screen parses, starts from a known
-/// scenario, belongs to exactly one area, and is reached through the real models.
 @MainActor
 @Suite("Screen launch")
 struct ScreenLaunchTests {
-  /// The ledger scenarios HasalaMocks knows besides the account ones.
   static let ledgerScenarios: Set<String> = ["maya", "mayaHidden", "mayaCaughtUp", "mayaSample", "firstDays", "mayaCopy", "mayaRange", "mayaSamePurchase", "mayaUnreadMail", "mayaSuggestions", "mayaBacklog"]
 
   @Test func everyRegisteredScreenParsesAndHasAScenario() {
@@ -30,7 +27,6 @@ struct ScreenLaunchTests {
         #expect(others.isEmpty, "\(s.id) is in \(others) too")
       }
     }
-    // The prefixes don't overlap.
     let prefixes = ScreenLaunch.Area.allCases.flatMap(\.prefixes)
     #expect(Set(prefixes).count == prefixes.count)
   }
@@ -41,7 +37,6 @@ struct ScreenLaunchTests {
     #expect(ScreenLaunch.isMockLaunch(["-HasalaScreen", "home"]))
     #expect(ScreenLaunch.isMockLaunch(["-HasalaScenario", "maya"]))
     #expect(!ScreenLaunch.isMockLaunch(["-HasalaReleaseSurface"]))
-    // The screen's scenario, unless one was named.
     let launch = ScreenLaunch.from(["-HasalaScreen", "setup.bank"])
     #expect(launch?.arguments(["-HasalaScreen", "setup.bank"]).suffix(2) == ["-HasalaScenario", "setupBank"])
     let named = ["-HasalaScreen", "setup.bank", "-HasalaScenario", "reviewAccount"]
@@ -51,8 +46,6 @@ struct ScreenLaunchTests {
     #expect(MotionLaunch.from(["-HasalaMotion", "slow"]) == nil && MotionLaunch.from([]) == nil)
   }
 
-  /// A screen's graph on its scenario, with its router state and its steps done, at the
-  /// mocks' full speed.
   func opened(_ id: String) async throws -> MockGraph {
     let screen = try #require(ScreenLaunch.registry.first { $0.id == id })
     let graph = try #require(MockGraph.fromLaunchArguments(["-HasalaScenario", screen.scenario]))

@@ -5,7 +5,6 @@ import Testing
 
 @testable import Hasala
 
-/// Signup (C1, C1-P), the interrupted signup and invite links, on the in-memory mock.
 @MainActor
 @Suite("Signup flows")
 struct SignupFlowTests: AccountSuite {
@@ -26,7 +25,6 @@ struct SignupFlowTests: AccountSuite {
     m.code = "000000"
     await m.submitCode()
     #expect(m.failure == .codeWrong(triesLeft: 4))
-    // "Resend code" starts a fresh ceremony and resets the tries.
     let firstID = m.ticket?.id
     await m.resendCode()
     #expect(m.ticket?.id != firstID)
@@ -42,12 +40,11 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.path.last == .phraseIntro)
     #expect(m.phrase?.words == MockAccountService.phraseWords)
 
-    // The words are shown, then "I've written them down" publishes: no word check.
     m.go(.phraseShow)
     #expect(!m.phraseSeen)
     showPhrase(m)
     #expect(m.phraseSeen)
-    m.phraseRevealed = false  // "Hide" keeps them seen
+    m.phraseRevealed = false
     #expect(m.phraseSeen)
     await m.finish()
     #expect(m.path.last == .accountReady)
@@ -124,9 +121,9 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.passwordReady)
     m.submitPassword()
     #expect(m.path.last == .phraseIntro)
-    #expect(account.profile == nil)  // nothing published yet
+    #expect(account.profile == nil)
     await m.finish()
-    #expect(account.profile == nil)  // nor before the words were shown
+    #expect(account.profile == nil)
     showPhrase(m)
     await m.finish()
     #expect(account.profile?.method == .password)
@@ -232,8 +229,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(!m.passkeyRegistered)
   }
 
-  /// "I've written them down" before the words were ever shown publishes nothing (Paper
-  /// F6Q draws it disabled; the model refuses it too).
   @Test func finishBeforeTheRevealPublishesNothing() async {
     let account = MockAccountService()
     account.delay = .zero
@@ -253,9 +248,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.phrase?.words == MockAccountService.phraseWords)
   }
 
-  /// While the screen is recorded or mirrored the grid draws dots, so a reveal then shows
-  /// the person nothing: it doesn't count, and "I've written them down" publishes nothing.
-  /// Once capture stops, a reveal counts.
   @Test func aRevealWhileTheScreenIsCapturedPublishesNothing() async {
     let account = MockAccountService()
     account.delay = .zero
@@ -280,7 +272,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(account.profile == nil)
     #expect(m.path.last == .phraseShow)
 
-    // Capture starting while the words are up hides them; what was drawn before counts.
     m.phraseMasked = false
     showPhrase(m)
     #expect(m.phraseRevealed && m.phraseSeen)
@@ -301,7 +292,7 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.replacing)
     #expect(m.phrase?.words.count == 12)
     await m.finish()
-    #expect(m.path.isEmpty)  // not before the words were shown
+    #expect(m.path.isEmpty)
     showPhrase(m)
     await m.finish()
     #expect(m.path.last == .accountReady)
@@ -310,11 +301,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(session.phase == .onboarding)
   }
 
-  // MARK: Back and Forward (plan B3: everything typed stays)
-
-  /// Typed code to the method screen, then the system back twice: About you still holds the
-  /// name and the address, and Continue carries on with the open ticket (no second signup,
-  /// no second email) straight to the method, the address already confirmed.
   @Test func backFromTheMethodKeepsNameAndEmail() async {
     let account = CountingAccount()
     let m = SignupModel(account: account)
@@ -329,7 +315,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.path == [.invite, .aboutYou, .verifyEmail, .method])
     m.method = .password
 
-    // The system back button pops the stack through `navigationPath`.
     m.navigationPath = Array(m.path.dropLast())
     m.navigationPath = Array(m.path.dropLast())
     #expect(m.path.last == .aboutYou)
@@ -341,7 +326,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.path.last == .method)
     #expect(m.method == .password)
 
-    // A changed address is a new signup, and needs its own code.
     m.navigationPath = Array(m.path.dropLast())
     m.email = "maya.k@example.com"
     #expect(!m.emailConfirmed)
@@ -350,10 +334,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.path.last == .verifyEmail)
   }
 
-  /// The link path, Back to About you, then a changed name: the screen still promises no
-  /// code, and Continue keeps the promise. The new signup (the name is part of it) sends the
-  /// link's key again, so the address is proven and no code is emailed. A changed address
-  /// loses the "Confirmed" chip and says when there's no code.
   @Test func aChangedNameOnTheLinkPathStillNeedsNoCode() async throws {
     let account = CountingAccount()
     let m = SignupModel(account: account)
@@ -383,8 +363,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.emailHelp == "No code if it's where your invite went. Security alerts go here.")
   }
 
-  /// The typed-code path, Back to About you, then a changed name: a new signup needs a new
-  /// code, so "Your code confirmed it." and the chip go before Continue, not after.
   @Test func aChangedNameOnTheTypedPathSaysANewCodeIsComing() async {
     let account = CountingAccount()
     let m = SignupModel(account: account)
@@ -410,7 +388,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.codeState(now: .now) == .typing)
   }
 
-  /// A link without its key proves nothing, so About you doesn't promise "no code".
   @Test func aLinkWithoutItsKeyPromisesACode() async throws {
     let m = SignupModel(account: CountingAccount())
     m.applyInviteLink(try #require(InviteLink.parse(URL(string: "https://hasala.app/i/\(Self.code)")!)))
@@ -423,10 +400,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.ticket?.emailProven == false && m.path.last == .verifyEmail)
   }
 
-  /// Five wrong codes use the code up. "Change email" (or the system back), then Continue
-  /// with nothing changed, comes back to the same signup with the code still used up: the
-  /// cells stay expired with "Send a new code", not ready for a seventh try the server would
-  /// refuse. A new code starts clean.
   @Test func aUsedUpCodeStaysUsedUpThroughBackAndForward() async {
     let account = CountingAccount()
     let m = SignupModel(account: account)
@@ -442,14 +415,13 @@ struct SignupFlowTests: AccountSuite {
     }
     #expect(m.codeState(now: .now) == .expired)
 
-    m.back()  // "Change email"
+    m.back()
     #expect(m.path.last == .aboutYou && m.failure == nil)
     await m.submitAboutYou()
     #expect(account.signupsBegun == 1)
     #expect(m.path.last == .verifyEmail)
     #expect(m.codeState(now: .now) == .expired)
 
-    // The system back and Forward again: still used up.
     m.navigationPath = Array(m.path.dropLast())
     await m.submitAboutYou()
     #expect(m.codeState(now: .now) == .expired)
@@ -508,8 +480,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.emailVerified)
   }
 
-  /// The password and the "Show" choice stay through Back and Forward, so Create account is
-  /// ready again without typing.
   @Test func backAndForwardKeepThePassword() async {
     let m = SignupModel(account: CountingAccount())
     m.inviteText = Self.code
@@ -531,8 +501,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.passwordReady && m.passwordShown)
   }
 
-  /// Back to the method after the passkey was saved, then Forward again: no second Face ID
-  /// sheet for the same signup, and the same words.
   @Test func aSavedPasskeyIsNeverSavedTwice() async {
     let account = CountingAccount()
     let m = SignupModel(account: account)
@@ -580,8 +548,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(account.phrasesMade == 1)
   }
 
-  /// A wrong code keeps its six digits on screen until the person types again; five wrong
-  /// codes use the code up ("Send a new code"), and a new code starts clean.
   @Test func aWrongCodeStaysUntilTypingAgain() async {
     let m = SignupModel(account: CountingAccount())
     m.inviteText = Self.code
@@ -604,12 +570,9 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.wrongCode.isEmpty)
     await m.resendCode()
     #expect(m.codeState(now: .now) == .typing)
-    // Ten minutes after it was sent a code is expired, whatever the last answer was.
     #expect(m.codeState(now: .now.addingTimeInterval(10 * 60 + 1)) == .expired)
   }
 
-  /// The gate is made again (a body pass, the passcode wall, a wall, the launch view): the
-  /// store hands back the same signup, with what was typed and where the person was.
   @Test func theStoreKeepsTheSignupWhenTheGateIsRebuilt() {
     let session = AccountSession(services: services(MockAccountService()), phase: .signedOut)
     let store = OnboardingStore(services: session.services, session: { session })
@@ -631,9 +594,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(store.storyPage == 3)
   }
 
-  /// An invite link that arrives mid-signup opens "Your invite is ready" (as
-  /// `WelcomeFlowView` does), and leaves the typed name and address; with its key, the
-  /// address needs no code.
   @Test func anInviteLinkMidSignupKeepsNameAndEmail() async throws {
     let m = SignupModel(account: CountingAccount())
     m.path = [.invite, .aboutYou]
@@ -653,8 +613,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.emailConfirmed)
   }
 
-  /// A link's code that the server doesn't know goes back to the code field (with the
-  /// code in it, to check), not to "Your invite is ready".
   @Test func anUnknownLinkedInviteGoesToTheCodeField() async throws {
     let m = SignupModel(account: CountingAccount())
     let key = String(repeating: "k", count: 43)
@@ -668,7 +626,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.failure == .notInvited)
     #expect(m.path == [.invite])
     #expect(m.normalizedInvite == unknown)
-    // Fixing the code clears "not found" at once.
     m.inviteText = Self.code
     #expect(m.failure == nil)
   }
@@ -724,8 +681,6 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.linkPasteboardChange == nil)
   }
 
-  // MARK: Session
-
   @Test func inviteLinksOnlyActSignedOut() {
     let url = URL(string: "https://hasala.app/i/\(Self.code)")!
     let out = AccountSession(services: services(MockAccountService()), phase: .signedOut)
@@ -738,8 +693,6 @@ struct SignupFlowTests: AccountSuite {
   }
 }
 
-/// The welcome stories' clock (spec 04 §2.3): 6 s a story, paused while nobody can watch,
-/// carrying on where it stopped.
 @MainActor
 @Suite("Welcome story clock")
 struct StoryClockTests {
@@ -759,11 +712,9 @@ struct StoryClockTests {
     c.restart(at: t0, running: true)
     c.pause(at: t0.addingTimeInterval(2))
     #expect(!c.isRunning)
-    // Under the sheet for a minute: nothing moves.
     #expect(c.progress(at: t0.addingTimeInterval(62)) == 2.0 / 6)
     c.resume(at: t0.addingTimeInterval(62))
     #expect(c.remaining(at: t0.addingTimeInterval(63)) == 3)
-    // Resuming while running changes nothing.
     c.resume(at: t0.addingTimeInterval(63))
     #expect(c.remaining(at: t0.addingTimeInterval(63)) == 3)
   }
@@ -775,14 +726,11 @@ struct StoryClockTests {
     #expect(c.progress(at: t0.addingTimeInterval(10)) == 0 && !c.isRunning)
     c.finish()
     #expect(c.progress(at: t0) == 1 && !c.isRunning)
-    // A finished story doesn't run again.
     c.resume(at: t0)
     #expect(!c.isRunning)
   }
 }
 
-/// The welcome cards' idle float: every phase stays finite and within ±4 pt for the whole
-/// loop, starting and ending at rest, so a card never loses its place on screen.
 @MainActor
 @Suite("Welcome idle float")
 struct IdleFloatTests {
@@ -799,7 +747,6 @@ struct IdleFloatTests {
   }
 }
 
-/// The mock account, counting the calls that must not repeat on Back and Forward.
 @MainActor
 final class CountingAccount: AccountService {
   let mock: MockAccountService

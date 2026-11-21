@@ -1,38 +1,3 @@
-// Builds the sample seed from HasalaMocks' MayaLedger (owner decision 5 of the
-// TestFlight plan: the seed comes from MayaLedger, so the screens' figures and
-// the sample agree), then writes it (HASALA_WRITE_SAMPLE=1) or checks that the
-// committed seed and manifest are exactly this output.
-//
-// How MayaLedger's read model becomes ops (CoreDomain's SampleSeed documents
-// the loader; this is the other half of the contract):
-//
-//   categories   a built-in that MayaLedger keeps as is gets no op; an archived
-//                built-in is redefined inactive; any other category is a user
-//                category (`@category:` placeholder, icon from its glyph); a
-//                `bill` role is `category_plan_role_set bills`
-//   plan         the starting split (`budget_split_set`), each budget as an
-//                onward `budget_set`, the income bill (or plan income) as the
-//                one income source
-//   accounts     card accounts (MayaLedger's convention: an account with a
-//                last4 is named by its bank id) take 03b's derived id and a
-//                `card_linked mine`; cash is `ac_cash`; others a random id. Each
-//                gets one balance `update` check-in at the scenario clock
-//   rules        v4 rules, priority 10
-//   projects, goals  as they are; a category goal counts from the anchor month
-//   bills        Pass A detected ids; the amount is the usual one (the price
-//                before a change), fixed with 200 bp, or variable when
-//                approximate; anchored on the next due date. Every payment
-//                (history, and every transaction tied to the bill) is a paid
-//                `bill_occurrence_set` on its scheduled due date, linked to the
-//                transaction when there is one
-//   transactions with provenance: a mailbox row (raw merchant, the account's
-//                bank and card, a `sample-<n>` message id); without: a manual
-//                row; review rows are uncategorized; notes, projects and the
-//                accounts of rows with no card become annotations; a display
-//                name the projection would not derive becomes `merchant_named`
-//
-// Not carried (no op family holds them; the screens derive them): bill
-// candidates, "new merchant" flags, review suggestions, row detail overrides.
 import CoreCategorize
 import CoreDomain
 import CoreJSON
@@ -75,7 +40,6 @@ struct SampleSeedExportTests {
     let ctx = AuthorContext(
       writerID: "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", nowMs: try parseInstantMs(doc.anchor), ownLastMs: nil,
       maxAuthored: [:], random: CountingRandom())
-    // The generator stands in for a review account with an empty ledger.
     let permit = try SampleSeed.permit(reviewAccount: true, holdsTransactions: false, sampleLoaded: false)
     let blobs = try SampleSeed.batches(doc.encoded(), nowMs: ctx.nowMs, context: ctx, permit: permit)
     #expect(blobs.flatMap(\.ops).count == doc.ops.count)
@@ -117,9 +81,6 @@ enum MayaSeed {
     """
   }
 
-  // MARK: Time
-
-  /// A ledger wall time (+04:00) as a canonical UTC instant.
   static func instant(_ t: LocalDateTime) -> String {
     let days = Int64(t.date.ordinal)
     let ms = days * 86_400_000 + Int64(t.hour) * 3_600_000 + Int64(t.minute) * 60_000 - LocalClock.offsetMs
@@ -130,9 +91,6 @@ enum MayaSeed {
   static func wire(_ m: YearMonth) -> String { CivilMonth(year: m.year, month: m.month)!.wire }
   static func noon(_ d: LocalDate) -> LocalDateTime { LocalDateTime(date: d, hour: 12, minute: 0) }
 
-  // MARK: Vocabulary
-
-  /// Icon ids (03c §1.7 tokens) for HasalaModels' glyphs: the built-in categories' icons.
   static let icons: [Glyph: String] = [
     .rent: "house", .utilities: "bolt", .groceries: "basket", .transport: "car", .healthcare: "cross",
     .insurance: "shield_check", .dining: "fork_knife", .entertainment: "ticket", .shopping: "bag", .travel: "plane",
@@ -142,7 +100,6 @@ enum MayaSeed {
 
   static func icon(_ g: Glyph) -> String { icons[g] ?? "tag" }
 
-  /// 03b `Bank`: `^[a-z0-9_]{2,32}$`.
   static func isBank(_ s: String) -> Bool {
     (2...32).contains(s.utf8.count) && s.utf8.allSatisfy { (0x61...0x7a).contains($0) || (0x30...0x39).contains($0) || $0 == 0x5f }
   }
@@ -173,8 +130,6 @@ enum MayaSeed {
     }
   }
 
-  // MARK: The document
-
   static func document() throws -> SampleSeed.Document {
     let s = MayaLedger.state
     let anchor = instant(MayaLedger.now)
@@ -191,7 +146,6 @@ enum MayaSeed {
           payload: JSONObject(p), at: at))
     }
 
-    // Categories: built-ins stay implicit; user ones get placeholders.
     func categoryID(_ id: String) -> String { builtins[id] != nil ? id : "@category:\(id)" }
     for c in s.categories {
       let kind = c.kind.rawValue
@@ -208,11 +162,9 @@ enum MayaSeed {
       op(.categoryPlanRoleSet, setupAt, [("category_id", .string(categoryID(c.id))), ("role", .string("bills"))])
     }
 
-    // Banks, from the card accounts (MayaLedger names a card account by its bank id).
     let cardAccounts = s.accounts.filter { $0.last4 != nil && isBank($0.id) }
     for a in cardAccounts { op(.bankDeclared, setupAt, [("bank", .string(a.id)), ("active", .bool(true))]) }
 
-    // Plan.
     guard s.plan.startingSplit.count == 3 else { throw ExportError.unsupported("starting split") }
     let split = s.plan.startingSplit.map { JSONValue.number(JSONNumber(Int64($0))) }
     op(.budgetSplitSet, setupAt, [("need", split[0]), ("want", split[1]), ("saving", split[2])])
@@ -237,7 +189,6 @@ enum MayaSeed {
         [("category_id", .string(categoryID(c))), ("month", .string(month)), ("amount_minor", .string(String(minor))), ("scope", .string("onward"))])
     }
 
-    // Accounts, cards, balances.
     func accountID(_ a: HasalaModels.Account) -> String {
       if let last4 = a.last4, isBank(a.id) { return OpAuthor.cardAccountID(bank: a.id, last4: last4) }
       if a.kind == .cash { return OpAuthor.cashAccountID }
@@ -268,7 +219,6 @@ enum MayaSeed {
         ])
     }
 
-    // Rules.
     for r in s.rules {
       op(
         .ruleAdded, setupAt, entity: ("rule", "@rule:\(r.id)"),
@@ -279,7 +229,6 @@ enum MayaSeed {
         ])
     }
 
-    // Projects and goals.
     for p in s.projects {
       guard !p.complete else { throw ExportError.unsupported("a completed project") }
       op(
@@ -308,7 +257,6 @@ enum MayaSeed {
         ])
     }
 
-    // Bills (the income bill is the income source above).
     func billKey(_ b: HasalaModels.Bill) -> String {
       let raw = s.txns.first { $0.billID == b.id }.map { $0.provenance?.rawMerchant ?? $0.merchant } ?? b.name
       return Canon.merchantKey(raw)
@@ -336,7 +284,6 @@ enum MayaSeed {
         ])
     }
 
-    // Transactions, oldest first, then their annotations.
     let cards = Dictionary(uniqueKeysWithValues: cardAccounts.map { ($0.id, $0.last4!) })
     let categorizer = Categorizer(rules: [], dictionary: dictionary, categories: BuiltinCategories())
     var named: [String: String] = [:]
@@ -400,7 +347,6 @@ enum MayaSeed {
       }
     }
 
-    // Paid occurrences, on their scheduled due dates.
     for b in s.bills where !b.isIncome {
       let linked = s.txns.filter { $0.billID == b.id }
       var dues: [String: (LocalDate, String?, LocalDateTime)] = [:]
@@ -426,12 +372,10 @@ enum MayaSeed {
     return SampleSeed.Document(name: SampleManifest.name, anchor: anchor, ops: ops)
   }
 
-  /// The occurrence of a monthly bill due on `day` in `paid`'s month (clamped).
   static func scheduled(_ paid: LocalDate, day: Int) -> LocalDate {
     LocalDate(paid.year, paid.month, min(day, CivilCalendar.daysIn(year: paid.year, month: paid.month)))
   }
 
-  /// The `category_source` JSON of a filed row.
   static func source(
     _ s: HasalaModels.CategorySource?, category: String, raw: String, rules: [HasalaModels.Rule], categorizer: Categorizer
   ) throws -> JSONValue {

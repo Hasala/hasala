@@ -4,22 +4,15 @@
   import Foundation
   import SwiftUI
 
-  /// A step a launched screen takes once its own view is up, for screens whose model lives
-  /// in that view (unlock, Sign-in & security, the freeze, the email change). The area
-  /// function leaves it on the scenario's account mock; the view takes it on appearing and
-  /// drives its real model with it.
   enum SignInLaunchStep: Equatable {
     case unlockEntry, unlockUnlocking, unlockWelcomeBack, unlockHonestEnd
     case alertRemovePasskey, alertRemoveDevice, alertRemoveThisIPhone, alertSignOut, alertSignOutAll
     case viewWords, lockdown, changeEmail, changeEmailCodes
     case confirmFaceID, confirmPassword, confirmNoKey
     case unfreeze
-    /// What the change-email cover does once it is up.
     case emailNewAddress, emailCodes
   }
 
-  // Sign in, unlock, forgot password, recovery, reset approval, Sign-in & security and
-  // freezes (P4; Paper P2.3–P2.8).
   extension ScreenLaunch {
     static let signInScreens: [Screen] = [
       Screen("signin", scenario: "signInPassword", prepare: { $0.onboarding.signup.path = [.signIn] }),
@@ -30,16 +23,13 @@
         signIn.password = "not my password"
         await signIn.signInWithPassword()
       },
-      // New iPhone, signed in, data sealed.
       Screen("unlock.words", scenario: "unlockPasswordOnly"),
       Screen("unlock.options", scenario: "unlockWithPasskey"),
       Screen("unlock.entry", scenario: "unlockPasswordOnly", prepare: step(.unlockEntry)),
       Screen("unlock.unlocking", scenario: "unlockPasswordOnly", prepare: step(.unlockUnlocking)),
       Screen("unlock.welcomeBack", scenario: "unlockPasswordOnly", prepare: step(.unlockWelcomeBack)),
       Screen("unlock.honestEnd", scenario: "unlockPasswordOnly", prepare: step(.unlockHonestEnd)),
-      // Forgot password.
       Screen("forgot.email", scenario: "signInPassword", prepare: { graph in
-        // The address typed on Sign in carries over (Paper GQL).
         graph.onboarding.signIn.email = MockAccountService.existingEmail
         graph.onboarding.signIn.startReset()
         graph.onboarding.signup.path = [.signIn, .forgotEmail]
@@ -49,7 +39,6 @@
       Screen("forgot.newPassword", scenario: "signInPassword") { await forgot($0, to: .forgotNewPassword) },
       Screen("forgot.waiting", scenario: "signInPassword") { graph in
         await forgot(graph, to: .forgotWaiting)
-        // The other iPhone takes its time: the screen stays on the wait.
         mock(graph)?.delay = .seconds(3600)
       },
       Screen("forgot.locked", scenario: "signInPassword") { graph in
@@ -57,7 +46,6 @@
         await graph.onboarding.signIn.waitForApproval(interval: .milliseconds(10), limit: .seconds(5))
       },
       Screen("approval.sheet", scenario: "resetApproval"),
-      // Recover the account.
       Screen("recover.intro", scenario: "signInPassword",
              prepare: { $0.onboarding.signup.path = [.signIn, .recoverIntro] }),
       Screen("recover.words", scenario: "signInPassword") { graph in
@@ -72,7 +60,6 @@
       },
       Screen("recover.honestEnd", scenario: "signInPassword",
              prepare: { $0.onboarding.signup.path = [.signIn, .recoverIntro, .honestEnd] }),
-      // Sign-in & security, inside the profile sheet.
       Screen("security", scenario: "passkeyUser", prepare: profile([.security])),
       Screen("security.passwordOnly", scenario: "passwordOnly", prepare: profile([.security])),
       Screen("security.removePasskey", scenario: "passkeyUser",
@@ -92,11 +79,9 @@
       Screen("security.changeEmail", scenario: "passkeyUser", prepare: step(.changeEmail, profile([.security]))),
       Screen("security.changeEmailCodes", scenario: "passkeyUser",
              prepare: step(.changeEmailCodes, profile([.security]))),
-      // Confirm it's you.
       Screen("confirm.faceID", scenario: "passkeyUser", prepare: step(.confirmFaceID, profile([.security]))),
       Screen("confirm.password", scenario: "passwordOnly", prepare: step(.confirmPassword, profile([.security]))),
       Screen("confirm.noKey", scenario: "passwordOnly", prepare: step(.confirmNoKey, profile([.security]))),
-      // Frozen.
       Screen("frozen", scenario: "frozen"),
       Screen("unfreeze", scenario: "frozen", prepare: step(.unfreeze)),
       Screen("security.frozen", scenario: "frozen", prepare: { graph in
@@ -107,8 +92,6 @@
 
     static func mock(_ graph: MockGraph) -> MockAccountService? { graph.session.account as? MockAccountService }
 
-    /// Leaves `s` for the screen's own view to take, before the window shows (a view that
-    /// appears at launch would otherwise look before the steps run), after `then`.
     static func step(
       _ s: SignInLaunchStep, _ then: @escaping @MainActor (MockGraph) -> Void = { _ in }
     ) -> @MainActor (MockGraph) -> Void {
@@ -118,8 +101,6 @@
       }
     }
 
-    /// Forgot password as a person goes through it, stopping on `stop`: the address, the
-    /// code, the other iPhone's card, a new password, the request.
     static func forgot(_ graph: MockGraph, to stop: WelcomeRoute) async {
       let signIn = graph.onboarding.signIn
       let signup = graph.onboarding.signup
@@ -141,7 +122,6 @@
       signup.go(.forgotWaiting)
     }
 
-    /// Recovery as the service runs it, stopping on `stop`: the words, then the code.
     static func recover(_ graph: MockGraph, to stop: WelcomeRoute) async {
       let signIn = graph.onboarding.signIn
       let signup = graph.onboarding.signup
@@ -155,7 +135,6 @@
       signup.go(.recoverMethod)
     }
 
-    /// The unlock steps, on the unlock view's own model.
     static func applyUnlockLaunch(_ model: UnlockModel) async {
       guard let account = model.account as? MockAccountService, let s = account.takeLaunchStep() else { return }
       let words = MockAccountService.phraseWords
@@ -165,7 +144,6 @@
         model.phraseText = words.prefix(6).joined(separator: " ") + " cat"
       case .unlockUnlocking:
         model.phraseText = words.joined(separator: " ")
-        // Opening takes as long as it takes: the screen stays on the progress.
         account.delay = .seconds(3600)
         Task { await model.unlockWithWords() }
       case .unlockWelcomeBack:
@@ -178,14 +156,12 @@
       }
     }
 
-    /// Sign-in & security's steps, on its own model and alerts.
     static func applySecurityLaunch(
       _ model: SecurityModel, alert: Binding<SecurityView.PendingAlert?>, lockingDown: Binding<Bool>
     ) async {
       guard let account = model.accountForEmailChange as? MockAccountService, let s = account.takeLaunchStep(),
         let state = model.state
       else { return }
-      // A presentation waits for the push (and a dismissal) before it.
       func settle() async { try? await Task.sleep(for: .milliseconds(700)) }
       switch s {
       case .alertRemovePasskey:
@@ -233,7 +209,6 @@
       }
     }
 
-    /// The change-email cover's steps, on its own model.
     static func applyEmailChangeLaunch(_ model: ChangeEmailModel) async {
       guard let account = model.account as? MockAccountService, let s = account.takeLaunchStep() else { return }
       model.newEmail = "maya.rahman@example.com"

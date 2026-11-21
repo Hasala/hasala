@@ -20,8 +20,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pg"
 )
 
-// HTTP server limits (spec 02 §18.4). There is no TLS code in hasalad at all
-// (F3): the listener is plain HTTP on loopback, behind Cloudflare Tunnel.
 const (
 	readHeaderTimeout = 10 * time.Second
 	readTimeout       = 180 * time.Second
@@ -33,14 +31,6 @@ const (
 	workerStopTimeout = 60 * time.Second
 )
 
-// runServe serves the API until SIGINT or SIGTERM.
-//
-// Order, and why: refuse a mis-wired unit (console or App Store Connect
-// variables, F7-4) before reading anything; load and validate the
-// configuration; connect as the runtime role and run the startup refusals
-// O1–O8 (internal/pg.CheckServing) — serve never migrates, `hasalad migrate`
-// does, as the schema owner, before serve starts; then the disk fuse, the
-// sweeps and the listener.
 func runServe(env *runEnv, args []string) error {
 	fs := newFlags(env, "serve")
 	if err := parseFlags(fs, args); err != nil {
@@ -91,8 +81,6 @@ func runServe(env *runEnv, args []string) error {
 			countSweep("reaped %d expired passkey ceremony(s)", srvAPI.Passkeys.ReapExpiredCeremonies)))
 	}
 
-	// Re-checked immediately before the listener, for a Config assembled in
-	// code rather than through Load.
 	if !config.IsLoopbackListen(cfg.Server.HTTPListen) {
 		return refusal{fmt.Errorf("server.http_listen %q is not loopback", cfg.Server.HTTPListen)}
 	}
@@ -208,21 +196,17 @@ func newHTTPServer(h http.Handler) *http.Server {
 	}
 }
 
-// logGroups logs which optional configuration groups are enabled, names only
-// (spec 02 §18.2), and says out loud what is configured but not built yet.
 func logGroups(cfg config.Config) {
 	var on []string
 	if cfg.APNs.Enabled {
 		on = append(on, "apns")
 	}
-	// The [gmail] group's two parts: the mailbox link, and its Pub/Sub push.
 	if cfg.Gmail.LinkEnabled() {
 		on = append(on, "gmail-link")
 	}
 	if cfg.Gmail.PushEnabled() {
 		on = append(on, "gmail-push")
 	}
-	// The [outlook] group's two parts, likewise.
 	if cfg.Outlook.LinkEnabled() {
 		on = append(on, "outlook-link")
 	}
@@ -241,15 +225,10 @@ func logGroups(cfg config.Config) {
 	slog.Info("hasalad serve: optional groups", "enabled", strings.Join(on, ","),
 		"trusted_proxy", cfg.Server.TrustedProxy)
 	if cfg.Server.MetricsListen != "" {
-		// The metrics listener is WS-5's.
 		slog.Warn("hasalad serve: metrics_listen is configured but not served by this build yet")
 	}
 }
 
-// startHeadroom builds the disk fuse, STARTS it (Start samples synchronously,
-// so the flag is the truth about this box before the first request) and hands
-// it to the API: below the floor every durable write is refused, sign-in
-// included, while reads keep serving.
 func startHeadroom(cfg config.Config, s *api.Server) *headroom.Fuse {
 	fuse := headroom.New(cfg.Headroom.Path, uint64(cfg.Headroom.FloorBytes), cfg.Headroom.Interval)
 	fuse.Start()
@@ -269,10 +248,6 @@ func countSweep[N int | int64](format string, run func(context.Context) (N, erro
 	}
 }
 
-// startSweep runs one job now and then hourly until ctx is done (spec 02
-// §9.7), returning a channel that closes when it has stopped. A failed sweep
-// is logged and the loop continues: one failure is a transient database
-// problem, and stopping would silently end every future sweep.
 func startSweep(ctx context.Context, name string, run func(context.Context) (string, error)) <-chan struct{} {
 	return startSweepEvery(ctx, name, sweepInterval, run)
 }
@@ -284,8 +259,6 @@ func startSweepEvery(ctx context.Context, name string, every time.Duration, run 
 		tick := time.NewTicker(every)
 		defer tick.Stop()
 		for {
-			// Detached from ctx's cancellation but bounded on its own, so a
-			// shutdown arriving mid-sweep does not abort a transaction.
 			sweepCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
 			msg, err := run(sweepCtx)
 			cancel()
@@ -305,8 +278,6 @@ func startSweepEvery(ctx context.Context, name string, every time.Duration, run 
 	return done
 }
 
-// openRuntime connects with HASALA_PG_DSN and runs the startup refusals: the
-// shared prologue of every operator mode except migrate (spec 02 §5.6).
 func openRuntime(ctx context.Context, cfg config.Config) (*pgxpool.Pool, error) {
 	pool, err := pg.Open(ctx, cfg.PGDSN)
 	if err != nil {

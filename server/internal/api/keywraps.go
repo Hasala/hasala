@@ -1,19 +1,5 @@
 package api
 
-// keywraps.go serves the account's PRF wraps (spec 02 #19–#21, §10.5; spec 01
-// §5.3, §10.7): the same 65-byte body the recovery wrap seals, sealed again
-// under a key derived from one passkey's PRF output, so Face ID can unlock the
-// account's data instead of twelve typed words.
-//
-// A wrap is exactly 127 bytes with header 01 02 (spec 01 §5.1) and is bound by
-// its AD to the account and the credential, so it cannot be replayed into
-// another account or under another credential's row. Putting one needs step-up
-// keys.wrap.put with a passkey proof by THAT credential (its PRF output built
-// the wrap) and the session writer's DWK over WrapPutMessage, so a terminator
-// that swaps in a garbage wrap has no DWK to sign it with (N-11). Deleting one
-// needs step-up keys.wrap.delete; losing a wrap costs nothing, because the
-// phrase still opens the account.
-
 import (
 	"net/http"
 	"time"
@@ -24,32 +10,27 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// KeyWrap is one credential's wrap, as GET returns it.
 type KeyWrap struct {
-	CredentialID string    `json:"credential_id"` // b64url
-	Wrap         string    `json:"wrap"`          // b64, 127 bytes
+	CredentialID string    `json:"credential_id"`
+	Wrap         string    `json:"wrap"`
 	WrapVersion  int       `json:"wrap_version"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// KeyWrapsResponse answers GET /api/v1/keys/wraps: an empty list, not a 404,
-// for an account with none.
 type KeyWrapsResponse struct {
 	Wraps []KeyWrap `json:"wraps"`
 }
 
-// PutKeyWrapRequest is #20.
 type PutKeyWrapRequest struct {
-	CredentialID string      `json:"credential_id"` // b64url
-	Wrap         string      `json:"wrap"`          // b64
+	CredentialID string      `json:"credential_id"`
+	Wrap         string      `json:"wrap"`
 	WrapVersion  int         `json:"wrap_version"`
-	DWKSig       string      `json:"dwk_sig"` // b64
+	DWKSig       string      `json:"dwk_sig"`
 	StepUp       *StepUpWire `json:"step_up"`
 }
 
-// DeleteKeyWrapRequest is #21.
 type DeleteKeyWrapRequest struct {
-	CredentialID string      `json:"credential_id"` // b64url
+	CredentialID string      `json:"credential_id"`
 	StepUp       *StepUpWire `json:"step_up"`
 }
 
@@ -105,7 +86,6 @@ func (s *Server) handlePutKeyWrap(w http.ResponseWriter, r *http.Request, userID
 		s.writeKeyErr(w, r, err)
 		return
 	}
-	// A step-up action: the other devices hear of it (spec 02 §8.1 step 6).
 	s.wakeOthers(r.Context(), userID, info.WriterID, pushv2.ReasonSecurity)
 	w.WriteHeader(http.StatusNoContent)
 }

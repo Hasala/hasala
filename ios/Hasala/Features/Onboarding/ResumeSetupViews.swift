@@ -1,8 +1,6 @@
 import HasalaDesign
 import SwiftUI
 
-/// After a relaunch with a session and no keys here (spec 04 §6.5): the server decides
-/// between unlocking and finishing setup. Offline stays here with Retry.
 struct BootCheckView: View {
   let session: AccountSession
   @State private var signingOut = false
@@ -34,14 +32,6 @@ struct BootCheckView: View {
   }
 }
 
-/// C1 interrupted (spec 04 §6.2, §6.5 `onboarding(keys)`): the account exists but its
-/// keys never reached the server. A NEW phrase opens with S-07, is shown like at signup,
-/// then published behind one Face ID prompt (step-up `keys.bootstrap`) once the words were
-/// shown. The phrase screens are signup's, on the same model and routes, and this first
-/// screen stands on the same account template (no Paper board draws it).
-///
-/// The replacement phrase is the onboarding store's (`replacementModel()`): made once, not
-/// on every re-render, and kept through the phrase screens.
 struct InterruptedSetupFlowView: View {
   let store: OnboardingStore
 

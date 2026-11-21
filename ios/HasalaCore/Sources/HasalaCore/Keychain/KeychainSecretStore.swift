@@ -1,21 +1,7 @@
-// `SecretStore` over the data-protection Keychain (spec 04 §4.4; spec 01
-// §11.1, §11.3).
-//
-// Every item: `kSecClassGenericPassword`, `kSecUseDataProtectionKeychain`,
-// not synchronizable, the app-only access group, and the accessibility class
-// `SecretItem` names. Writes are `SecItemAdd`, then `SecItemUpdate` on
-// `errSecDuplicateItem`, then a read-back compare (a mismatch throws). Reads
-// return `nil` only for `errSecItemNotFound` and THROW for every other status
-// (`errSecInteractionNotAllowed` before first unlock is "not now").
-//
-// The SecItem calls go through `KeychainAPI`, so the query logic is tested
-// with an in-memory double under `swift test` (a macOS test runner has no
-// data-protection Keychain entitlement); the system one is `SystemKeychain`.
 import CoreStore
 import Foundation
 import Security
 
-/// The four SecItem calls, as the adapter uses them.
 public protocol KeychainAPI: Sendable {
   func add(_ query: [String: Any]) -> OSStatus
   func update(_ query: [String: Any], _ attributes: [String: Any]) -> OSStatus
@@ -48,8 +34,6 @@ public struct SystemKeychain: KeychainAPI {
 }
 
 public final class KeychainSecretStore: SecretStore {
-  /// `$(AppIdentifierPrefix)app.hasala.ios`; `nil` uses the app's default group
-  /// (the first of its `keychain-access-groups`, which is the same one).
   public let accessGroup: String?
   let api: any KeychainAPI
 
@@ -127,9 +111,6 @@ public final class KeychainSecretStore: SecretStore {
     }
   }
 
-  /// The fresh-install purge's deletes (§4.4 `installCheck`): every item of
-  /// every app service in each of `groups`. Returns whether every delete
-  /// answered success or not-found; the caller sets `installID` only then.
   public func purgeAll(groups: [String?], sparing kept: SecretItem? = nil) -> (complete: Bool, statuses: [OSStatus]) {
     var statuses: [OSStatus] = []
     func note(_ s: OSStatus) {
@@ -160,14 +141,10 @@ public final class KeychainSecretStore: SecretStore {
   }
 }
 
-/// An in-memory `KeychainAPI` with the SecItem semantics the adapter relies on
-/// (duplicate on add, not-found on update, copy, delete), and a lock switch
-/// that answers `errSecInteractionNotAllowed`. Tests only.
 public final class InMemoryKeychainAPI: KeychainAPI, @unchecked Sendable {
   private let lock = NSLock()
   private var items: [String: (data: Data, attrs: [String: String])] = [:]
   public var locked = false
-  /// When set, `copyData` returns these bytes instead (a corrupt read-back).
   public var corruptReads = false
 
   public init() {}

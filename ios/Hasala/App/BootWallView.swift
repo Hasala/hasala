@@ -2,11 +2,6 @@ import HasalaDesign
 import SwiftUI
 import UIKit
 
-/// The walls the live gate puts in front of everything (spec 04 §6.5): data on this
-/// iPhone that the gate can't open, or that belongs to another account, a store that
-/// failed to open, and a build the server no longer takes. On the account template (no
-/// board draws them): the question, a note, and the ways out in the dock; removing the
-/// data asks first in a system alert, as every loss does (page 14).
 struct BootWallView: View {
   let boot: BootController
   let wall: BootController.Wall
@@ -58,7 +53,6 @@ struct BootWallView: View {
       }
     }
     .accessibilityIdentifier("wall.\(identifier)")
-    // A field of the screen underneath may still hold the keyboard.
     .onAppear { UIApplication.shared.dismissKeyboard() }
   }
 

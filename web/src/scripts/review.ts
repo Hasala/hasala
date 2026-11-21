@@ -1,16 +1,3 @@
-/**
- * The review deck (components/detail/Review.astro), on the landing and on
- * /how-it-works. Motion moment D, "Review · the swipe loop": the first time
- * the stage is in view, three cards are swiped (each to its own direction)
- * and the deck rests on the fourth. It plays once, in under five seconds, and
- * stops for good on hover, focus, a hidden tab or any interaction, so nothing
- * moves on its own for long (WCAG 2.2.2). After that the visitor sorts: drag
- * or flick the top card, tap a pill, a legend chip or Use, or press an arrow
- * key on the focused deck. After the last card the deck says "All caught up"
- * and offers Start again; Undo puts the last card back. Only the visitor's
- * own choices are announced to screen readers. With reduced motion nothing
- * plays on its own and a choice crossfades to the next card.
- */
 import { reducedMotion } from './motion';
 import { onPage, observe } from './page';
 
@@ -52,7 +39,6 @@ function setup(signal: AbortSignal): void {
   const live = $('[data-review-live]');
   const pills = new Map<Dir, HTMLElement>();
   stage.querySelectorAll<HTMLElement>('[data-sort]').forEach((b) => pills.set(b.dataset.sort as Dir, b));
-  // The legend beside the stage: lights up with the swipe and sorts on tap.
   const section = stage.closest('section') ?? document;
   const legends = new Map<Dir, HTMLElement>();
   DIRS.forEach((d) => {
@@ -67,7 +53,6 @@ function setup(signal: AbortSignal): void {
   let inView = false;
   let paused = false;
   let played = false;
-  // The demo's lean, while it runs: a touch on the card cancels it.
   let autoLean: (() => void) | null = null;
 
   const say = (s: string) => live && (live.textContent = s);
@@ -88,9 +73,8 @@ function setup(signal: AbortSignal): void {
     done.hidden = !end;
     stage.toggleAttribute('data-done', end);
     legends.forEach((l) => l.toggleAttribute('aria-disabled', end));
-    const at = Math.min(top + 2, total); // "2 of 6" for the first card, as in the app
+    const at = Math.min(top + 2, total);
     if (counter) counter.textContent = String(at);
-    // The first card's 2/6 is the stylesheet's, so nothing moves on load.
     if (progress) progress.style.clipPath = top ? `inset(0 ${((1 - (end ? 1 : at / total)) * 100).toFixed(3)}% 0 0 round 3px)` : '';
   };
 
@@ -107,7 +91,6 @@ function setup(signal: AbortSignal): void {
     if (t) t.style.opacity = String(amount);
   };
 
-  // The next card, or the "All caught up" panel, settles into place.
   const advance = () => {
     top++;
     lit(null);
@@ -135,7 +118,6 @@ function setup(signal: AbortSignal): void {
     const w = stage!.clientWidth;
     const [ox, oy, rot] = OUT[dir];
     if (!opts.drag) {
-      // 700 → 1220 ms: the drag. The card leans, the tint grows, the pill swells.
       pill?.toggleAttribute('data-active', true);
       lit(dir);
       const lean = card.animate(
@@ -156,13 +138,8 @@ function setup(signal: AbortSignal): void {
         () => false,
       );
       autoLean = null;
-      if (!leaned) return; // grabbed mid-lean: the card is the visitor's now
+      if (!leaned) return;
     }
-    // 1220 → 1500 ms: commit. Out it goes; the toast rises with Undo. A
-    // drag leaves from where the finger let go at the finger's speed: this
-    // curve starts at 2× its average speed, so 2·distance / release speed
-    // (clamped to 180–320 ms) carries the flick on without a lurch. The
-    // demo, starting from rest, accelerates away.
     const from = card.getAnimations().length ? getComputedStyle(card).transform : card.style.transform || 'none';
     const tx = ox * w;
     const ty = oy * 600;
@@ -180,7 +157,6 @@ function setup(signal: AbortSignal): void {
       { duration, easing: opts.drag ? 'cubic-bezier(.3,.6,.4,1)' : 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' },
     );
     showToast(dir, !opts.auto);
-    // 1500 → 1740 ms: the peek card scales up and lifts into place.
     next?.animate([{ transform: 'translateY(10px) scale(0.96)' }, { transform: 'none' }], {
       duration: 240,
       delay: 200,
@@ -219,13 +195,11 @@ function setup(signal: AbortSignal): void {
     top = 0;
     layout();
     toast.removeAttribute('data-show');
-    // The button that was pressed is gone; keep focus on the deck.
     deck.focus();
     say(`Back to the first card, ${cards[0].querySelector('.rcard__merchant')?.textContent}.`);
     appear(cards[0]);
   };
 
-  // Autoplay, once: the first three cards, each to its own direction.
   const PLAN = cards.slice(0, 3).map((c) => c.dataset.to as Dir);
   let running = false;
   async function play() {
@@ -234,7 +208,7 @@ function setup(signal: AbortSignal): void {
     for (const dir of PLAN) {
       await wait(500);
       if (!canPlay()) break;
-      played = true; // once a card has moved, the demo never starts again
+      played = true;
       await swipe(dir, { auto: true });
     }
     running = false;
@@ -249,7 +223,6 @@ function setup(signal: AbortSignal): void {
     if (!played && canPlay()) timer = window.setTimeout(play, 300);
   };
 
-  // Hover, focus or a touch stops the demo for good: the visitor is in charge.
   const stop = () => (paused = true);
   stage.addEventListener('pointerenter', (e) => {
     if (e.pointerType === 'mouse') stop();
@@ -266,7 +239,6 @@ function setup(signal: AbortSignal): void {
     { threshold: 0.4 },
   )?.observe(stage);
 
-  // Pills in the stage and legend chips beside it.
   section.querySelectorAll<HTMLElement>('[data-sort]').forEach((btn) =>
     btn.addEventListener('click', () => {
       stop();
@@ -275,7 +247,6 @@ function setup(signal: AbortSignal): void {
   );
   $('[data-undo]')?.addEventListener('click', undo);
   $('[data-review-restart]')?.addEventListener('click', restart);
-  // Use takes Hasala's guess: the card goes where it belongs.
   stage.addEventListener('click', (e) => {
     const card = (e.target as Element).closest('[data-use]')?.closest<HTMLElement>('.rcard[data-pos="0"]');
     if (card) void swipe(card.dataset.to as Dir);
@@ -288,9 +259,6 @@ function setup(signal: AbortSignal): void {
     void swipe(dir);
   });
 
-  // Drag to try. A flick commits as well as a long drag: the release speed
-  // comes from the last few pointer samples. Past 140 px the card drags with
-  // rising resistance. A second finger is ignored.
   let startX = 0;
   let startY = 0;
   let dx = 0;
@@ -302,7 +270,6 @@ function setup(signal: AbortSignal): void {
     return a <= 0 ? d : Math.sign(d) * (140 + (a * 0.55 * 300) / (300 + 0.55 * a));
   };
   stage.addEventListener('pointerdown', (e) => {
-    // Use is a tap, not a drag: no capture, so its click lands on it.
     stop();
     if ((e.target as Element).closest('[data-use]')) return;
     const card = (e.target as Element).closest<HTMLElement>('.rcard[data-pos="0"]');
@@ -328,7 +295,6 @@ function setup(signal: AbortSignal): void {
     const dir = dirFor(dx, dy);
     const d = Math.hypot(dx, dy);
     DIRS.forEach((k) => tint(card, k, k === dir ? Math.min(1, d / 120) : 0));
-    // The legend beside the stage answers the drag, as it does the pills.
     lit(d > 24 ? dir : null);
   });
   const end = (e: PointerEvent) => {
@@ -337,12 +303,9 @@ function setup(signal: AbortSignal): void {
     const card = cards[top];
     const [sx, sy, st] = samples[0];
     const v = Math.hypot(dx - sx, dy - sy) / Math.max(1, e.timeStamp - st);
-    // A flick needs some travel too, so a tap that jitters never commits, and
-    // a cancel (the page took over to scroll) is never a flick.
     const flick = e.type === 'pointerup' && v > 0.11 && Math.hypot(dx, dy) > 24;
     const dir = dirFor(dx, dy);
     const commit = Math.hypot(dx, dy) > 90 || flick;
-    // The chosen direction's legend stays lit until the card has gone.
     lit(commit ? dir : null);
     if (commit) {
       void swipe(dir, { drag: true, v });

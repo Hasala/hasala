@@ -1,6 +1,3 @@
-// The disposition over the operator's real bank mail, read only from HASALA_PRIVATE_FIXTURES
-// (the private normalizer fixtures, the same raw messages the conformance suite reads). Disabled
-// by name without it. Never prints or records content: only counts and fixture names.
 import CoreJSON
 import CoreMail
 import CoreMailbox
@@ -40,18 +37,13 @@ struct PrivateCorpusDispositionTests {
       case .interrupted:
         Issue.record("\(f): interrupted")
       case .setAside:
-        // Only mail that is not from a bank may be set aside (a Google notice is in the set).
         #expect(!fromBank, "\(f): bank mail set aside")
       case .mail(let m):
         #expect(fromBank, "\(f): non-bank mail kept")
         if m.fields == nil { unparsed.append(f) } else { parsed += 1 }
-        // Most of this corpus reached ledgerd by SMTP, not Gmail (no mx.google.com verdict);
-        // without a passing verdict the sender is never treated as verified.
         if m.gates.ar != "pass" { #expect(!m.gates.senderTrusted, "\(f)") }
       }
     }
-    // Templates read the transaction alerts; the service notices ("Dear customer") stay the
-    // empty review shape. Content-free: names only.
     #expect(parsed >= 10, "parsed \(parsed); unparsed: \(unparsed)")
   }
 }
@@ -60,7 +52,6 @@ import CoreTime
 
 @Suite(.enabled(if: privateRoot != nil, "needs HASALA_PRIVATE_FIXTURES"))
 struct PrivateGmailDeliveredTests {
-  /// Real bank alerts as Gmail delivered them (topmost mx.google.com Authentication-Results).
   @Test func gmailDeliveredBankMailIsReadAndJudgedByTheVerdict() throws {
     let root = try #require(privateRoot).deletingLastPathComponent().deletingLastPathComponent()
     var files: [URL] = []
@@ -95,8 +86,6 @@ struct PrivateGmailDeliveredTests {
   }
 }
 
-/// Real alerts as Outlook.com delivered them (`outlook-*.eml`, exported with Graph `$value`, WP0
-/// check C6), when the private repository has them. Skipped by name until it does.
 private let outlookDelivered: [URL] = {
   guard let root = privateRoot?.deletingLastPathComponent().deletingLastPathComponent()
     .appendingPathComponent("conformance/outlook", isDirectory: true),
@@ -185,7 +174,6 @@ private struct FixedClockForTest: Clock {
 private func parseInstantMsForTest(_ s: String) throws -> Int64 { try parseInstantMs(s) }
 
 private enum MailHeadersForTest {
-  /// The top-level From header value.
   static func from(_ raw: [UInt8]) -> String {
     let text = String(decoding: raw.prefix(64 * 1024), as: UTF8.self)
     for line in text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {

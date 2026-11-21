@@ -1,16 +1,4 @@
 ---
-/**
- * 01 Hero (Paper P3 Web: desktop A9Q-0, mobile B7Z-0). The nav is Nav.astro
- * (fixed, shared by every page); this is everything under it: the app icon and
- * beta chip, the headline, the subline, the two buttons, the trust row, the
- * phone (the app's Home screen) and the two glass floats around it.
- *
- * Desktop (from 1024): copy on the left (top 188), the phone 418 wide on the
- * right (top 150), the bank-alert float over its left edge (from 1280, where
- * there is room) and the "Backed up, locked" float at its lower right. Below
- * 1280 the phone stage is drawn at 0.8. Phones: copy, then a 560 high stage
- * where the phone peeks in from the left and bleeds off the right.
- */
 import HomePhone from '../HomePhone.astro';
 import AppIcon from '../brand/AppIcon.astro';
 import Icon from '../Icon.astro';
@@ -103,7 +91,6 @@ import Icon from '../Icon.astro';
     overflow: clip;
     background: var(--wash-hero-m);
   }
-  /* Glows are desktop only (Paper's phone hero is the plain wash). */
   .hero__glow {
     position: absolute;
     display: none;
@@ -125,7 +112,6 @@ import Icon from '../Icon.astro';
     background: radial-gradient(circle farthest-corner at 50% 50% in oklab, oklab(87.6% 0.027 -0.043 / 55%) 0%, oklab(87.6% 0.027 -0.043 / 0%) 68%);
   }
 
-  /* The fixed nav ends at 72 on a phone (16 + 56); Paper puts the copy 40 below it. */
   .hero__inner {
     position: relative;
     padding-top: 112px;
@@ -155,7 +141,6 @@ import Icon from '../Icon.astro';
     width: 100%;
     height: 100%;
   }
-  /* Phone: dot + "Private beta" over the meta line. Desktop: one glass pill. */
   .hero__beta {
     display: flex;
     flex-direction: column;
@@ -201,7 +186,6 @@ import Icon from '../Icon.astro';
     font-size: 17px;
     line-height: 22px;
   }
-  /* Phones have a plain arrow, no disc. */
   @media (max-width: 1023px) {
     .hero__cta :global(.btn__disc),
     .hero__cta:hover :global(.btn__disc) {
@@ -243,7 +227,6 @@ import Icon from '../Icon.astro';
     display: none;
   }
 
-  /* Phone stage: 560 high, the phone starts 40 down and bleeds off the right. */
   .hero__stage {
     position: relative;
     height: 560px;
@@ -266,7 +249,6 @@ import Icon from '../Icon.astro';
     pointer-events: none;
   }
 
-  /* "Backed up, locked": -3deg on a phone, 3deg on desktop. */
   .hero__sealed {
     position: absolute;
     z-index: 3;
@@ -313,7 +295,6 @@ import Icon from '../Icon.astro';
     line-height: 16px;
   }
 
-  /* The bank alert is desktop only, and only where it clears the copy. */
   .hero__alert {
     display: none;
   }
@@ -427,7 +408,6 @@ import Icon from '../Icon.astro';
       color: var(--text-body);
     }
 
-    /* Desktop stage: 418 x 900 at the right of the container, cropped by the fade. */
     .hero__stage {
       position: absolute;
       top: 150px;
@@ -584,12 +564,6 @@ import Icon from '../Icon.astro';
     }
   }
 
-  /* Motion moment A: the coin drops into the slot while the headline rises
-     (from 150 ms, so the copy is never blank for long) and the phone
-     settles, all done by about 1 s; the phone's screen (HomePhone) fills
-     in from 250 ms and the floats drift in from 1.3 s. Pure CSS, so it plays without JS; once
-     per session (html.hero-seen). The keyframes for the icon are in
-     global.css, shared with /i. */
   @media (prefers-reduced-motion: no-preference) {
     :global(html:not(.hero-seen)) .hero__icon :global(.ai-tile),
     :global(html:not(.hero-seen)) .hero__beta {
@@ -624,14 +598,9 @@ import Icon from '../Icon.astro';
     :global(html:not(.hero-seen)) .hero__trust {
       animation-delay: 350ms;
     }
-    /* No opacity on the stage: the phone is the largest paint. `translate`
-       composes with the stage's scale(.8) and the parallax transform. */
     :global(html:not(.hero-seen)) .hero__stage {
       animation: hero-stage 900ms var(--ease-out-soft) both;
     }
-    /* The floats drift in once the phone has filled (the bank alert, then
-       its "sorted" row, then the backup pill). `transform` here, `translate`
-       for the idle float, `rotate` for the tilt: three separate properties. */
     :global(html:not(.hero-seen)) .hero__alert {
       animation:
         hero-alert 700ms 1300ms var(--ease-out-soft) both,
@@ -645,7 +614,6 @@ import Icon from '../Icon.astro';
         hero-sealed 700ms 1600ms var(--ease-out-soft) both,
         hero-idle 1.2s 2.6s ease-in-out 2 alternate;
     }
-    /* Then one gentle float, up and back, done by 5 s (WCAG 2.2.2). */
     .hero__alert {
       animation: hero-idle 1.3s 2.4s ease-in-out 2 alternate;
     }

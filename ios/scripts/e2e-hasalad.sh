@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# e2e-hasalad.sh: HasalaCore's live suite (spec 04 §19.1 T4) against a real
-# hasalad on 127.0.0.1 with a throwaway Postgres on a unix socket.
-#
-#   nix develop -c ios/scripts/e2e-hasalad.sh <hasalad binary>
-#
-# Needs initdb, postgres, pg_isready and psql (the devShell has them) and the
-# system Swift toolchain (Xcode). Everything lives in one temporary directory
-# and is stopped and removed on exit. No external service is called.
 set -euo pipefail
 
 HASALAD="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
@@ -16,8 +8,6 @@ if /usr/sbin/lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
 	echo "e2e-hasalad: 127.0.0.1:$PORT is already in use; stop that process or set HASALA_E2E_PORT" >&2
 	exit 2
 fi
-# /tmp, not $TMPDIR: Postgres's unix socket lives here, and a socket path
-# longer than 103 bytes (a deep $TMPDIR on macOS) makes the server fail to start.
 TMP="$(mktemp -d /tmp/pgtest-e2e.XXXXXX)"
 echo "$$" >"$TMP/owner.pid"
 SERVER_PID=""
@@ -53,7 +43,6 @@ HASALA_MIGRATE_DSN="host=$TMP user=hasala_migrate dbname=hasala" "$HASALAD" migr
 
 umask 077
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' >"$TMP/auth.key"
-# Both keys, so the signup, password and recovery routes are mounted.
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' >"$TMP/salt.key"
 echo 1 >"$TMP/log-generation"
 HASALA_PG_DSN="host=$TMP user=hasala_runtime dbname=hasala" \

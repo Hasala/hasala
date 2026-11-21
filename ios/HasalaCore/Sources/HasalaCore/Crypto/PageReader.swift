@@ -1,29 +1,11 @@
-// The reader of spec 01 §6.6, composed: one pulled page through R0-R10, in
-// order. The first failing step decides.
-//
-//   page-wide, before any blob is opened (nothing from the page is persisted on
-//   a failure): R0 row shape, R1 roster and the own-writer rule row by row, R2
-//   chain from the pinned heads, R2b signed heads (the order of Go's reference
-//   reader);
-//   then per row: R3-R9 (`Opener`) and R10 (`OpCodec.decodeR10`).
-//
-// The caller (CoreSync) persists rows, cursor and heads in one transaction, and
-// only when nothing hard-stopped (§7 "Client order"). Its two network steps are
-// outcomes here, never decided by the reader: `refreshRoster` (R1: re-fetch
-// `GET /key-history` once, verify it with `KeyHistoryVerifier`, read the page
-// again with `rosterRefreshed`) and `refreshEpoch` (R4: re-read `GET /keys`
-// once, read the page again with `serverEpoch`).
 import CorePrimitives
 import CoreWire
 import Foundation
 
 public enum PageReader {
-  /// A pulled row as the server serves it.
   public struct Row: Sendable, Hashable {
     public let stream: String
     public let writerID: String
-    /// `writer_counter` exactly as the wire carries it (a decimal string): R0
-    /// checks its grammar here, not the caller's parser.
     public let counter: String
     public let sizeBucket: Int
     public let prevHash: Data
@@ -46,27 +28,14 @@ public enum PageReader {
     }
   }
 
-  /// What the device knows before the page.
   public struct State: Sendable {
     public let userID: UserID
     public let opener: Opener
-    /// `current_epoch` from a fresh `GET /keys`, once the reader asked for it.
     public let serverEpoch: UInt32?
-    /// Each writer's pinned head; a writer without one starts at the genesis.
     public let pinnedHeads: [WriterID: Chain.Head]
-    /// The roster `KeyHistoryVerifier` produced (§10.13; `KeyHistoryVerifier.Roster.forReader`),
-    /// never `GET /writers`.
     public let roster: [WriterID: HeadCheck.RosterWriter]
-    /// Whether `roster` was re-fetched for this page already (R1's one re-fetch).
-    /// While false, an unknown writer is `refreshRoster`; once true, it is
-    /// `hardStop(.tampered(.unknownWriter))`.
     public let rosterRefreshed: Bool
     public let newerVersionUnshipped: Bool
-    /// The device's own writer and its authored head. `authoredHead` is the
-    /// highest counter this device has SEALED for the writer, including the
-    /// in-flight record's counters (R-OUT-2; `04` §5.5), not only those the
-    /// server acknowledged: a batch the server accepted but whose response was
-    /// lost comes back in a pull, and must not read as `ownChainConflict`.
     public let own: (writer: WriterID, authoredHead: Int64)?
 
     public init(
@@ -92,13 +61,8 @@ public enum PageReader {
 
   public enum Stop: Sendable, Hashable {
     case hardStop(ReaderHardStop)
-    /// R6: enter `needsUnlock`; the page stops here and the cursor stays.
     case needsUnlock(epoch: UInt32)
-    /// R4: re-read `GET /keys` once and read the page again with `serverEpoch`.
     case refreshEpoch(UInt32)
-    /// R1: re-fetch `GET /key-history` once, verify it (§10.13) and read the
-    /// page again with the new roster and `rosterRefreshed: true`. Nothing from
-    /// the page is persisted.
     case refreshRoster
     case budgetReached
   }
@@ -109,9 +73,7 @@ public enum PageReader {
   }
 
   public struct Result: Sendable, Hashable {
-    /// The rows decided before any stop, in page order.
     public let rows: [RowOutcome]
-    /// The stop and the index of the row it names.
     public let stop: Stop?
     public let stopRow: Int?
   }
@@ -136,7 +98,6 @@ public enum PageReader {
       }
       checked.append(c)
     }
-    // R2: the chain, per writer, from its pinned head.
     var heads = state.pinnedHeads
     for (i, c) in checked.enumerated() {
       let head = heads[c.writerID] ?? .genesis
@@ -145,14 +106,12 @@ public enum PageReader {
       else { return stopped(i, .hardStop(.tampered(.chainBreak))) }
       heads[c.writerID] = Chain.Head(counter: c.counter, hash: c.blobHash)
     }
-    // R2b: the signed heads.
     let headRows = zip(checked, page).map {
       HeadCheck.Row(writerID: $0.writerID, counter: $0.counter, blobHash: $0.blobHash, headSig: $1.headSig)
     }
     if let f = HeadCheck.firstFailure(userID: state.userID, rows: headRows, roster: state.roster) {
       return stopped(f.index, .hardStop(.tampered(f.reason)))
     }
-    // R3-R10, row by row.
     var out: [RowOutcome] = []
     var held = 0
     for (i, c) in checked.enumerated() {

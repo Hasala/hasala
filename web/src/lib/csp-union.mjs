@@ -1,30 +1,4 @@
 // @ts-check
-/**
- * One Content-Security-Policy for every page, for <ClientRouter />.
- *
- * Astro writes a CSP <meta> per page, hashing only that page's inline
- * <script>s and <style>s. On a client-side navigation the router puts the
- * next page's <head> into the same document, and a document enforces every
- * CSP it has ever been given: after / → /privacy, the styles of /privacy
- * would also have to pass the policy of /, and get blocked. Astro also does
- * not hash the <style> it writes for transition:name.
- *
- * So once the build is done this merges the script-src and style-src of
- * every page, adds the hash of every inline script and style found in the
- * output, writes that one policy into every page, and marks the <meta>
- * transition:persist so the router keeps the one it has rather than stacking
- * copies. scripts/router.ts reloads the page instead of swapping if a
- * fetched page ever carries a different policy (a deploy mid-visit).
- *
- * The build fails if two pages disagree on any other directive.
- *
- * With `withoutAnalytics`, it also fills in dist/_headers: every
- * `token` there becomes the final script-src and connect-src minus the
- * sources in `drop` (Cloudflare Web Analytics). public/_headers puts that
- * on the pages whose address carries a code or a token, so the edge-injected
- * beacon cannot run there; see the comment in that file. The build fails if
- * _headers has no such token.
- */
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
@@ -33,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 const META = /<meta http-equiv="content-security-policy" content="([^"]*)"\s*\/?>/i;
 const INLINE_SCRIPT = /<script(?![^>]*\ssrc=)([^>]*)>([\s\S]*?)<\/script>/gi;
 const INLINE_STYLE = /<style[^>]*>([\s\S]*?)<\/style>/gi;
-/** Script types the browser runs, so CSP checks them; data blocks (JSON-LD) are not. */
 const RUNS = /^(|text\/javascript|module|application\/javascript)$/i;
 
 /** @param {string} text */
@@ -94,7 +67,6 @@ export default function cspUnion(options = {}) {
           for (const [, body] of page.html.matchAll(INLINE_STYLE)) merged['style-src'].add(sha256(body));
         }
 
-        // Sources first, as Astro writes them, then the hashes in a stable order.
         const values = (/** @type {Set<string>} */ set) => [...[...set].filter((v) => !v.startsWith("'sha")), ...[...set].filter((v) => v.startsWith("'sha")).sort()];
         const policy = template.map(([name, v]) => [name, ...(name in merged ? values(merged[name]) : v)].join(' ')).join('; ');
         const meta = `<meta http-equiv="content-security-policy" content="${policy}" data-astro-transition-persist="csp">`;

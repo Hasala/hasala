@@ -3,31 +3,22 @@ import HasalaModels
 import Observation
 import SwiftUI
 
-/// A pick sheet that is up: which card, and the direction it was sent ("Need · which one?").
 struct ReviewPick: Identifiable, Hashable {
   let card: ReviewCardModel
   let choice: ReviewChoice
   var id: String { card.id + "." + choice.rawValue }
 }
 
-/// Review · Deck, Pick a need, All caught up (Paper 26H-0, 3SH-0, 4MY-0). One session runs
-/// from opening the cover to closing it; "2 of 6" counts within it. Every sort is one
-/// `LedgerEdit` through `AppModel.perform`, so it has its toast and its Undo.
 @MainActor
 protocol ReviewDeckModel: AnyObject, Observable {
-  /// The cards still to sort, in this session's order, the top card first.
   var cards: [ReviewCardModel] { get }
-  /// 1-based position of the top card in this session, and the session's size.
   var position: Int { get }
   var total: Int { get }
-  /// What this session sorted, for All caught up.
   var sorted: [SortedLine] { get }
   var hidden: Bool { get }
   var needOnRight: Bool { get }
-  /// The pick sheet that is up, if any. Setting nil closes it without sorting.
   var picking: ReviewPick? { get set }
   var holding: TxnID? { get set }
-  /// All caught up celebrates once a session (motion policy: a rare moment may delight).
   var celebrated: Bool { get set }
   var periodTitle: String { get }
   var isThisMonth: Bool { get }
@@ -38,7 +29,6 @@ protocol ReviewDeckModel: AnyObject, Observable {
   func showElsewhere()
   func options(for choice: ReviewChoice, card: TxnID) -> [CategoryOption]
   func projects(for card: TxnID) -> [ProjectChoice]
-  /// A swipe or a pill sent the card one way: ask which category.
   func pick(_ card: TxnID, _ choice: ReviewChoice)
   @discardableResult func sort(_ card: TxnID, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool
   func newCategory(for choice: ReviewChoice, card: TxnID) -> CountsAsOption?
@@ -67,7 +57,6 @@ final class ReviewViewModel: ReviewDeckModel {
   private var learned: Set<TxnID> = []
   private var reachTally = ReviewReachTally()
   private var lastUndo: (card: TxnID, tokens: [UndoToken])?
-  /// The order this session reads the queue in: the Review tab's, or from the row that opened it.
   private var order: [TxnID]
   private(set) var total: Int
   private var window: ReviewWindow
@@ -159,7 +148,6 @@ final class ReviewViewModel: ReviewDeckModel {
     return ReviewEngine.projectChoices(s, on: date)
   }
 
-  /// Sorted in this session and not undone since.
   var sorted: [SortedLine] {
     let s = app.store.state
     return sortedIDs.compactMap { id in
@@ -378,30 +366,22 @@ final class ReviewViewModel: ReviewDeckModel {
 extension ReviewDeckModel {
   @discardableResult func useSuggestion(_ card: TxnID) -> Bool { useSuggestion(card, shown: nil) }
 
-  /// What VoiceOver hears once a card is filed (Paper 16 · 06): "Filed as Need. 3 of 6.",
-  /// or "Filed as Need. All caught up." for the last one.
   func filedAnnouncement(_ filedAs: String) -> String {
     let next = cards.isEmpty ? "All caught up." : "\(position) of \(total)."
     return "Filed as \(filedAs). \(next)"
   }
 }
 
-/// Where the next review session starts. A To sort row asks for its own card first; the
-/// cover's route has no payload (`CoverRoute.review`, plan B7.2), so the request waits here
-/// for the session the cover makes. (Stage I kept this rather than give the route a payload,
-/// `requests/p6.md` 1: it works, its tests pass, and the change would touch every opener.)
 @MainActor
 enum ReviewEntry {
   private static weak var requester: AppModel?
   private static var start: TxnID?
 
-  /// Opens the deck, at `card` when given, in the app's period.
   static func open(_ app: AppModel, at card: TxnID?) {
     app.startReview()
     request(app, at: card)
   }
 
-  /// The next session for `app` starts at `card` (the cover opens it).
   static func request(_ app: AppModel, at card: TxnID?) {
     requester = app
     start = card
@@ -413,7 +393,6 @@ enum ReviewEntry {
     start = nil
   }
 
-  /// The card a new session for `app` starts at; the request is used up.
   static func take(for app: AppModel) -> TxnID? {
     defer {
       requester = nil
@@ -426,8 +405,6 @@ enum ReviewEntry {
     private static var script: ((ReviewViewModel) -> Void)?
     private static weak var scriptOwner: AppModel?
 
-    /// Debug screen launches (`ScreenLaunch+Activity`): the steps a person takes once the
-    /// deck is up (sort, use, open a pick sheet), run on the session's own model.
     static func onNextSession(of app: AppModel, _ steps: @escaping (ReviewViewModel) -> Void) {
       scriptOwner = app
       script = steps

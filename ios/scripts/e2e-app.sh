@@ -1,62 +1,4 @@
 #!/usr/bin/env bash
-# e2e-app.sh: the app's live end-to-end tests (HasalaUITests/LiveE2ETests, E1-E5) on
-# two iOS simulators against a local hasalad on 127.0.0.1, with a throwaway Postgres
-# on a unix socket and a local stand-in for Cloudflare's email API.
-#
-#   H=$(nix build .#hasalad --no-link --print-out-paths)/bin/hasalad
-#   nix develop -c ios/scripts/e2e-app.sh "$H"                  # every test, in order
-#   nix develop -c ios/scripts/e2e-app.sh "$H" test00_launch    # only these, in this order
-#   nix develop -c ios/scripts/e2e-app.sh "$H" --server-only    # serve until Ctrl-C
-#
-# The devShell supplies initdb, pg_ctl, pg_isready, psql and bun; Xcode supplies
-# xcodebuild and simctl, called by absolute path (/usr/bin/...) so nothing on the
-# devShell's PATH can stand in for them. Nothing here contacts any host but 127.0.0.1:
-# the server's email goes to ios/scripts/e2e/mail-capture.ts (HASALA_EMAIL_API_BASE_URL),
-# APNs is off, Gmail is unconfigured, and the app reaches the server through its
-# Debug-only HASALA_API_BASE_URL launch override. Every address is @example.test.
-#
-# What it does:
-#   1. Postgres in a new /tmp directory (the socket path must stay under 104 bytes),
-#      the two roles and the database as e2e-hasalad.sh makes them, `hasalad migrate`.
-#   2. Fresh auth and salt keys (64 hex each), the email token and the log generation.
-#   3. The mail capture, then `hasalad serve`, polled until /api/v1/healthz answers.
-#      A self-check (`hasalad email test`) proves a queued email reaches the capture.
-#   4. Review invites from `hasalad invite mint --review` (the first goes to E1).
-#   5. New simulators (A, and B when a test runs there), booted; one build-for-testing; then one
-#      test-without-building per test on its simulator, in order, stopping at the
-#      first failure (HASALA_E2E_CONTINUE=1 runs the rest anyway).
-#   6. Teardown on any exit: the server, the capture, the wake watcher, Postgres
-#      (immediate), both simulators (shut down and deleted) and the temporary directory.
-#
-# The tests talk to the harness through files under $TMP (the simulators run as host
-# processes, so the test runner can read and write them): the emailed codes
-# ($TMP/mail/*.json), the account E1 creates ($TMP/state/account.json), and wake
-# requests ($TMP/state/wake-request, answered with `simctl push <sim> app.hasala.ios
-# ios/scripts/e2e/wake.apns` and $TMP/state/wake-sent). The iOS 27 simulator refuses a
-# content-available-only push (UNErrorDomain 1401, "no user visible content") and any
-# push to an app without notification permission (2003), so wake.apns carries an alert
-# besides content-available, and E1 allows notifications. hasalad's real wakes stay
-# content-free. The system's permission alert does not always appear on a new
-# simulator; E1 then answers "Not now", and E3 reports the refused push as an
-# expected failure instead of a pass.
-#
-# Signing (HASALA_E2E_SIGNING):
-#   adhoc (default)  CODE_SIGN_IDENTITY=- with CODE_SIGNING_REQUIRED=YES, manual style,
-#                    no team and no profile, AppIdentifierPrefix set to the project's
-#                    team prefix. The simulator build embeds the Debug entitlements
-#                    (keychain-access-groups 8CFG28JHP3.app.hasala.ios and .shared) in
-#                    the binary's __entitlements section, so the Keychain works and a
-#                    relaunch keeps the session, as E3-E5 need. No Apple account needed.
-#   team             the project's own automatic signing (needs the team in Xcode).
-#   unsigned         CODE_SIGNING_ALLOWED=NO, as CI builds: no entitlements, so the
-#                    Keychain refuses every call (errSecMissingEntitlement) and the
-#                    Debug build keeps secrets in memory; E3-E5 cannot pass.
-#
-# Other knobs: HASALA_E2E_PORT (API, default 18453), HASALA_E2E_MAIL_PORT (default
-# 18454), HASALA_E2E_DEVICE_TYPE (default iPhone 17), HASALA_E2E_RUNTIME (default the
-# newest iOS runtime), HASALA_E2E_DERIVED_DATA (reuse a build directory between runs;
-# default a new one under $TMP), HASALA_E2E_OUT (where logs and .xcresult bundles are
-# kept; default ios/build/e2e/<UTC time>), HASALA_E2E_INVITES (default 3).
 set -euo pipefail
 
 usage() {
@@ -84,7 +26,6 @@ INVITES="${HASALA_E2E_INVITES:-3}"
 BUNDLE_ID=app.hasala.ios
 API="http://127.0.0.1:$PORT"
 
-# Each test and the simulator it runs on, in run order (integration plan §4, Lane E).
 ALL_TESTS=(test00_launch test01_pathB test02_pathA_secondDevice test03_rebind test04_delete test05_deletedElsewhere)
 sim_for() {
 	case "$1" in
@@ -118,8 +59,6 @@ for p in "$PORT" "$MAIL_PORT"; do
 	}
 done
 
-# /tmp, not $TMPDIR: Postgres's unix socket lives here, and a socket path longer
-# than 103 bytes (a deep $TMPDIR on macOS) makes the server fail to start.
 TMP="$(mktemp -d /tmp/pgtest-e2e-app.XXXXXX)"
 echo "$$" >"$TMP/owner.pid"
 STATE="$TMP/state"
@@ -164,7 +103,6 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
-# --- 1. Postgres ------------------------------------------------------------------
 initdb -D "$TMP/data" -U postgres -A trust --no-sync >/dev/null
 pg_ctl -D "$TMP/data" -l "$TMP/pg.log" -o "-k $TMP -c listen_addresses='' -c fsync=off" start >/dev/null
 for _ in $(seq 50); do pg_isready -h "$TMP" -q && break; sleep 0.1; done
@@ -185,7 +123,6 @@ HASALA_MIGRATE_DSN="host=$TMP user=hasala_migrate dbname=hasala" "$HASALAD" migr
 	exit 1
 }
 
-# --- 2. Keys ------------------------------------------------------------------------
 (
 	umask 077
 	head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' >"$TMP/auth.key"
@@ -194,8 +131,6 @@ HASALA_MIGRATE_DSN="host=$TMP user=hasala_migrate dbname=hasala" "$HASALAD" migr
 	echo 1 >"$TMP/log-generation"
 )
 
-# The environment every hasalad mode here shares. No [gmail] group, APNs off, no
-# trusted proxy (so the email API base URL may point at the capture).
 export HASALA_PG_DSN="host=$TMP user=hasala_runtime dbname=hasala"
 export HASALA_HTTP_LISTEN="127.0.0.1:$PORT"
 export HASALA_RP_ID=hasala.app HASALA_RP_ORIGINS=https://hasala.app
@@ -207,7 +142,6 @@ export HASALA_EMAIL_API_TOKEN_FILE="$TMP/email.token"
 export HASALA_EMAIL_API_BASE_URL="http://127.0.0.1:$MAIL_PORT/client/v4"
 export HASALA_ADMIN_ACTOR=e2e
 
-# --- 3. Mail capture and the server -------------------------------------------------
 bun "$IOS/scripts/e2e/mail-capture.ts" --port "$MAIL_PORT" --dir "$MAIL" --token e2e >"$TMP/mail-capture.log" 2>&1 &
 MAIL_PID=$!
 for _ in $(seq 100); do curl -fsS "http://127.0.0.1:$MAIL_PORT/healthz" >/dev/null 2>&1 && break; sleep 0.1; done
@@ -235,7 +169,6 @@ done
 }
 log "hasalad is up at $API ($(curl -fsS "$API/api/v1/healthz"))"
 
-# Prove the capture path before any test depends on it: one queued email must land.
 "$HASALAD" email test e2e-selftest@example.test >/dev/null
 for _ in $(seq 100); do
 	grep -lq '"to": "e2e-selftest@example.test"' "$MAIL"/*.json 2>/dev/null && break
@@ -249,7 +182,6 @@ grep -lq '"to": "e2e-selftest@example.test"' "$MAIL"/*.json 2>/dev/null || {
 }
 log "mail capture works ($(find "$MAIL" -name '*.json' | wc -l | tr -d ' ') message)"
 
-# --- 4. Review invites ----------------------------------------------------------------
 : >"$STATE/invites.txt"
 for _ in $(seq "$INVITES"); do
 	code="$("$HASALAD" invite mint --review --note e2e 2>/dev/null | grep -oE '[A-Z2-7-]{24,29}' | tr -d - | head -1)"
@@ -275,7 +207,6 @@ EOF
 	exit $?
 fi
 
-# --- 5. Simulators, one build, the tests ------------------------------------------------
 RUNTIME="${HASALA_E2E_RUNTIME:-$("$XCRUN" simctl list runtimes available |
 	grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+' | sort -V | tail -1)}"
 [[ -n "$RUNTIME" ]] || {
@@ -330,8 +261,6 @@ if [[ "$SIGNING" == adhoc ]]; then
 	fi
 fi
 
-# The wake watcher: a test asks for a silent push by creating $STATE/wake-request; the
-# push goes to the simulator the current test runs on.
 (
 	while :; do
 		if [[ -f "$STATE/wake-request" ]]; then
@@ -367,8 +296,6 @@ for t in "${TESTS[@]}"; do
 		-only-testing:"HasalaUITests/LiveE2ETests/$t" -resultBundlePath "$TMP/results/$t.xcresult" \
 		-collect-test-diagnostics never \
 		>"$TMP/results/$t.log" 2>&1 || status=$?
-	# A skipped test exits 0 too; it counts as a failure here, since this harness set
-	# everything the tests need.
 	if [[ "$status" == 0 ]] && grep -qiE "test case .*$t.* passed" "$TMP/results/$t.log" &&
 		! grep -qiE "test case .*$t.* skipped" "$TMP/results/$t.log"; then
 		passed+=("$t")
@@ -377,8 +304,6 @@ for t in "${TESTS[@]}"; do
 		failed+=("$t")
 		log "FAIL $t (exit $status)"
 		grep -E 'error: |XCTAssert|failed \(|skipped' "$TMP/results/$t.log" | head -20 >&2 || true
-		# The last minutes of the app's, SpringBoard's and the notification daemon's logs
-		# (much faster than the diagnostics xcodebuild would collect).
 		"$XCRUN" simctl spawn "$sim" log show --last 5m --style compact \
 			--predicate 'process == "Hasala" OR process == "SpringBoard" OR process == "usernotificationsd"' \
 			>"$TMP/results/$t.syslog" 2>&1 || true

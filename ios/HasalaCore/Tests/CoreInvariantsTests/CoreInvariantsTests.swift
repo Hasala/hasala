@@ -1,5 +1,3 @@
-// Unit tests for CoreInvariants: a clean fold passes, each broken shape is
-// caught, and the audit compares witnesses.
 import CoreCrypto
 import CoreReplay
 import CoreWire

@@ -1,8 +1,3 @@
-// Package oplogtest builds op-log fixtures for tests: an account with keys,
-// device writers, and sealed frame v3 rows appended through the real
-// appender with a signed head. TEST ONLY: it seals with internal/blob/blobtest,
-// which cmd/hasalad's build graph must never reach (spec 02 §4.4 fences 1 and
-// 3).
 package oplogtest
 
 import (
@@ -26,20 +21,13 @@ import (
 
 var bg = context.Background()
 
-// WID is a writer id of spec 01 §4.8's grammar for test writer n:
-// ios-00000000-0000-4000-8000-<n as 12 hex digits>.
 func WID(n int) string { return fmt.Sprintf("ios-00000000-0000-4000-8000-%012x", n) }
 
-// DWK is the deterministic Ed25519 key a test writer signs heads with:
-// seed = SHA256("oplogtest-dwk|" ‖ writer_id). Every package's tests use the
-// same derivation, so a head can be signed knowing only the writer id.
 func DWK(writerID string) ed25519.PrivateKey {
 	seed := sha256.Sum256([]byte("oplogtest-dwk|" + writerID))
 	return ed25519.NewKeyFromSeed(seed[:])
 }
 
-// DAK is a fresh P-256 public key, X9.63 uncompressed: a writer needs one, and
-// tests that do not exercise device step-ups never sign with it.
 func DAK(t testing.TB) []byte {
 	t.Helper()
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -51,7 +39,6 @@ func DAK(t testing.TB) []byte {
 	return append(out, k.Y.FillBytes(make([]byte, 32))...)
 }
 
-// HeadSig is the batch head signature over rows' last row, by writer's DWK.
 func HeadSig(userID uuid.UUID, writerID string, rows []oplog.Row) []byte {
 	last := rows[len(rows)-1]
 	m, err := keyproto.HeadMessage(userID, uint64(last.WriterCounter), last.BlobHash, writerID)
@@ -61,8 +48,6 @@ func HeadSig(userID uuid.UUID, writerID string, rows []oplog.Row) []byte {
 	return ed25519.Sign(DWK(writerID), m)
 }
 
-// NewUser creates an account row, its oplog_seq row and synthetic account
-// keys (current_epoch 1), as account creation and bootstrap do.
 func NewUser(t testing.TB, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	id := NewUserWithoutKeys(t, pool)
@@ -70,7 +55,6 @@ func NewUser(t testing.TB, pool *pgxpool.Pool) uuid.UUID {
 	return id
 }
 
-// NewUserWithoutKeys creates an account that has not bootstrapped.
 func NewUserWithoutKeys(t testing.TB, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	tx, err := pool.Begin(bg)
@@ -97,9 +81,6 @@ func NewUserWithoutKeys(t testing.TB, pool *pgxpool.Pool) uuid.UUID {
 	return id
 }
 
-// AddKeys inserts a synthetic account_keys row (random keys, well-formed wrap
-// and phrase box headers) so the account can upload; an account that has keys
-// keeps them.
 func AddKeys(t testing.TB, pool *pgxpool.Pool, userID uuid.UUID) {
 	t.Helper()
 	rnd := func(n int) []byte {
@@ -121,9 +102,6 @@ func AddKeys(t testing.TB, pool *pgxpool.Pool, userID uuid.UUID) {
 	}
 }
 
-// NewWriter enrols a live device writer for the account directly in the
-// roster (the registration ceremony is auth's to test), with the
-// deterministic DWK of writerID and a fresh DAK, and returns the DWK.
 func NewWriter(t testing.TB, pool *pgxpool.Pool, userID uuid.UUID, writerID string) ed25519.PrivateKey {
 	t.Helper()
 	priv := DWK(writerID)
@@ -135,9 +113,6 @@ func NewWriter(t testing.TB, pool *pgxpool.Pool, userID uuid.UUID, writerID stri
 	return priv
 }
 
-// Rows builds n consecutive sealed rows for one writer, starting after
-// (counter, prev): counters counter+1 … counter+n, each chained to the one
-// before, each a frame v3 sealed under blobtest.TestEpochKey at epoch 1.
 func Rows(t testing.TB, userID uuid.UUID, writerID string, counter int64, prev [32]byte, n int) []oplog.Row {
 	t.Helper()
 	out := make([]oplog.Row, 0, n)
@@ -160,9 +135,6 @@ func Rows(t testing.TB, userID uuid.UUID, writerID string, counter int64, prev [
 	return out
 }
 
-// Append appends n sealed rows to the writer's chain through the real
-// appender, continuing from its committed head, with the head signed by the
-// writer's DWK, and returns their seqs.
 func Append(t testing.TB, pool *pgxpool.Pool, userID uuid.UUID, writerID string, n int) []int64 {
 	t.Helper()
 	ap := &oplog.Appender{Pool: pool}
@@ -178,9 +150,6 @@ func Append(t testing.TB, pool *pgxpool.Pool, userID uuid.UUID, writerID string,
 	return seqs
 }
 
-// Opaque returns n bytes of pseudo-random filler that passes LooksSealed's
-// zero checks wherever it lands, for tests that need a frame-shaped value
-// without a key.
 func Opaque(n int) []byte {
 	out := make([]byte, 0, n)
 	seed := sha256.Sum256([]byte("oplogtest"))

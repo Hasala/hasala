@@ -8,15 +8,6 @@ import Foundation
 import HasalaModels
 import Observation
 
-/// The screens' ledger over a live account (spec 04 §15.2): HasalaKit's `LedgerStore`
-/// read from the projection through `LedgerStateMapper`, written through
-/// `LedgerEditAuthor`. Not to be confused with CoreStore's `LedgerStore` (the encrypted
-/// row store), which this never touches.
-///
-/// An edit is applied to `state` at once (so a swiped review card stays gone), authored
-/// in the background in gesture order, and then `state` is read back from the projection,
-/// which is the truth: an edit the core refuses disappears on that reload. Every sync run
-/// reloads too (`WorkCoordinator`'s committed stage).
 @MainActor
 @Observable
 final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
@@ -25,16 +16,10 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   private(set) var state: LedgerState
   private(set) var now: LocalDateTime
   private(set) var revision = 0
-  /// The projection has been read at least once.
   private(set) var loaded = false
-  /// The Gmail lane's phase, once read (spec 04 §7.4); nil before that, or with no lane.
   private(set) var mailboxPhase: MailboxPhase?
-  /// Why the lane halted, read with its phase.
   private(set) var mailboxHalt: MailboxHaltCode?
-  /// The ledger holds the App Review sample (`sample-` message ids, §6.13).
   private(set) var holdsSample = false
-  /// The lane's last status, as read with its phase: the mailbox row comes from it
-  /// (`LiveMailboxConnecting.mailboxes`). Read-only plumbing; nothing is authored from it.
   private(set) var mailboxStatus: MailboxStatus?
   var readMailboxStatus: MailboxStatus? { mailboxStatus.flatMap { $0.stateUnread ? nil : $0 } }
   private(set) var importProgress: MailboxProgress?
@@ -44,7 +29,6 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   @ObservationIgnored private let author: LedgerEditAuthor?
   @ObservationIgnored private let clock: @MainActor () -> LocalDateTime
   @ObservationIgnored var profile: ProfileInfo
-  /// Bank alerts' health for the next reload (`noteMailbox`).
   @ObservationIgnored private(set) var mailbox = MailboxHealth(status: .notConnected, lastEmail: "", banks: "")
   @ObservationIgnored private(set) var unreadSenders: [String: String] = [:]
   @ObservationIgnored var readingSource: (@MainActor () -> ReadingState?)?
@@ -78,7 +62,6 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       profile: profile, mailbox: MailboxHealth(status: .notConnected, lastEmail: "", banks: ""), prefs: prefs.prefs)
   }
 
-  /// "Now" in the fixed local clock (UTC+04:00, spec 03c §1.5).
   static func localNow() -> LocalDateTime {
     local(Int64(Date().timeIntervalSince1970 * 1000))
   }
@@ -109,7 +92,6 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     return LocalDateTime(d.year, d.month, d.day, minutes / 60, minutes % 60)
   }
 
-  /// The Gmail lane's status: its health shows from the next reload, its phase at once.
   func noteMailbox(_ status: MailboxStatus, nowMs: Int64) {
     mailbox = LedgerStateMapper.health(status, nowMs: nowMs)
     unreadSenders = status.unparsedSenders
@@ -133,8 +115,6 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     if importProgress != next { importProgress = next }
   }
 
-  /// Reads the projection again (off the main actor) and publishes it. A later reload
-  /// that finishes first wins; an older one is dropped.
   func reload() async {
     reloadSeq += 1
     let seq = reloadSeq
@@ -183,8 +163,6 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     var s = state
     var batch = false
     let (title, inverses) = try Self.patch(edit, &s, now: now, batch: &batch)
-    // A reload already in flight read the projection before this edit: drop it, so it
-    // can't bring the old state back. The write's own reload follows.
     reloadSeq += 1
     switch edit {
     case .skipReview(let id): prefs.skip(id, on: now.date)
@@ -251,8 +229,6 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     undoable.insert(id)
   }
 
-  /// Runs `write` after every earlier one, then reloads (a failure reloads too, so the
-  /// optimistic change is replaced by what the projection holds).
   func enqueue(undo: Int? = nil, _ write: @escaping @Sendable () async throws -> [LedgerEditAuthor.Inverse]) {
     let previous = writes
     writesInFlight += 1
@@ -287,8 +263,6 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
 
   func canUndo(_ token: UndoToken) -> Bool { undoable.contains(token.id) }
 
-  // MARK: The optimistic change
-
   static func projectInverse(_ p: Project) -> LedgerEditAuthor.Inverse {
     let completed = p.completedOn.flatMap { CivilDate(year: $0.year, month: $0.month, day: $0.day)?.wire }
     return .projectState(
@@ -318,8 +292,6 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     }
   }
 
-  /// Applies `edit` to `s` as the projection will show it, or throws why it can't be
-  /// applied. Returns the toast's title and the undo's inverse writes.
   static func patch(_ edit: LedgerEdit, _ s: inout LedgerState, now: LocalDateTime) throws(ActionError)
     -> (String?, [LedgerEditAuthor.Inverse])
   {
@@ -593,15 +565,11 @@ protocol UndoAvailability: AnyObject {
   func canUndo(_ token: UndoToken) -> Bool
 }
 
-/// The device's own preferences (spec 04 §4.5; never synced): notification level, the
-/// Face ID lock, and the review cards skipped until the next local midnight (kept as
-/// digests: §4.5 allows no identifier in UserDefaults).
 @MainActor
 final class DevicePrefsStore {
   private let defaults: UserDefaults
   private static let prefsKey = "prefs.device.v1"
   private static let skippedKey = "prefs.review.skipped.v2"
-  /// The earlier form, which held transaction ids.
   private static let legacySkippedKey = "prefs.review.skipped.v1"
   private static let noticesKey = "prefs.bills.notices.dismissed.v1"
 
@@ -609,8 +577,6 @@ final class DevicePrefsStore {
     self.defaults = defaults
   }
 
-  /// The app lock is off until it is turned on in Sign-in & security (§4.5 `appLock.enabled`
-  /// defaults to false).
   var prefs: DevicePrefs {
     guard let d = defaults.data(forKey: Self.prefsKey), let p = try? JSONDecoder().decode(DevicePrefs.self, from: d) else {
       return DevicePrefs(faceIDLock: false)
@@ -618,7 +584,6 @@ final class DevicePrefsStore {
     return p
   }
 
-  /// This install's salt for the skipped cards' digests.
   var salt: String { LocalAccountData.salt(defaults) }
 
   func update(_ change: (inout DevicePrefs) -> Void) {
@@ -632,7 +597,6 @@ final class DevicePrefsStore {
     var ids: [String]
   }
 
-  /// The digests of the cards skipped today (`LocalAccountData.digest` of each id).
   func skippedDigests(on day: LocalDate) -> Set<String> {
     defaults.removeObject(forKey: Self.legacySkippedKey)
     guard let d = defaults.data(forKey: Self.skippedKey), let s = try? JSONDecoder().decode(Skipped.self, from: d),
@@ -658,7 +622,6 @@ final class DevicePrefsStore {
     defaults.set(ids.sorted(), forKey: Self.noticesKey)
   }
 
-  /// The account's data left this iPhone: forget the skipped cards.
   func forgetAccountData() {
     defaults.removeObject(forKey: Self.noticesKey)
     defaults.removeObject(forKey: Self.skippedKey)

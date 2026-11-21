@@ -1,10 +1,3 @@
-// Package waitlist is the beta waitlist (spec 07 §2.3, §2.4, §3.1, §5.3–§5.5,
-// §6.4): a double opt-in by link, a leave link, the join hook that runs when
-// an invite is redeemed, the sweeps, and the renderers of its three emails.
-//
-// The submit path answers the same for every valid address (spec 07 §5.3):
-// what changes is only which email is queued, by waitlist_submit in one round
-// trip, and the worker sends it later.
 package waitlist
 
 import (
@@ -31,7 +24,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
-// Errors the routes map to spec 07 §5.8's codes.
 var (
 	ErrBadEmail    = errors.New("waitlist: not an email address")
 	ErrBadRequest  = errors.New("waitlist: malformed submission")
@@ -39,45 +31,36 @@ var (
 	ErrLinkExpired = errors.New("waitlist: the link is unknown or expired")
 )
 
-// Token lifetimes (spec 07 §4.2).
 const (
 	ConfirmTTL = 7 * 24 * time.Hour
 	LeaveTTL   = 90 * 24 * time.Hour
-	TokenLen   = 43 // b64url of 32 bytes
+	TokenLen   = 43
 )
 
-// Service is the waitlist. Build it with New.
 type Service struct {
-	Pool    *pgxpool.Pool
-	Tagger  mailq.Tagger
-	WebBase string // https://hasala.app
-	// MaxOpen and MaxPending are the ceilings of spec 07 §5.3 step 7.
+	Pool                *pgxpool.Pool
+	Tagger              mailq.Tagger
+	WebBase             string
 	MaxOpen, MaxPending int
-	// ConfirmedRetention is HASALA_WAITLIST_RETENTION (180 days).
-	ConfirmedRetention time.Duration
-	// OnConfirmed, when set, runs after a confirmation commits: the entry is
-	// then on the console's list to approve. It gets nothing about the entry.
-	OnConfirmed func()
-	Record      func(purgeledger.Entry)
-	Hold        purgeledger.HoldFunc
+	ConfirmedRetention  time.Duration
+	OnConfirmed         func()
+	Record              func(purgeledger.Entry)
+	Hold                purgeledger.HoldFunc
 
 	mu        sync.Mutex
 	countsAt  time.Time
 	open, pen int
 }
 
-// New builds the service with spec 07 §14.1's defaults.
 func New(pool *pgxpool.Pool, tagger mailq.Tagger, webBase string) *Service {
 	return &Service{Pool: pool, Tagger: tagger, WebBase: strings.TrimSuffix(webBase, "/"),
 		MaxOpen: 10_000, MaxPending: 2_000, ConfirmedRetention: 180 * 24 * time.Hour}
 }
 
-// Submission is a validated P1 body.
 type Submission struct {
 	Email, Bank, OtherBank, Source string
 }
 
-// full reports the ceilings, from counts cached for at most 60 s.
 func (s *Service) full(ctx context.Context) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -92,8 +75,6 @@ func (s *Service) full(ctx context.Context) (bool, error) {
 	return s.open >= s.MaxOpen || s.pen >= s.MaxPending, nil
 }
 
-// Validate is spec 07 §5.3 step 5 (and the bank half of §4.3), without
-// touching the database beyond the catalog.
 func (s *Service) Validate(ctx context.Context, sub Submission) (string, banks.Choice, error) {
 	email, err := keyproto.EmailNorm(sub.Email)
 	if err != nil || sub.Email == "" {
@@ -112,9 +93,6 @@ func (s *Service) Validate(ctx context.Context, sub Submission) (string, banks.C
 	return email, choice, nil
 }
 
-// Submit runs steps 7–9 of spec 07 §5.3 for an already validated submission
-// and returns the outcome word (for the metric only; the caller's answer is
-// the same whatever it is).
 func (s *Service) Submit(ctx context.Context, email string, c banks.Choice) (string, error) {
 	if s.Tagger == nil {
 		return "", errors.New("waitlist: no auth key: email_tag cannot be computed")
@@ -143,7 +121,6 @@ func nullable(s string) any {
 	return s
 }
 
-// DecodeToken checks a link token's shape and returns its stored hash.
 func DecodeToken(token string) ([]byte, bool) {
 	if len(token) != TokenLen {
 		return nil, false
@@ -156,8 +133,6 @@ func DecodeToken(token string) ([]byte, bool) {
 	return sum[:], true
 }
 
-// Confirm is P2 (spec 07 §5.4): "confirmed", "already_confirmed", or
-// ErrLinkExpired.
 func (s *Service) Confirm(ctx context.Context, token string) (string, error) {
 	hash, ok := DecodeToken(token)
 	if !ok {
@@ -213,10 +188,6 @@ func (s *Service) Confirm(ctx context.Context, token string) (string, error) {
 	return "confirmed", nil
 }
 
-// Leave is P3 (spec 07 §5.5): a valid, unexpired leave token deletes the entry
-// (tokens, mail rows and bank requests cascade) and revokes its open invite.
-// Every well-formed token gets the same answer, so Leave reports only errors
-// that are not about the token.
 func (s *Service) Leave(ctx context.Context, token string) error {
 	hash, ok := DecodeToken(token)
 	if !ok {
@@ -251,8 +222,6 @@ func (s *Service) Leave(ctx context.Context, token string) error {
 	return nil
 }
 
-// DeleteEntryTx deletes an entry as P3 and C8 do: an open invite is revoked
-// first, then the entry goes with its tokens, mail rows and bank requests.
 func DeleteEntryTx(ctx context.Context, tx pgx.Tx, entry uuid.UUID) error {
 	if _, err := tx.Exec(ctx,
 		`UPDATE invite_codes SET state = 'revoked', closed_at = now()
@@ -274,11 +243,6 @@ func DeleteBouncedEntryTx(ctx context.Context, tx pgx.Tx, entry uuid.UUID) error
 	return DeleteEntryTx(ctx, tx, entry)
 }
 
-// OnInviteRedeemedTx is the join hook (spec 07 §3.1), run by the account
-// transaction after the invite's UPDATE: the invite's entry joins and loses its
-// address, its bank requests move to the account, and so does every other
-// entry with the account's email_tag (accountTag; nil when the caller cannot
-// compute it). TestFlight enrolments (step 3) do not exist yet.
 func OnInviteRedeemedTx(ctx context.Context, tx pgx.Tx, inviteID, userID uuid.UUID, accountTag []byte) error {
 	rows, err := tx.Query(ctx,
 		`SELECT waitlist_entry_id FROM invite_codes WHERE id = $1 AND waitlist_entry_id IS NOT NULL
@@ -308,7 +272,6 @@ func OnInviteRedeemedTx(ctx context.Context, tx pgx.Tx, inviteID, userID uuid.UU
 			e, inviteID); err != nil {
 			return fmt.Errorf("waitlist: join: revoke the entry's other invites: %w", err)
 		}
-		// A request identical to one the account already made is dropped first.
 		if _, err := tx.Exec(ctx,
 			`DELETE FROM bank_requests r WHERE r.waitlist_entry_id = $1 AND EXISTS (
 			   SELECT 1 FROM bank_requests u WHERE u.user_id = $2
@@ -329,8 +292,6 @@ func OnAddressTakenTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, accountT
 	return OnInviteRedeemedTx(ctx, tx, uuid.Nil, userID, accountTag)
 }
 
-// MintToken creates one confirm or leave token for an entry inside tx and
-// returns its link form (spec 07 §4.2); only the hash is stored.
 func MintToken(ctx context.Context, tx pgx.Tx, entry uuid.UUID, purpose string) (string, error) {
 	ttl := ConfirmTTL
 	if purpose == "leave" {
@@ -365,7 +326,6 @@ func LeaveLinks(ctx context.Context, tx pgx.Tx, webBase string, entry uuid.UUID)
 		OneClick: UnsubscribeURL + "?token=" + tok}, nil
 }
 
-// Sweep is spec 07 §2.11's waitlist sweeps.
 func (s *Service) Sweep(ctx context.Context) (string, error) {
 	var total int64
 	for _, q := range []struct {
@@ -391,7 +351,6 @@ func (s *Service) Sweep(ctx context.Context) (string, error) {
 	return fmt.Sprintf("%d waitlist rows swept", total), nil
 }
 
-// entryView is what the renderers read about an entry.
 type entryView struct {
 	email                         *string
 	state                         string
@@ -428,7 +387,6 @@ func staleIfGone(err error) error {
 	return err
 }
 
-// ErrStale is a queued email whose subject changed state before it was sent.
 var ErrStale error = mailq.Stale("waitlist: the entry no longer needs this email")
 
 func toMessage(row mailq.Row, r mailq.Rendered) mail.Message {
@@ -450,7 +408,6 @@ func dateOf(t *time.Time) string {
 
 const inviteWhy = "You're getting this because someone asked for a Hasala invite for this address at hasala.app."
 
-// Register installs the waitlist's renderers on q.
 func (s *Service) Register(q *mailq.Queue) {
 	q.Register("bank_supported", mailq.RenderFunc(s.renderBankSupported))
 	q.Register("waitlist", mailq.RenderFunc(func(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Message, error) {
@@ -495,8 +452,6 @@ func (s *Service) Register(q *mailq.Queue) {
 		return withLeave(row, r, leave), err
 	}))
 	q.Register("waitlist_has_account", mailq.RenderFunc(func(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Message, error) {
-		// Greeted by name only when an account has verified this very address
-		// (spec 07 §6.2, review 2 F-18); the column arrives with the signup work.
 		var name *string
 		err := tx.QueryRow(ctx, `SELECT to_jsonb(u) ->> 'display_name' FROM users u WHERE email_norm = $1`,
 			row.Recipient).Scan(&name)

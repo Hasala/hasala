@@ -7,10 +7,6 @@ import (
 	"time"
 )
 
-// sampler is an injected free-space reading. Every test here drives the fuse
-// with one: the design says outright that the floor is injected "rather than
-// measured from the real disk", because a test that read the actual filesystem
-// would pass or fail on how much space the build machine happened to have.
 type sampler struct {
 	mu    sync.Mutex
 	avail uint64
@@ -47,7 +43,6 @@ func newFuse(t *testing.T, floor uint64, s *sampler) *Fuse {
 	return f
 }
 
-// The fuse trips below the floor and clears above it, on the injected number.
 func TestTheFuseTripsBelowTheFloorAndClearsAboveIt(t *testing.T) {
 	s := &sampler{avail: 100}
 	f := newFuse(t, 1000, s)
@@ -62,8 +57,6 @@ func TestTheFuseTripsBelowTheFloorAndClearsAboveIt(t *testing.T) {
 		t.Fatal("100 bytes free against a 1000 byte floor did not trip the fuse")
 	}
 
-	// One byte over the floor is the boundary that matters: `avail < floor`
-	// and `avail <= floor` differ only here.
 	s.set(1000, nil)
 	if err := f.Check(); err != nil {
 		t.Fatalf("Check: %v", err)
@@ -89,8 +82,6 @@ func TestTheFuseTripsBelowTheFloorAndClearsAboveIt(t *testing.T) {
 	}
 }
 
-// A sampling failure leaves the flag alone: neither an outage caused by a stat
-// error, nor headroom nobody measured. See Check's doc.
 func TestASamplingFailureKeepsThePreviousState(t *testing.T) {
 	s := &sampler{avail: 10}
 	f := newFuse(t, 1000, s)
@@ -110,7 +101,6 @@ func TestASamplingFailureKeepsThePreviousState(t *testing.T) {
 		t.Fatal("a failed sample CLEARED the fuse; an unmeasured disk must not read as headroom")
 	}
 
-	// And the mirror image: a failure must not trip an open fuse either.
 	s.set(1<<40, nil)
 	if err := f.Check(); err != nil {
 		t.Fatalf("Check: %v", err)
@@ -127,8 +117,6 @@ func TestASamplingFailureKeepsThePreviousState(t *testing.T) {
 	}
 }
 
-// Start samples immediately, so a process that comes up on a full disk is
-// already refusing writes before it serves anything.
 func TestStartSamplesBeforeTheFirstTick(t *testing.T) {
 	s := &sampler{avail: 0}
 	f := newFuse(t, 1000, s)
@@ -145,7 +133,6 @@ func TestStartSamplesBeforeTheFirstTick(t *testing.T) {
 	}
 }
 
-// The ticker keeps sampling, and Stop ends it.
 func TestTheFuseKeepsSamplingUntilStopped(t *testing.T) {
 	s := &sampler{avail: 1 << 40}
 	f := New("/scratch", 1000, time.Millisecond)
@@ -168,15 +155,12 @@ func TestTheFuseKeepsSamplingUntilStopped(t *testing.T) {
 	if after := s.count(); after != before {
 		t.Fatalf("the fuse sampled %d more times after Stop", after-before)
 	}
-	// Stop leaves the flag where it was: a stopped watcher is not evidence the
-	// disk recovered.
 	if !f.Tripped() {
 		t.Fatal("Stop cleared the fuse")
 	}
-	f.Stop() // idempotent
+	f.Stop()
 }
 
-// A double Start does not produce two goroutines fighting over one flag.
 func TestStartIsIdempotent(t *testing.T) {
 	s := &sampler{avail: 1 << 40}
 	f := newFuse(t, 1000, s)
@@ -188,8 +172,6 @@ func TestStartIsIdempotent(t *testing.T) {
 	}
 }
 
-// A nil fuse is an absent fuse, matching api.Limiter's nil behaviour, so an
-// unwired field cannot panic a request path.
 func TestANilFuseIsNeverTripped(t *testing.T) {
 	var f *Fuse
 	if f.Tripped() {
@@ -197,8 +179,6 @@ func TestANilFuseIsNeverTripped(t *testing.T) {
 	}
 }
 
-// The defaults are the design's numbers, and New applies them for the zero
-// values a caller may not have opinions about.
 func TestNewAppliesTheDefaults(t *testing.T) {
 	f := New("/", 0, 0)
 	if f.Floor() != DefaultFloor {
@@ -215,9 +195,6 @@ func TestNewAppliesTheDefaults(t *testing.T) {
 	}
 }
 
-// The real sampler works on a path that certainly exists, which is the one
-// thing an injected sampler cannot check: that statfsAvail is wired up and
-// returns a plausible number rather than zero.
 func TestTheRealSamplerReadsAFilesystem(t *testing.T) {
 	avail, err := statfsAvail(t.TempDir())
 	if err != nil {

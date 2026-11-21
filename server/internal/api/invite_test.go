@@ -9,18 +9,11 @@ import (
 	"github.com/salehtl/hasala/server/internal/auth"
 )
 
-// SessionResponse is the part of every session-minting answer these tests
-// read (register/finish's SessionMintResponse, login/finish's
-// SignInResponse).
 type SessionResponse struct {
 	SessionToken string `json:"session_token"`
 	UserID       string `json:"user_id"`
 }
 
-// invite is a signup ready for register/begin: a printed invite, minted as
-// `hasalad invite mint` does, and a proven signup ceremony on a fresh address
-// written directly (signup/begin itself is routes_signup_test.go's subject).
-// It returns the signup id.
 func (h *harness) invite(note string) string {
 	h.t.Helper()
 	code, err := auth.MintInvite(bg, h.pool, auth.MintOptions{Note: note, Now: time.Now().UTC()})

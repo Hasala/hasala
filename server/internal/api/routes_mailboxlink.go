@@ -1,15 +1,5 @@
 package api
 
-// routes_mailboxlink.go: the mailbox link (spec 02 §7 #34–#38, §13.2), for
-// Gmail and for Outlook (personal Microsoft accounts), mounted when the link
-// part of [gmail] or [outlook] is configured, with or without that provider's
-// push (GmailOptions.Push, OutlookOptions.Push). The link proves, with the
-// provider's ID token carrying a nonce this server issued to this session,
-// that the device holding the session can read the mailbox; the server keeps
-// only an HMAC of the address under the route key and which writer is the
-// holder (the one device that fetches mail and is woken by the hook). An
-// account has one link at a time: linking either provider replaces the other.
-
 import (
 	"context"
 	"crypto/rand"
@@ -33,71 +23,44 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// mailbox-user (spec 02 §16.2): 1/min per account, burst 10.
 const (
 	mailboxRate    = 1.0 / 60.0
 	mailboxBurst   = 10
 	mailboxMaxKeys = 4096
 
-	linkChallengeTTL = 15 * time.Minute
-	maxWatchAhead    = 8 * 24 * time.Hour // Gmail's users.watch lasts 7 days
-	// A Graph subscription to messages lasts at most 7 days (10,080 minutes).
+	linkChallengeTTL     = 15 * time.Minute
+	maxWatchAhead        = 8 * 24 * time.Hour
 	maxOutlookWatchAhead = 7 * 24 * time.Hour
 	idTokenMaxAge        = 10 * time.Minute
 	idTokenMaxSkew       = 5 * time.Minute
 	maxIDTokenBytes      = 16 << 10
 )
 
-// IDTokenVerifier verifies a Google ID token (googlejwt.Verifier in
-// production).
 type IDTokenVerifier interface {
 	Verify(ctx context.Context, token string) (googlejwt.Claims, error)
 }
 
-// GmailOptions configures the mailbox link (#34–#38) and, through Push, the
-// Pub/Sub hook (#39). A nil *GmailOptions leaves #34–#39 unmounted.
 type GmailOptions struct {
-	RouteKey gmailpush.RouteKey
-	// Link verifies the app's ID token (audience = the iOS client id).
-	Link IDTokenVerifier
-	// IOSClientID is the audience Link checks, and what azp must equal.
-	IOSClientID    string
-	MailboxPerUser *Limiter
-	// Push is the Pub/Sub half. Nil is a link with no wakes: the hook is not
-	// mounted, /meta's gmail_watch_topic is null, #36 answers 409
-	// no_watch_topic and #37 reports no watch.
+	RouteKey            gmailpush.RouteKey
+	Link                IDTokenVerifier
+	IOSClientID         string
+	MailboxPerUser      *Limiter
 	Push                *GmailPush
-	DisableHeadroomFuse bool // tests only
+	DisableHeadroomFuse bool
 }
 
-// OutlookTokenVerifier verifies a Microsoft ID token (msjwt.Verifier in
-// production).
 type OutlookTokenVerifier interface {
 	Verify(ctx context.Context, token string) (msjwt.Claims, error)
 }
 
-// OutlookOptions configures the Outlook mailbox link: #35 with provider
-// "outlook", and #36–#38 for an Outlook link. A nil *OutlookOptions refuses
-// provider "outlook".
 type OutlookOptions struct {
-	// RouteKey is the same route key as GmailOptions.RouteKey.
-	RouteKey gmailpush.RouteKey
-	// Link verifies the app's Microsoft ID token (audience = ClientID).
-	Link OutlookTokenVerifier
-	// ClientID is the Outlook application id: the audience Link checks.
-	ClientID string
-	// MailboxPerUser is shared with GmailOptions.MailboxPerUser when both
-	// are set.
+	RouteKey       gmailpush.RouteKey
+	Link           OutlookTokenVerifier
+	ClientID       string
 	MailboxPerUser *Limiter
-	// Push is the Graph push. Nil is a link with no wakes: #36 answers 409
-	// no_watch_topic for an Outlook link and #37 reports no watch.
-	Push *OutlookPush
+	Push           *OutlookPush
 }
 
-// OutlookPush is the Graph push: the public URLs of the hooks the holder's
-// subscription names (/meta reports them), and the hooks' counters and
-// limiters (routes_hooks.go). HookPerIP and HookGlobal are shared with
-// GmailPush's when both pushes are on.
 type OutlookPush struct {
 	NotificationURL string
 	LifecycleURL    string
@@ -107,12 +70,8 @@ type OutlookPush struct {
 	HookLink        *Limiter
 }
 
-// GmailPush configures POST /hooks/gmail/pubsub (#39) and the watch topic.
 type GmailPush struct {
-	// Topic is the Pub/Sub topic the app watches its mailbox on; /meta reports
-	// it as gmail_watch_topic.
-	Topic string
-	// Hook verifies Pub/Sub's OIDC token (audience = the push URL).
+	Topic          string
 	Hook           IDTokenVerifier
 	Subscription   string
 	ServiceAccount string
@@ -122,7 +81,6 @@ type GmailPush struct {
 	HookLink       *Limiter
 }
 
-// gmailPush is the configured Pub/Sub half, or nil.
 func (s *Server) gmailPush() *GmailPush {
 	if s.Gmail == nil {
 		return nil
@@ -130,7 +88,6 @@ func (s *Server) gmailPush() *GmailPush {
 	return s.Gmail.Push
 }
 
-// outlookPush is the configured Graph push, or nil.
 func (s *Server) outlookPush() *OutlookPush {
 	if s.Outlook == nil {
 		return nil
@@ -138,7 +95,6 @@ func (s *Server) outlookPush() *OutlookPush {
 	return s.Outlook.Push
 }
 
-// pushOn reports whether this server relays wakes for provider's mailboxes.
 func (s *Server) pushOn(provider string) bool {
 	switch provider {
 	case gmailpush.ProviderGmail:
@@ -149,7 +105,6 @@ func (s *Server) pushOn(provider string) bool {
 	return false
 }
 
-// mailboxPerUser is the one mailbox-user limiter, whichever options hold it.
 func (s *Server) mailboxPerUser() *Limiter {
 	if s.Gmail != nil {
 		return s.Gmail.MailboxPerUser
@@ -161,7 +116,6 @@ func (s *Server) mountMailboxLink(mux *http.ServeMux) {
 	if s.Gmail == nil && s.Outlook == nil {
 		return
 	}
-	// One budget per account across both providers.
 	var lim *Limiter
 	if s.Gmail != nil {
 		lim = s.Gmail.MailboxPerUser
@@ -183,29 +137,22 @@ func (s *Server) mountMailboxLink(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/mailbox/link", s.requireSession(s.handleUnlink))
 }
 
-// LinkChallengeResponse is #34's answer.
 type LinkChallengeResponse struct {
 	Nonce     string    `json:"nonce"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// LinkRequest is #35's body. Provider is "gmail" (the default when absent) or
-// "outlook"; the ID token is that provider's.
 type LinkRequest struct {
 	Provider string      `json:"provider,omitempty"`
 	IDToken  string      `json:"id_token"`
 	StepUp   *StepUpWire `json:"step_up"`
 }
 
-// LinkHolder names the holder writer.
 type LinkHolder struct {
 	WriterID     string `json:"writer_id"`
 	IsThisDevice bool   `json:"is_this_device"`
 }
 
-// LinkResponse is #35's answer. ClientState is Outlook's only: the base64url
-// clientState the holder gives its Graph subscription. The server keeps only
-// its SHA-256 and returns it this once.
 type LinkResponse struct {
 	Provider    string     `json:"provider"`
 	Holder      LinkHolder `json:"holder"`
@@ -213,7 +160,6 @@ type LinkResponse struct {
 	ClientState string     `json:"client_state,omitempty"`
 }
 
-// LinkStatusResponse is #37's answer.
 type LinkStatusResponse struct {
 	Provider       string     `json:"provider"`
 	Holder         LinkHolder `json:"holder"`
@@ -222,12 +168,10 @@ type LinkStatusResponse struct {
 	CreatedAt      time.Time  `json:"created_at"`
 }
 
-// LinkWatchRequest is #36's body.
 type LinkWatchRequest struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// UnlinkRequest is #38's body.
 type UnlinkRequest struct {
 	StepUp *StepUpWire `json:"step_up"`
 }
@@ -267,8 +211,6 @@ func (s *Server) handleLinkChallenge(w http.ResponseWriter, r *http.Request, use
 	writeJSON(w, http.StatusOK, LinkChallengeResponse{Nonce: base64.RawURLEncoding.EncodeToString(n), ExpiresAt: exp})
 }
 
-// errLinkRejected is every ID-token failure of #35: one answer, the reason in
-// the operator log.
 var errLinkRejected = errors.New("api: mailbox link rejected")
 
 func (s *Server) writeLinkRejected(w http.ResponseWriter, r *http.Request, reason string) {
@@ -276,21 +218,16 @@ func (s *Server) writeLinkRejected(w http.ResponseWriter, r *http.Request, reaso
 	writeErr(w, http.StatusForbidden, "link_rejected", "")
 }
 
-// linkRejection is an ID token that verified but does not prove a link; the
-// string is the operator log's reason.
 type linkRejection string
 
 func (r linkRejection) Error() string { return string(r) }
 
-// linkIdentity is what a verified ID token proves: the mailbox and the nonce.
 type linkIdentity struct{ address, subject, nonce string }
 
-// iatFresh is the link's freshness window, the same for both providers.
 func iatFresh(iat, now time.Time) bool {
 	return !iat.IsZero() && !iat.Before(now.Add(-idTokenMaxAge)) && !iat.After(now.Add(idTokenMaxSkew))
 }
 
-// verifyGmailLink is spec 02 §13.2's Google ID token rules.
 func (s *Server) verifyGmailLink(ctx context.Context, token string, now time.Time) (linkIdentity, error) {
 	claims, err := s.Gmail.Link.Verify(ctx, token)
 	if err != nil {
@@ -307,10 +244,6 @@ func (s *Server) verifyGmailLink(ctx context.Context, token string, now time.Tim
 	return linkIdentity{address: claims.Email, nonce: claims.Nonce}, nil
 }
 
-// verifyOutlookLink is the Microsoft ID token rules: the consumers tenant, the
-// Outlook application, the same freshness and nonce as Gmail, and an address
-// from email or an address-shaped preferred_username. Microsoft's v2.0 tokens
-// carry neither email_verified nor azp, so neither is asked for.
 func (s *Server) verifyOutlookLink(ctx context.Context, token string, now time.Time) (linkIdentity, error) {
 	claims, err := s.Outlook.Link.Verify(ctx, token)
 	if err != nil {
@@ -341,8 +274,6 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
 		return
 	}
-	// The provider is settled before anything else, so an unknown one costs
-	// no step-up and no JWKS work.
 	provider := req.Provider
 	if provider == "" {
 		provider = gmailpush.ProviderGmail
@@ -372,17 +303,12 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 	if !ok || !s.requireBound(w, r, info) {
 		return
 	}
-	// The provider is not in the params hash: the token's hash binds its
-	// issuer, and a token of one provider fails the other's verifier.
 	tokenHash := sha256.Sum256([]byte(req.IDToken))
 	ph, err := keyproto.ParamsHash(keyproto.ActionMailboxLink, tokenHash[:])
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 		return
 	}
-	// A request without a step-up is refused before the ID token is
-	// verified, so it costs no JWKS work. The step-up assertion itself is
-	// verified later, inside StepUp.Run, before anything is written.
 	if su == nil {
 		writeErr(w, http.StatusForbidden, "step_up_required", "")
 		return
@@ -412,9 +338,6 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 	}
 	id = linkIdentity{}
 
-	// Outlook's clientState: minted here, returned once, kept only as a hash,
-	// never logged. Graph echoes it on every notification and the hook routes
-	// by its hash.
 	var clientState string
 	var clientStateHash []byte
 	if provider == gmailpush.ProviderOutlook {
@@ -456,9 +379,6 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 			WriterID: info.WriterID, CredentialID: p.CredentialID}, now); err != nil {
 			return err
 		}
-		// One link per account (mailbox_links_one_per_user): the conflict is
-		// on the account, so this replaces the link of either provider, the
-		// other provider's included, and two racing links leave the later one.
 		err = tx.QueryRow(ctx,
 			`INSERT INTO mailbox_links (user_id, provider, address_hmac, route_key_id, holder_writer_id,
 			                            client_state_hash, created_at, updated_at)
@@ -488,8 +408,6 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 		s.writeKeyErr(w, r, err)
 		return
 	}
-	// Every other device hears of the link (a security wake), the old holder
-	// included, so it stops fetching (spec 02 §12.5, AT-GM-9).
 	s.wakeOthers(r.Context(), userID, info.WriterID, pushv2.ReasonSecurity)
 	writeJSON(w, http.StatusOK, LinkResponse{Provider: provider,
 		Holder: LinkHolder{WriterID: info.WriterID, IsThisDevice: true}, CreatedAt: created, ClientState: clientState})
@@ -499,16 +417,6 @@ func (s *Server) handleLinkWatch(w http.ResponseWriter, r *http.Request, userID 
 	if s.mailboxLimited(w, userID) {
 		return
 	}
-	// Without the push there is nothing to watch (/meta's gmail_watch_topic
-	// is null) and no watch to record. The app skips users.watch without a
-	// topic, so it never sends this; one that read a topic before the push
-	// was turned off stops its watch, forgets the topic and reads /meta
-	// again. With no push for either provider it is checked before the body,
-	// the binding and the holder on purpose (spec 02 route 36): the answer
-	// depends only on this server's configuration, which /meta already makes
-	// public, so a non-holder learns nothing from no_watch_topic, and nothing
-	// is written. With one provider's push on, the same answer for the other
-	// provider's link comes after the holder check below.
 	if s.gmailPush() == nil && s.outlookPush() == nil {
 		writeErr(w, http.StatusConflict, "no_watch_topic", "this server relays no mailbox wakes")
 		return
@@ -589,8 +497,6 @@ func (s *Server) handleGetLink(w http.ResponseWriter, r *http.Request, userID uu
 	}
 	out.Holder.IsThisDevice = info.WriterID != "" && out.Holder.WriterID == info.WriterID
 	if !s.pushOn(out.Provider) {
-		// A watch reported while the push was on is relayed by nobody now, and
-		// the app would take this field for a live one.
 		out.WatchExpiresAt = nil
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -642,8 +548,6 @@ func (s *Server) handleUnlink(w http.ResponseWriter, r *http.Request, userID uui
 		s.writeKeyErr(w, r, err)
 		return
 	}
-	// The holder stops fetching and revokes its own refresh token on its next
-	// wake (spec 02 §13.2); every other device hears of the change too.
 	s.wakeOthers(r.Context(), userID, info.WriterID, pushv2.ReasonSecurity)
 	w.WriteHeader(http.StatusNoContent)
 }

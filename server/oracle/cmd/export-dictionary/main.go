@@ -1,28 +1,3 @@
-// Command export-dictionary writes the operator's v1 categorization rules as
-// the CSV that the app's dictionary generator reads (spec 02 §2.3 and §4.3; the
-// generator, the label map and the bundle format are spec 03c §8.5). It
-// replaces ledgerd's `seed-dictionary` mode: the dictionary no longer lives on
-// the server, it ships inside the app.
-//
-//	HASALA_CORPUS_DB=/scratch/corpus.db go run ./cmd/export-dictionary -o rules.csv
-//
-// HASALA_CORPUS_DB is a root-made `.backup` snapshot of the v1 database (the
-// corpus package refuses the live one). The output has one header row,
-// `pattern,match,category_label,display`, then one row per usable active
-// rule: the pattern and match canonicalized by internal/dict (the oracle the
-// conformance/dict fixtures pin), the category as v1's label (lower-cased;
-// the generator maps it to a taxonomy id and fails on any label it does not
-// know), and display empty (v1 kept no display name). Rows are sorted by
-// match, then pattern, so two exports of one snapshot are byte-identical.
-//
-// Nothing is dropped silently. On stderr it reports every rule it could not
-// use (a regex, an out-of-range pattern) and every conflict (one pattern
-// confirmed into two categories). Conflicting rows are all written, because
-// choosing between them is the operator's decision, and the generator refuses
-// a duplicate (match, pattern), so the CSV must be edited before it is built.
-// The exit status is 1 when anything was skipped or conflicts, 0 otherwise.
-//
-// The CSV is operator data: it is never committed to this repository.
 package main
 
 import (
@@ -45,7 +20,6 @@ func main() {
 	}
 }
 
-// errIncomplete means the CSV was written but some rules need the operator.
 var errIncomplete = errors.New("some rules were skipped or conflict (see above); edit the CSV before building the dictionary")
 
 func run(args []string, stdout, stderr io.Writer) error {
@@ -104,18 +78,14 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
-// report is export's reconciliation: the numbers add up to Read, so the
-// operator can check them against `select count(*) from rules`.
 type report struct {
 	Read, Inactive, Duplicates, Rows int
-	Skipped                          []string // one line per unusable rule
-	Conflicts                        []string // one line per (match, pattern) with two or more categories
+	Skipped                          []string
+	Conflicts                        []string
 }
 
-// header is the generator's input contract (spec 03c §8.5.2).
 var header = []string{"pattern", "match", "category_label", "display"}
 
-// export canonicalizes, dedupes and writes rules as CSV.
 func export(rules []corpus.Rule, w io.Writer) (report, error) {
 	rep := report{Read: len(rules)}
 	type key struct{ match, pattern string }
@@ -161,7 +131,7 @@ func export(rules []corpus.Rule, w io.Writer) (report, error) {
 	}
 	sort.Strings(rep.Conflicts)
 
-	cw := csv.NewWriter(w) // LF line endings: UseCRLF is false
+	cw := csv.NewWriter(w)
 	if err := cw.Write(header); err != nil {
 		return rep, err
 	}

@@ -1,11 +1,3 @@
-// Civil time for the screens: a wall-clock date and time in the ledger's fixed local
-// clock (UTC+04:00 on every device, spec 04 §15.5). No Foundation calendars and no
-// device zone: two iPhones put a transaction on the same day.
-//
-// TODO(spec 04 §2.5): take CoreTime's LocalDate/YearMonth from HasalaCore once
-// HasalaModels depends on it; these mirror only what the screens need.
-
-/// A calendar month, e.g. October 2026.
 public struct YearMonth: Sendable, Hashable, Comparable, Codable, CustomStringConvertible {
   public var year: Int
   public var month: Int
@@ -21,20 +13,15 @@ public struct YearMonth: Sendable, Hashable, Comparable, Codable, CustomStringCo
 
   public var days: Int { CivilCalendar.daysIn(year: year, month: month) }
 
-  /// "October".
   public var name: String { CivilCalendar.monthNames[month - 1] }
-  /// "Oct".
   public var shortName: String { CivilCalendar.monthShortNames[month - 1] }
-  /// "October 2026".
   public var title: String { "\(name) \(year)" }
-  /// `2026-10`.
   public var description: String { "\(year)-\(month < 10 ? "0" : "")\(month)" }
 
   public var previous: YearMonth { month == 1 ? YearMonth(year - 1, 12) : YearMonth(year, month - 1) }
   public var next: YearMonth { month == 12 ? YearMonth(year + 1, 1) : YearMonth(year, month + 1) }
 }
 
-/// A local date in the ledger clock.
 public struct LocalDate: Sendable, Hashable, Comparable, Codable {
   public var year: Int
   public var month: Int
@@ -48,7 +35,6 @@ public struct LocalDate: Sendable, Hashable, Comparable, Codable {
 
   public var yearMonth: YearMonth { YearMonth(year, month) }
 
-  /// Days since 1970-01-01 (proleptic Gregorian).
   public var ordinal: Int { CivilCalendar.daysFromCivil(year, month, day) }
 
   public init(ordinal: Int) {
@@ -60,24 +46,19 @@ public struct LocalDate: Sendable, Hashable, Comparable, Codable {
 
   public func days(until other: LocalDate) -> Int { other.ordinal - ordinal }
 
-  /// 0 = Monday … 6 = Sunday (weeks start on Monday, spec 04 §15.5).
   public var weekday: Int { ((ordinal % 7) + 7 + 3) % 7 }
 
-  /// "Fri".
   public var weekdayShort: String { CivilCalendar.weekdayShortNames[weekday] }
 
-  /// "Fri 9 Oct".
   public var short: String { "\(weekdayShort) \(dayMonth)" }
 
   public func short(today: LocalDate) -> String { year == today.year ? short : "\(short) \(year)" }
 
-  /// "9 Oct".
   public var dayMonth: String { "\(day) \(yearMonth.shortName)" }
 
   public static func < (a: LocalDate, b: LocalDate) -> Bool { a.ordinal < b.ordinal }
 }
 
-/// A local date and minute in the ledger clock.
 extension LocalDateTime {
   public func minutes(until other: LocalDateTime) -> Int {
     (other.date.ordinal - date.ordinal) * 1440 + (other.hour - hour) * 60 + (other.minute - minute)
@@ -101,7 +82,6 @@ public struct LocalDateTime: Sendable, Hashable, Comparable, Codable {
     self.minute = minute
   }
 
-  /// "13:20".
   public var time: String {
     (hour < 10 ? "0" : "") + "\(hour):" + (minute < 10 ? "0" : "") + "\(minute)"
   }
@@ -131,7 +111,6 @@ public enum CivilCalendar {
     }
   }
 
-  /// Howard Hinnant's days_from_civil.
   public static func daysFromCivil(_ y0: Int, _ m: Int, _ d: Int) -> Int {
     let y = m <= 2 ? y0 - 1 : y0
     let era = (y >= 0 ? y : y - 399) / 400
@@ -157,7 +136,6 @@ public enum CivilCalendar {
 }
 
 extension String {
-  /// Without leading and trailing spaces and tabs (no Foundation in this module).
   public var trimmedSpaces: String {
     let isSpace: (Character) -> Bool = { $0 == " " || $0 == "\t" || $0 == "\n" }
     return String(drop(while: isSpace).reversed().drop(while: isSpace).reversed())

@@ -1,8 +1,3 @@
-// One bound account composed as the app's AccountRuntime composes it (spec 04
-// §3; Lane B's Live/Runtime), minus the platform: the store and secrets of the
-// enrolled phone, a projection, the LedgerPageObserver, the SyncEngine that
-// folds through it, and the Outbox. Runs are triggered by the tests (the
-// outbox's debounce is effectively off).
 import CoreAuth
 import CoreCategorize
 import CoreDomain
@@ -33,8 +28,6 @@ final class Runtime: Sendable {
 
   var reader: LedgerReader { projection.reader }
 
-  /// Builds one blob with the observer's author context under the shared
-  /// stamps, enqueues it and re-projects.
   @discardableResult
   func author(_ body: (inout OpAuthor) throws -> Void) async throws -> AuthoredBlob {
     let ctx = try await observer.authorContext()
@@ -49,7 +42,6 @@ final class Runtime: Sendable {
     return blob
   }
 
-  /// The account's open (04 §6.2): home currency AED and the USD peg.
   func bootstrap() async throws {
     try await author { a in
       a.setHomeCurrency("AED")
@@ -57,8 +49,6 @@ final class Runtime: Sendable {
     }
   }
 
-  /// "Use sample data" as the app runs it: a live `GET /account` for the gate,
-  /// the observer's gated batches, then the outbox in one transaction.
   func loadSample(account: AccountInfo? = nil) async throws -> Int {
     let info: AccountInfo
     if let account {
@@ -78,8 +68,6 @@ final class Runtime: Sendable {
   func state() async throws -> State { try await observer.currentState() }
 }
 
-/// Two enrolled iPhones of one password account on FakeServer: A created it, B
-/// signed in and unlocked with the twelve words.
 func twoRuntimes(_ w: World = World()) async throws -> (World, Runtime, Runtime) {
   let a = w.phone("a")
   let (account, words, ctxA) = try await w.passwordAccount(a)

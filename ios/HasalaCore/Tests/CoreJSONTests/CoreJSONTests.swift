@@ -1,6 +1,3 @@
-// CoreJSON unit tests. Expected writer output in the `.javascript` style was
-// produced by `JSON.stringify(JSON.parse(literal))` under Bun (the reference
-// runtime), so the tables are the oracle's answers, not hand-derived ones.
 import Testing
 
 @testable import CoreJSON
@@ -89,7 +86,6 @@ struct ParserTests {
     _ = try parse(ok)
     let deep = String(repeating: "[", count: 129) + String(repeating: "]", count: 129)
     #expect(throws: JSONParseError.tooDeep(limit: 128)) { try parse(deep) }
-    // Refused before it is built, however deep: no stack is spent on it.
     let hostile = String(repeating: "[", count: 1_000_000)
     #expect(throws: JSONParseError.tooDeep(limit: 128)) { try parse(hostile) }
     #expect(throws: JSONParseError.tooDeep(limit: 2)) { try JSONParser.parse(text: "[[[1]]]", maxDepth: 2) }
@@ -126,7 +122,6 @@ struct WriterTests {
       JSONWriter(keyOrder: .insertion).string(v) == #"{"b":1,"1":2,"0":3,"a":4,"4294967295":5,"01":6,"4294967294":7,"-1":8}"#)
   }
 
-  // (literal, JSON.stringify(JSON.parse(literal))) as Bun prints them.
   static let numbers: [(String, String)] = [
     ("1.50", "1.5"), ("1e2", "100"), ("-0", "0"), ("0.0", "0"), ("1e21", "1e+21"), ("1e-7", "1e-7"),
     ("123456789012345678901", "123456789012345680000"), ("0.000001", "0.000001"), ("1.5e-7", "1.5e-7"),

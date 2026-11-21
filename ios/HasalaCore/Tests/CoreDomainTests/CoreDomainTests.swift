@@ -1,8 +1,3 @@
-// Unit tests for CoreDomain: the author rule (03c §13 base-10), ULIDs, the
-// trust author (trust-author.json, trust-06), prettify (merch-04 subset),
-// Setup 2 seeding (03a §7.6, F5), payday attribution (03a §6.3), review lanes
-// and OpAuthor's refusals. Plan figures are pinned end to end by the Maya
-// scenario in CoreProjectionTests.
 import CoreCategorize
 import CoreJSON
 import CorePrimitives
@@ -83,7 +78,6 @@ struct CoreDomainTests {
     var b = OpAuthor(ctx())
     for d in ["emiratesnbd.com", "mail.emiratesnbd.com", "dib.ae", "bank.co.ae"] { try b.setSenderTrust(typed: d, trusted: true, currentTrusted: []) }
     try Replay.foldOps(try b.build().ops, seq: 1, writerID: w, into: &s)
-    // A forwarder written by hand folds, but is not effective (trust-03).
     let hand = #"{"v":4,"kind":"ops","ops":[{"v":4,"type":"sender_trust_set","op_id":"01JC0000000000000000000001","authored_at":"2026-10-01T00:00:00.000Z","parent_version":null,"payload":{"domain":"gmail.com","trusted":true}}]}"#
     try Replay.foldOps(try OpCodec.decodeBlobOps(Array(hand.utf8)), seq: 2, writerID: w, into: &s)
     #expect(SenderTrust.queryDomains(s) == ["bank.co.ae", "dib.ae", "emiratesnbd.com", "mail.emiratesnbd.com"])

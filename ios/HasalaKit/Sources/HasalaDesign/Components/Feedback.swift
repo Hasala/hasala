@@ -1,12 +1,6 @@
 import HasalaModels
 import SwiftUI
 
-// Feedback and progress (Paper page 17, page 14 · Toast): status in words, progress with a
-// count or a label, outcomes that say what changed. Work in the background never blocks the
-// screen; only unlocking takes it over.
-
-// MARK: - Toast
-
 public struct ToastTouch: Sendable, Equatable {
   public enum Effect: Sendable, Equatable {
     case hold, resume, dismiss
@@ -38,13 +32,7 @@ public struct ToastTouch: Sendable, Equatable {
   }
 }
 
-/// The glass toast (page 14 §03): a 56 strip that says what just happened, in the past tense,
-/// with one action at most (Undo or Show). It floats 14 above the tab bar (or 34 from the
-/// bottom) and never blocks. Frost-strong glass; solid under Reduce Transparency. The message
-/// wraps to two lines at large sizes and the strip grows.
 public struct GlassToast: View {
-  /// The leading disc: accent with a white check (something was done), or ink with an
-  /// eye-slash (amounts hidden).
   public enum Disc: Sendable {
     case accent(HIcon)
     case ink(HIcon)
@@ -58,8 +46,6 @@ public struct GlassToast: View {
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   @Environment(\.dynamicTypeSize) private var typeSize
 
-  /// One line + Undo ("Sorted into Groceries"), two lines + Show ("Amounts hidden" / "Until you
-  /// tap the eye again"), or one line with no action ("Bill marked as paid").
   public init(_ disc: Disc = .accent(.check), title: String, subtitle: String? = nil, actionTitle: String? = nil,
               action: (() -> Void)? = nil)
   {
@@ -88,7 +74,6 @@ public struct GlassToast: View {
           .buttonStyle(.plain)
           .hType(.rowTitle)
           .foregroundStyle(HColor.textLink)
-          // A 44 pt target inside the 56 pt toast.
           .frame(minWidth: 44, minHeight: 44)
           .contentShape(Rectangle())
       }
@@ -97,10 +82,6 @@ public struct GlassToast: View {
     .padding(.trailing, 18)
     .padding(.vertical, 6)
     .frame(minHeight: HSpacing.toastHeight)
-    // Paper's frost-strong layer under the words (white 76% over a 12 pt blur), so what
-    // scrolls behind the toast stays out of them: the system material does the blur, the
-    // frost goes over it. The frost alone let the dark Net worth widget's title read through
-    // "Show". Reduce Transparency draws the solid fill instead.
     .background {
       if !reduceTransparency {
         Capsule().fill(.regularMaterial)
@@ -109,7 +90,6 @@ public struct GlassToast: View {
     }
     .hGlass(in: Capsule(), interactive: false)
     .shadow(color: HColor.materialGlassShadowFar, radius: 12, x: 0, y: 8)
-    // Contain, not combine: the action ("Undo", "Show") stays its own button.
     .accessibilityElement(children: .contain)
     .frame(maxWidth: typeSize.isAccessibilitySize ? .infinity : Self.maxWidth)
   }
@@ -130,11 +110,6 @@ public struct GlassToast: View {
   }
 }
 
-// MARK: - Progress
-
-/// A spinner for waits with no count (page 17 §07): a ring on a 24 box with a quarter-turn arc,
-/// round caps. Always next to words, never alone mid-screen. It stops turning under Reduce
-/// Motion (the arc stays).
 public struct Spinner: View {
   let size: CGFloat
   let tint: Color
@@ -142,7 +117,6 @@ public struct Spinner: View {
   @ResolvedMotion private var motion: MotionPolicy
   @State private var turning = false
 
-  /// Sizes 12 (mailbox chip), 16 (pills) and 20 (step rows, buttons).
   public init(size: CGFloat = 16, tint: Color = HColor.actionAccent, track: Color = HColor.actionAccentSubtlePressed) {
     self.size = size
     self.tint = tint
@@ -160,15 +134,12 @@ public struct Spinner: View {
     .frame(width: size, height: size)
     .onAppear {
       guard !motion.isStill else { return }
-      // A spinner is the one indicator that turns for as long as the wait lasts.
       withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) { turning = true }
     }
     .accessibilityHidden(true)
   }
 }
 
-/// A determinate progress bar (page 17 §05), with no tick (a tick makes it a pace bar): a label
-/// 15/20 600 and a count 13/18 600 above a 6 bar. Read as one element: "Reading alerts, 182 of 268".
 public struct ProgressBar: View {
   let progress: Permille
   let label: String?
@@ -200,13 +171,10 @@ public struct ProgressBar: View {
   }
 }
 
-/// Where a setup flow is (page 13 §03): four 24 × 4 bars, gap 6, centred in the header. Done
-/// and current are accent; to come is `apple-fills-secondary`. VoiceOver: "Step 1 of 4".
 public struct StepIndicator: View {
   let current: Int
   let total: Int
 
-  /// `current` counts from 1.
   public init(current: Int, of total: Int) {
     self.current = current
     self.total = total
@@ -233,7 +201,6 @@ public struct StepIndicator: View {
         .fixedSize()
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
-    // A 44 box around the 4 pt bars, so the element VoiceOver reads is a size it can reach.
     .frame(minWidth: 44, minHeight: 44)
     .contentShape(Rectangle())
     .accessibilityElement(children: .ignore)
@@ -241,14 +208,11 @@ public struct StepIndicator: View {
   }
 }
 
-/// The Welcome story pager (page 13 §03): segments 3 tall, gap 4, across the top. Done stories
-/// are ink; the current one fills as it plays (`fill` 0…1); later ones are the on-hue track.
 public struct StoryProgress: View {
   let count: Int
   let current: Int
   let fill: Double
 
-  /// `current` counts from 0.
   public init(count: Int, current: Int, fill: Double) {
     self.count = count
     self.current = current
@@ -276,9 +240,6 @@ public struct StoryProgress: View {
   }
 }
 
-/// Work running behind the screen (page 17 §04 A): a white pill with a spinner, a label and a
-/// count ("Reading on this iPhone · 214 of 268"), shown above the main button while the first
-/// scan runs. The screen stays usable. Offline shows a grey dot instead of the spinner.
 public struct BackgroundWorkPill: View {
   let label: String
   let count: String?
@@ -333,13 +294,9 @@ public struct BackgroundWorkPill: View {
   }
 }
 
-/// The most common feedback (page 17 §03): a dot, a short verdict in the same colour, then plain
-/// context in secondary ("● Over pace · on course for 1,992"). As a field error the dot is
-/// centred in a line-tall lane and the words wrap under themselves (15/20 500, error).
 public struct InlineStatus: View {
   public enum Tone: Sendable, Hashable {
     case success, warning, error, accent, neutral
-    /// A pace verdict: the dot in the fill colour, the words in the verdict colour.
     case pace(Verdict)
   }
 
@@ -351,7 +308,6 @@ public struct InlineStatus: View {
   let size: Size
   let fieldError: Bool
 
-  /// `fieldError` is the error line under a field or code cells.
   public init(tone: Tone, text: String, context: String? = nil, size: Size = .small, fieldError: Bool = false) {
     self.tone = tone
     self.text = text
@@ -401,11 +357,6 @@ public struct InlineStatus: View {
   }
 }
 
-// MARK: - Outcomes
-
-/// A status hero on a hue (Sign-in & security, page P2.5): a 56 white-70% disc with the icon in
-/// the hue's ink, a 28/34 title in the ink, and a body line in on-hue secondary; an optional
-/// action below. The hue names the state and the title says it ("Protected").
 public struct StatusHero: View {
   let title: String
   let message: String
@@ -424,7 +375,6 @@ public struct StatusHero: View {
   @Environment(\.dynamicTypeSize) private var typeSize
 
   public var body: some View {
-    // At the accessibility sizes the disc moves above the words, so the title keeps the width.
     let layout = typeSize.isAccessibilitySize
       ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
       : AnyLayout(HStackLayout(alignment: .center, spacing: 16))
@@ -449,9 +399,6 @@ public struct StatusHero: View {
   }
 }
 
-/// The answer to something just done (page 17 §04 C, page 16 §11): a status surface, radius 20,
-/// a dot 8 and a 17/24 line, a second line in the tone's foreground. The fixes follow it as
-/// normal rows and buttons; an error card may carry its own "Try again".
 public struct ResultCard: View {
   public enum Tone: Sendable { case success, warning, error }
 
@@ -520,16 +467,10 @@ public struct ResultCard: View {
   }
 }
 
-/// The badge stage of a done screen (page 17 §09): 200 × 96, a white glow and four hue sparks
-/// around a mint check disc, the Hasala coin-on-tray, or the unlocking ring. A big moment only;
-/// it may celebrate once (`.celebrate`, under 600 ms). Under Reduce Motion it is simply there.
 public struct SuccessBadge: View {
   public enum Content: Sendable, Hashable {
-    /// A 72 mint disc with a 36 check (recovery done, all caught up).
     case check
-    /// The Hasala coin-on-tray mark (You're set).
     case coin
-    /// The unlocking ring, `progress` 0…1, around a sky disc with an open lock.
     case ring(Double)
   }
 
@@ -553,7 +494,6 @@ public struct SuccessBadge: View {
     }
     .frame(width: 200, height: 96)
     .onAppear {
-      // Once per occurrence: the done screen appears once.
       withAnimation(motion.animation(.celebrate)) { landed = true }
     }
     .accessibilityHidden(true)
@@ -600,14 +540,9 @@ public struct SuccessBadge: View {
   }
 }
 
-/// Good news said plainly, or nothing found (page 17 §08): a 56 disc with an icon, a 20/25
-/// title, one line in secondary, centred. In the Notifications sheet: "Nothing needs you · We'll
-/// tell you when something does." An optional action follows.
 public struct EmptyStateCard: View {
   public enum Tone: Sendable {
-    /// A success disc with a check (all clear).
     case success
-    /// A white disc with a secondary icon (nothing found).
     case neutral
   }
 

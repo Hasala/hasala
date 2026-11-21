@@ -6,8 +6,6 @@ import Testing
 
 @testable import HasalaDesign
 
-/// The generated tokens match the values the design was drawn with (spec 04 §14.2,
-/// AT-UI-7). If Paper changes a token on purpose, these expectations change with it.
 @Suite("Design tokens")
 struct TokenTests {
   @Test func tokenSetIdentity() {
@@ -15,7 +13,6 @@ struct TokenTests {
     #expect(HTokens.count == 489)
   }
 
-  /// The four values the owner settled on 14 Oct (spec 01 §0.06, §8.1).
   @Test func settledValues() {
     #expect(HPalette.controlSwitchTrackOff == HRGBA(120, 120, 120, 0.2))
     #expect(HFontWeight.listRowTitle == 600)
@@ -48,7 +45,6 @@ struct TokenTests {
     (HPalette.washOnTrack, "#D3E6FF"),
     (HPalette.textOnWashSecondary, "#47474D"),
     (HPalette.textOnWashLink, "#294ACD"),
-    // Added in 8c572fea (spec 01 §8.2).
     (HPalette.amber600, "#C77700"),
     (HPalette.amber950, "#382A12"),
     (HPalette.badgeCount, "#AD3029"),
@@ -97,8 +93,6 @@ struct TokenTests {
     #expect(hue.tokens.ink.description == ink)
   }
 
-  /// Bucket colours alias hues: needs→sand, wants→lilac, savings→mint, income→sky,
-  /// project→peach; rose is never a bucket.
   @Test func bucketsAliasTheirHues() {
     for bucket in Bucket.allCases {
       #expect(bucket.tokens == bucket.hue.tokens, "\(bucket)")
@@ -139,7 +133,6 @@ struct TokenTests {
     #expect(HContainer.briefCard == 272)
     #expect(HContainer.widgetUnit == 175)
     #expect(HContainer.widgetWide == 362)
-    // Added in 8c572fea.
     #expect(HSpacing.iconInline == 18)
     #expect(HSpacing.iconGlass == 22)
     #expect(HSpacing.sheetGap == 18)
@@ -187,16 +180,12 @@ struct TokenTests {
     #expect(HasalaFonts.allFacesAvailable)
   }
 
-  /// Paper sets Inter with automatic optical sizing, so a title takes the display cut.
-  /// Story 4's headline fits its 354 pt column at the large title (3PC-0, about 353 pt);
-  /// Inter's text cut (optical size 14) sets it at about 376 pt and wraps it. Body text
-  /// stays within a percent and a half of the text cut.
   @Test func titlesTakeTheDisplayCut() {
     #expect(HasalaFonts.register())
     func width(_ text: String, _ type: HType, opticalSize: Double? = nil) -> Double {
       var font = CTFontCreateWithName(type.weight.interFace as CFString, type.size, nil)
       if let opticalSize {
-        let opsz = 0x6F70_737A  // the 'opsz' axis tag
+        let opsz = 0x6F70_737A
         font = CTFontCreateCopyWithAttributes(font, type.size, nil, CTFontDescriptorCreateWithAttributes(
           [kCTFontVariationAttribute: [opsz: opticalSize]] as CFDictionary))
       }

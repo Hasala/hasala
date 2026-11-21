@@ -1,13 +1,3 @@
-// C1 interrupted after `register/finish` (spec 04 §6.2's "C1 interrupted" row,
-// R-04): the session survived but the secrets never reached the server, so
-// `GET /keys` answers `404 no_keys` and a sign-in answers `has_keys: false`.
-//
-//   new secrets (a NEW phrase, which the UI shows with S-07 and confirms)
-//   → step-up keys.bootstrap with a passkey, T = (new AAK.pub), PRF input
-//   → new writer id, DWK and DAK → #23 challenge
-//   → #18 bootstrap {auth_kind 0x00, auth_hash 0^32, the asserting
-//     credential's PRF wrap when the assertion gave PRF output, step_up}
-//   → Keychain, store, roster, E-04 comparison, binding (as C1)
 import CoreAuth
 import CoreCrypto
 import CorePrimitives
@@ -16,9 +6,6 @@ import CoreWire
 import Foundation
 
 extension AccountCreation {
-  /// Finishes an account whose C1 stopped after `register/finish`. `keys` are new
-  /// (never the lost ones); the caller has shown and confirmed their phrase.
-  /// The address, `s_srv` and the display name come from `GET /account`.
   public static func bootstrapInterrupted(_ env: AccountEnvironment, keys: NewAccountKeys)
     async throws(CeremonyError) -> EnrolledAccount
   {

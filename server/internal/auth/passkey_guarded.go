@@ -1,24 +1,5 @@
 package auth
 
-// Adding and removing a passkey on a signed-in account (spec 02 #10, #11, #13
-// and §10.5; spec 01 §10.7, R-01, D33).
-//
-// A session alone authorizes neither. With only a session, a thief could
-// enrol a passkey of their own and then pass every later passkey step-up with
-// it (keys.bootstrap on an account without keys, writer.revoke,
-// keys.wrap.delete), or strip the owner's passkeys. So:
-//
-//   - add/begin (WB) consumes step-up passkey.add, T = (), and stores its
-//     nonce as the ceremony's add_nonce, in the step-up's own transaction;
-//   - add/finish (WB) verifies the attestation, then dwk_sig under the session
-//     writer's DWK over PasskeyAddMessage(add_nonce, SHA256(clientDataJSON),
-//     SHA256(attestationObject), SHA256(prf_wrap) or 0^32), rebuilt from the
-//     raw posted bytes, and stores the credential and its optional PRF wrap in
-//     one transaction. A TLS terminator that swaps in its own credential, or
-//     a garbage wrap, has no DWK to sign it with (R-01, N-11);
-//   - DELETE consumes step-up passkey.delete, T = (credential_id), and removes
-//     the credential inside that step-up's transaction.
-
 import (
 	"bytes"
 	"context"
@@ -33,9 +14,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
-// AddBegin is #10: step-up passkey.add, then a registration ceremony whose
-// add_nonce is that step-up's nonce. The caller has checked WB; this checks
-// it again inside the step-up (a device proof needs the bound writer).
 func (p *Passkeys) AddBegin(ctx context.Context, session SessionInfo, su *StepUpObject) (string, *protocol.CredentialCreation, error) {
 	if p == nil || p.StepUp == nil {
 		return "", nil, errors.New("auth: Passkeys.StepUp is not configured")
@@ -71,18 +49,15 @@ func (p *Passkeys) AddBegin(ctx context.Context, session SessionInfo, su *StepUp
 	return id, opts, nil
 }
 
-// PasskeyAdd is #11's request, decoded.
 type PasskeyAdd struct {
-	CeremonyID string
-	Credential []byte // the raw PublicKeyCredential JSON
-	// PRFCredentialID and PRFWrap are prf_wrap; both nil when it was null.
+	CeremonyID      string
+	Credential      []byte
 	PRFCredentialID []byte
 	PRFWrap         []byte
 	PRFWrapVersion  int
 	DWKSig          []byte
 }
 
-// AddFinish is #11. It answers the new credential's id.
 func (p *Passkeys) AddFinish(ctx context.Context, session SessionInfo, a PasskeyAdd) ([]byte, error) {
 	if p == nil || p.Pool == nil {
 		return nil, errors.New("auth: Passkeys is not configured")
@@ -111,8 +86,6 @@ func (p *Passkeys) AddFinish(ctx context.Context, session SessionInfo, a Passkey
 		return nil, err
 	}
 	if len(c.AddNonce) != keyproto.NonceSize {
-		// The CHECK makes this unreachable; an add ceremony without its step-up
-		// nonce authorizes nothing.
 		return nil, fmt.Errorf("%w: the add ceremony carries no step-up nonce", ErrPasskeyRejected)
 	}
 	credID := made.Credential.ID
@@ -125,8 +98,6 @@ func (p *Passkeys) AddFinish(ctx context.Context, session SessionInfo, a Passkey
 		return nil, fmt.Errorf("auth: passkey add: begin: %w", err)
 	}
 	defer pgtx.Rollback(ctx, tx)
-	// The session writer, live, under a share lock: a revoke that commits
-	// first makes this fail, one that comes second waits for the credential.
 	var (
 		dwk  []byte
 		live bool
@@ -170,10 +141,6 @@ func (p *Passkeys) AddFinish(ctx context.Context, session SessionInfo, a Passkey
 	return credID, nil
 }
 
-// DeletePasskey is #13: step-up passkey.delete, T = (credential_id), then the
-// removal in that step-up's transaction. A refusal after a good proof
-// (ErrLastPasskey, ErrCredentialUnknown) leaves the nonce usable (spec 02
-// §8.1, AT-SU-8). It reports how many sessions it revoked.
 func (p *Passkeys) DeletePasskey(ctx context.Context, session SessionInfo, credentialID []byte, su *StepUpObject) (int64, error) {
 	if p == nil || p.StepUp == nil {
 		return 0, errors.New("auth: Passkeys.StepUp is not configured")

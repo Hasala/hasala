@@ -1,6 +1,3 @@
-// The engine over an OutlookProvider and FakeGraph: the Gmail engine tests' behaviours, for
-// Graph (docs/decisions/outlook-mailbox.md). Every message is synthetic; ids are short
-// immutable-id-shaped strings.
 import CoreJSON
 import CoreMail
 import CoreMailbox
@@ -19,7 +16,6 @@ import Testing
     #expect(try rig.link.read() == OutlookLinkState(clientState: OutlookServer.clientState))
     let s = await rig.state()
     #expect(s.phase == .scanning && s.address == "synthetic.user@outlook.example" && s.profileHistoryID == nil)
-    // The mailbox was proven before anything was linked; no message was read.
     #expect(rig.graph.graphRequests.map(\.path) == ["/v1.0/me/mailFolders/inbox"])
   }
 
@@ -99,7 +95,6 @@ import Testing
     #expect(d1.payload["provenance"]?["provider"] == .string("outlook"))
     #expect(d1.payload["provenance"]?["message_id"] == .string("AAkALgAA-d1"))
     #expect(d1.payload["amount_minor"] == .string("25000"))
-    // Every Graph request asked for immutable ids; every listing carried the sender filter.
     #expect(rig.graph.graphRequests.allSatisfy { $0.prefer == "IdType=\"ImmutableId\"" })
     #expect(!rig.listRequests.isEmpty)
     for l in rig.listRequests {
@@ -109,7 +104,6 @@ import Testing
       #expect(l.query.contains { $0 == ("$select", "id,receivedDateTime,from,parentFolderId") })
       #expect(!l.query.contains { $0.0 == "$orderby" || $0.0 == "$search" })
     }
-    // The listing named every id's From and time: no metadata request, one $value per message.
     #expect(rig.metadataRequests.isEmpty)
     #expect(rig.rawRequests.count == 4)
     #expect(await rig.state().watermarkMs == t0)
@@ -211,9 +205,8 @@ import Testing
     let before = rig.rawRequests.count
     rig.clock.advance(60_000)
     let r = await rig.engine.runCycle(trigger: .refresh)
-    #expect(r.completed && r.ops == 0 && r.listed == 2)  // the 2-day overlap re-lists e1 and n1
+    #expect(r.completed && r.ops == 0 && r.listed == 2)
     #expect(rig.rawRequests.count == before)
-    // New mail is read on the next cycle (no change detector: every cycle lists).
     rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-d3", amount: "7.00", dateMs: rig.clock.nowMs() - 1_000))
     let next = await rig.engine.runCycle(trigger: .silentPush)
     #expect(next.ops == 1 && rig.rawRequests.count == before + 1)
@@ -268,7 +261,7 @@ import Testing
     rig.graph.fail("/$value", with: [429], retryAfter: 30)
     let r = await rig.engine.runCycle(trigger: .launch)
     #expect(r.haltedOn == .gmail && !r.completed)
-    #expect(rig.clock.nowMs() == t0)  // no 400 ms / 1200 ms retry sleeps
+    #expect(rig.clock.nowMs() == t0)
     let requests = rig.graph.requests.count
     let held = await rig.engine.runCycle(trigger: .retry)
     #expect(held.haltedOn == .gmail && rig.graph.requests.count == requests)
@@ -284,7 +277,7 @@ import Testing
     rig.graph.fail("/$value", with: [429])
     let r = await rig.engine.runCycle(trigger: .launch)
     #expect(r.phase == .active && r.completed)
-    #expect(rig.clock.nowMs() == t0 + 1_000)  // a 429's first wait (`rateLimitBackoffMs`)
+    #expect(rig.clock.nowMs() == t0 + 1_000)
   }
 
   @Test func downloadsNeverExceedThreeAtOnce() async {
@@ -311,7 +304,7 @@ import Testing
     let rig = OutlookRig()
     await rig.connectAndActivate()
     rig.graph.invalidGrant = true
-    rig.clock.advance(2 * 3_600_000)  // the cached access token expired
+    rig.clock.advance(2 * 3_600_000)
     let r = await rig.engine.runCycle(trigger: .refresh)
     #expect(r.haltedOn == .reconnectRequired && r.phase == .reconnectRequired)
     #expect(try rig.keychain.read() == nil)
@@ -382,7 +375,7 @@ import Testing
     rig.clock.advance(86_400_000)
     _ = await rig.engine.runCycle(trigger: .refresh)
     #expect(rig.subscriptionRequests("PATCH").isEmpty)
-    rig.clock.advance(3 * 86_400_000 + 3_600_000)  // 2 d 22 h left
+    rig.clock.advance(3 * 86_400_000 + 3_600_000)
     _ = await rig.engine.runCycle(trigger: .refresh)
     #expect(rig.subscriptionRequests("PATCH").count == 1)
     let s = try #require(rig.graph.subscriptions.first)
@@ -497,7 +490,6 @@ import Testing
     #expect(try rig.keychain.read() == nil && rig.link.read() == nil)
     #expect(await rig.server.deletes == 1)
     #expect(await rig.state().phase == .unlinked)
-    // Microsoft has no revoke endpoint: nothing but token requests went to login.microsoftonline.com.
     #expect(rig.graph.requests.filter { !$0.path.hasPrefix("/v1.0") }.allSatisfy { $0.path.hasSuffix("/oauth2/v2.0/token") })
   }
 
@@ -505,7 +497,6 @@ import Testing
     let rig = OutlookRig()
     await rig.connectAndActivate()
     let mine = try #require(rig.graph.subscriptions.first?.id)
-    // The other iPhone linked and subscribed (its 409 replaced nothing yet in this script).
     rig.graph.addSubscription(
       FakeGraph.Subscription(
         id: "sub-new-holder", resource: "me/messages", changeType: "created",
@@ -637,7 +628,6 @@ import Testing
 }
 
 @Suite struct OutlookSwitchTests {
-  /// What a Gmail lane left in the shared mailbox tables.
   func seedGmailLane(_ rig: OutlookRig) async throws {
     var s = MailboxState()
     s.phase = .active

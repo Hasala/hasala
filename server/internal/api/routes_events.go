@@ -8,24 +8,19 @@ import (
 	"github.com/google/uuid"
 )
 
-// routes_events.go: the account's auth events (spec 02 §10.16, route #68).
-// Owner: WS-3.
 func (s *Server) mountEvents(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/auth/events", s.requireSession(s.userLimited(s.handleAuthEvents)))
 }
 
-// AuthEventWire is one event.
 type AuthEventWire struct {
-	ID           string    `json:"id"` // dec
+	ID           string    `json:"id"`
 	Kind         string    `json:"kind"`
 	At           time.Time `json:"at"`
 	Method       *string   `json:"method"`
 	WriterID     *string   `json:"writer_id"`
-	CredentialID *string   `json:"credential_id"` // b64url
+	CredentialID *string   `json:"credential_id"`
 }
 
-// AuthEventsResponse is #68's answer: newest first, at most 200, at most 90
-// days.
 type AuthEventsResponse struct {
 	Events []AuthEventWire `json:"events"`
 }

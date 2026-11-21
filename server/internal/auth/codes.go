@@ -1,12 +1,5 @@
 package auth
 
-// Email codes (spec 01 §10.14, spec 02 §10.11): six digits, ten minutes, five
-// tries, bound by a MAC to their purpose, their id and the address's tag. A
-// code is never stored (only HMAC(K_code, …), and K_code is not in the
-// database), never logged, never in a URL, and never authorizes anything on
-// its own: every route that consumes one except signup/verify and
-// email/verify/finish also needs a strong factor.
-
 import (
 	"context"
 	"crypto/rand"
@@ -24,7 +17,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtx"
 )
 
-// Code rules.
 const (
 	CodeTTL             = 10 * time.Minute
 	codeMaxAttempts     = 5
@@ -36,7 +28,6 @@ const (
 	codeSendWindow      = 4 * codeSendDeadline
 )
 
-// Code purposes and ceremony kinds (the closed sets of email_codes).
 const (
 	PurposeSignup         = "signup"
 	PurposeEmailVerify    = "email_verify"
@@ -53,29 +44,21 @@ const (
 	CeremonyRecovery      = "recovery"
 )
 
-// Errors every code route shares.
 var (
-	// ErrCodeRejected is the one answer to every code failure (403
-	// code_rejected): wrong, expired, used, burned, never sent, or for
-	// another purpose, ceremony or address.
 	ErrCodeRejected = errors.New("auth: the code did not verify")
-	// ErrRateLimited is a Postgres-backed limiter or pause (429
-	// rate_limited). It never depends on whether an account exists.
-	ErrRateLimited = errors.New("auth: rate limited")
+	ErrRateLimited  = errors.New("auth: rate limited")
 )
 
-// IssuedCode is a code minted inside a request's transaction. Code is held in
-// memory only and handed to the mailer after commit.
 type IssuedCode struct {
 	ID      uuid.UUID
 	Purpose string
-	To      string // email_norm
+	To      string
 	Tag     []byte
 	UserID  *uuid.UUID
 	Code    string
-	Send    bool   // false: the row exists for the uniform answer and can never verify
-	Notice  bool   // send the "already has an account" notice instead of the code
-	Name    string // the greeting's display name, when the purpose greets by name
+	Send    bool
+	Notice  bool
+	Name    string
 }
 
 func newCode() (string, error) {
@@ -86,9 +69,6 @@ func newCode() (string, error) {
 	return fmt.Sprintf("%06d", n.Int64()), nil
 }
 
-// issueCodeTx is spec 02 §10.11's issue: the per-address pause and hourly
-// count first (except for C8's step-up codes, whose budget is per account),
-// then a fresh code whose MAC alone is stored.
 func issueCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.Time, purpose, emailNorm string,
 	userID *uuid.UUID, ceremonyKind, ceremonyID string, send bool) (IssuedCode, error) {
 	return insertCodeTx(ctx, tx, keys, now, purpose, emailNorm, userID, ceremonyKind, ceremonyID, send,
@@ -143,7 +123,6 @@ func insertCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.
 	return IssuedCode{ID: id, Purpose: purpose, To: emailNorm, Tag: tag, UserID: userID, Code: code, Send: send}, nil
 }
 
-// codeCheck names the code a route expects.
 type codeCheck struct {
 	CodeID       uuid.UUID
 	Purpose      string
@@ -152,8 +131,6 @@ type codeCheck struct {
 	Submitted    string
 }
 
-// codeFailure is a wrong guess at a usable code: committed alone, after the
-// consuming route's transaction rolled back.
 type codeFailure struct {
 	codeID       uuid.UUID
 	purpose      string
@@ -161,10 +138,6 @@ type codeFailure struct {
 	tag          []byte
 }
 
-// apply follows a wrong guess whose attempt limitCodeVerify already counted:
-// once the code has used all five, it burns the code and (unless it is C8's)
-// pauses the address's purpose for 15 minutes. It reports whether the code
-// burned.
 func (f *codeFailure) apply(ctx context.Context, q queryExecer, now time.Time) (bool, error) {
 	var attempts int
 	if err := q.QueryRow(ctx,
@@ -187,12 +160,6 @@ func (f *codeFailure) apply(ctx context.Context, q queryExecer, now time.Time) (
 	return true, nil
 }
 
-// limitCodeVerify runs before every code check, in one transaction of its own:
-// one of the code's five attempts, taken before the guess is compared so that
-// concurrent guesses cannot share one, then the code-verify-email counter (20
-// per 15-minute window for the code's address, purpose and ceremony kind). A
-// code with no attempt left is refused with ErrCodeRejected and counts nothing.
-// A check over the budget rolls back: it counts nothing and keeps the attempt.
 func limitCodeVerify(ctx context.Context, pool *pgxpool.Pool, now time.Time, codeID uuid.UUID) error {
 	tx, err := pgtx.BeginReadCommitted(ctx, pool)
 	if err != nil {
@@ -230,10 +197,6 @@ func codeVerifyKey(purpose, kind string, tag []byte) []byte {
 	return sum[:]
 }
 
-// verifyCodeTx is spec 02 §10.11's verify inside the consuming route's
-// transaction. On success the code's used_at is set in tx. A wrong guess at
-// a usable code returns ErrCodeRejected and a failure to commit alone after
-// rollback; every other refusal returns ErrCodeRejected and no failure.
 func verifyCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.Time, c codeCheck) (*codeFailure, error) {
 	var (
 		purpose, kind, cid string
@@ -260,8 +223,6 @@ func verifyCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.
 	case !expires.After(now):
 		return nil, fmt.Errorf("%w: expired", ErrCodeRejected)
 	}
-	// A guess that is not six digits is a wrong guess at a usable code, like
-	// any other: it counts against the code, and nothing else is spent.
 	if !sent || !sixDigits(c.Submitted) || !keys.CodeMatches(stored, purpose, c.CodeID, tag, c.Submitted) {
 		return &codeFailure{codeID: c.CodeID, purpose: purpose, ceremonyKind: kind, tag: tag},
 			fmt.Errorf("%w: wrong code", ErrCodeRejected)
@@ -284,8 +245,6 @@ func sixDigits(s string) bool {
 	return true
 }
 
-// bumpCounter increments a fixed-window rate counter before the work it
-// guards and answers the window's new count (spec 02 §16.2).
 func bumpCounter(ctx context.Context, q queryExecer, scope string, key []byte, window time.Duration, now time.Time) (int, error) {
 	start := now.UTC().Truncate(window)
 	var n int

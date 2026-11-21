@@ -18,10 +18,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// ---------------------------------------------------------------------------
-// C9: a new iPhone approved by a signed-in one
-// ---------------------------------------------------------------------------
-
 func TestC9ResetIsApprovedByASignedInIPhone(t *testing.T) {
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
@@ -29,15 +25,12 @@ func TestC9ResetIsApprovedByASignedInIPhone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A second session bound to the approving iPhone's writer: only the
-	// session the approval comes from survives (spec 02 §10.9).
 	sibling, err := m.loginPassword(m.s, m.device)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.fake.Reset()
 
-	// N: begin and verify with the emailed code.
 	id, err := f.acct.ResetBegin(bgctx, m.addr)
 	if err != nil {
 		t.Fatal(err)
@@ -50,8 +43,6 @@ func TestC9ResetIsApprovedByASignedInIPhone(t *testing.T) {
 		t.Fatalf("%+v", v)
 	}
 	ekPub, ek, _ := ed25519.GenerateKey(rand.Reader)
-	// The request wakes every live writer of the account, so one can approve
-	// (spec 02 §12.5).
 	if wake, err := f.acct.ResetRequest(bgctx, id, ekPub); err != nil || wake.UserID != m.user.UserID || wake.Except != "" {
 		t.Fatalf("reset request: %+v %v", wake, err)
 	}
@@ -67,7 +58,6 @@ func TestC9ResetIsApprovedByASignedInIPhone(t *testing.T) {
 		t.Fatalf("finish before approval: %v", err)
 	}
 
-	// A: the pending list, then the DAK approval.
 	pending, err := f.acct.ResetPending(bgctx, m.user.UserID)
 	if err != nil || len(pending) != 1 || pending[0].ResetID != id || !sameBytes(pending[0].EKPub, ekPub) {
 		t.Fatalf("pending %+v %v", pending, err)
@@ -87,7 +77,6 @@ func TestC9ResetIsApprovedByASignedInIPhone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// N: finish.
 	if _, err := f.acct.ResetFinish(bgctx, id, newS, finishSig(m.s)); !errors.Is(err, ErrResetRefused) {
 		t.Fatalf("ek_sig over another S: %v", err)
 	}
@@ -124,8 +113,6 @@ func TestC9ResetIsApprovedByASignedInIPhone(t *testing.T) {
 	}
 }
 
-// #49 answers the same for every valid address and mails only an eligible
-// account.
 func TestC9BeginIsUniform(t *testing.T) {
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
@@ -149,10 +136,6 @@ func TestC9BeginIsUniform(t *testing.T) {
 		t.Fatalf("a code for an address with no account: %v", err)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// C4: access recovery with an email code and the phrase
-// ---------------------------------------------------------------------------
 
 func TestRecoveryWithAPasswordRegistersANewDevice(t *testing.T) {
 	f := newAcctFixture(t)
@@ -189,11 +172,9 @@ func TestRecoveryWithAPasswordRegistersANewDevice(t *testing.T) {
 	if _, err := f.acct.RecoverFinish(bgctx, bad); !errors.Is(err, ErrRecoveryRefused) {
 		t.Fatalf("a bad rk_sig: %v", err)
 	}
-	// The failed attempt spent the ceremony.
 	if _, err := f.acct.RecoverFinish(bgctx, req); !errors.Is(err, ErrRecoveryRefused) {
 		t.Fatalf("a claimed ceremony: %v", err)
 	}
-	// Again, properly.
 	f.clock.advance(time.Minute)
 	b, err = f.acct.RecoverBegin(bgctx, cryptoref.RKPub(m.acct.E))
 	if err != nil {
@@ -281,15 +262,11 @@ func mustB64URL(t *testing.T, s string) []byte {
 	return b
 }
 
-// ---------------------------------------------------------------------------
-// Email change and re-verification
-// ---------------------------------------------------------------------------
-
 func TestEmailChangeNeedsAStepUpAndCodesToBothAddresses(t *testing.T) {
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	next := newAddr()
-	sNew := f.stretch(next, m.pw) // the same password, re-salted for the new address
+	sNew := f.stretch(next, m.pw)
 	addrHash := sha([]byte(next))
 	if _, err := f.acct.EmailChangeBegin(bgctx, m.info(), next, nil, nil); !errors.Is(err, ErrBadRequest) {
 		t.Fatalf("a password account without verifier_new: %v", err)
@@ -322,7 +299,6 @@ func TestEmailChangeNeedsAStepUpAndCodesToBothAddresses(t *testing.T) {
 	if err := f.pool.QueryRow(bgctx, `SELECT email_norm FROM users WHERE id = $1`, m.user.UserID).Scan(&email); err != nil || email != next {
 		t.Fatalf("address %q", email)
 	}
-	// The password was re-salted: S for the new address signs in.
 	m.addr = next
 	if _, err := m.loginPassword(sNew, nil); err != nil {
 		t.Fatalf("the re-salted password: %v", err)
@@ -404,8 +380,6 @@ func TestEmailChangeFinishDoesNotUndoANewerPasswordState(t *testing.T) {
 	}
 }
 
-// A new address that already has an account gets a notice, the answer is
-// the same, and the change can never finish.
 func TestEmailChangeToAnAddressInUseNeverFinishes(t *testing.T) {
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
@@ -443,16 +417,10 @@ func TestReverificationClearsTheBounceAndTheOperatorsRequest(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Freeze
-// ---------------------------------------------------------------------------
-
 func TestTheFreezeLinkFreezesAndOnlyAnOlderFactorUnfreezes(t *testing.T) {
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
-	// An intruder signs in with the password from a new iPhone; the alert
-	// carries the freeze link.
 	f.fake.Reset()
 	intruder, err := m.loginPassword(m.s, nil)
 	if err != nil {
@@ -471,14 +439,11 @@ func TestTheFreezeLinkFreezesAndOnlyAnOlderFactorUnfreezes(t *testing.T) {
 	if _, err := f.acct.FreezeByLink(bgctx, tok); err != nil {
 		t.Fatal("a used token is still a silent success")
 	}
-	// Sign-ins are restricted now.
 	in, err := m.loginPassword(m.s, m.device)
 	if err != nil || !in.Restricted {
 		t.Fatalf("a sign-in into a frozen account: %+v %v", in, err)
 	}
 	m.token = in.Session.Token
-	// The device (registered before the trigger) and the password (set before
-	// it) are older than the event: the unfreeze works.
 	if _, err := f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s)); err != nil {
 		t.Fatal(err)
 	}
@@ -501,8 +466,6 @@ func TestANewPasswordCannotUnfreeze(t *testing.T) {
 		t.Fatal("the in-app freeze kept its own session")
 	}
 	f.clock.advance(time.Minute)
-	// A password set after the freeze (say, by the operator's tools) is not
-	// older than the trigger.
 	in, _ := m.loginPassword(m.s, m.device)
 	m.token = in.Session.Token
 	if _, err := f.pool.Exec(bgctx, `UPDATE users SET password_set_at = $2 WHERE id = $1`, m.user.UserID, f.clock.now()); err != nil {
@@ -513,8 +476,6 @@ func TestANewPasswordCannotUnfreeze(t *testing.T) {
 	}
 }
 
-// Only the operator lifts an operator freeze; a holder's freeze on it is
-// remembered and handed back by the console's unfreeze (review 2 F-03).
 func TestOperatorFreezeOutranksTheHolder(t *testing.T) {
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
@@ -533,7 +494,6 @@ func TestOperatorFreezeOutranksTheHolder(t *testing.T) {
 	if _, err := f.acct.Unfreeze(bgctx, i, &StepUpObject{Nonce: make([]byte, 32)}); !errors.Is(err, ErrAccountFrozen) {
 		t.Fatalf("the holder's unfreeze of an operator freeze: %v", err)
 	}
-	// A holder freeze laid on it (the device freeze) keeps the operator's.
 	nonce, _, err := f.acct.DeviceFreezeChallenge(bgctx, m.device.WriterID)
 	if err != nil {
 		t.Fatal(err)
@@ -550,7 +510,6 @@ func TestOperatorFreezeOutranksTheHolder(t *testing.T) {
 	if by != "operator" || !holderToo {
 		t.Fatalf("frozen_by %s, holder_also_froze %v", by, holderToo)
 	}
-	// The console's unfreeze hands it back to the holder.
 	tx, _ = f.pool.Begin(bgctx)
 	unfrozen, err := OperatorUnfreeze(bgctx, tx, m.user.UserID, ScopeOperatorOnly, f.clock.now(), f.mailer)
 	if err != nil || unfrozen {
@@ -573,22 +532,16 @@ func TestOperatorFreezeOutranksTheHolder(t *testing.T) {
 	_ = tx.Commit(bgctx)
 }
 
-// D42: an enrolled iPhone whose session something else revoked freezes the
-// account with its DAK, dated back to that sign-out, so the factors created
-// by the event cannot unfreeze.
 func TestADeviceFreezeIsDatedBackToTheSignOut(t *testing.T) {
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
-	// A thief recovers the account (new password, new writer): the owner's
-	// iPhone is signed out.
 	signedOut := f.clock.now()
 	if _, err := f.pool.Exec(bgctx, `UPDATE sessions SET revoked_at = $2, revoked_reason = 'others' WHERE token_hash = $1`,
 		SessionHash(m.token), signedOut); err != nil {
 		t.Fatal(err)
 	}
 	f.clock.advance(2 * time.Hour)
-	// Uniform answers: any well-formed writer id gets a nonce.
 	if _, _, err := f.acct.DeviceFreezeChallenge(bgctx, "ios-"+strings.Repeat("0", 8)+"-0000-4000-8000-000000000000"); err != nil {
 		t.Fatal(err)
 	}
@@ -627,10 +580,6 @@ func sha(b []byte) []byte {
 	return h[:]
 }
 
-// ---------------------------------------------------------------------------
-// Passkey sign-in binding, phrase view, sweeps
-// ---------------------------------------------------------------------------
-
 func TestPasskeySignInBindsADeviceAndRecordsOnlyUnboundSignIns(t *testing.T) {
 	f := newAcctFixture(t)
 	addr := newAddr()
@@ -638,7 +587,6 @@ func TestPasskeySignInBindsADeviceAndRecordsOnlyUnboundSignIns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Enrol a writer directly (the AAK path is writer_test.go's subject).
 	d := authtest.NewDevice(t)
 	if _, err := f.pool.Exec(bgctx, `INSERT INTO writers (user_id, writer_id, alg, pubkey, dak_pubkey, registered_at) VALUES ($1, $2, 'ed25519', $3, $4, now())`,
 		r.UserID, d.WriterID, d.DWKPub(), d.DAKPub()); err != nil {
@@ -705,7 +653,6 @@ func TestThePhraseBoxIsReleasedOnlyToAPasskeyWithAWrap(t *testing.T) {
 	if k.count(`SELECT count(*) FROM auth_events WHERE kind = 'phrase_viewed'`) != 1 {
 		t.Fatal("no phrase_viewed event")
 	}
-	// A credential with no PRF wrap cannot open it.
 	if _, err := k.pool.Exec(bgctx, `DELETE FROM account_key_wraps`); err != nil {
 		t.Fatal(err)
 	}

@@ -6,22 +6,6 @@ import CoreTemplate
 import CoreTime
 import Foundation
 
-/// One mail provider's lane for one bound account (Gmail or Outlook): the MailboxEngine
-/// wired to its platform halves (Keychain, ASWebAuthenticationSession, BGTaskScheduler) and
-/// to the account's ports. The account has at most one link at a time; `AccountRuntime`
-/// keeps a lane per configured provider and runs the linked one.
-///
-/// The ports come from the account runtime (spec 04 §3): `persistence` (CoreStore's
-/// mailbox tables in ledger.sqlite, shared by both lanes), `ledger` (`RuntimeMailboxLedger`
-/// over the account's sync engine, observer and outbox), `server` (`HTTPMailboxServer` over
-/// the session transport) and `stepUp` (`LiveStepUp`). The refresh token is the account's
-/// `SecretItem.mailRefresh(provider:)` in `Secrets` (Outlook's clientState and subscription
-/// id are `outlookClientState`), so every account wipe takes them.
-///
-/// `WorkCoordinator` owns the triggers (§3 "one entry point"): it calls
-/// `cycle(trigger:deadlineMs:)` as its mailbox stage. Push settings are the server's (`GET
-/// /meta`); with none, the watch or subscription is skipped and new mail is caught by the
-/// foreground, background-refresh and silent-push runs.
 nonisolated final class MailboxLane: Sendable {
   let provider: MailboxProvider
   let engine: MailboxEngine
@@ -30,8 +14,6 @@ nonisolated final class MailboxLane: Sendable {
   let events = LaneEvents()
   let work = LaneWork()
 
-  /// nil when the build carries no client for `provider` (the `unset` placeholders, spec 06
-  /// §15.2): that provider is then not offered.
   init?(
     provider: MailboxProvider, build: BuildInfo, secrets: Secrets, userID: UserID, persistence: any MailboxPersistence,
     ledger: any MailboxLedger, server: any MailboxServer, stepUp: any MailboxStepUp, categorizer: any IngestCategorizer,
@@ -56,7 +38,6 @@ nonisolated final class MailboxLane: Sendable {
     tokens = RefreshingMailTokenProvider(
       oauth: mail.oauth, store: SecretsMailRefreshTokenStore(secrets: secrets, userID: userID, provider: provider.providerID),
       clock: clock)
-    // No build topic: the server's `meta` names the push settings (nil skips the watch).
     engine = MailboxEngine(
       config: MailboxEngineConfig(grantID: userID.string, buildTopic: nil), provider: mail, tokens: tokens,
       store: persistence, ledger: ledger, server: server, stepUp: stepUp, categorizer: categorizer,
@@ -70,20 +51,8 @@ nonisolated final class MailboxLane: Sendable {
     await engine.setCommitHandler { events.send(.committed) }
   }
 
-  /// Whether this iPhone keeps a refresh token for the provider (nil: unreadable now).
   func hasGrant() async -> Bool? { await tokens.hasRefreshToken() }
 
-  /// Bank alerts › Connect (after the window choice sheet, spec 04 §7.7 step 1).
-  /// `replacing`: the mailbox tables hold the other provider's lane, cleared only once this
-  /// link is made.
-  ///
-  /// An account that left this iPhone (deleted, removed, erased) may still be ending its
-  /// grant at the provider (`MailGrantEnds`). That ending acts on the provider account and
-  /// this app's client id, not on one Hasala account, so this connect waits for it first:
-  /// its revoke and `users.stop` must reach Google before this link's grant and watch exist.
-  /// The wait is bounded, and every ending is bounded inside it (`MailGrantEnds.http`), so it
-  /// ends first in practice. If it hasn't, the connect is refused ("Try again"): signing in
-  /// regardless could let that ending reach Google after this link and end its grant.
   func connect(
     backfillDays: Int, pastMail: MailboxPastMail = .read, replacing: Bool = false, retiring: MailboxRetirePlan? = nil,
     confirm: MailboxSwitchConfirm? = nil
@@ -93,14 +62,11 @@ nonisolated final class MailboxLane: Sendable {
       presenter: presenter, backfillDays: backfillDays, pastMail: pastMail, replacing: replacing, retiring: retiring,
       confirm: confirm)
     if case .connected = r {
-      // The scan itself runs from `firstScan()` (foreground) or the processing task.
       BackgroundScheduler.shared.scheduleProcessing()
     }
     return r
   }
 
-  /// What the first scan's foreground runs authored, for "264 transactions, sorted." and
-  /// where the lane stopped (`.active` when the whole window is in).
   struct FirstScanTotals: Sendable, Equatable {
     var ops = 0
     var byRules = 0
@@ -133,18 +99,11 @@ nonisolated final class MailboxLane: Sendable {
     case ended(FirstScanTotals)
   }
 
-  /// The first scan (Setup 2 of 4, Paper FR2-0): runs cycles until the window is listed and
-  /// authored (`MailboxEngine.runFirstScan`, which rides out Gmail's rate limit and a dropped
-  /// connection), yielding their progress, then the totals. There is no cards step: the scan
-  /// authors what it finds. Ending the stream (setup finished, the sheet closed) does not stop
-  /// the import: it runs to the end here, and whatever is left after 50 cycles runs in
-  /// `app.hasala.ios.processing` and the next foreground runs (§7.7 step 3).
   func firstScan() -> AsyncStream<FirstScanEvent> {
     let engine = self.engine
     let events = self.events
     let work = self.work
     return AsyncStream { continuation in
-      // Not cancelled with the stream: the import outlives the setup screens.
       let started = work.start {
         await self.relayEvents()
         let id = events.add { if case .progress(let p) = $0 { continuation.yield(.progress(p)) } }
@@ -198,12 +157,10 @@ nonisolated final class MailboxLane: Sendable {
 
   static let mailDefinitions: [TemplateDefinition] = mailTemplates.map(\.definition)
 
-  /// The sender domains Setup's bank step trusts for a bank (03c §7.2), e.g. "dib" → dib.ae.
   static func senderDomains(bank: String) -> [String] {
     BankDomains.templateDomains(bank: bank, templates: mailDefinitions)
   }
 
-  /// Bank alerts (spec 04 §7.10).
   func status() async -> MailboxStatus { await engine.status() }
   func retirePlan() async -> MailboxRetirePlan? { await engine.retirePlan() }
   func disconnect(removing plan: MailboxRetirePlan?) async -> MailboxDisconnectOutcome {
@@ -212,7 +169,6 @@ nonisolated final class MailboxLane: Sendable {
   func retire(_ plan: MailboxRetirePlan) async -> MailboxRetireOutcome { await engine.retire(plan) }
   func retryHeld(_ plan: MailboxRetirePlan) async -> MailboxHeldRetryOutcome { await engine.retryHeld(plan) }
   func dropHeld(_ plan: MailboxRetirePlan) async { await engine.dropHeld(plan) }
-  /// The other provider's link replaced this one: end this provider's grant here.
   func endGrant() async {
     _ = work.takeCut()
     await engine.endGrant()
@@ -302,15 +258,10 @@ nonisolated final class LaneEvents: @unchecked Sendable {
   }
 }
 
-// MARK: Leaving the account
-
 extension MailboxProvider {
-  /// The core's provider id (the same strings).
   nonisolated var providerID: MailProviderID { self == .gmail ? .gmail : .outlook }
 }
 
-/// What this iPhone holds of the account's mailbox grants, read before the account's secrets
-/// are wiped: each provider's refresh token, and Outlook's subscription id.
 nonisolated struct HeldMailGrants: Sendable, Equatable {
   struct Grant: Sendable, Equatable {
     var provider: MailboxProvider
@@ -320,31 +271,13 @@ nonisolated struct HeldMailGrants: Sendable, Equatable {
   var grants: [Grant]
 }
 
-/// The grant endings of the accounts that left this iPhone (deleted, removed, erased, wiped),
-/// run one after another, and what a new connect waits for.
-///
-/// An ending is not scoped to the Hasala account that left: Google's revoke ends this app's
-/// whole grant for the Google account (every Hasala account shares the iOS client id), and
-/// `users.stop` ends the mailbox's watch for the whole project. Run as a detached task, it
-/// could reach Google after the next account on this iPhone linked the same mailbox, and end
-/// that account's grant and watch too: its first scan then stops on `reconnect_required` and
-/// nothing is imported. So the departure waits for its ending (bounded), and
-/// `MailboxLane.connect` waits for any still running.
 nonisolated final class MailGrantEnds: @unchecked Sendable {
   static let shared = MailGrantEnds()
-  /// How long a departure waits for its grant ending before it carries on regardless.
   static let departureWait: Duration = .seconds(10)
-  /// How long a connect waits for earlier endings; past it the connect is refused.
   static let connectWait: Duration = .seconds(20)
-  /// The longest one request of an ending may take, start to end. `endGrant` sends at most
-  /// five, one after another (Gmail's refresh, `users.stop` and revoke; Outlook's refresh
-  /// and subscription delete), so one ending is over inside `connectWait`.
   static let requestLimit: TimeInterval = 3
-  /// The most requests one ending sends.
   static let requestsPerEnding = 5
 
-  /// The HTTP every ending uses: the shared ephemeral configuration, with each request
-  /// limited from start to end (`timeoutIntervalForResource`), not only between bytes.
   nonisolated static func http() -> URLSessionHTTPExchange {
     let c = URLSessionConfiguration.ephemeral
     c.httpCookieStorage = nil
@@ -361,7 +294,6 @@ nonisolated final class MailGrantEnds: @unchecked Sendable {
   private let lock = NSLock()
   private var last: Task<Void, Never>?
 
-  /// Runs `end` once every ending handed in before it is done.
   func enqueue(_ end: @escaping @Sendable () async -> Void) {
     lock.withLock {
       let before = last
@@ -377,15 +309,10 @@ nonisolated final class MailGrantEnds: @unchecked Sendable {
     _ = await Task { await self.settled(within: limit) }.value
   }
 
-  /// Before a connect signs in: nil once every earlier ending is done (waiting at most
-  /// `limit`), else the refusal ("Couldn't connect … Try again."). An ending still running
-  /// could reach the provider after the new link and end its grant and watch.
   func connectGate(within limit: Duration = MailGrantEnds.connectWait) async -> ConnectResult? {
     await settled(within: limit) ? nil : .failed(.google)
   }
 
-  /// Waits until every ending handed in so far is done, at most `limit`. False when the
-  /// limit came first (the ending carries on).
   @discardableResult
   func settled(within limit: Duration) async -> Bool {
     guard let pending = lock.withLock({ last }) else { return true }
@@ -399,8 +326,6 @@ nonisolated final class MailGrantEnds: @unchecked Sendable {
 }
 
 extension MailboxLane {
-  /// The account's mailbox grants on this iPhone; nil when there is none (another iPhone
-  /// holds the link) or none can be read.
   nonisolated static func heldGrant(secrets: Secrets, userID: UserID) -> HeldMailGrants? {
     var grants: [HeldMailGrants.Grant] = []
     for p in MailboxProvider.allCases {
@@ -423,15 +348,6 @@ extension MailboxLane {
     AccountWipe.wipe(env, userID: userID, writerID: writerID)
   }
 
-  /// Ends this iPhone's grants as the account leaves it (spec 04 §4.7 rows 2–4), best effort,
-  /// and nothing for a provider the build has no client for. It runs before the local wipe:
-  /// a kill during it leaves the token here, and the next departure ends it.
-  ///
-  /// - Gmail: `users.stop` first when the account itself is going (`stopWatch`), then the
-  ///   refresh token is revoked at Google.
-  /// - Outlook: Microsoft has no revoke endpoint; this iPhone's Graph subscription is deleted
-  ///   when the account is going, and the tokens are simply forgotten (consent is ended at
-  ///   account.live.com/consent/Manage).
   nonisolated static func endGrant(_ held: HeldMailGrants, build: BuildInfo, stopWatch: Bool) async {
     let http = MailGrantEnds.http()
     for g in held.grants {

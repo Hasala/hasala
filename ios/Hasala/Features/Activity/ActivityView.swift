@@ -6,12 +6,6 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// Activity · Overview (Paper 1QG-0, 15M3-0): the register. The title with Home's period pill and
-/// "26 transactions this month" (another period: the tinted pill and "Back to this month", the
-/// count under History), the filter chips, then To review, Coming up and History by
-/// day. Every row opens the transaction sheet; a Coming up row pushes its bill. A category
-/// filter turns it into Activity · Filtered (7LT-0): the category's chip, its pace, and its
-/// rows in one card.
 struct ActivityView: View {
   @Bindable var app: AppModel
   let model: any ActivityModel
@@ -33,15 +27,11 @@ struct ActivityView: View {
     .onChange(of: ActivityRequests.shared.pending?.filter) { takeRequest() }
   }
 
-  /// A filter asked for from elsewhere (Search's rows, a Debug launch).
   private func takeRequest() {
     if let filter = ActivityRequests.shared.take(for: app) { model.apply(filter) }
   }
 }
 
-/// What sits under the large title: the period row and the chips (overview), or the period
-/// pill and the category's own chip (filtered). The chips run to the screen's edge and scroll
-/// sideways from the 20 inset.
 struct ActivityFilterBar: View {
   let model: any ActivityModel
 
@@ -110,7 +100,6 @@ struct ActivityFilterBar: View {
     }
   }
 
-  /// All · To review (accent count) · Bills (plain count) · Transfers · Income · Archived.
   private var chips: some View {
     ScrollView(.horizontal) {
       HStack(spacing: HSpacing.chipGap) {
@@ -122,15 +111,12 @@ struct ActivityFilterBar: View {
         }
       }
       .padding(.horizontal, HSpacing.insetPage)
-      // The chips' 44 hit areas reach past their 40 drawing; keep them inside the scroller.
       .padding(.vertical, 2)
     }
     .scrollIndicators(.hidden)
   }
 }
 
-/// The ink chip of an applied category filter: its bucket dot, the name and a clear ×
-/// (Paper "Active filters": 40 tall, 14 / 12, gap 7).
 struct ActiveFilterChip: View {
   let title: String
   var hue: Hue?
@@ -175,8 +161,6 @@ struct ActiveFilterChip: View {
   }
 }
 
-/// The sections of Activity, shared by the overview and the filtered screen (and Plan's
-/// category screen, which passes `showsChips: false` and a category filter).
 struct ActivityContent: View {
   let model: any ActivityModel
   var showsChips = true
@@ -197,8 +181,6 @@ struct ActivityContent: View {
     }
     .onChange(of: snap.filter) { openRow = nil }
   }
-
-  // MARK: Overview
 
   @ViewBuilder private var overview: some View {
     if let review = snap.review {
@@ -276,7 +258,6 @@ struct ActivityContent: View {
     (Array(rows.prefix(limit)), max(0, rows.count - limit))
   }
 
-  /// "about 1 minute": about ten seconds a card.
   static func minutes(_ n: Int) -> String {
     let m = max(1, (n + 5) / 6)
     if m > 60 {
@@ -285,8 +266,6 @@ struct ActivityContent: View {
     }
     return "about \(m) minute\(m == 1 ? "" : "s")"
   }
-
-  // MARK: Filtered
 
   private func filtered(_ summary: FilterSummary) -> some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -302,9 +281,6 @@ struct ActivityContent: View {
     .padding(.horizontal, HSpacing.insetPage)
   }
 
-  // MARK: Parts
-
-  /// A section title (22/28 bold) with its quiet fact or link on the same baseline.
   private func header<Trailing: View>(_ title: String, @ViewBuilder trailing: () -> Trailing) -> some View {
     ReflowingRow(alignment: .firstTextBaseline) {
       Text(title).hType(.section).foregroundStyle(HColor.textPrimary).accessibilityAddTraits(.isHeader)
@@ -313,7 +289,6 @@ struct ActivityContent: View {
     }
   }
 
-  /// A white card of transaction rows, 64 tall, divided at 68. A row is one button.
   private func rows(_ rows: [MiniTxnRow]) -> some View {
     HListCard {
       ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
@@ -325,7 +300,6 @@ struct ActivityContent: View {
             TransactionRow(row, hidden: model.hidden).contentShape(Rectangle())
           }
           .buttonStyle(HRowPressStyle())
-          // One element per row: the amount must not be its own tiny target.
           .accessibilityElement(children: .combine)
           .accessibilityIdentifier("txn.\(row.id)")
         }
@@ -346,7 +320,6 @@ struct ActivityContent: View {
   }
 }
 
-/// "TODAY ……… 91.50": a day's overline with its total, 8 above its card.
 private struct DayHeader: View {
   let day: DayGroup
   let hidden: Bool
@@ -356,14 +329,11 @@ private struct DayHeader: View {
       MoneyText(day.total, figure: HFigure.badge.weight(.semibold), hidden: hidden, hiddenGlyphs: 3,
                 color: HColor.textSecondary, sign: day.total.isNegative ? .income : .none)
     }
-    // One heading per day, not a small static figure on its own.
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(.isHeader)
   }
 }
 
-/// An empty list (Paper page 15 §04, Proposed): one line saying what will appear and when.
-/// The section header stays; no illustration inside a list card.
 private struct EmptyListCard: View {
   let kind: TxnFilter.Kind
   let query: String
@@ -451,9 +421,6 @@ struct ToReviewRow: View {
   }
 }
 
-/// The summary card of a category filter (Paper "Activity · Filtered"): the count, the total
-/// at large size, the category's pace bar with today's tick, and its share of the budget
-/// beside the verdict. The bar fills once each time the card appears.
 struct FilterSummaryCard: View {
   let summary: FilterSummary
   let hidden: Bool
@@ -486,8 +453,6 @@ struct FilterSummaryCard: View {
   }
 }
 
-/// "● Over pace": a 7 dot in the verdict's fill and the words 13/18 600 in its colour
-/// (Paper "StatusDot"; colour never alone).
 struct StatusDotLine: View {
   let words: String
   let verdict: Verdict
@@ -503,9 +468,6 @@ struct StatusDotLine: View {
   }
 }
 
-/// "Export" / "⤓ Export these 5": shares the rows as a CSV file (spec 04 §16.2 T5). The
-/// plain form is the section's link (17/24 medium); the prominent one is the white Large pill
-/// with the download glyph.
 struct ExportLink: View {
   let rows: [ExportRow]
   let title: String

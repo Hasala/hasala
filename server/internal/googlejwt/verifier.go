@@ -1,23 +1,3 @@
-// Package googlejwt verifies Google-signed JWTs: the OIDC token Google Pub/Sub
-// attaches to every push to POST /hooks/gmail/pubsub, and the Google ID token
-// the app sends when it links a mailbox (spec 02 §13.6). It never signs anyone
-// in and never holds a Google credential.
-//
-// It is ledgerd's auth/idp.go with the sign-in parts removed (spec 02 §2.3):
-// the JWKS cache (keyset.go: a 1 minute refresh floor, a 1 hour stale ceiling,
-// a single-flight fetch detached from the caller, a 256 KiB document cap and a
-// 10 s fetch timeout), the forbidden-header list and the 16 KiB token cap are
-// kept as they were reviewed. What changed: Google only, RS256 only, one exact
-// audience per Verifier, and the claims a caller needs (azp, email,
-// email_verified) are returned from the authenticated payload.
-//
-// # Verification: library, not hand-rolled
-//
-// Signature verification is delegated to github.com/coreos/go-oidc/v3 over
-// go-jose. The checks this package performs on the parsed but not yet
-// verified payload exist only to name a rejection and to refuse obvious junk
-// without spending a JWKS fetch; every decision is re-made on the payload
-// go-oidc authenticated.
 package googlejwt
 
 import (
@@ -35,21 +15,14 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 )
 
-// Google's issuer and JWKS location. Google documents its `iss` as EITHER the
-// URL form or the bare host, and issues both; go-oidc carries the same
-// carve-out. A Verifier with no Issuers configured accepts exactly these two.
 const (
 	GoogleIssuer         = "https://accounts.google.com"
 	GoogleIssuerNoScheme = "accounts.google.com"
 	GoogleJWKSURL        = "https://www.googleapis.com/oauth2/v3/certs"
 )
 
-// DefaultLeeway is the clock-skew allowance for nbf and iat.
 const DefaultLeeway = 5 * time.Minute
 
-// Errors. Every rejection wraps ErrTokenRejected; ErrKeySetUnavailable is
-// deliberately NOT one of them, so "Google's key set is down" stays
-// distinguishable from "this token is forged".
 var (
 	ErrTokenRejected   = errors.New("googlejwt: token rejected")
 	ErrMalformed       = fmt.Errorf("%w: malformed token", ErrTokenRejected)
@@ -66,18 +39,13 @@ var (
 	ErrKeySetUnavailable = errors.New("googlejwt: provider key set is unavailable")
 )
 
-// Verifier checks one kind of Google-signed token. The zero value is not
-// usable: Audience is required. Two instances exist in serve (spec 02 §13.6):
-// one for Pub/Sub (audience = the push URL), one for link ID tokens (audience
-// = the iOS client id). Fields must not change after the first Verify.
 type Verifier struct {
-	Issuers  []string      // default {GoogleIssuer, GoogleIssuerNoScheme}
-	Audience string        // exact match against aud (a string, or an array containing it)
-	JWKSURL  string        // default GoogleJWKSURL
-	Leeway   time.Duration // for nbf and iat; default DefaultLeeway
+	Issuers  []string
+	Audience string
+	JWKSURL  string
+	Leeway   time.Duration
 	Now      func() time.Time
 
-	// refresh overrides the JWKS refresh floor; tests only.
 	refresh time.Duration
 
 	once      sync.Once
@@ -89,11 +57,10 @@ type Verifier struct {
 	inner     *oidc.IDTokenVerifier
 }
 
-// Claims are the authenticated claims a caller may use.
 type Claims struct {
 	Iss, Sub, Azp, Email, Nonce string
 	Aud                         []string
-	EmailVerified               bool // accepts JSON true or "true"
+	EmailVerified               bool
 	Iat, Exp                    time.Time
 }
 
@@ -120,9 +87,6 @@ func (v *Verifier) init() {
 	}
 	switch {
 	case strings.TrimSpace(v.Audience) == "":
-		// The dangerous one: with go-oidc's client-id check skipped and no
-		// audience of our own, "accept anything" would be one missing return
-		// away. A misconfigured verifier rejects every token instead.
 		v.configErr = fmt.Errorf("%w: no audience configured", ErrNotConfigured)
 		return
 	case len(v.issuers) == 0:
@@ -134,9 +98,6 @@ func (v *Verifier) init() {
 		refresh = jwksRefresh
 	}
 	v.keys = &cachingKeySet{jwksURL: jwksURL, refresh: refresh, staleMax: jwksStaleMax, now: v.now}
-	// The issuer and the audience are checked by this package (several
-	// accepted issuers, one exact audience), so go-oidc skips both; it stays
-	// the authority for the signature, the algorithm allow-list, exp and nbf.
 	v.inner = oidc.NewVerifier(v.issuers[0], v.keys, &oidc.Config{
 		SkipClientIDCheck:    true,
 		SkipIssuerCheck:      true,
@@ -145,9 +106,6 @@ func (v *Verifier) init() {
 	})
 }
 
-// Verify authenticates token and returns its claims, or an error wrapping
-// ErrTokenRejected (or ErrKeySetUnavailable). It performs no network I/O
-// except the rate-limited JWKS refresh.
 func (v *Verifier) Verify(ctx context.Context, token string) (Claims, error) {
 	v.once.Do(v.init)
 	if v.configErr != nil {
@@ -163,8 +121,6 @@ func (v *Verifier) Verify(ctx context.Context, token string) (Claims, error) {
 	if err := v.checkClaims(pre); err != nil {
 		return Claims{}, err
 	}
-	// Obtain the keys first, so an unavailable key set is reported as itself
-	// (go-oidc wraps KeySet errors with %v, which loses the chain).
 	if _, err := v.keys.currentKeys(ctx); err != nil {
 		return Claims{}, fmt.Errorf("%w: %v", ErrKeySetUnavailable, err)
 	}
@@ -176,7 +132,6 @@ func (v *Verifier) Verify(ctx context.Context, token string) (Claims, error) {
 	if err := tok.Claims(&c); err != nil {
 		return Claims{}, fmt.Errorf("%w: verified payload: %v", ErrMalformed, err)
 	}
-	// Every decision again, on the authenticated payload.
 	if err := v.checkClaims(c); err != nil {
 		return Claims{}, err
 	}
@@ -191,9 +146,6 @@ func (v *Verifier) Verify(ctx context.Context, token string) (Claims, error) {
 	return out, nil
 }
 
-// forbiddenHeaders are the JOSE header parameters that either carry key
-// material or point at it. A verifier that honours any of them is verifying
-// the attacker's signature against the attacker's key.
 var forbiddenHeaders = []string{"jwk", "jku", "x5u", "x5c", "crit"}
 
 func checkHeader(hdr map[string]json.RawMessage) error {
@@ -202,8 +154,6 @@ func checkHeader(hdr map[string]json.RawMessage) error {
 			return fmt.Errorf("%w: header %q", ErrUntrustedHeader, h)
 		}
 	}
-	// `typ` is optional but, when present, must say JWT (case-insensitive; the
-	// "application/" prefix may be omitted, RFC 7519).
 	if raw, ok := hdr["typ"]; ok {
 		var typ string
 		if err := json.Unmarshal(raw, &typ); err != nil {
@@ -253,8 +203,6 @@ func (v *Verifier) checkClaims(c idClaims) error {
 	return nil
 }
 
-// audienceAllowed is the only audience check there is (go-oidc's is skipped).
-// The comparison is exact and constant-time; an empty entry never matches.
 func (v *Verifier) audienceAllowed(aud []string) bool {
 	want := []byte(v.Audience)
 	for _, got := range aud {
@@ -272,11 +220,6 @@ func iatOf(n *numericDate) time.Time {
 	return n.t
 }
 
-// ---------------------------------------------------------------------------
-// Unverified pre-parse
-// ---------------------------------------------------------------------------
-
-// idClaims is the subset of a token this package inspects.
 type idClaims struct {
 	Issuer        string       `json:"iss"`
 	Subject       string       `json:"sub"`
@@ -289,13 +232,10 @@ type idClaims struct {
 	NotBefore     *numericDate `json:"nbf"`
 	IssuedAt      *numericDate `json:"iat"`
 
-	// Aggregated/distributed claims (OIDC Core §5.6.2): Google issues none and
-	// this package implements none, so a token carrying them is refused.
 	ClaimNames   map[string]any `json:"_claim_names"`
 	ClaimSources map[string]any `json:"_claim_sources"`
 }
 
-// audienceSet accepts both shapes RFC 7519 permits for `aud`.
 type audienceSet []string
 
 func (a *audienceSet) UnmarshalJSON(b []byte) error {
@@ -312,8 +252,6 @@ func (a *audienceSet) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// looseBool is Google's email_verified: JSON true, or the string "true".
-// Anything else (absent, false, "false", junk) is false.
 type looseBool bool
 
 func (l *looseBool) UnmarshalJSON(b []byte) error {
@@ -331,8 +269,6 @@ func (l *looseBool) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// numericDate is an RFC 7519 NumericDate. Fractional seconds are truncated,
-// matching go-oidc, so the two never disagree by a rounding step.
 type numericDate struct{ t time.Time }
 
 func (n *numericDate) UnmarshalJSON(b []byte) error {
@@ -352,13 +288,8 @@ func (n *numericDate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// maxTokenBytes caps what this package will even look at: Verify is reachable
-// by an unauthenticated caller and the first thing it does is base64-decode
-// two attacker-sized segments. Google's tokens are about 1 KB.
 const maxTokenBytes = 16 << 10
 
-// parseUnverified splits a compact JWS and decodes its header and payload
-// WITHOUT checking anything. Its output may only be used to reject.
 func parseUnverified(token string) (map[string]json.RawMessage, idClaims, error) {
 	if len(token) > maxTokenBytes {
 		return nil, idClaims{}, fmt.Errorf("%w: %d bytes, cap is %d", ErrMalformed, len(token), maxTokenBytes)

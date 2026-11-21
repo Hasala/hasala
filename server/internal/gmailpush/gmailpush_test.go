@@ -11,8 +11,6 @@ import (
 	"testing"
 )
 
-// AT-GM-8 (the bytes): the address HMAC and the key id, recomputed here from
-// spec 02 §13.3's definition with the standard library alone.
 func TestRouteKeyBytes(t *testing.T) {
 	raw := bytes.Repeat([]byte{0x42}, 32)
 	rk, err := ParseRouteKey(hex.EncodeToString(raw) + "\n")
@@ -37,8 +35,6 @@ func TestRouteKeyBytes(t *testing.T) {
 			t.Errorf("AddressHMAC(%q) differs from the definition", in)
 		}
 	}
-	// The Gmail value is pinned to the bytes stored before Outlook existed, so
-	// no existing link is orphaned; Outlook's is separated by its provider.
 	const gmailVector = "61a572e6e3168bc9da3c4deac927ce5a40edb50ce0c38bf94c70603c7a471982"
 	for _, got := range [][]byte{rk.AddressHMAC("User@Gmail.com"), rk.AddressHMACFor(ProviderGmail, "user@gmail.com")} {
 		if hex.EncodeToString(got) != gmailVector {

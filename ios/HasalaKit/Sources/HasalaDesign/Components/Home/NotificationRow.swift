@@ -1,15 +1,6 @@
 import HasalaModels
 import SwiftUI
 
-/// A row of the Notifications sheet (Paper "Home · Notifications" 11Y9-0, page 15 §15.2): "A
-/// list row with a when-label." A 40 disc in the item's hue (or the neutral grey plate), the
-/// title 16/22 600, one supporting line 13/18 secondary (after a 7 status dot when it has one),
-/// and the when-label 13/18 with a 16 chevron, top-aligned. At least 64 tall, padding 12/16,
-/// gap 12; the divider between rows is inset 68.
-///
-/// One VoiceOver stop: title, line, then when, in words ("AXA Insurance may be late, Usually
-/// on the 7th, no email yet, Thursday", page 15 §15.2). At the accessibility sizes the disc
-/// sits above the words and the when-label under them.
 public struct NotificationRow: View {
   let item: NotificationItem
   let hidden: Bool
@@ -31,8 +22,6 @@ public struct NotificationRow: View {
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
       } else {
-        // The disc is centred on the row; the when-label sits on the title's baseline, at the
-        // top however far the line wraps (Paper: trailing `align-self: start`, 2 down).
         HStack(alignment: .center, spacing: HSpacing.listRowGap) {
           disc
           HStack(alignment: .firstTextBaseline, spacing: HSpacing.listRowGap) {
@@ -40,7 +29,6 @@ public struct NotificationRow: View {
             trailing
           }
         }
-        // 12 above and below (a list row's own is 10): Paper's notification rows breathe more.
         .padding(.vertical, 12)
         .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
       }
@@ -95,7 +83,6 @@ public struct NotificationRow: View {
      item.when.map(Self.spokenWhen)].compactMap { $0 }.joined(separator: ", ")
   }
 
-  /// "Thu" reads "Thursday" and "28 Sep" "28 September"; "Today" and "9:12" stay.
   nonisolated static func spokenWhen(_ when: String) -> String {
     let words = when.split(separator: " ").map { Self.fullNames[String($0)] ?? String($0) }
     return words.joined(separator: " ")
@@ -109,8 +96,6 @@ public struct NotificationRow: View {
   ]
 }
 
-/// The all-clear state of the sheet (Paper 12AC-0): a 56 success disc with a 26 check, "Nothing
-/// needs you" 20/25 600, "We'll tell you when something does." 15/20 secondary, centred.
 public struct NothingNeedsYou: View {
   public init() {}
 

@@ -1,30 +1,5 @@
 package auth
 
-// The account's key material (spec 01 §4–§5, §10.3, §10.7; spec 02 §10.1,
-// §10.5): the atomic bootstrap, GET /keys and the PRF wraps.
-//
-// The server stores opaque bytes. It checks lengths and header bytes, rebuilds
-// the canonical BootstrapPayload v1 from the request's fields and verifies the
-// AAK's signatures over it; it never opens a wrap or the phrase box, and holds
-// no key that could (spec 02 §4.4 fence 3).
-//
-// # Who may bootstrap
-//
-//   - The key bound into the account-creating passkey ceremony: when the posted
-//     authority_pubkey is users.authority_pubkey_pending (set by register/finish
-//     from C_reg's key), no step-up is needed, but auth_kind must be 0x01 with
-//     auth_hash = the creating credential's attestation_sha256 (R-01), so a TLS
-//     terminator that swapped the credential fails here, visibly.
-//   - Any other key needs step-up keys.bootstrap with T = (authority_pubkey),
-//     and auth_kind 0x00 with auth_hash = 0^32 (the interrupted-onboarding
-//     path, spec 01 §10.3).
-//   - auth_kind 0x02 exists only inside the password signup, which this route
-//     refuses.
-//
-// The bootstrap also registers the first writer under the same nonce, with an
-// AAK RegistrationMessage stored in key_history (never the bootstrap
-// signature, which no device could verify as a registration).
-
 import (
 	"bytes"
 	"context"
@@ -42,13 +17,12 @@ import (
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
-// Account-key errors, mapped by the HTTP layer.
 var (
-	ErrKeysExist     = errors.New("auth: the account already has keys")       // 409 keys_exist
-	ErrKeysMalformed = errors.New("auth: key material is malformed")          // 400 bad_request
-	ErrNotYours      = errors.New("auth: no such credential on this account") // 404 not_found
-	ErrNoKeys        = errors.New("auth: the account has no keys")            // 404 no_keys
-	ErrPhraseUnseen  = errors.New("auth: the 12 words are not seen yet")      // 409 phrase_unseen
+	ErrKeysExist     = errors.New("auth: the account already has keys")
+	ErrKeysMalformed = errors.New("auth: key material is malformed")
+	ErrNotYours      = errors.New("auth: no such credential on this account")
+	ErrNoKeys        = errors.New("auth: the account has no keys")
+	ErrPhraseUnseen  = errors.New("auth: the 12 words are not seen yet")
 )
 
 func checkSyncedPasskey(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, credentialID []byte) error {
@@ -86,7 +60,6 @@ func refuseIfLastUnseenWrapTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, 
 	return nil
 }
 
-// AccountKeys owns account_keys and account_key_wraps.
 type AccountKeys struct {
 	Pool   *pgxpool.Pool
 	StepUp *StepUp
@@ -102,8 +75,6 @@ func (k *AccountKeys) now() time.Time {
 	return time.Now()
 }
 
-// Bootstrap is POST /api/v1/account/bootstrap's request (spec 02 §10.1),
-// decoded from b64.
 type Bootstrap struct {
 	FormatVersion   int
 	AMKCommitment   []byte
@@ -114,29 +85,25 @@ type Bootstrap struct {
 	EmailHash       []byte
 	AuthKind        int
 	AuthHash        []byte
-	PRFCredentialID []byte // nil: no PRF wrap
+	PRFCredentialID []byte
 	PRFWrap         []byte
 	PRFWrapVersion  int
-	Writer          Registration // Nonce and Sig: the writer nonce and registration_sig
+	Writer          Registration
 	AuthoritySig    []byte
 	StepUp          *StepUpObject
 	PhraseUnseen    bool
 }
 
-// Bootstrapped is the 201 answer.
 type Bootstrapped struct {
 	WriterID     string
 	CurrentEpoch int
 }
 
-// Bootstrap runs spec 01 §10.3.2's checks in spec 02 §10.1's order and then
-// one transaction (§10.3.3).
 func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Bootstrap) (Bootstrapped, error) {
 	if k.Pool == nil {
 		return Bootstrapped{}, errors.New("auth: AccountKeys.Pool is nil")
 	}
 	userID := session.UserID
-	// 2. No keys yet.
 	var exists bool
 	if err := k.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM account_keys WHERE user_id = $1)`, userID).Scan(&exists); err != nil {
 		return Bootstrapped{}, fmt.Errorf("auth: bootstrap: %w", err)
@@ -144,7 +111,6 @@ func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Boot
 	if exists {
 		return Bootstrapped{}, ErrKeysExist
 	}
-	// 3. Decode and rebuild the canonical payload.
 	if b.FormatVersion != keyproto.BootstrapPayloadVersion {
 		return Bootstrapped{}, fmt.Errorf("%w: format_version %d", ErrKeysMalformed, b.FormatVersion)
 	}
@@ -200,15 +166,12 @@ func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Boot
 			return Bootstrapped{}, ErrNotYours
 		}
 	}
-	// The address binding: a terminator that swapped the address at signup is
-	// caught here. An account with no address cannot bootstrap.
 	if emailNorm == nil {
 		return Bootstrapped{}, fmt.Errorf("%w: the account has no address to bind", ErrKeysMalformed)
 	}
 	if want := keyproto.EmailHash(*emailNorm); !bytes.Equal(want[:], b.EmailHash) {
 		return Bootstrapped{}, fmt.Errorf("%w: email_hash is not the account's address", ErrKeysMalformed)
 	}
-	// 4. Authorization.
 	pendingPath := pending != nil && bytes.Equal(pending, b.AuthorityPubkey)
 	switch {
 	case byte(b.AuthKind) == keyproto.AuthKindPassword:
@@ -239,11 +202,9 @@ func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Boot
 			return Bootstrapped{}, err
 		}
 	}
-	// 5. The writer nonce, spent by the attempt.
 	if err := consumeChallenge(ctx, k.Pool, k.now(), userID, b.Writer.Nonce); err != nil {
 		return Bootstrapped{}, err
 	}
-	// 6. The AAK's two signatures over the same nonce.
 	bm, err := keyproto.BootstrapMessage(b.Writer.Nonce, payload)
 	if err != nil {
 		return Bootstrapped{}, fmt.Errorf("%w: %v", ErrKeysMalformed, err)
@@ -257,7 +218,7 @@ func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Boot
 		return Bootstrapped{}, fmt.Errorf("%w: authority_sig or registration_sig", ErrBadSignature)
 	}
 
-	var viaPending []byte // the pending key this bootstrap was authorized by
+	var viaPending []byte
 	if pendingPath {
 		viaPending = pending
 	}
@@ -291,12 +252,6 @@ func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Boot
 	return Bootstrapped{WriterID: b.Writer.WriterID, CurrentEpoch: 1}, nil
 }
 
-// bootstrapTx is spec 01 §10.3.3: account_keys, the PRF wrap, the writer and
-// its key_history row, the pending key cleared, account_usage, the binding.
-// viaPending is the pending authority key that authorized a step-up-free
-// bootstrap (nil for a stepped-up one): the pending key and the attestation
-// were read outside this transaction, so the clear re-checks that very key
-// and requires one row.
 func (k *AccountKeys) bootstrapTx(ctx context.Context, tx pgx.Tx, session SessionInfo, b Bootstrap, viaPending []byte) error {
 	userID := session.UserID
 	if err := lockUser(ctx, tx, userID); err != nil {
@@ -349,7 +304,6 @@ func (k *AccountKeys) bootstrapTx(ctx context.Context, tx pgx.Tx, session Sessio
 	return bindSessionTx(ctx, tx, session.Hash, userID, b.Writer.WriterID)
 }
 
-// Keys is GET /api/v1/keys (#17): never the phrase box.
 type Keys struct {
 	FormatVersion   int
 	AMKCommitment   []byte
@@ -361,7 +315,6 @@ type Keys struct {
 	UpdatedAt       time.Time
 }
 
-// Read returns the account's keys or ErrNoKeys.
 func (k *AccountKeys) Read(ctx context.Context, userID uuid.UUID) (Keys, error) {
 	var out Keys
 	err := k.Pool.QueryRow(ctx,
@@ -378,7 +331,6 @@ func (k *AccountKeys) Read(ctx context.Context, userID uuid.UUID) (Keys, error) 
 	return out, nil
 }
 
-// Wrap is one PRF wrap (#19).
 type Wrap struct {
 	CredentialID []byte
 	Wrap         []byte
@@ -386,7 +338,6 @@ type Wrap struct {
 	CreatedAt    time.Time
 }
 
-// Wraps lists the account's PRF wraps.
 func (k *AccountKeys) Wraps(ctx context.Context, userID uuid.UUID) ([]Wrap, error) {
 	rows, err := k.Pool.Query(ctx,
 		`SELECT credential_id, wrap, wrap_version, created_at FROM account_key_wraps WHERE user_id = $1 ORDER BY created_at, credential_id`,
@@ -406,7 +357,6 @@ func (k *AccountKeys) Wraps(ctx context.Context, userID uuid.UUID) ([]Wrap, erro
 	return out, rows.Err()
 }
 
-// WrapPut is POST /api/v1/keys/wraps (#20), decoded.
 type WrapPut struct {
 	CredentialID []byte
 	Wrap         []byte
@@ -415,11 +365,6 @@ type WrapPut struct {
 	StepUp       *StepUpObject
 }
 
-// PutWrap stores one credential's PRF wrap under step-up keys.wrap.put: a
-// passkey proof whose asserting credential is the wrap's own, and the session
-// writer's DWK over WrapPutMessage(step_up.nonce, SHA256(credential_id),
-// SHA256(wrap)) (spec 01 §10.7, N-11). The session must be bound to a live
-// writer (the caller checks WB).
 func (k *AccountKeys) PutWrap(ctx context.Context, session SessionInfo, p WrapPut) error {
 	if err := keyproto.CheckCredentialID(p.CredentialID); err != nil {
 		return fmt.Errorf("%w: %v", ErrKeysMalformed, err)
@@ -478,8 +423,6 @@ func (k *AccountKeys) PutWrap(ctx context.Context, session SessionInfo, p WrapPu
 	})
 }
 
-// DeleteWrap removes one credential's wrap under step-up keys.wrap.delete
-// (#21). Deleting a wrap that is not there succeeds.
 func (k *AccountKeys) DeleteWrap(ctx context.Context, session SessionInfo, credentialID []byte, su *StepUpObject) error {
 	if err := keyproto.CheckCredentialID(credentialID); err != nil {
 		return fmt.Errorf("%w: %v", ErrKeysMalformed, err)
@@ -510,8 +453,6 @@ func (k *AccountKeys) DeleteWrap(ctx context.Context, session SessionInfo, crede
 	return nil
 }
 
-// AttestationHash is SHA-256 of a raw attestationObject, as stored in
-// webauthn_credentials.attestation_sha256.
 func AttestationHash(attestationObject []byte) []byte {
 	h := sha256.Sum256(attestationObject)
 	return h[:]

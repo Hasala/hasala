@@ -4,8 +4,6 @@ import Testing
 
 @testable import HasalaDesign
 
-// The Home board read models: the canvas layout and the Maya hero (owned by P5).
-
 @Suite("Home canvas")
 struct CanvasTests {
   @Test func mediumsStandAloneAndSmallsPair() {
@@ -21,8 +19,6 @@ struct CanvasTests {
   }
 }
 
-/// The mock reproduces the Paper Home board's figures (14O7-0, page 06 §6.8) where the ledger
-/// agrees with it.
 @Suite("Maya scenario")
 struct MayaTests {
   @Test func heroMatchesTheBoard() {
@@ -34,10 +30,8 @@ struct MayaTests {
     #expect(hero.fact?.rendered(hidden: false) == "AED 7,884.38 left")
     #expect(hero.verdict == .onTrack)
     #expect(hero.wash == .sky)
-    // The bar: fill 58.5% (the board's 196 of 362 drew needs and wants only), tick at 213 (59%).
     #expect(Permille.ratio(hero.spent.minor, of: hero.plan.minor).value == 585)
     #expect(hero.tick.map { Permille.ratio($0.minor, of: hero.plan.minor).value } == 590)
-    // Needs and Wants as drawn; Savings follows the ledger (plan D.3 decision 5).
     #expect(hero.tiles.map { MoneyFormat.string($0.value.minor, style: $0.style) } == ["9,040.80", "1,247.54", "5,000.00"])
   }
 
@@ -67,7 +61,6 @@ struct MayaTests {
   }
 }
 
-/// The bell's rows read their when-label in words (page 15 §15.2: "…, Thursday, button").
 @Suite("Notification rows")
 struct NotificationRowTests {
   @Test func whenReadsInWords() {

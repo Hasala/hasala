@@ -29,21 +29,10 @@ func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
 
 var bg = context.Background()
 
-// appendRaw is appendRows with no chain check. The tests in THIS file are about
-// seq allocation — gap-freeness, the counter lock, rollback — and they build
-// their own chains by hand, so they drive the allocation path directly. Every
-// production append goes through AppendClient (chain.go), which is why there
-// is no exported equivalent.
 func (a *Appender) appendRaw(ctx context.Context, rows []Row) ([]int64, error) {
 	return a.appendRows(ctx, rows, nil)
 }
 
-// insertUser mirrors account creation: the user row and its oplog_seq row are
-// created inside ONE transaction, so the seq row always exists before the first
-// append and appendTx's ON CONFLICT path is dead code rather than a live
-// concurrency hazard. The account's device writers are enrolled with it
-// (testWriters), because op_log_writer_fk refuses a row for a writer the
-// roster does not hold.
 func insertUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	tx, err := pool.Begin(bg)
@@ -61,9 +50,6 @@ func insertUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	return id
 }
 
-// insertUserBareUser creates a user WITHOUT its oplog_seq row, i.e. a user as it
-// would exist if it had been created before EnsureSeqRow landed. It exercises
-// appendTx's belt-and-braces INSERT ... ON CONFLICT DO NOTHING path.
 func insertUserWithoutSeqRow(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	tx, err := pool.Begin(bg)
@@ -78,7 +64,6 @@ func insertUserWithoutSeqRow(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	return id
 }
 
-// testWriters is every writer id the tests in this package append under.
 var testWriters = []string{"ios-00000000-0000-4000-8000-00000000000a", "ios-00000000-0000-4000-8000-00000000000b", "ios-00000000-0000-4000-8000-00000000007a", "ios-00000000-0000-4000-8000-000000000100", "ios-00000000-0000-4000-8000-000000000101", "ios-00000000-0000-4000-8000-000000000102", "ios-00000000-0000-4000-8000-000000000103", "ios-00000000-0000-4000-8000-000000000104",
 	"ios-00000000-0000-4000-8000-000000000105", "ios-00000000-0000-4000-8000-000000000106", "ios-00000000-0000-4000-8000-000000000107", "ios-00000000-0000-4000-8000-000000000108", "ios-00000000-0000-4000-8000-000000000109"}
 
@@ -101,7 +86,6 @@ func insertUserRow(t *testing.T, tx pgx.Tx) uuid.UUID {
 		}
 		return b
 	}
-	// Synthetic keys (current_epoch 1): AppendClient reads the epoch.
 	if _, err := tx.Exec(bg,
 		`INSERT INTO account_keys (user_id, format_version, amk_commitment, authority_pubkey, recovery_pubkey,
 		   recovery_wrap, phrase_box, current_epoch, created_at, updated_at)
@@ -118,14 +102,11 @@ func insertUserRow(t *testing.T, tx pgx.Tx) uuid.UUID {
 	return id
 }
 
-// testDWK is oplogtest.DWK (this package's tests cannot import oplogtest,
-// which imports oplog): the deterministic DWK of a test writer.
 func testDWK(writerID string) ed25519.PrivateKey {
 	seed := sha256.Sum256([]byte("oplogtest-dwk|" + writerID))
 	return ed25519.NewKeyFromSeed(seed[:])
 }
 
-// testHeadSig signs the batch head of rows by their writer's test DWK.
 func testHeadSig(u uuid.UUID, writerID string, rows []Row) []byte {
 	if len(rows) == 0 {
 		return nil
@@ -133,7 +114,7 @@ func testHeadSig(u uuid.UUID, writerID string, rows []Row) []byte {
 	last := rows[len(rows)-1]
 	m, err := keyproto.HeadMessage(u, uint64(last.WriterCounter), last.BlobHash, writerID)
 	if err != nil {
-		return make([]byte, 64) // a writer id outside the grammar: no head can verify
+		return make([]byte, 64)
 	}
 	return ed25519.Sign(testDWK(writerID), m)
 }
@@ -149,9 +130,6 @@ func testDAK(t *testing.T) []byte {
 	return append(out, k.Y.FillBytes(make([]byte, 32))...)
 }
 
-// sealRow builds one real sealed frame v3 at the given position (blobtest's
-// reference sealer) and the op_log row that carries it. It returns the row's
-// blob hash so a caller can chain the next one.
 func sealRow(u uuid.UUID, writerID, stream string, counter int64, prev [32]byte) (Row, [32]byte, error) {
 	env := blob.Envelope{UserID: u, Stream: stream, WriterID: writerID, WriterCounter: counter}
 	body := fmt.Sprintf(`{"writer":%q,"stream":%q,"counter":%d}`, writerID, stream, counter)
@@ -173,9 +151,6 @@ func sealRow(u uuid.UUID, writerID, stream string, counter int64, prev [32]byte)
 	}, h, nil
 }
 
-// mustSeal is sealRow for the sequential tests. It is NOT safe to call from a
-// spawned goroutine (t.Fatal must run on the test's own goroutine); the
-// concurrency tests call sealRow and report via t.Errorf instead.
 func mustSeal(t *testing.T, u uuid.UUID, writerID, stream string, counter int64, prev [32]byte) (Row, [32]byte) {
 	t.Helper()
 	r, h, err := sealRow(u, writerID, stream, counter, prev)
@@ -185,8 +160,6 @@ func mustSeal(t *testing.T, u uuid.UUID, writerID, stream string, counter int64,
 	return r, h
 }
 
-// rowsFor builds n chained rows for one (writer, stream), starting at counter
-// start.
 func rowsFor(t *testing.T, u uuid.UUID, writerID, stream string, start int64, n int) []Row {
 	t.Helper()
 	prev := blob.ZeroHash
@@ -220,10 +193,6 @@ func seqsOf(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) []int64 {
 	return got
 }
 
-// assertGapFree is the whole point of this task: the stored seqs for a user must
-// be exactly 1..want. Duplicates are structurally impossible (PRIMARY KEY
-// (user_id, seq)), so a length mismatch plus a per-index equality check is a
-// complete statement of the property.
 func assertGapFree(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, want int) {
 	t.Helper()
 	got := seqsOf(t, pool, u)
@@ -259,7 +228,6 @@ func TestAppendAssignsContiguousSeqs(t *testing.T) {
 		t.Fatalf("got %v, want [1 2 3]", seqs)
 	}
 
-	// A second call continues the same run rather than restarting.
 	seqs, err = a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 4, 2))
 	if err != nil {
 		t.Fatal(err)
@@ -313,10 +281,6 @@ func TestConcurrentAppendsAreGapFreeAndCommitOrderMatchesSeqOrder(t *testing.T) 
 }
 
 func TestConcurrentMultiRowAppendsAllocateContiguousBlocks(t *testing.T) {
-	// A single append must get a CONTIGUOUS block even while other appends for
-	// the same user are in flight — otherwise one upload batch could be split
-	// by another writer's rows, and the block-allocation return value would be
-	// a lie (spec 01 §7.1: a batch occupies consecutive seqs).
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
@@ -358,10 +322,6 @@ func TestConcurrentMultiRowAppendsAllocateContiguousBlocks(t *testing.T) {
 
 	total := writers * batches * perBatch
 	assertGapFree(t, pool, u, total)
-	// Each returned block is contiguous, AND the blocks are pairwise disjoint
-	// and jointly cover 1..total. An overlap would trip the primary key anyway,
-	// so the disjointness half is belt-and-braces — but "every block is
-	// contiguous" alone is also satisfied by every block being [1,2,3].
 	seen := make(map[int64]int, total)
 	for _, blk := range blocks {
 		if len(blk) != perBatch {
@@ -385,10 +345,6 @@ func TestConcurrentMultiRowAppendsAllocateContiguousBlocks(t *testing.T) {
 }
 
 func TestNoTransientGapIsEverVisibleToAConcurrentReader(t *testing.T) {
-	// This is the property a sequence + watermark does NOT have. With nextval(),
-	// a reader can see seq 7 committed while 6 is still in flight. Here the
-	// counter row lock makes commit order identical to seq order, so every
-	// snapshot a reader takes is exactly 1..k with no hole.
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
@@ -464,13 +420,11 @@ func TestNoTransientGapIsEverVisibleToAConcurrentReader(t *testing.T) {
 	}
 	wg.Wait()
 	close(done)
-	readerWG.Wait() // happens-before for the reads of rep below
+	readerWG.Wait()
 
 	if rep.hole != "" {
 		t.Fatal(rep.hole)
 	}
-	// Vacuity guard: a reader that only ever saw the empty table or the final
-	// state would have proved nothing about intermediate states.
 	if rep.partials == 0 {
 		t.Fatalf("reader took %d observations but never caught a partial state; the test proved nothing", rep.observations)
 	}
@@ -479,9 +433,6 @@ func TestNoTransientGapIsEverVisibleToAConcurrentReader(t *testing.T) {
 }
 
 func TestARolledBackAppendLeavesNoGap(t *testing.T) {
-	// The reason a locked counter row beats nextval(): a rolled-back UPDATE
-	// restores the counter, so a failed append consumes nothing. nextval() burns
-	// the value permanently and the hole is unrecoverable.
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
@@ -491,8 +442,6 @@ func TestARolledBackAppendLeavesNoGap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Same (writer_id, stream, writer_counter) again: the unique index rejects
-	// it AFTER the seq has been allocated inside the transaction.
 	if _, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 1)); err == nil {
 		t.Fatal("expected a duplicate (writer_id, stream, writer_counter) to be rejected")
 	}
@@ -518,8 +467,6 @@ func TestAFailedBatchAppendsNothingAndBurnsNoSeq(t *testing.T) {
 	if _, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 2)); err != nil {
 		t.Fatal(err)
 	}
-	// A three-row batch whose LAST row collides with counter 1. The first two
-	// rows are valid; the batch must still land nothing at all.
 	bad := rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 3, 3)
 	bad[2], _ = mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash)
 	if _, err := a.appendRaw(bg, bad); err == nil {
@@ -532,8 +479,6 @@ func TestAFailedBatchAppendsNothingAndBurnsNoSeq(t *testing.T) {
 }
 
 func TestOneCallMaySpanWritersAndCountersAreIndependent(t *testing.T) {
-	// Each writer is its own chain, so both rows carry counter 1 and the
-	// unique index must tolerate that because it includes the writer.
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
@@ -575,8 +520,6 @@ func TestEnsureSeqRowIsIdempotent(t *testing.T) {
 	if err := tx.Commit(bg); err != nil {
 		t.Fatal(err)
 	}
-	// A second EnsureSeqRow must not reset the counter to 1 — that would hand
-	// the next append a seq that already exists.
 	if got := nextSeqOf(t, pool, u); got != 3 {
 		t.Fatalf("next_seq = %d after a repeat EnsureSeqRow, want 3", got)
 	}
@@ -692,8 +635,6 @@ func TestAppendRejectsMalformedRows(t *testing.T) {
 			}
 		})
 	}
-	// Validation runs before anything is allocated, so none of the above may
-	// have moved the counter.
 	if got := nextSeqOf(t, pool, u); got != 1 {
 		t.Fatalf("next_seq = %d after only-invalid appends, want 1", got)
 	}
@@ -747,8 +688,6 @@ func TestStoredRowRoundTripsAndTheBlobStillOpens(t *testing.T) {
 	if out.CreatedAt.Before(before) || out.CreatedAt.After(time.Now().Add(time.Minute)) {
 		t.Fatalf("created_at = %v, want ~now", out.CreatedAt)
 	}
-	// The bytes must still open at the position the row records — that is what
-	// makes the AAD binding meaningful once the row has been through Postgres.
 	plain, err := blobtest.Open3(blob.Envelope{
 		UserID: out.UserID, Stream: out.Stream, WriterID: out.WriterID, WriterCounter: out.WriterCounter,
 	}, blobtest.TestEpochKey, [32]byte(out.PrevHash), out.Blob)
@@ -779,8 +718,6 @@ func TestCallerSuppliedCreatedAtIsHonoured(t *testing.T) {
 	}
 }
 
-// The database is the backstop for anything that bypasses the appender's own
-// validation — a psql session, a future task's hand-written INSERT, a bug.
 func TestDatabaseConstraintsBackstopTheGoValidation(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
@@ -793,11 +730,6 @@ func TestDatabaseConstraintsBackstopTheGoValidation(t *testing.T) {
 		type_flag, blob, size_bucket, blob_hash, prev_hash)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
 
-	// The baseline is a REAL sealed row, so every case below is rejected for the
-	// one thing it mutates. An earlier version of this test used a one-byte blob
-	// for every case; once the blob and hash CHECKs existed, those rows would
-	// have been rejected for the wrong reason and the test would still have been
-	// green.
 	base, _ := mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000b", blob.StreamHot, 1, blob.ZeroHash)
 	type row struct {
 		seq                  int64
@@ -841,8 +773,6 @@ func TestDatabaseConstraintsBackstopTheGoValidation(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected the database to reject this row")
 			}
-			// Assert WHICH constraint fired. Without this a row could be
-			// rejected for an unrelated reason and still read as coverage.
 			var pgErr *pgconn.PgError
 			if !errors.As(err, &pgErr) {
 				t.Fatalf("want a PgError, got %T: %v", err, err)
@@ -853,18 +783,14 @@ func TestDatabaseConstraintsBackstopTheGoValidation(t *testing.T) {
 		})
 	}
 
-	// The unmutated baseline must be accepted, or every case above could be
-	// passing for a reason none of them names.
 	if err := exec(valid()); err != nil {
 		t.Fatalf("the baseline row must be accepted: %v", err)
 	}
-	// The same position again is refused by the position key.
 	r := valid()
 	r.seq = 3
 	if _, name := pgErrConstraint(exec(r)); name != "op_log_position_uniq" {
 		t.Fatalf("a second row at (dev-b, hot, 1) was not refused by op_log_position_uniq")
 	}
-	// A correctly sealed row for a writer the roster does not hold.
 	stray, _ := mustSeal(t, u, "ios-00000000-0000-4000-8000-000000000079", blob.StreamHot, 1, blob.ZeroHash)
 	r = valid()
 	r.seq, r.writer = 3, "ios-00000000-0000-4000-8000-000000000079"
@@ -884,10 +810,6 @@ func pgErrConstraint(err error) (string, string) {
 }
 
 func TestAnAbandonedTransactionReturnsItsSeqs(t *testing.T) {
-	// The thesis of this design, isolated: an allocation lives and dies with
-	// the transaction that made it. This drives appendTx directly and then
-	// rolls back by hand, which is what a crashed process, a cancelled request
-	// or a dropped connection amounts to.
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
@@ -921,9 +843,6 @@ func TestAnAbandonedTransactionReturnsItsSeqs(t *testing.T) {
 }
 
 func TestACorruptedCounterFailsLoudlyRatherThanOverwritingHistory(t *testing.T) {
-	// Deleting the counter row is the one way to make an append propose a seq that
-	// already exists. The (user_id, seq) primary key must turn that into an
-	// error, never a silent overwrite of a committed op.
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
@@ -936,17 +855,10 @@ func TestACorruptedCounterFailsLoudlyRatherThanOverwritingHistory(t *testing.T) 
 	if _, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000b", blob.StreamHot, 1, 1)); err == nil {
 		t.Fatal("a reset counter must not be allowed to reuse a committed seq")
 	}
-	// The two original rows are untouched and still contiguous.
 	assertGapFree(t, pool, u, 2)
 }
 
 func TestAppendPinsReadCommittedRegardlessOfTheDatabaseDefault(t *testing.T) {
-	// default_transaction_isolation is settable per database, per role and by a
-	// pooler's startup parameters. Under `repeatable read` the counter UPDATE
-	// raises serialization failures instead of blocking and re-evaluating, so
-	// concurrent appends fail en masse — an availability failure that depends on
-	// configuration nothing in this repo controls. appendRows must pin its own
-	// isolation level rather than inherit one.
 	pool, owner := pgtest.NewWithOwner(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
@@ -955,18 +867,12 @@ func TestAppendPinsReadCommittedRegardlessOfTheDatabaseDefault(t *testing.T) {
 	if err := pool.QueryRow(bg, `SELECT current_database()`).Scan(&dbName); err != nil {
 		t.Fatal(err)
 	}
-	// The database's owner sets its defaults; the runtime role cannot.
 	if _, err := owner.Exec(bg,
 		`ALTER DATABASE `+dbName+` SET default_transaction_isolation = 'repeatable read'`); err != nil {
 		t.Fatal(err)
 	}
-	// The setting is applied at session start, so existing pooled connections
-	// still carry the old default until they are replaced.
 	pool.Reset()
 
-	// Vacuity guard: prove the default really changed, i.e. that an UNPINNED
-	// transaction on this pool would not be read committed. Without this the
-	// test could pass against a database whose default never moved.
 	tx, err := pool.Begin(bg)
 	if err != nil {
 		t.Fatal(err)

@@ -1,7 +1,3 @@
-// The ordering and rollback rules the first review of WS-11 asked for: the
-// roster only ever extends (01 §10.13), one flush at a time, no lost trigger,
-// the DWK in the Keychain before the writer is used, no half-enrolled iPhone,
-// and E-04 before the binding (04 §6.2).
 import CoreAuth
 import CoreCrypto
 import CoreSoftAuth
@@ -12,7 +8,6 @@ import Testing
 
 @Suite("Hardening: roster rollback, one flush, triggers, enrolment order")
 struct HardeningTests {
-  /// Phone A with an account, phone B enrolled on it.
   func twoPhones(_ w: World) async throws -> (Phone, SyncContext, Phone, SyncContext) {
     let a = w.phone("a")
     let (account, words, ctxA) = try await w.passwordAccount(a)
@@ -23,8 +18,6 @@ struct HardeningTests {
       b.env, userID: account.userID, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
     return (a, ctxA, b, Enrolment.context(b.env, account: enrolled))
   }
-
-  // MARK: Roster rollback (01 §10.13)
 
   @Test("a server that drops a pinned revocation is refused: rosterInvalid, the pinned final kept")
   func rosterRollback() async throws {
@@ -120,17 +113,14 @@ struct HardeningTests {
     let pinned = try roster(3, ["a": ("A", nil), "b": ("B", 4)])
     #expect(try roster(3, ["a": ("A", nil), "b": ("B", 4)]).extends(pinned))
     #expect(try roster(5, ["a": ("A", 2), "b": ("B", 4), "c": ("C", nil)]).extends(pinned))
-    #expect(try !roster(2, ["a": ("A", nil), "b": ("B", 4)]).extends(pinned))  // older history
+    #expect(try !roster(2, ["a": ("A", nil), "b": ("B", 4)]).extends(pinned))
     #expect(try !roster(nil, ["a": ("A", nil), "b": ("B", 4)]).extends(pinned))
-    #expect(try !roster(4, ["a": ("A", nil)]).extends(pinned))  // a writer vanished
-    #expect(try !roster(4, ["a": ("A", nil), "b": ("B", nil)]).extends(pinned))  // revocation cleared
-    #expect(try !roster(4, ["a": ("A", nil), "b": ("B", 5)]).extends(pinned))  // final moved
-    #expect(try !roster(4, ["a": ("X", nil), "b": ("B", 4)]).extends(pinned))  // key swapped
-    // The AAK-only roster a transient enrolment failure pins accepts any verified roster.
+    #expect(try !roster(4, ["a": ("A", nil)]).extends(pinned))
+    #expect(try !roster(4, ["a": ("A", nil), "b": ("B", nil)]).extends(pinned))
+    #expect(try !roster(4, ["a": ("A", nil), "b": ("B", 5)]).extends(pinned))
+    #expect(try !roster(4, ["a": ("X", nil), "b": ("B", 4)]).extends(pinned))
     #expect(try roster(1, ["a": ("A", nil)]).extends(try roster(nil, [:])))
   }
-
-  // MARK: One flush at a time
 
   @Test("removal's catch-up runs through the engine: alongside an authored run, each op is uploaded once")
   func removalAndRunDoNotDoubleSeal() async throws {
@@ -147,8 +137,6 @@ struct HardeningTests {
     _ = await SyncEngine(context: ctxB).run(.launch)
     #expect(try storedOps(ctxB).map(\.opID) == [op(1).opID, op(2).opID])
   }
-
-  // MARK: Triggers
 
   @Test("a trigger that arrives while a run waits on the network is not lost")
   func triggerDuringRun() async throws {
@@ -172,8 +160,6 @@ struct HardeningTests {
     #expect(w.server.uploadCount == 1)
   }
 
-  // MARK: Enrolment order (04 §6.2)
-
   @Test("the DWK is in the Keychain before writers/register: a lost register leaves the key here")
   func writerKeyBeforeRegister() async throws {
     let w = World()
@@ -188,7 +174,7 @@ struct HardeningTests {
       _ = try await Enrolment.enrolWriter(
         b.env, userID: account.userID, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
     }
-    #expect(b.keychain.count == before + 1)  // the writer key, nothing else
+    #expect(b.keychain.count == before + 1)
     #expect(b.binding == nil)
   }
 
@@ -519,7 +505,6 @@ struct HardeningTests {
   }
 }
 
-/// Holds every request until `open()` (a slow network), then forwards them.
 final class Gate: Transport, @unchecked Sendable {
   let inner: any Transport
   private let lock = NSLock()

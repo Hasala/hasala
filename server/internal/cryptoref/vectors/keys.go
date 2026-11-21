@@ -12,10 +12,6 @@ import (
 
 func registry() []keyproto.Domain { return keyproto.Registry() }
 
-// ---------------------------------------------------------------------------
-// derive.json: spec 01 §4 derivations, reproducing A01–A08.
-// ---------------------------------------------------------------------------
-
 type deriveSet struct {
 	Name          string    `json:"name"`
 	UserID        uuid.UUID `json:"user_id"`
@@ -67,7 +63,6 @@ func genDerive(f Files, _ string) error {
 		sets = append(sets, deriveFor(fmt.Sprintf("stream set %d", i), u, s.bytes(16), s.bytes(32),
 			s.bytes(32), s.bytes(32), s.bytes(32), s.bytes(32), s.bytes(32)))
 	}
-	// K_blob for 3 nonces × 2 ADs (spec 01 §15.1).
 	k1 := EpochKey1(AnchorAMK, AnchorUser)
 	var bks []blobKeyCase
 	for _, ad := range [][]byte{[]byte("hasala/v1/blob\x00ad-one"), s.bytes(150)} {
@@ -103,15 +98,11 @@ func joinWords(w []string) string {
 	return b.String()
 }
 
-// ---------------------------------------------------------------------------
-// wraps.json: spec 01 §5.2, §5.3 and W01–W10.
-// ---------------------------------------------------------------------------
-
 type wrapVector struct {
 	Name         string    `json:"name"`
-	Kind         string    `json:"kind"` // recovery | prf
+	Kind         string    `json:"kind"`
 	UserID       uuid.UUID `json:"user_id"`
-	Secret       H         `json:"secret"` // E (recovery) or P (prf)
+	Secret       H         `json:"secret"`
 	Salt         H         `json:"salt"`
 	Nonce        H         `json:"nonce"`
 	Body         H         `json:"body"`
@@ -120,20 +111,19 @@ type wrapVector struct {
 }
 
 type wrapCase struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	Kind         string    `json:"kind"`
-	UserID       uuid.UUID `json:"user_id"`
-	Secret       H         `json:"secret"`
-	CredentialID H         `json:"credential_id"`
-	Wrap         H         `json:"wrap"`
-	// The account's published values the unwrap checks against.
-	AMKCommitment   H      `json:"amk_commitment"`
-	AuthorityPubkey H      `json:"authority_pubkey"`
-	RecoveryPubkey  H      `json:"recovery_pubkey"`
-	Outcome         string `json:"outcome"` // opens | unwrapFailed | notThisAccountsPhrase | integrityAlarm(accountKeysMismatch)
-	AMK             H      `json:"amk,omitempty"`
-	AAKSeed         H      `json:"aak_seed,omitempty"`
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	Kind            string    `json:"kind"`
+	UserID          uuid.UUID `json:"user_id"`
+	Secret          H         `json:"secret"`
+	CredentialID    H         `json:"credential_id"`
+	Wrap            H         `json:"wrap"`
+	AMKCommitment   H         `json:"amk_commitment"`
+	AuthorityPubkey H         `json:"authority_pubkey"`
+	RecoveryPubkey  H         `json:"recovery_pubkey"`
+	Outcome         string    `json:"outcome"`
+	AMK             H         `json:"amk,omitempty"`
+	AAKSeed         H         `json:"aak_seed,omitempty"`
 }
 
 func outcomeName(err error) string {
@@ -214,7 +204,6 @@ func genWraps(f Files, _ string) error {
 	add("W08", "126 bytes", "recovery", AnchorE, nil, rw[:126], acct, AnchorUser)
 	add("W08", "128 bytes", "recovery", AnchorE, nil, append(append([]byte(nil), rw...), 0), acct, AnchorUser)
 	{
-		// kdf 0x02 in a recovery wrap: built honestly under RWK with kdf 0x02 in its header.
 		w := append([]byte(nil), rw...)
 		w[1] = keyproto.KDFPRF
 		add("W08", "kdf 0x02 in a recovery wrap", "recovery", AnchorE, nil, w, acct, AnchorUser)
@@ -250,10 +239,6 @@ func genWraps(f Files, _ string) error {
 		Wraps: vecs, Cases: cases,
 	})
 }
-
-// ---------------------------------------------------------------------------
-// phrase-box.json: spec 01 §5.5, A18 and A19, W11–W13.
-// ---------------------------------------------------------------------------
 
 type boxVector struct {
 	Name           string    `json:"name"`
@@ -306,7 +291,6 @@ func genPhraseBox(f Files, _ string) error {
 	add("W11", "46 bytes", AnchorUser, rk, append(append([]byte(nil), box...), 0))
 	add("W12", "another user_id in the AD", uuid.MustParse("3b0e5c1a-7d2f-4e8a-9b6c-1f2e3d4c5b6a"), rk, box)
 	add("W12", "another recovery_pubkey in the AD", AnchorUser, rk2, box)
-	// W13: a box built for another phrase with a matching AD (recovery_pubkey of E, content E').
 	forged := SealPhraseBox(AnchorAMK, AnchorUser, rk, AnchorBoxNonce, AnchorRotateE)
 	add("W13", "opens, but RK of its E is not recovery_pubkey", AnchorUser, rk, forged)
 	for _, c := range cases {

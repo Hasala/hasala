@@ -1,14 +1,5 @@
 import SwiftUI
 
-/// Lays chips out in rows, wrapping to the width offered, never scrolling sideways (Paper
-/// "Choice chips": "Rows wrap with gap 8"): the category picker, the pick sheet's projects,
-/// the split shortcuts, Search's recent searches, the bills' and budgets' chips.
-///
-/// Measuring and placing break the rows with one rule (`rows`), and allow half a point of
-/// rounding: the layout reports the width of its widest row and is then placed in a box
-/// rounded to the pixel grid, which can be a fraction narrower. With two rules the last chip
-/// of that row wrapped at placement onto a row it never reserved, over whatever sat below it
-/// (the pick sheet's "Japan trip" landed on the rule checkbox; requests/p6.md 2).
 struct FlowLayout: Layout {
   var spacing: CGFloat = 8
 
@@ -47,8 +38,6 @@ struct FlowLayout: Layout {
     var height: CGFloat = 0
   }
 
-  /// The rows `sizes` break into at `width` (one row when there is no width to fit). A chip
-  /// wider than the whole width takes a row of its own.
   static func rows(_ sizes: [CGSize], width: CGFloat?, spacing: CGFloat) -> [Row] {
     let limit = (width ?? .infinity) + 0.5
     var rows: [Row] = []

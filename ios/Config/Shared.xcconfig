@@ -1,7 +1,3 @@
-// Shared build settings for the Hasala app target (spec 06 §4.1, §4.3).
-// Nothing here is a secret: the team id, bundle id and topic name are public, and
-// the Google iOS client id is a public client by design. Secrets never go in the bundle.
-
 DEVELOPMENT_TEAM = 8CFG28JHP3
 CODE_SIGN_STYLE = Automatic
 PRODUCT_BUNDLE_IDENTIFIER = app.hasala.ios
@@ -13,28 +9,15 @@ SWIFT_STRICT_CONCURRENCY = complete
 SWIFT_APPROACHABLE_CONCURRENCY = YES
 SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor
 ENABLE_USER_SCRIPT_SANDBOXING = YES
-// Warnings are errors for this target when CI passes HASALA_WARNINGS_AS_ERRORS=YES (spec 04
-// §1.3). Not SWIFT_TREAT_WARNINGS_AS_ERRORS on the command line: that reaches the package
-// dependencies too (GRDB, swift-collections), which SwiftPM builds with -suppress-warnings, and
-// the two flags conflict.
 SWIFT_TREAT_WARNINGS_AS_ERRORS = $(HASALA_WARNINGS_AS_ERRORS)
 DEBUG_INFORMATION_FORMAT = dwarf-with-dsym
 ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
 ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO
 ENABLE_PREVIEWS = YES
 
-// HasalaMocks (the Maya scenario) is linked in Debug only (spec 04 §1.4, AT-REV-4).
-// Neither XcodeGen nor Xcode can link a package product per configuration, so
-// project.yml links it and this leaves it out: Xcode links a static package product
-// as one object file, HasalaMocks.o, and drops a Frameworks-phase file whose name
-// matches EXCLUDED_SOURCE_FILE_NAMES. Debug.xcconfig clears this; every other
-// configuration, Release included, links no mock data. archive.sh's inspection
-// (AT-REV-4) refuses an .ipa whose binary names HasalaMocks, should this ever stop
-// matching.
 EXCLUDED_SOURCE_FILE_NAMES = HasalaMocks.o
 
 #include "Version.xcconfig"
-// Overridden on the archive command line by ios/scripts/archive.sh (spec 06 §8).
 CURRENT_PROJECT_VERSION = 1
 
 GENERATE_INFOPLIST_FILE = YES
@@ -47,15 +30,6 @@ INFOPLIST_KEY_NSFaceIDUsageDescription = Hasala uses Face ID to lock the app and
 INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = Hasala saves your monthly recap image to your photo library when you choose Save Image.
 INFOPLIST_KEY_NSCameraUsageDescription = Hasala uses the camera only to scan the reset code shown on your other iPhone.
 
-// Hasala* Info.plist values, read only through BuildInfo (spec 06 §2.3, §4.2).
-// The Google iOS OAuth client is public by design (no secret; it ships in every
-// binary). The redirect scheme is its reversed id: Gmail's redirect URI is
-// `<scheme>:/oauth2redirect`, which ASWebAuthenticationSession captures itself, so
-// the scheme is deliberately not registered in CFBundleURLTypes (spec 06 DV-2;
-// inspect-ipa.sh I4 refuses an .ipa that registers one).
-// The Pub/Sub topic stays `unset`: the app takes the watch topic from the server's
-// GET /meta (`gmail_watch_topic`) and skips users.watch while it is absent, so the
-// cloud project id is not published in the build.
 HASALA_ENVIRONMENT = qa
 SLASH = /
 HASALA_API_BASE_URL = https:$(SLASH)$(SLASH)api.hasala.app
@@ -63,13 +37,6 @@ HASALA_ASSIST_BASE_URL = https:$(SLASH)$(SLASH)assist.hasala.app
 HASALA_GOOGLE_IOS_CLIENT_ID = 987620996339-4tbl1o14pf309u5h9bjatnaipvqg1ob9.apps.googleusercontent.com
 HASALA_GOOGLE_REDIRECT_SCHEME = com.googleusercontent.apps.987620996339-4tbl1o14pf309u5h9bjatnaipvqg1ob9
 HASALA_GMAIL_PUBSUB_TOPIC = unset
-// The Entra app (personal Microsoft accounts only) is public by design too: its client
-// id ships in every binary and has no secret (`unset` would stop Outlook being
-// offered). The server must have the same id in its [outlook] group, or linking fails.
-// The redirect is `msauth.app.hasala.ios://auth`, captured by
-// ASWebAuthenticationSession; the scheme is not registered in CFBundleURLTypes either
-// (inspect-ipa.sh I4).
 HASALA_OUTLOOK_CLIENT_ID = 0cbe5805-2e22-4f55-9785-9d3bdaf7009d
 HASALA_OUTLOOK_REDIRECT_SCHEME = msauth.app.hasala.ios
-// archive.sh passes the first 12 hex of HEAD.
 HASALA_GIT_COMMIT = unset

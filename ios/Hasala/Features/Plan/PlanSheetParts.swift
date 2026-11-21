@@ -2,33 +2,17 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-// The parts of Plan's two sheets (Paper page 14 "Sheets & overlays"): the medium sheet's
-// fitted white container and the large sheet's grey one, the sheet header, the money figure
-// that is the field, the radio mark, a disc for "Ready to assign" and the pages pushed inside
-// a sheet to pick a source or a category.
-
 extension View {
-  /// A medium sheet (page 14 §02 "Medium · Dining budget"): white, floating 8 from three
-  /// edges, radius 40, one detent the height of its content (it never drags up to large).
-  /// `height` is the content's measured height (0 until it is measured). `large` is the large
-  /// detent, which the sheet takes at the accessibility text sizes ("Dynamic Type: medium
-  /// sheets grow to large, then scroll", page 14 §10).
   func planMediumSheet(height: CGFloat, large: Bool = false) -> some View {
     presentationDetents([large ? .large : (height > 0 ? .height(height) : .medium)])
       .presentationCornerRadius(HRadius.sheet)
       .presentationBackground(HColor.sheetSurface)
       .presentationDragIndicator(.visible)
-      // The shell presents this sheet with `.presentationDetents([.large])` (MainView), and
-      // the outer modifier wins over this one, so the sheet's own controller is fitted to the
-      // content directly. Stage I kept both (requests/p7.md): the controller also takes the
-      // bottom safe area off the detent, which SwiftUI's `.height` alone would not.
       .background {
         if !large { FittedSheetDetent(height: height).frame(width: 0, height: 0) }
       }
   }
 
-  /// A large sheet (page 14 §02 "Large · Template"): full height, grey, top corners 34, the
-  /// screen behind pushed back. Its rows sit in white cards.
   func planLargeSheet() -> some View {
     presentationDetents([.large])
       .presentationCornerRadius(HRadius.sheetLarge)
@@ -37,9 +21,6 @@ extension View {
   }
 }
 
-/// Fits the presenting sheet to `height` through its `UISheetPresentationController`: one
-/// custom detent, never more than the screen allows. It is applied when the sheet appears and
-/// whenever the height changes.
 struct FittedSheetDetent: UIViewControllerRepresentable {
   let height: CGFloat
 
@@ -51,7 +32,6 @@ struct FittedSheetDetent: UIViewControllerRepresentable {
   }
 
   final class Controller: UIViewController {
-    /// The content's height; 0 before the content is measured.
     var height: CGFloat = 0
     private var applied: CGFloat = 0
     private static let fitted = UISheetPresentationController.Detent.Identifier("hasala.plan.fitted")
@@ -71,8 +51,6 @@ struct FittedSheetDetent: UIViewControllerRepresentable {
     func apply() {
       guard height > 0, height != applied, let sheet = presentingSheet else { return }
       applied = height
-      // The detent is the height above the sheet's bottom safe area; the content runs into
-      // that area itself (it ignores it), so the sheet ends 28 under the button, as drawn.
       let h = max(1, height - (sheet.presentedViewController.view.safeAreaInsets.bottom))
       let change = {
         sheet.detents = [.custom(identifier: Self.fitted) { context in min(h, context.maximumDetentValue) }]
@@ -85,7 +63,6 @@ struct FittedSheetDetent: UIViewControllerRepresentable {
       }
     }
 
-    /// The sheet this view sits in: the nearest ancestor presented as a sheet.
     private var presentingSheet: UISheetPresentationController? {
       var vc: UIViewController? = self
       while let current = vc {
@@ -99,9 +76,6 @@ struct FittedSheetDetent: UIViewControllerRepresentable {
   }
 }
 
-/// A sheet's header (page 14 §03): 48 tall, the glass Close on the leading side, the title
-/// centred in 17/22 semibold, an empty 48 slot on the trailing side so the title stays
-/// centred. The action that finishes the task is the primary button at the bottom.
 struct PlanSheetHeader: View {
   let title: String
   let closeID: String
@@ -111,7 +85,6 @@ struct PlanSheetHeader: View {
     HStack(spacing: 8) {
       GlassIconButton(.close, label: "Close", action: close)
         .accessibilityIdentifier(closeID)
-      // One line, truncating, as page 14 §08 says; at the larger sizes it wraps instead.
       Text(title).hType(.headline).foregroundStyle(HColor.textPrimary)
         .singleLineAtDefaultTextSize()
         .multilineTextAlignment(.center)
@@ -125,20 +98,13 @@ struct PlanSheetHeader: View {
   }
 }
 
-/// The amount being set, as the field it is (Paper "AED 1,800", "AED 318.00"): "AED" 17/22
-/// 600 and the figure 44/46 bold rounded, −0.8, on one baseline. The field keeps the typed
-/// amount to the keypad rules (one point, two decimals, nine whole digits) and shows it with
-/// thousands commas. Inputs show their real value with amounts hidden (spec 04 §12).
 struct PlanAmountField: View {
   @Binding var text: String
   let identifier: String
-  /// VoiceOver's name for the field ("New budget", "Amount").
   let label: String
   var focus: FocusState<Bool>.Binding
 
   @ScaledMetric(relativeTo: .largeTitle) private var figure: CGFloat = 44
-  /// The figure's line, 46 (Paper's 44/46), scaled with it. The field's own line is the
-  /// face's natural 52, which made the stepper row and Move money's amount 6 taller.
   @ScaledMetric(relativeTo: .largeTitle) private var line: CGFloat = 46
   @ScaledMetric(relativeTo: .body) private var unit: CGFloat = 17
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -162,8 +128,6 @@ struct PlanAmountField: View {
         .keyboardType(.decimalPad)
         .focused(focus)
         .fixedSize()
-        // Laid out on Paper's line; the digits (no descenders, a comma's tail of 0.12 em)
-        // stay inside it.
         .frame(height: shownLine)
         .accessibilityLabel(label)
         .accessibilityIdentifier(identifier)
@@ -176,8 +140,6 @@ struct PlanAmountField: View {
     .onTapGesture { focus.wrappedValue = true }
   }
 
-  /// What the field shows for what was typed: the keypad's rules, grouped ("1,800",
-  /// "318.5"); empty stays empty so the placeholder shows.
   static func shown(_ typed: String, after previous: String,
                     decimalSeparator: String = Locale.current.decimalSeparator ?? ".") -> String {
     shown(AmountEntry(editing: typed, previous: previous, decimalSeparator: decimalSeparator))
@@ -187,16 +149,11 @@ struct PlanAmountField: View {
     entry.isEmpty ? "" : entry.display
   }
 
-  /// The field's text for an amount: "1,800" in the budget sheet (plan amounts are whole,
-  /// page 06), "318.00" in Move money (`.exact`).
   static func text(for minor: Int64, style: MoneyStyle = .compact) -> String {
     shown(AmountEntry(typing: MoneyFormat.string(AmountEntry.clamped(minor), style: style)))
   }
 }
 
-/// The radio of a choice row (Move money "Take from"): 24, selected is the accent circle with
-/// a white 14 check (stroke 3.2), unselected a 2 pt ring in gray 3. In a fixed 24 slot, so
-/// rows line up.
 struct RadioMark: View {
   let selected: Bool
 
@@ -214,7 +171,6 @@ struct RadioMark: View {
   }
 }
 
-/// A source's disc: the category's, or for Ready to assign the mint disc with the wallet.
 struct SourceDisc: View {
   let source: MoveSource
 
@@ -229,8 +185,6 @@ struct SourceDisc: View {
   }
 }
 
-/// A source as a choice row: the disc, the name over what it has ("1,000.00 not in a budget
-/// yet"), the radio. At least 60 tall; the whole row is the target and reads as one choice.
 struct SourceRow: View {
   let source: MoveSource
   let selected: Bool
@@ -256,15 +210,11 @@ struct SourceRow: View {
   }
 }
 
-/// "Take it from" pushed inside the budget sheet (page 14: "Push a page inside the sheet to
-/// go deeper"): every place the money can come from, in 03a §6.13's order. A tap picks it and
-/// goes back.
 struct SourcePickerPage: View {
   let title: String
   let sources: [MoveSource]
   let selected: CategoryID?
   let hidden: Bool
-  /// Rows sit straight on a white medium sheet; on the grey large sheet they sit in a card.
   let onCard: Bool
   let pick: (CategoryID?) -> Void
 
@@ -301,7 +251,6 @@ struct SourcePickerPage: View {
   }
 }
 
-/// Assign's "To": every category a budget can go to, by bucket, pushed inside Move money.
 struct DestinationPickerPage: View {
   let destinations: [CategoryOption]
   let selected: CategoryID?
@@ -337,10 +286,6 @@ struct DestinationPickerPage: View {
   }
 }
 
-/// Quick chips that share their line (Paper "Quick chips": each grows to fill its row; one
-/// that doesn't fit takes the next line, full width). `spacing` apart side by side,
-/// `lineSpacing` between lines (the chips carry 2 of their 44 pt target above and below the
-/// drawn 40, so 4 here draws Paper's 8).
 struct GrowingChipRows: Layout {
   var spacing: CGFloat = 8
   var lineSpacing: CGFloat = 8
@@ -368,8 +313,6 @@ struct GrowingChipRows: Layout {
     }
   }
 
-  /// Each chip of a line grown to share the line's room, never wider than the line (a chip
-  /// alone on a line that its words overflow wraps them instead), and its height there.
   private func placements(_ line: [Int], _ subviews: Subviews, width: CGFloat) -> [CGSize] {
     let natural = line.map { subviews[$0].sizeThatFits(.unspecified).width }
     let room = width.isFinite ? width : natural.reduce(0, +) + spacing * CGFloat(line.count - 1)
@@ -403,27 +346,17 @@ struct GrowingChipRows: Layout {
   }
 }
 
-/// A quick chip on a sheet (Paper "+ 200", "Cover the pace 1,992"): 40 tall, 16 in, the
-/// on-card chip fill; words 15/20 600, a figure in rounded compact. The button is 46 tall (3
-/// above and below the drawn chip), so the target is its own frame; pressed, the drawn chip
-/// darkens.
 struct QuickChip: View {
   let title: String
-  /// A figure after the words, rounded 600 in the count colour ("1,992"), or nil.
   var figure: MoneyPhrase?
   let hidden: Bool
-  /// The words are a figure themselves ("+ 200"): rounded 700.
   var titleIsFigure = false
   let action: () -> Void
 
-  /// How far the target reaches past the drawn chip, above and below: 46 in all, because
-  /// the medium sheet the chips sit on is inset and the system draws it at 386/402 of its
-  /// size (`UIDropShadowView` scales it by 0.96), and 46 × 0.96 is the 44 a finger needs.
   static let reach: CGFloat = (HSpacing.targetMinimum + 2 - HSpacing.chipHeight) / 2
 
   var body: some View {
     Button(action: action) {
-      // The words and the figure on one line; at the larger sizes the figure goes under them.
       SideBySideOrStacked(spacing: 6, lineSpacing: 0, spreads: false, stackedAlignment: .center) {
         if titleIsFigure {
           Text(title).hFigure(.compact)
@@ -445,7 +378,6 @@ struct QuickChip: View {
     .accessibilityLabel(figure.map { "\(title), \($0.spoken(hidden: hidden))" } ?? title)
   }
 
-  /// The chip's fill (and its pressed layer) on the drawn 40, inside a 46 target.
   private struct ChipStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
       configuration.label

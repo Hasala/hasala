@@ -1,21 +1,3 @@
-// Package authtest is a scriptable software WebAuthn authenticator for tests.
-//
-// It exists for the reason internal/pgtest does: two packages need the same
-// non-trivial test apparatus, and the alternative is copying a hundred lines of
-// COSE and CBOR encoding into each of them where the two copies would drift.
-// auth/passkey_test.go drives the ceremony logic with it; api/passkey_test.go
-// drives the same ceremonies over HTTP.
-//
-// go-webauthn ships spec vectors, not a scriptable authenticator, and every
-// property worth testing here is a property of a SEQUENCE of ceremonies — a
-// replayed ceremony id, an expired one, a signature counter that goes backwards —
-// rather than of one captured response.
-//
-// It is deliberately obedient: nothing here is trying to test go-webauthn's own
-// verification, which is the library's job and has the spec vectors for it. What
-// it makes testable is the state the SERVER keeps between begin and finish.
-//
-// It is test-only and is imported by no production code.
 package authtest
 
 import (
@@ -33,17 +15,12 @@ import (
 	"github.com/go-webauthn/webauthn/protocol/webauthncose"
 )
 
-// The relying party every test in this tree uses. They are here rather than in
-// each test package so an origin and an RP id can never disagree between the
-// server under test and the authenticator answering it — a mismatch that
-// presents as "verification fails for no reason".
 const (
 	RPID          = "ledger.example"
 	RPOrigin      = "https://ledger.example"
 	RPDisplayName = "Ledger"
 )
 
-// Authenticator data flags, §6.1.
 const (
 	flagUserPresent    = 0x01
 	flagUserVerified   = 0x04
@@ -52,38 +29,19 @@ const (
 	flagAttestedData   = 0x40
 )
 
-// Authenticator is one software authenticator: an ES256 key, a credential id,
-// and the user handle it adopted from the registration it answered.
 type Authenticator struct {
-	// Origin is the origin it claims to have been called from. Tests override it
-	// to check that a ceremony run from somewhere else is refused.
 	Origin string
 
-	Key    *ecdsa.PrivateKey
-	CredID []byte
-	// Handle is filled in by Create from the registration options, which is
-	// exactly what a real authenticator does: the RP names the user handle and
-	// the authenticator stores it beside the credential, to hand back inside
-	// every later assertion.
-	Handle []byte
-	AAGUID []byte
-	// Counter is the signature counter the registration was made at. Assert
-	// takes the counter as a parameter rather than incrementing this, so a test
-	// can replay an old one.
-	Counter uint32
-	// NoUV clears the user-verified flag in every response it makes: the
-	// "UV flag cleared" switch of spec 01 §15.3, which every ceremony must
-	// refuse.
-	NoUV bool
-	// LastAttestationObject is the raw attestationObject of the last Create,
-	// whose SHA-256 bootstrap's auth_hash names (spec 01 §10.3.1).
+	Key                   *ecdsa.PrivateKey
+	CredID                []byte
+	Handle                []byte
+	AAGUID                []byte
+	Counter               uint32
+	NoUV                  bool
 	LastAttestationObject []byte
-	// LastClientDataJSON is the raw clientDataJSON of the last Create, whose
-	// SHA-256 PasskeyAddMessage names (spec 01 §10.7).
-	LastClientDataJSON []byte
+	LastClientDataJSON    []byte
 }
 
-// New returns an authenticator with a fresh key and credential id.
 func New(t *testing.T) *Authenticator {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -99,21 +57,19 @@ func New(t *testing.T) *Authenticator {
 	}
 }
 
-// RandBytes is crypto/rand with the error handling a test wants.
 func RandBytes(t *testing.T, n int) []byte {
 	t.Helper()
 	return RandBytesTB(t, n)
 }
 
-// coseKey is the credential public key as the authenticator publishes it.
 func (a *Authenticator) coseKey(t *testing.T) []byte {
 	t.Helper()
 	pk := webauthncose.EC2PublicKeyData{
 		PublicKeyData: webauthncose.PublicKeyData{
-			KeyType:   2, // EC2
+			KeyType:   2,
 			Algorithm: int64(webauthncose.AlgES256),
 		},
-		Curve:  1, // P-256
+		Curve:  1,
 		XCoord: a.Key.PublicKey.X.FillBytes(make([]byte, 32)),
 		YCoord: a.Key.PublicKey.Y.FillBytes(make([]byte, 32)),
 	}
@@ -124,8 +80,6 @@ func (a *Authenticator) coseKey(t *testing.T) []byte {
 	return raw
 }
 
-// authData builds §6.1 authenticator data. attested is set only for a
-// registration, which is the ceremony that carries the new credential.
 func (a *Authenticator) authData(t *testing.T, rpID string, counter uint32, attested bool) []byte {
 	t.Helper()
 	h := sha256.Sum256([]byte(rpID))
@@ -162,10 +116,6 @@ func (a *Authenticator) clientData(t *testing.T, typ string, challenge protocol.
 	return raw
 }
 
-// Create answers a registration challenge and returns the response JSON the
-// browser would POST. It adopts the user handle the server put in the options,
-// which is the value that later comes back inside an assertion and is what makes
-// username-less login possible.
 func (a *Authenticator) Create(t *testing.T, opts *protocol.CredentialCreation) []byte {
 	t.Helper()
 	switch id := opts.Response.User.ID.(type) {
@@ -174,7 +124,6 @@ func (a *Authenticator) Create(t *testing.T, opts *protocol.CredentialCreation) 
 	case []byte:
 		a.Handle = id
 	case string:
-		// The options came back through JSON, so the handle is base64url text.
 		raw, err := base64.RawURLEncoding.DecodeString(id)
 		if err != nil {
 			t.Fatalf("user id %q is not base64url: %v", id, err)
@@ -211,9 +160,6 @@ func (a *Authenticator) Create(t *testing.T, opts *protocol.CredentialCreation) 
 	return mustJSON(t, resp)
 }
 
-// Assert answers a login challenge at the given signature counter. The counter
-// is a parameter rather than an increment so a test can replay an old one, which
-// is the cloned-authenticator signal.
 func (a *Authenticator) Assert(t *testing.T, opts *protocol.CredentialAssertion, counter uint32) []byte {
 	t.Helper()
 	cd := a.clientData(t, "webauthn.get", opts.Response.Challenge)
@@ -236,9 +182,6 @@ func (a *Authenticator) Assert(t *testing.T, opts *protocol.CredentialAssertion,
 	return mustJSON(t, resp)
 }
 
-// AssertChallenge answers an assertion over raw challenge bytes for rpID —
-// what a step-up proof is: the WebAuthn challenge is the 32 bytes C (spec 01
-// §10.2), not anything a begin endpoint wrapped in options.
 func (a *Authenticator) AssertChallenge(t *testing.T, rpID string, challenge []byte, counter uint32) []byte {
 	t.Helper()
 	opts := &protocol.CredentialAssertion{Response: protocol.PublicKeyCredentialRequestOptions{

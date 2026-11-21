@@ -2,22 +2,11 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// The starting split as a bar with two handles (Paper "Split · 50 / 30 / 20", "Stacked bar
-/// · draggable"; the owner's "Add handles so the user can drag the ratios"): needs, wants and
-/// savings in their hues, a white knob between each pair, the percentages under their
-/// segments.
-///
-/// A handle moves in 5% steps with a light tick per step; each bucket can reach 0% and the
-/// three always make 100. The left handle trades needs for wants, the right one wants for
-/// savings. A drag anywhere on the bar takes the nearer handle, so the 10 pt knobs never
-/// need hitting. VoiceOver reads each handle as adjustable: "Needs, 50%", "Wants, 30%".
 struct SplitHandles: View {
   @Binding var plan: StartingPlan
 
-  /// The handle a drag moves (nil at rest).
   @State private var dragging: Int?
 
-  /// A handle's slot is 20 wide (Paper), its touch area 44.
   private static let slot: CGFloat = 20
 
   var body: some View {
@@ -44,13 +33,10 @@ struct SplitHandles: View {
       .padding(.vertical, -6)
       labels
     }
-    // Each 5% step slides on the snappy spring (a jump with Reduce Motion), with a tick.
     .hAnimation(.thumbSlide, value: plan)
     .hHaptic(.keyTick, trigger: plan)
   }
 
-  /// A bucket's segment: 16 tall, radius 8, the hue's end colour under a 10% → 16% ink
-  /// wash. A bucket at 0% has no segment; its handles meet.
   private func segment(_ bucket: Bucket, _ percent: Int, _ track: CGFloat) -> some View {
     RoundedRectangle(cornerRadius: 8, style: .continuous)
       .fill(bucket.hue.end)
@@ -63,7 +49,6 @@ struct SplitHandles: View {
       .accessibilityHidden(true)
   }
 
-  /// Where handle `i`'s slot centre sits.
   private func x(of handle: Int, _ track: CGFloat) -> CGFloat {
     track * CGFloat(boundary(handle)) / 100 + Self.slot * (CGFloat(handle) + 0.5)
   }
@@ -72,7 +57,6 @@ struct SplitHandles: View {
     handle == 0 ? plan.needsPercent : plan.needsPercent + plan.wantsPercent
   }
 
-  /// The handle as VoiceOver and the tests reach it: a 44 box over the knob, adjustable.
   private func handle(_ i: Int, at x: CGFloat, track: CGFloat) -> some View {
     let bucket = i == 0 ? "Needs" : "Wants"
     return Color.clear
@@ -105,8 +89,6 @@ struct SplitHandles: View {
     abs(x - self.x(of: 0, track)) <= abs(x - self.x(of: 1, track)) ? 0 : 1
   }
 
-  /// Moves handle `i` to `boundary` percent (from the left), keeping each bucket at 0% or
-  /// more and the three at 100.
   private func move(_ i: Int, to boundary: Int) {
     let next = plan.moving(handle: i, to: boundary)
     guard next != plan else { return }
@@ -114,8 +96,6 @@ struct SplitHandles: View {
     AccessibilityNotification.Announcement(next.splitAnnouncement).post()
   }
 
-  /// "50%" under its segment, in its ink (Paper "Labels": the same growth as the
-  /// segments, 20 apart).
   private var labels: some View {
     SplitLabelLayout(slot: Self.slot) {
       if plan.needsPercent > 0 {
@@ -192,7 +172,6 @@ struct SplitLabelLayout: Layout {
   }
 }
 
-/// The white knob between two segments: 10 × 32, radius 5, with three grip lines.
 private struct Knob: View {
   var body: some View {
     RoundedRectangle(cornerRadius: 5, style: .continuous)
@@ -238,9 +217,6 @@ extension StartingPlan {
     "Needs \(needsPercent)%, wants \(wantsPercent)%, savings \(savingsPercent)%"
   }
 
-  /// The split with handle `i` at `boundary` percent from the left, in 5% steps: the left
-  /// handle trades needs for wants, the right one wants for savings. No bucket goes under
-  /// 0%, and the three stay at 100.
   func moving(handle i: Int, to boundary: Int) -> StartingPlan {
     let step = Int((Double(boundary) / 5).rounded()) * 5
     var next = self

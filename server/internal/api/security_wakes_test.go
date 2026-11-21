@@ -15,9 +15,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// wantSecurityWake checks a committed authenticator change's wakes (spec 02
-// §9.3, §12.5): every device but the caller's writer, then exactly the
-// signed-out sessions' tokens, collected before their rows went away.
 func wantSecurityWake(t *testing.T, k *keyed, ws []wakeRec, except string, revoked ...string) {
 	t.Helper()
 	if len(ws) != 2 || !ws[0].others || ws[0].user != k.user || ws[0].writer != except || ws[0].r != pushv2.ReasonSecurity ||
@@ -32,10 +29,6 @@ func wantSecurityWake(t *testing.T, k *keyed, ws []wakeRec, except string, revok
 	}
 }
 
-// A password change signs every other session out and wakes those devices
-// through their collected tokens; an in-app freeze does the same and also
-// ends the caller's own session without waking it (review: no device signed
-// out by an authenticator change was ever told).
 func TestAuthenticatorChangesWakeTheSignedOutDevices(t *testing.T) {
 	h := newHarness(t).passkeys()
 	wk, _ := withPushAndGmail(h)
@@ -47,7 +40,6 @@ func TestAuthenticatorChangesWakeTheSignedOutDevices(t *testing.T) {
 	t2, t3 := putToken(h, tok2, 2), putToken(h, tok3, 3)
 	wk.take()
 
-	// A refused change wakes nobody.
 	s := authtest.RandBytesTB(t, 32)
 	sh := sha256.Sum256(s)
 	wantStatus(t, h.req("POST", "/api/v1/account/password", k.token, VerifierStepUpRequest{Verifier: b64(s)}),
@@ -55,7 +47,6 @@ func TestAuthenticatorChangesWakeTheSignedOutDevices(t *testing.T) {
 	if ws := wk.take(); len(ws) != 0 {
 		t.Fatalf("a refused password set woke %+v", ws)
 	}
-	// #56: the other two iPhones are signed out and woken; the caller is not.
 	wantStatus(t, h.req("POST", "/api/v1/account/password", k.token, VerifierStepUpRequest{Verifier: b64(s),
 		StepUp: k.stepUp(k.token, keyproto.ActionPasswordSet, sh[:])}), http.StatusNoContent)
 	wantSecurityWake(t, k, wk.take(), k.device.WriterID, t2, t3)
@@ -66,7 +57,6 @@ func TestAuthenticatorChangesWakeTheSignedOutDevices(t *testing.T) {
 		t.Fatal("the signed-out sessions kept their tokens")
 	}
 
-	// #65: every session ends, the caller's too, but only the others are woken.
 	tok2 = h.session(k.user)
 	h.bind(tok2, d2.WriterID)
 	t2 = putToken(h, tok2, 4)

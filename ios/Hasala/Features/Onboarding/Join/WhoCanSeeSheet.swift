@@ -2,16 +2,7 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// "Who can see what" (Paper "Welcome · Story 3 · Who can see what (sheet)", spec 04 §7): a
-/// large sheet that lists everyone who can see anything, and what. Opened from story 3's
-/// link and from "What Hasala reads, and what it doesn't" on "Your account is ready".
-///
-/// Every line says what the privacy policy says, or less: Paper's first row leaves out the
-/// name and its Cloudflare row the emails we send, which our server and Cloudflare do see, so
-/// both are added (`docs/legal/privacy.md`). The mail row names only providers this build can
-/// connect: "Google" alone until Outlook is connectable (plan B4.6 rule 4).
 struct WhoCanSeeSheet: View {
-  /// Outlook can be connected in this build, so Microsoft sees mail too.
   var outlook: Bool
 
   @Environment(\.dismiss) private var dismiss
@@ -42,7 +33,6 @@ struct WhoCanSeeSheet: View {
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
           Button(role: .close) { dismiss() }
-            // Paper's close glyph is the glass's vibrant ink, not the accent.
             .tint(HColor.textPrimary)
             .accessibilityLabel("Close")
             .accessibilityIdentifier("whoSees.close")
@@ -54,8 +44,6 @@ struct WhoCanSeeSheet: View {
     .presentationBackground(HColor.sheetSurfaceLarge)
     .accessibilityIdentifier("whoSees.sheet")
   }
-
-  // MARK: Parties
 
   static func serverSees(outlook: Bool) -> [String] {
     [
@@ -81,7 +69,6 @@ struct WhoCanSeeSheet: View {
 
   private var parties: some View {
     VStack(spacing: 0) {
-      // Paper EW0-0: this row's column sets its title and both lists 8 apart.
       PartyRow(tile: AnyView(AppIconTile(size: 36, radius: 10)), title: "Hasala, our server", top: 14, titleGap: 8) {
         VStack(alignment: .leading, spacing: 8) {
           section("Can see", color: HColor.textSecondary) {
@@ -136,7 +123,6 @@ struct WhoCanSeeSheet: View {
   {
     VStack(alignment: .leading, spacing: 2) {
       Text(label)
-        // Scales with footnote: caption 2 stops growing early at the accessibility sizes.
         .hType(HType(size: 11, leading: 16, weight: .semibold, trackingEm: 0.06, uppercase: true, textStyle: .footnote))
         .foregroundStyle(color)
       content()
@@ -159,8 +145,6 @@ struct WhoCanSeeSheet: View {
       .fixedSize(horizontal: false, vertical: true)
       .frame(maxWidth: .infinity, alignment: .leading)
   }
-
-  // MARK: Key notice and link
 
   private var keyNotice: some View {
     HStack(alignment: .top, spacing: 12) {
@@ -208,8 +192,6 @@ struct WhoCanSeeSheet: View {
   }
 }
 
-/// One party: a 36 tile, a 16/22 title and what it sees (Paper ListRow, 64 divider inset).
-/// The title sits 2 over a one-line answer, 8 over the server's "Can see" lists.
 private struct PartyRow<Content: View>: View {
   let tile: AnyView
   let title: String

@@ -2,9 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Which heading "Choose your email" carries: setup's, the profile's Add a mailbox, or,
-/// where the build holds one mailbox (`holdsOneLink`) and the account has it, the profile's
-/// "Use another email", whose pick replaces it after a confirmation.
 enum ChooseEmailTitle: Sendable {
   case setup
   case addMailbox
@@ -18,7 +15,6 @@ enum ChooseEmailTitle: Sendable {
     }
   }
 
-  /// With `oneLink` no line promises a second mailbox.
   func subtitle(oneLink: Bool) -> String {
     let setup = "Pick where your bank sends alerts. \(Self.notSignIn) Read-only, on this iPhone."
     switch self {
@@ -43,22 +39,10 @@ enum ChooseEmailTitle: Sendable {
   }
 }
 
-/// The providers this build can connect (Paper "Connect email · Choose your email (sheet
-/// over setup 1)" 1MZG, "Add a mailbox · 2 Choose your email" 1NW2; page 15 §03): one row
-/// per provider, named by the mail app ("Gmail", "Outlook"), the account kinds it covers,
-/// or the address already connected ("maya@example.com is connected. Add another Google
-/// account.") or needing a new sign-in. A provider not in `connectable` is never listed.
-/// Picking a row moves to the provider's read-only screen.
-///
-/// In setup it is a large sheet over the bank step (plan decision 5) that hugs its content:
-/// it sets its own height, grabber, corner radius and grey surface, so present it bare, and
-/// it closes itself before `onPick`. In the profile (`.addMailbox`) it is a page pushed
-/// inside the profile sheet (decision 11), with the same heading and rows.
 struct ChooseEmailSheet: View {
   let mailbox: MailboxConnecting
   let title: ChooseEmailTitle
   var onPick: (MailProviderKind) -> Void
-  /// The sheet's content height; the detent follows it.
   @State private var height: CGFloat = 0
   @Environment(\.dismiss) private var dismiss
 
@@ -75,11 +59,6 @@ struct ChooseEmailSheet: View {
     }
   }
 
-  /// Setup: Paper's large sheet hugging its content (1MZG): the heading 43 under the
-  /// sheet's top (8, the system grabber, 18, 12), 20 at the sides, 18 between the heading,
-  /// the providers and the footnote, 14 under the link (the system keeps the home
-  /// indicator's inset below that, Paper's 48 in all). The detent is the content's height,
-  /// so it stays right at every text size; past the screen it scrolls.
   private var sheet: some View {
     ScrollView {
       content(headingTop: 43)
@@ -96,7 +75,6 @@ struct ChooseEmailSheet: View {
     .accessibilityIdentifier("mail.choose")
   }
 
-  /// The profile: the same heading and rows on a page inside the profile sheet.
   private var page: some View {
     ScrollView {
       content(headingTop: 8)
@@ -124,7 +102,6 @@ struct ChooseEmailSheet: View {
       HListCard {
         ForEach(Array(mailbox.connectable.enumerated()), id: \.element) { i, provider in
           if i > 0 { HDivider(inset: .disc68) }
-          // Setup's pick is always a new connect; the profile's follows the offer.
           ProviderRow(provider: provider, subtitle: Self.subtitle(
             provider, mailboxes: mailbox.mailboxes, offer: title == .setup ? nil : mailbox.offer,
             oneLink: mailbox.holdsOneLink)) {
@@ -143,13 +120,6 @@ struct ChooseEmailSheet: View {
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 
-  /// A connected provider names its address and offers another account of its own (page
-  /// 15: "A provider already connected shows its address as the subtitle and stays
-  /// tappable, to add a second mailbox"). A mailbox that needs a new sign-in is not
-  /// connected: while the profile's connect of that provider signs it in again
-  /// (`ConnectMailPage.context`, the offer the bell and the Profile card make), the row
-  /// says so, as the screen it opens does ("Sign in to Outlook again."). With `oneLink` a
-  /// connected provider offers no second account of its own.
   static func subtitle(
     _ provider: MailProviderKind, mailboxes: [MailboxSnapshot], offer: MailOffer? = nil, oneLink: Bool = false
   ) -> String? {

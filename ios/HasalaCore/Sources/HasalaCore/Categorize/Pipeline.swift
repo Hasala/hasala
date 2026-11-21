@@ -1,24 +1,15 @@
-// The categorization pipeline (spec 03c §8.1-§8.4, §5.4; 04 §8.1):
-// (1) user rules → (2) the bundled dictionary → (3) the model (suggestion,
-// ModelTier) → (4) the review queue. Tiers 1-2 are deterministic and FILE a
-// row; nothing here reads a clock or the network.
 import HasalaText
 
-/// Where a deterministic decision came from (03c §3.2.1, the `rule` and
-/// `dictionary` kinds; `none` otherwise).
 public enum DecisionSource: Sendable, Equatable {
   case none
   case rule(id: String)
   case dictionary(bundle: String, entry: String)
 }
 
-/// `decide`'s answer (03c §8.2).
 public struct Decision: Sendable, Equatable {
   public let category: String?
   public let source: DecisionSource
-  /// The dictionary display name of the entry that matched (03c §3.6 precedence).
   public let display: String?
-  /// A spending decision on a credit: not filed (`none`), but the sheet pre-selects it.
   public let suggested: String?
 
   public static let none = Decision(category: nil, source: .none, display: nil, suggested: nil)
@@ -35,7 +26,6 @@ public enum Direction: String, Sendable {
   case debit, credit
 }
 
-/// Rules and dictionary prepared once per sweep, against the effective category table.
 public struct Categorizer: Sendable {
   public let prepared: PreparedRules
   public let bundle: String
@@ -47,8 +37,6 @@ public struct Categorizer: Sendable {
     self.categories = categories
   }
 
-  /// 03c §8.2 `decide`: the first rule hit, else the first dictionary hit, whose
-  /// category is active; a spending category on a credit is only a suggestion.
   public func decide(merchantRaw: String, direction: Direction) -> Decision {
     guard let hit = Matcher.firstHit(merchantRaw, prepared, accept: { categories.info($0.category)?.active == true }) else {
       return .none
@@ -64,7 +52,6 @@ public struct Categorizer: Sendable {
     return Decision(category: hit.category, source: source, display: hit.display, suggested: nil)
   }
 
-  /// The dictionary display name for a merchant (03c §3.6: rename > dictionary `d` > prettify).
   public func dictionaryDisplay(merchantRaw: String) -> String? {
     let subject = Array(Canon.subject(merchantRaw).utf8)
     if subject.isEmpty { return nil }
@@ -72,9 +59,6 @@ public struct Categorizer: Sendable {
   }
 }
 
-// MARK: - Sweep (03c §8.4)
-
-/// A projected row as the sweep reads it.
 public struct SweepRow: Sendable, Equatable {
   public enum SourceKind: String, Sendable { case none, user, held, rule, dictionary, model }
   public let id: String
@@ -82,10 +66,8 @@ public struct SweepRow: Sendable, Equatable {
   public let direction: Direction?
   public let category: String?
   public let sourceKind: SourceKind
-  /// `category_source_ref` (rule id, `<bundle>|<entry>`, model tag).
   public let sourceRef: String?
   public let needsReview: Bool
-  /// Live, parsed, not archived and not split.
   public let candidate: Bool
   public let version: Int64?
   public let template: String?
@@ -120,7 +102,6 @@ public struct SweepRow: Sendable, Equatable {
   public func rejects(_ category: String) -> Bool { rejected.contains(category) }
 }
 
-/// One `txn_categorized` the sweep wants authored (needs_review unchanged).
 public struct SweepAction: Sendable, Equatable {
   public let txnID: String
   public let category: String
@@ -129,12 +110,8 @@ public struct SweepAction: Sendable, Equatable {
 }
 
 public enum Sweep {
-  /// Max ops per blob (03c §8.4).
   public static let maxOpsPerBlob = 500
 
-  /// Plans the sweep: re-files candidates whose deterministic decision changed,
-  /// never un-files, never touches `user` or `held` rows; uncategorized debits
-  /// with no decision join the model queue (by row id, newest first as given).
   public static func plan(_ rows: [SweepRow], _ categorizer: Categorizer) -> (actions: [SweepAction], modelQueue: [SweepRow]) {
     var actions: [SweepAction] = []
     var queue: [SweepRow] = []

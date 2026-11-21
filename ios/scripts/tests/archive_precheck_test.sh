@@ -1,18 +1,4 @@
 #!/usr/bin/env bash
-# archive.sh's prechecks (spec 06 §10.4: 13, 14, 16, 21) and its one-archive-per-build-
-# number rule: a second archive in the same UTC minute is refused (21) instead of
-# reusing the first one's ios/build/<BUILD>/. The gate (13) runs on a small repository
-# made here (the scripts, the privacy manifest, the xcconfigs and a few Swift files), so
-# a planted IntegrationStub or undeclared required-reason API never touches this
-# checkout.
-#
-# Offline, and nothing is archived, signed or provisioned: xcodebuild is a stub first
-# on PATH that answers -version and refuses everything else (so `xcodebuild archive`
-# fails, exit 30, before anything is built), the key is a text file, HOME is empty,
-# and HASALA_BUILD_DIR (with HASALA_TEST_MODE=1, without which archive.sh refuses it)
-# keeps every build directory and last-build-number in a temporary directory.
-# archive.sh runs with --allow-dirty --allow-branch, so the state of this checkout
-# does not matter.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
@@ -21,7 +7,6 @@ fail=0
 root="$work/build"
 mkdir -p "$work/home" "$work/stub" "$work/keys"
 
-# The stub only stands in for xcodebuild if archive.sh reaches it through PATH.
 if grep -nE '/usr/bin/xcodebuild|xcrun[[:space:]]+xcodebuild' "$here/archive.sh"; then
 	echo "FAIL archive.sh does not call xcodebuild through PATH; the stub cannot replace it, so this test stops here"
 	exit 1
@@ -55,9 +40,6 @@ echo "not a key" >"$key"
 chmod 600 "$key"
 : >"$work/calls"
 
-# archive NAME WANT [VAR=value...]: archive.sh --allow-dirty --allow-branch with the
-# stubs, the fake key and HASALA_BUILD_DIR=$root in test mode, plus the given variables.
-# ARCHIVE_SH (default: this checkout's) is the archive.sh to run.
 archive() {
 	local name="$1" want="$2" rc=0
 	shift 2
@@ -79,7 +61,6 @@ said() {
 }
 archives() { grep -c '^archive ' "$work/calls" || true; }
 
-# HASALA_BUILD_DIR outside test mode: refused (2) before anything else runs.
 archive "HASALA_BUILD_DIR without HASALA_TEST_MODE=1" 2 HASALA_TEST_MODE=
 said "refusing to run with HASALA_BUILD_DIR set outside test mode" "refused for HASALA_BUILD_DIR"
 if [[ ! -s "$work/calls" && ! -e "$root" ]]; then echo "ok   ...before it ran xcodebuild or made a build directory"; else
@@ -102,12 +83,9 @@ if [[ "$(archives)" != 0 ]]; then
 	fail=1
 fi
 
-# HASALA_TEST_NOW outside test mode: refused (2), like HASALA_BUILD_DIR.
 archive "HASALA_TEST_NOW without HASALA_TEST_MODE=1" 2 HASALA_TEST_MODE= HASALA_BUILD_DIR= HASALA_TEST_NOW=2026-01-01T00:00:00Z
 said "refusing to run with HASALA_TEST_NOW set outside test mode" "refused for HASALA_TEST_NOW"
 
-# Two archives in one UTC minute: both see the same pinned time, so a slow runner
-# that crosses a minute boundary between them cannot make the second one legitimate.
 minute="$(/bin/date -u +%Y-%m-%dT%H:%M:00Z)"
 archive "the first archive of the minute reaches xcodebuild archive (the stub refuses it)" 30 HASALA_TEST_NOW="$minute"
 dirs=()
@@ -127,7 +105,6 @@ if [[ "$(archives)" == 1 ]]; then echo "ok   ...and never reached xcodebuild arc
 	fail=1
 fi
 
-# --- the gate (13), on a small repository ------------------------------------------------
 ios="$(cd "$here/.." && pwd)"
 mini="$work/mini"
 mkdir -p "$mini/ios/scripts" "$mini/ios/Config" "$mini/ios/Hasala" "$mini/ios/HasalaCore/Sources/HasalaCore/Wire" \
@@ -147,8 +124,6 @@ printf 'build/\n' >"$mini/ios/.gitignore"
 git -C "$mini" init -q
 git -C "$mini" add -A
 git -C "$mini" -c user.name=test -c user.email=test@example.invalid -c commit.gpgsign=false commit -q -m mini
-# gate NAME WANT: the small repository's archive.sh, with its own build directory (the
-# archives above claimed this minute's build number in $root).
 gate() { ARCHIVE_SH="$mini/ios/scripts/archive.sh" archive "$1" "$2" HASALA_BUILD_DIR="$work/mini-build"; }
 before="$(archives)"
 gate "the gate passes on a clean tree (the stub refuses the archive after it)" 30

@@ -1,7 +1,3 @@
-// Package opsnotify posts operator notices to an ntfy topic: a fixed title
-// and message, and an optional click URL (the operator console). A notice
-// never carries anything about a person (no email address, bank or id), so
-// the topic and its subscribers learn only that something happened.
 package opsnotify
 
 import (
@@ -13,22 +9,18 @@ import (
 	"time"
 )
 
-// Timeout bounds one post; a notice that cannot be delivered is dropped.
 const Timeout = 10 * time.Second
 
-// Notifier posts to URL. Build it with New.
 type Notifier struct {
 	URL    string
-	Click  string // optional; the Click header
+	Click  string
 	Client *http.Client
 }
 
-// New returns a Notifier for url (an ntfy topic URL) and click ("" for none).
 func New(url, click string) *Notifier {
 	return &Notifier{URL: url, Click: click, Client: &http.Client{Timeout: Timeout}}
 }
 
-// Post sends one notice and reports whether ntfy accepted it.
 func (n *Notifier) Post(ctx context.Context, title, message, tags string) error {
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()

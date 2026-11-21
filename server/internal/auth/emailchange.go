@@ -1,11 +1,5 @@
 package auth
 
-// Email change and re-verification (spec 02 §10.12, spec 01 §10.17; routes
-// #60–#63). A change needs a step-up plus a code to the new address and either
-// a code to the old one or, when the old mailbox is lost, the recovery key's
-// signature. A password user's verifier is re-salted for the new address,
-// because s_srv is a function of it.
-
 import (
 	"context"
 	"crypto/sha256"
@@ -21,17 +15,13 @@ import (
 	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
-// EmailChangeTTL is an email-change ceremony's lifetime.
 const EmailChangeTTL = 10 * time.Minute
 
-// EmailChangeBegun is #60's answer, identical whether or not the new address
-// is in use.
 type EmailChangeBegun struct {
 	ChangeID uuid.UUID
 	Nonce    []byte
 }
 
-// EmailChangeBegin is #60.
 func (a *Accounts) EmailChangeBegin(ctx context.Context, session SessionInfo, newEmail string, verifierNew []byte, su *StepUpObject) (EmailChangeBegun, error) {
 	addr, err := normEmail(newEmail)
 	if err != nil {
@@ -61,8 +51,6 @@ func (a *Accounts) EmailChangeBegin(ctx context.Context, session SessionInfo, ne
 	if su == nil {
 		return EmailChangeBegun{}, ErrStepUpRequired
 	}
-	// The new verifier's PBKDF2 runs before the step-up's transaction, so no
-	// connection is held while the gate is waited on (as SetPassword does).
 	var hash, salt []byte
 	if verifierNew != nil {
 		if hash, salt, err = newPasswordHash(ctx, a.Keys, a.Gate, verifierNew); err != nil {
@@ -115,9 +103,6 @@ func (a *Accounts) EmailChangeBegin(ctx context.Context, session SessionInfo, ne
 	return EmailChangeBegun{ChangeID: id, Nonce: nonce}, nil
 }
 
-// EmailChangeFinish is #61: the new address's code, and the old address's
-// code or the recovery key's signature over EmailChangeMessage. Every
-// failure is ErrCodeRejected.
 func (a *Accounts) EmailChangeFinish(ctx context.Context, session SessionInfo, changeID uuid.UUID, codeNew string,
 	codeOld *string, rkSig []byte) error {
 	if (codeOld == nil) == (rkSig == nil) {
@@ -260,8 +245,6 @@ func (a *Accounts) EmailChangeFinish(ctx context.Context, session SessionInfo, c
 	return nil
 }
 
-// EmailVerifyBegin is #62: an email_verify code to the current address,
-// bound to the account itself as the ceremony.
 func (a *Accounts) EmailVerifyBegin(ctx context.Context, userID uuid.UUID) error {
 	tx, err := pgtx.BeginReadCommitted(ctx, a.Pool)
 	if err != nil {
@@ -284,9 +267,6 @@ func (a *Accounts) EmailVerifyBegin(ctx context.Context, userID uuid.UUID) error
 	return nil
 }
 
-// EmailVerifyFinish is #63: the newest unused, unexpired email_verify code of
-// the account; success re-verifies the address and clears the bounce and the
-// operator's request.
 func (a *Accounts) EmailVerifyFinish(ctx context.Context, userID uuid.UUID, code string) error {
 	now := a.now()
 	var codeID uuid.UUID

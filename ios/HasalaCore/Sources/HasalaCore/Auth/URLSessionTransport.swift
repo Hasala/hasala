@@ -1,10 +1,3 @@
-// `Transport` over URLSession (spec 04 §2.3: CoreAuth and CoreSync may use
-// URLSession through Foundation; §5.5 headers).
-//
-// Every request carries `Hasala-Client: ios/<version>/<build>` (`02` §6.1) and,
-// when the call has a session, `Authorization: Bearer <token>`. The session is
-// ephemeral: no cookies, no URL cache, no credential storage, so nothing about
-// a call is written to disk by Foundation.
 import Foundation
 
 public final class URLSessionTransport: Transport, @unchecked Sendable {
@@ -12,8 +5,6 @@ public final class URLSessionTransport: Transport, @unchecked Sendable {
   public let clientHeader: String
   private let session: URLSession
 
-  /// `baseURL` is the API origin (`https://api.hasala.app`); `clientHeader` is
-  /// `ios/<CFBundleShortVersionString>/<CFBundleVersion>`.
   public convenience init(baseURL: URL, clientHeader: String, timeout: TimeInterval = 30) {
     self.init(baseURL: baseURL, clientHeader: clientHeader, timeout: timeout, protocolClasses: nil)
   }
@@ -35,10 +26,6 @@ public final class URLSessionTransport: Transport, @unchecked Sendable {
 
   deinit { session.invalidateAndCancel() }
 
-  /// The request for `r`, or nil when `r.path` would leave `baseURL`'s origin:
-  /// it must be an absolute path ("/" and not "//", which a URL resolver reads
-  /// as a new host), and the resolved URL must keep the scheme, host and port,
-  /// so the session's bearer only ever goes to the API.
   public func urlRequest(for r: APIRequest) -> URLRequest? {
     let lead = Array(r.path.utf8.prefix(2))
     guard lead.first == 0x2F, lead.count == 1 || lead[1] != 0x2F,

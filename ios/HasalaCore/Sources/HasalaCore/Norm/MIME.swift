@@ -1,41 +1,22 @@
-// The MIME subset the normalizer contract needs: a byte-level port of norm/mime.ts, itself a
-// port of what the Go normalizer does (go-message/textproto, mime.ParseMediaType,
-// mime/quotedprintable, strict base64, mime.WordDecoder, the address cascade and the multipart
-// reader). Go's leniencies are reproduced, and so is WHICH error is raised where, because the
-// error class decides between "skip this leaf", "abort the walk" and "fall back to the raw body".
-//
-// Header values are BYTES throughout (the twin's "binary strings"), exactly as Go strings are;
-// they become text only in `decodeWords`.
 import HasalaText
 
-/// The failure classes of the MIME walk (mime.ts's error classes).
 enum MIMEFailure: Error, Equatable {
-  /// The header block could not be parsed: the stage-1 raw-body fallback.
   case parse
   case tooDeep
-  /// A sub-part could not be produced: aborts the walk (anything collected stands).
   case walkAbort
-  /// A leaf's body could not be decoded: the leaf is skipped.
   case leafDecode
-  /// A charset Go decodes with a codec no other executor mirrors: refused, never guessed.
   case unsupportedCharset(String)
 }
 
-// MARK: - Header parsing (go-message/textproto.ReadHeader)
-
 struct HeaderField {
-  /// ASCII-lower-cased field name.
   let key: [UInt8]
-  /// The unfolded value, bytes.
   let value: [UInt8]
 }
 
 struct ParsedHeader {
   var fields: [HeaderField]
-  /// Offset of the first body byte, just past the blank line.
   var bodyStart: Int
 
-  /// go-message's `Header.Get`: the first field with this (ASCII) name, or empty.
   func get(_ name: StaticString) -> [UInt8] {
     let want = Bytes.of(name)
     for f in fields where f.key == want { return f.value }
@@ -46,8 +27,6 @@ struct ParsedHeader {
 enum MIME {
   static func isSpaceByte(_ b: UInt8) -> Bool { b == Bytes.sp || b == Bytes.tab }
 
-  /// bufio.ReadLine: the line WITHOUT its terminator (`\n`, and one `\r` before it). `eof` only
-  /// when nothing is left; a final line with no newline is a normal line.
   static func readLine(_ buf: ArraySlice<UInt8>, _ pos: Int) -> (start: Int, end: Int, next: Int, eof: Bool) {
     if pos >= buf.endIndex { return (pos, pos, pos, true) }
     guard let nl = Bytes.index(of: Bytes.lf, in: buf, from: pos) else {
@@ -58,10 +37,8 @@ enum MIME {
     return (pos, end, nl + 1, false)
   }
 
-  /// go-message's `trim`: spaces and tabs only.
   static func trimSpaceTab(_ s: ArraySlice<UInt8>) -> ArraySlice<UInt8> { Bytes.trim(s, where: isSpaceByte) }
 
-  /// go-message's trimAroundNewlines: unfold, joining the non-empty segments with one space.
   static func trimAroundNewlines(_ v: ArraySlice<UInt8>) -> [UInt8] {
     var out: [UInt8] = []
     var segStart = v.startIndex
@@ -87,8 +64,6 @@ enum MIME {
 
   static func validHeaderKeyByte(_ c: UInt8) -> Bool { c >= 33 && c <= 126 && c != 0x3a }
 
-  /// Parses a message or part header starting at `start`. Throws `.parse` exactly where
-  /// go-message does: a folded first line, a line with no colon, a name outside `ftext`.
   static func readHeader(_ buf: [UInt8], _ start: Int) throws(MIMEFailure) -> ParsedHeader {
     try readHeader(buf[...], start)
   }
@@ -103,7 +78,7 @@ enum MIME {
       var kv = Array(buf[first.start..<first.end])
       kv.append(contentsOf: [Bytes.cr, Bytes.lf])
       var p = first.next
-      if first.end == first.start { return ParsedHeader(fields: fields, bodyStart: p) }  // the blank line
+      if first.end == first.start { return ParsedHeader(fields: fields, bodyStart: p) }
       while p < buf.endIndex && isSpaceByte(buf[p]) {
         let cont = readLine(buf, p)
         if cont.eof { break }
@@ -116,19 +91,14 @@ enum MIME {
       guard let i = Bytes.index(of: 0x3a, in: kv) else { throw .parse }
       let keyRaw = trimSpaceTab(kv[0..<i])
       for k in keyRaw where !validHeaderKeyByte(k) { throw .parse }
-      // An empty key is skipped rather than rejected, as in go-message.
       if !keyRaw.isEmpty {
         fields.append(HeaderField(key: Bytes.latin1Lower(Array(keyRaw)), value: trimAroundNewlines(kv[(i + 1)...])))
       }
     }
   }
 
-  // MARK: - Media type (Go's mime.ParseMediaType through go-message)
-
   struct MediaType {
-    /// Lower-cased media type, or (when it did not parse) the raw field value.
     let type: [UInt8]
-    /// Parameter values, already RFC 2047-decoded. Keys are ASCII token text.
     let params: [String: String]
   }
 
@@ -136,7 +106,6 @@ enum MIME {
   static func isTSpecial(_ b: UInt8) -> Bool { tspecials.contains(b) }
   static func isTokenChar(_ b: UInt8) -> Bool { b > 0x20 && b < 0x7f && !isTSpecial(b) }
 
-  /// Go's unicode.IsSpace over a binary string: only the bytes whose code point is in the set.
   static func isUnicodeSpaceByte(_ b: UInt8) -> Bool {
     switch b {
     case 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x20, 0x85, 0xa0: true
@@ -154,7 +123,6 @@ enum MIME {
     return (s[s.startIndex..<i], s[i...])
   }
 
-  /// Go's consumeValue. Failure is an empty value AND an unconsumed rest, as in Go.
   static func consumeValue(_ v: ArraySlice<UInt8>) -> ([UInt8], ArraySlice<UInt8>) {
     if v.isEmpty { return ([], v) }
     if v.first != 0x22 {
@@ -166,7 +134,6 @@ enum MIME {
     while i < v.endIndex {
       let r = v[i]
       if r == 0x22 { return (out, v[(i + 1)...]) }
-      // A backslash escapes ONLY a tspecial; otherwise it is a literal backslash.
       if r == 0x5c && i + 1 < v.endIndex && isTSpecial(v[i + 1]) {
         out.append(v[i + 1])
         i += 2
@@ -176,10 +143,9 @@ enum MIME {
       out.append(r)
       i += 1
     }
-    return ([], v)  // no closing quote
+    return ([], v)
   }
 
-  /// Go's consumeMediaParam: nil when it consumed nothing.
   static func consumeMediaParam(_ v: ArraySlice<UInt8>) -> (key: [UInt8], value: [UInt8], rest: ArraySlice<UInt8>)? {
     var rest = trimLeftUnicodeSpace(v)
     guard rest.first == 0x3b else { return nil }
@@ -198,11 +164,10 @@ enum MIME {
   static func fromHexByte(_ b: UInt8) -> Int {
     if b >= 0x30 && b <= 0x39 { return Int(b) - 0x30 }
     if b >= 0x41 && b <= 0x46 { return Int(b) - 0x41 + 10 }
-    if b >= 0x61 && b <= 0x66 { return Int(b) - 0x61 + 10 }  // Go accepts lower case too
+    if b >= 0x61 && b <= 0x66 { return Int(b) - 0x61 + 10 }
     return -1
   }
 
-  /// RFC 2231 percent-unescaping; nil on a malformed escape.
   static func percentHexUnescape(_ s: ArraySlice<UInt8>) -> [UInt8]? {
     var out: [UInt8] = []
     var i = s.startIndex
@@ -222,7 +187,6 @@ enum MIME {
     return out
   }
 
-  /// RFC 2231 `charset'lang'pct`: Go keeps only us-ascii, utf-8 and the empty charset.
   static func decode2231Enc(_ v: [UInt8]) -> [UInt8]? {
     guard let first = Bytes.index(of: 0x27, in: v) else { return nil }
     guard let second = Bytes.index(of: 0x27, in: v, from: first + 1) else { return nil }
@@ -232,7 +196,6 @@ enum MIME {
     return nil
   }
 
-  /// Go's checkMediaTypeDisposition.
   static func validMediaType(_ s: [UInt8]) -> Bool {
     let (typ, rest) = consumeToken(s[...])
     if typ.isEmpty { return false }
@@ -243,8 +206,6 @@ enum MIME {
     return rest2.isEmpty
   }
 
-  /// A Content-Type value, or nil wherever Go returns an error (go-message then uses the raw
-  /// value as the type). A trailing semicolon is tolerated, as Go tolerates it.
   static func parseMediaType(_ v: [UInt8]) throws(MIMEFailure) -> MediaType? {
     let semi = Bytes.index(of: 0x3b, in: v)
     let base = v[0..<(semi ?? v.count)]
@@ -253,7 +214,6 @@ enum MIME {
 
     var params: [[UInt8]: [UInt8]] = [:]
     var paramOrder: [[UInt8]] = []
-    // RFC 2231 pieces (`name*`, `name*0`, `name*0*`), stitched at the end, by base name.
     var continuation: [[UInt8]: [[UInt8]: [UInt8]]] = [:]
     var continuationOrder: [[UInt8]] = []
 
@@ -262,7 +222,7 @@ enum MIME {
       rest = trimLeftUnicodeSpace(rest)
       if rest.isEmpty { break }
       guard let p = consumeMediaParam(rest) else {
-        if trimUnicodeSpace(rest).elementsEqual([0x3b]) { break }  // a trailing semicolon
+        if trimUnicodeSpace(rest).elementsEqual([0x3b]) { break }
         return nil
       }
       if let star = Bytes.index(of: 0x2a, in: p.key) {
@@ -319,15 +279,12 @@ enum MIME {
       }
     }
 
-    // go-message RFC 2047-decodes every parameter value after parsing.
     var decoded: [String: String] = [:]
     for k in paramOrder {
       decoded[Bytes.latin1String(k)] = try decodeWords(params[k]!)
     }
     return MediaType(type: mediatype, params: decoded)
   }
-
-  // MARK: - Content-Transfer-Encoding
 
   static let b64Reverse: [Int16] = {
     var t = [Int16](repeating: -1, count: 256)
@@ -337,8 +294,6 @@ enum MIME {
     return t
   }()
 
-  /// Strict base64 as go-message decodes a body: space, tab, CR and LF are skipped anywhere,
-  /// then everything else is strict (padding required, no data after it, no foreign bytes).
   static func decodeBase64(_ body: some Collection<UInt8>) throws(MIMEFailure) -> [UInt8] {
     var clean: [UInt8] = []
     clean.reserveCapacity(body.count)
@@ -370,10 +325,6 @@ enum MIME {
     return out
   }
 
-  /// Quoted-printable, a line-for-line port of Go's mime/quotedprintable.Reader, with its four
-  /// deliberate RFC deviations (soft `=` LF, bare CR/LF pass through, a trailing `=` at EOF after
-  /// content is dropped, `=` without two hex digits is literal unless CR/LF follows) and the
-  /// whitespace rule (stripped before a hard break, kept before a soft one).
   static func decodeQuotedPrintable(_ body: [UInt8]) throws(MIMEFailure) -> [UInt8] {
     var out: [UInt8] = []
     out.reserveCapacity(body.count)
@@ -421,7 +372,7 @@ enum MIME {
           }
           let next: Int = i + 1 < line.endIndex ? Int(line[i + 1]) : -1
           if line.endIndex - i >= 2 && next != Int(Bytes.cr) && next != Int(Bytes.lf) {
-            out.append(0x3d)  // literal =
+            out.append(0x3d)
             i += 1
             continue
           }
@@ -449,7 +400,6 @@ enum MIME {
     case quotedPrintable, base64, identity
   }
 
-  /// The decoder for this Content-Transfer-Encoding, or nil when Go reports it unknown.
   static func transferDecoder(_ cte: [UInt8]) -> TransferDecoder? {
     switch Bytes.latin1Lower(cte) {
     case Bytes.of("quoted-printable"): .quotedPrintable
@@ -467,10 +417,6 @@ enum MIME {
     }
   }
 
-  // MARK: - RFC 2047 encoded words (Go's mime.WordDecoder)
-
-  /// The trim of `decodeWords` (Go's strings.Trim with the explicit set, on BYTES): the
-  /// multi-byte members U+00A0 and U+FEFF are removed only as their exact UTF-8 sequences.
   static let binaryTrimSeqs: [[UInt8]] = [
     [0x09], [0x0a], [0x0b], [0x0c], [0x0d], [0x20], [0xc2, 0xa0], [0xef, 0xbb, 0xbf],
   ]
@@ -495,9 +441,6 @@ enum MIME {
     return s[start..<end]
   }
 
-  /// One encoded word's content in its declared charset; nil keeps the field's raw value.
-  /// mime.WordDecoder handles iso-8859-1 (true Latin-1) and us-ascii (one U+FFFD per high
-  /// byte) itself; everything else goes through htmlindex alone.
   static func convertWord(_ charset: [UInt8], _ content: [UInt8]) throws(MIMEFailure) -> String? {
     let cs = Bytes.latin1Lower(charset)
     if cs == Bytes.of("iso-8859-1") { return Bytes.latin1String(content) }
@@ -544,7 +487,6 @@ enum MIME {
     return out
   }
 
-  /// base64.StdEncoding.DecodeString: strict, padding required, NO whitespace skipping.
   static func bDecode(_ text: ArraySlice<UInt8>) -> [UInt8]? {
     if text.count % 4 != 0 { return nil }
     for c in text where c != 0x3d && b64Reverse[Int(c)] < 0 { return nil }
@@ -555,11 +497,6 @@ enum MIME {
     s.contains { !($0 == Bytes.sp || $0 == Bytes.tab || $0 == Bytes.lf || $0 == Bytes.cr) }
   }
 
-  /// RFC 2047 decoding of a header value (mime.WordDecoder.DecodeHeader, with the trim Go's
-  /// decodeWords applies first). Adjacent encoded words join with NO separator; a word that
-  /// fails is left verbatim and scanning resumes after its `=?`. Output is assembled as bytes
-  /// and decoded once; where Go would keep invalid UTF-8 from a mislabelled utf-8 word, the
-  /// WHATWG decode substitutes U+FFFD (the one documented, accepted divergence, as in TS).
   static func decodeWords(_ raw: [UInt8]) throws(MIMEFailure) -> String {
     let v = Array(trimExplicitBinary(raw[...]))
     if v.isEmpty { return "" }
@@ -590,7 +527,7 @@ enum MIME {
       if q >= n { break }
       let charset = Array(v[cur..<q])
       cur = q + 1
-      if v.count < cur + 4 { break }  // "Q??=".length
+      if v.count < cur + 4 { break }
       let encoding = v[cur]
       cur += 1
       if v[cur] != 0x3f { break }
@@ -607,7 +544,6 @@ enum MIME {
       default: content = nil
       }
       guard let content else {
-        // Go writes the "=?" back out and rescans from just after it.
         betweenWords = false
         out.append(contentsOf: v[base..<(start + 2)])
         base = start + 2
@@ -620,7 +556,7 @@ enum MIME {
         out.append(contentsOf: content)
       } else {
         guard let converted = try convertWord(charset, content) else {
-          return NormText.decodeUTF8(v)  // undecodable charset: keep the raw field
+          return NormText.decodeUTF8(v)
         }
         out.append(contentsOf: converted.utf8)
       }
@@ -630,8 +566,6 @@ enum MIME {
     out.append(contentsOf: v[base...])
     return NormText.decodeUTF8(out)
   }
-
-  // MARK: - Addresses
 
   static func isATextScalar(_ c: Unicode.Scalar) -> Bool {
     switch c.value {
@@ -645,7 +579,7 @@ enum MIME {
     var prevDot = false
     for c in s {
       if c == "." {
-        if prevDot { return false }  // ".."
+        if prevDot { return false }
         prevDot = true
         continue
       }
@@ -669,7 +603,6 @@ enum MIME {
     return isDotAtom(domain)
   }
 
-  /// Splits an address list on top-level commas (quotes, comments and angle-addrs respected).
   static func splitAddressList(_ v: [Unicode.Scalar]) -> [[Unicode.Scalar]] {
     var out: [[Unicode.Scalar]] = []
     var depthAngle = 0
@@ -715,21 +648,18 @@ enum MIME {
     return out
   }
 
-  /// The addr-spec of a single mailbox, or nil.
   static func parseMailbox(_ s: ArraySlice<Unicode.Scalar>) -> ArraySlice<Unicode.Scalar>? {
     let t = s.trimming(.jsTrim)
     if t.isEmpty { return nil }
     if let lt = t.lastIndex(of: "<") {
       guard let gt = t[lt...].firstIndex(of: ">") else { return nil }
-      if !t[(gt + 1)...].trimming(.jsTrim).isEmpty { return nil }  // trailing junk: Go rejects it
+      if !t[(gt + 1)...].trimming(.jsTrim).isEmpty { return nil }
       let addr = t[(lt + 1)..<gt].trimming(.jsTrim)
       return isAddrSpec(addr) ? addr : nil
     }
     return isAddrSpec(t) ? t : nil
   }
 
-  /// Reduces a From value to its bare address (Go's cascade: an address list, a single
-  /// address, a by-hand angle-addr, then the trimmed raw value). `trim` is unwrap's explicit set.
   static func bareAddress(_ v: String) -> String {
     let t = NormText.scalars(NormText.trimExplicit(v))
     if t.isEmpty { return "" }
@@ -746,17 +676,12 @@ enum MIME {
     return NormText.string(t)
   }
 
-  // MARK: - Entities and the multipart walk
-
   enum TextMode {
     case utf8
     case singleByte(Int)
     case unsupported(String)
   }
 
-  /// go-message's `New`, including WHICH error it reports. The transfer decoder's EXISTENCE is
-  /// decided now (an unknown one is an error); whether it SUCCEEDS is decided when the text is
-  /// read, which is the difference between an aborted walk and a skipped leaf.
   struct Entity {
     let mediaType: [UInt8]
     let params: [String: String]
@@ -764,7 +689,6 @@ enum MIME {
     let decoder: TransferDecoder?
     let isMultipart: Bool
     let mode: TextMode
-    /// What NextPart would report: advisory at the top level, fatal inside a multipart.
     let failed: Bool
 
     func decodedBody() throws(MIMEFailure) -> [UInt8] {
@@ -804,7 +728,7 @@ enum MIME {
       switch Charset.classify(label) {
       case .singleByte(let t): mode = .singleByte(t)
       case .unsupported: mode = .unsupported(label)
-      case .unresolved: failed = true  // go-message reports the error AND leaves the body undecoded
+      case .unresolved: failed = true
       case .passthrough: break
       }
     }
@@ -813,8 +737,6 @@ enum MIME {
       mode: mode, failed: failed)
   }
 
-  /// go-message/textproto.MultipartReader over the whole buffer. `next()` throws `.walkAbort`
-  /// (or `.parse` for a bad part header) exactly where Go's NextPart returns an error.
   struct Multipart {
     let body: ArraySlice<UInt8>
     let dashBoundary: [UInt8]
@@ -845,7 +767,6 @@ enum MIME {
     mutating func isBoundaryDelimiter(_ line: ArraySlice<UInt8>) -> Bool {
       guard line.starts(with: dashBoundary) else { return false }
       let rest = line.dropFirst(dashBoundary.count).drop(while: MIME.isSpaceByte)
-      // First part only: switch to bare-LF mode when the mail uses LF endings.
       if partsRead == 0 && rest.count == 1 && rest.first == Bytes.lf {
         nl = [Bytes.lf]
         nlDashBoundary = [Bytes.lf] + dashBoundary
@@ -871,7 +792,7 @@ enum MIME {
           done = true
           return nil
         }
-        if !sawLF { throw .walkAbort }  // EOF, or an unexpected one
+        if !sawLF { throw .walkAbort }
         pos = idx! + 1
 
         if isBoundaryDelimiter(line) {
@@ -880,7 +801,7 @@ enum MIME {
           let bodyStart = header.bodyStart
           var end: Int? = nil
           if bodyStart <= body.endIndex && boundaryMatchesAt(bodyStart, dashBoundary) {
-            end = bodyStart  // a body that starts with the boundary is empty
+            end = bodyStart
           } else {
             var i = bodyStart
             while let at = Bytes.index(of: nlDashBoundary, in: body, from: i) {
@@ -891,7 +812,6 @@ enum MIME {
               i = at + 1
             }
           }
-          // Go: io.ErrUnexpectedEOF. The leaf is undecodable AND the walk aborts.
           guard let end else { throw .walkAbort }
           pos = end
           expectNewPart = false
@@ -903,7 +823,7 @@ enum MIME {
           return nil
         }
         if expectNewPart { throw .walkAbort }
-        if partsRead == 0 { continue }  // preamble
+        if partsRead == 0 { continue }
         if line.elementsEqual(nl) {
           expectNewPart = true
           continue
@@ -913,8 +833,6 @@ enum MIME {
     }
   }
 
-  /// Everything after the first blank line (CRLF CRLF or LF LF, whichever comes first), or the
-  /// whole message when it has none.
   static func rawBodyAfterHeaders(_ raw: [UInt8]) -> ArraySlice<UInt8> {
     let crlf = Bytes.index(of: [0x0d, 0x0a, 0x0d, 0x0a], in: raw)
     let lf = Bytes.index(of: [0x0a, 0x0a], in: raw)

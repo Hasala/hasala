@@ -1,6 +1,3 @@
-// conformance/crypto-v3 (Go-written, WS-2): Swift must pass every file
-// (spec 01 §15.2 step 1). The suite is disabled, by name, until the directory
-// exists in this checkout; it lands with the Go vector generator.
 import CoreCrypto
 import CoreJSON
 import CorePrimitives
@@ -179,10 +176,8 @@ struct GoCryptoV3Tests {
       #expect(frame.prefix(header.count) == header && frame.dropFirst(header.count).prefix(12) == nonce)
       #expect(frame.dropFirst(header.count + 12) == (try G.hex(c["ct_tag"])))
       if let r = c["region"], !r.isNull {
-        // R supplied: seal it and get Go's bytes.
         #expect(try FrameAEAD.seal(region: try G.hex(r), header: header, prevHash: prev, epochKey: kE, nonce: nonce) == frame)
       } else {
-        // R withheld: the frame must open under the same key schedule.
         let layout = FrameV3.Layout(aadLength: env.aad.count, frameLength: frame.count)
         #expect(FrameAEAD.open([UInt8](frame), layout: layout, prevHash: prev, epochKey: kE) != nil)
       }
@@ -212,10 +207,6 @@ struct GoCryptoV3Tests {
     let user = UserID(try m.string("user_id"))!
     let writer = WriterID(try m.string("writer_id"))!
     let key = try EpochKey(epoch: 1, key: try G.hex(m["k_e"]))
-    // Every blob_hash is checked from the genesis, as spec 01 §7 defines it. The
-    // files' prev_hash fields all repeat the chain's LAST hash (a generator
-    // aliasing defect on the Go side, reported to WS-2), so they are recorded as
-    // a known issue rather than trusted.
     var prev = Hash32.zero
     var listed: [Hash32] = []
     var derived: [Hash32] = []
@@ -298,8 +289,6 @@ struct GoCryptoV3Tests {
       if let ow = st["own_writer"]?.stringValue { own = (WriterID(ow)!, Int64(try st.int("own_authored_head"))) }
       let state = PageReader.State(
         userID: user, opener: Opener(epochHWM: UInt32(try st.int("epoch_hwm")), keys: keys),
-        // The vector's roster is the one the reader decides with, i.e. after R1's
-        // one re-fetch: an unknown writer in it is `tampered(unknownWriter)`.
         serverEpoch: UInt32(try st.int("server_epoch")), pinnedHeads: pinned, roster: roster, rosterRefreshed: true,
         own: own)
       let page = try c.array("page").map { r in
@@ -399,8 +388,6 @@ enum APIVectors {
     atPath: Fixtures.conformanceRoot.appendingPathComponent("api-v1/messages.json").path)
 }
 
-// conformance/api-v1 (Go-written, WS-3; spec 02 §22): every §10.1 message and
-// every §10.2 action, rebuilt by CoreCrypto from its fields.
 @Suite("conformance/api-v1 (Go)", .enabled(if: APIVectors.present, "conformance/api-v1 is not in this checkout"))
 struct GoAPIV1Tests {
   typealias G = GoVectors
@@ -427,7 +414,6 @@ struct GoAPIV1Tests {
       return try SigningMessage.deletion(nonce: try h("nonce"), userID: try u())
     case Domain.bootstrap.rawValue:
       let wr = try #require(f["writer"])
-      // A password payload's prf_wrap is {credential_id: null, wrap: null}: no wrap.
       let prf = f["prf_wrap"].flatMap { $0.isNull || $0["wrap"]?.isNull == true ? nil : $0 }
       let payload = BootstrapPayload(
         userID: try u(), amkCommitment: try h("amk_commitment"), authorityPublicKey: try h("authority_pubkey"),
@@ -436,7 +422,6 @@ struct GoAPIV1Tests {
         writerPublicKey: try G.hex(wr["pubkey"]), writerDAKPublicKey: try G.hex(wr["dak_pubkey"]),
         writerID: try #require(WriterID(try wr.string("writer_id"))),
         prfWrap: try prf.map { (credentialID: try G.hex($0["credential_id"]), wrap: try G.hex($0["wrap"])) })
-      // The payload carries email_hash, not the address: splice the given hash in.
       var bytes = try payload.encoded()
       bytes.replaceSubrange(293..<325, with: try h("email_hash"))
       #expect(bytes == (try G.hex(x["extra"]?["payload"])), "\(x["name"]?.stringValue ?? "")")

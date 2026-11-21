@@ -2,13 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-// Parts only the join screens draw (Paper P2.1, spec 07 §3.2): the status line under a
-// code, the email chip, a note with a bare glyph, a numbered step and a card of reasons.
-// Everything else comes from the account templates (`AccountUI`, `AccountFieldsUI`).
-
-/// One line that says where a code came from or what is wrong with it (Paper "StatusLine"
-/// under the invite field): a 7 pt dot centred on the first line, then 15/20 medium in the
-/// tone's ink. Colour never works alone: the words say it.
 struct JoinStatusLine: View {
   enum Tone { case success, error, warning }
 
@@ -39,8 +32,6 @@ struct JoinStatusLine: View {
   }
 }
 
-/// The chip inside the email box once the address is confirmed (Paper "Chip · Confirmed by
-/// invite", E7J): 28 tall, the success surface, a dot and "Confirmed".
 struct ConfirmedChip: View {
   var body: some View {
     HStack(spacing: 6) {
@@ -60,8 +51,6 @@ struct ConfirmedChip: View {
   }
 }
 
-/// A plain note on a white card with a bare glyph (Paper "InfoCard · What email is for"):
-/// a 22 line glyph in the icon colour, then 15/20 secondary text; radius 20, 16 in.
 struct GlyphNote: View {
   var icon: HIcon
   var text: String
@@ -84,8 +73,6 @@ struct GlyphNote: View {
   }
 }
 
-/// A step in "What happens next" (Paper "NumberedChecklist"): a 26 white badge ringed in
-/// neutral 300 with its number, then 15/20 text.
 struct NumberedStep: View {
   var number: Int
   var text: String
@@ -111,8 +98,6 @@ struct NumberedStep: View {
   }
 }
 
-/// A white list card of short reasons (Paper "ListCard · Other reasons", E6F): 16/22 titles,
-/// 15/20 lines, 14 / 16 in, dividers inset 16.
 struct ReasonsCard: View {
   var reasons: [(title: String, detail: String)]
   var link: ReasonLink?
@@ -163,9 +148,6 @@ struct ReasonsCard: View {
   }
 }
 
-/// A text field that is one line as Paper draws it, and wraps at the accessibility sizes,
-/// where a name or an address no longer fits the box (a one-line field would cut it off). It
-/// stays one value: a return typed into the wrapping field is dropped.
 struct WrappingTextField: View {
   var placeholder: String
   @Binding var text: String

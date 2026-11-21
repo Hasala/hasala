@@ -8,25 +8,16 @@ import { SITE } from '../data/site';
 import { JS_CLASS } from '../lib/inline-scripts.mjs';
 
 interface Props {
-  /** The page part of the title: "Hasala · {title}". */
   title: string;
   description: string;
-  /** Canonical path; defaults to the current path. */
   path?: string;
   noindex?: boolean;
   ogType?: 'website' | 'article';
   jsonLd?: Record<string, unknown> | Record<string, unknown>[];
   nav?: 'full' | 'invite' | 'minimal';
   footer?: boolean;
-  /** The footer's colour: navy when the page ends on a navy band. */
   footerTone?: 'white' | 'navy';
-  /** Pages whose address can carry a code or token send no referrer at all. */
   referrer?: 'no-referrer';
-  /**
-   * The colour at the top of the page (the first block's wash), for the
-   * strip behind the status bar before scripts/edges.ts runs or without
-   * JavaScript. The same values are --edge-* in global.css.
-   */
   edge?: keyof typeof EDGE;
   class?: string;
 }
@@ -35,7 +26,6 @@ const EDGE = { white: '#ffffff', sky: '#d3e6ff', soft: '#e6eeff', legal: '#eef1f
 
 const { title, description, path, noindex = false, ogType = 'website', jsonLd, nav = 'full', footer = true, footerTone = 'white', referrer, edge = 'white', class: className } = Astro.props;
 const fullTitle = `Hasala · ${title}`;
-// https://hasala.app/ for the home page, https://hasala.app/privacy (no slash) elsewhere.
 const canonical = new URL(path ?? Astro.url.pathname, SITE.url).href;
 const ogImage = new URL(SITE.ogImage, SITE.url).href;
 const ld = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];

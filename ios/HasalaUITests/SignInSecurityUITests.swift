@@ -1,12 +1,5 @@
 import XCTest
 
-/// Sign-in, unlock, forgot password, recovery, Sign-in & security, "Confirm it's you",
-/// freezes, reset approval and the passcode wall on the in-memory account mock (Paper P2.3
-/// to P2.8). Every screen a flow reaches is audited for accessibility, and screenshots are
-/// attached to the report.
-///
-/// Mock values (synthetic): email codes are 123456; the existing account is
-/// maya@example.com / "copper lantern quietly 42"; the phrase is `phrase` below.
 final class SignInSecurityUITests: XCTestCase {
   static let phrase = ["absurd", "avoid", "scissors", "anxiety", "gather", "lottery", "category", "door", "army",
                        "half", "long", "camera"]
@@ -16,8 +9,6 @@ final class SignInSecurityUITests: XCTestCase {
     continueAfterFailure = false
   }
 
-  // MARK: - Sign in with a password, wrong then right
-
   @MainActor
   func testPasswordSignIn() throws {
     let app = launch(scenario: "signInPassword")
@@ -26,22 +17,17 @@ final class SignInSecurityUITests: XCTestCase {
     type(app, "signIn.email", "maya@example.com")
     type(app, "signIn.password", "not my password")
     tap(app, "signIn.withPassword")
-    // Paper FWD: the password box rings, one line under it, the email isn't marked.
     XCTAssertTrue(app.staticTexts["Wrong email or password. Try again or reset your password."]
       .waitForExistence(timeout: 10))
     XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: uiWait))
     attach(app, "Sign in · wrong password")
     try audit(app)
-    // Typing again clears the line; Return signs in.
     type(app, "signIn.password", "c")
     XCTAssertTrue(el(app, "signIn.wrongPassword").waitForNonExistence(timeout: uiWait))
     el(app, "signIn.password").typeText(String(Self.password.dropFirst()) + "\n")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
   }
 
-  /// Welcome back with the keyboard up (the beta's links: recover, email support, the
-  /// support page): the links step aside, the email, the password and "Sign in with
-  /// password" stay above the keyboard, and Return on the email moves to the password.
   @MainActor
   func testSignInFormStaysAboveTheKeyboard() throws {
     try signInFormStaysAbove(arguments: [])
@@ -81,10 +67,6 @@ final class SignInSecurityUITests: XCTestCase {
     attach(app, "Sign in · Touch ID")
   }
 
-  // MARK: - New iPhone: unlock
-
-  /// Password-only (Paper G80 → GDD → GJJ → GL7): the words only, Return on the twelfth
-  /// opens the data, Welcome back offers a passkey, then Home.
   @MainActor
   func testUnlockWithTheWords() throws {
     let app = launch(scenario: "unlockPasswordOnly")
@@ -119,7 +101,6 @@ final class SignInSecurityUITests: XCTestCase {
     try audit(app)
   }
 
-  /// Also a passkey (Paper K34): both ways; the words' suggestions come from the list.
   @MainActor
   func testUnlockOffersThePasskeyAndTheWords() throws {
     let app = launch(scenario: "unlockWithPasskey")
@@ -134,17 +115,12 @@ final class SignInSecurityUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["In the order on your paper. 1 of 12 so far."].waitForExistence(timeout: uiWait))
     back(app)
     tap(app, "unlock.passkey")
-    // A passkey unlock offers no second passkey on Welcome back.
     XCTAssertTrue(el(app, "unlock.open").waitForExistence(timeout: 15))
     XCTAssertFalse(el(app, "unlock.addPasskey").exists)
     tap(app, "unlock.open")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
   }
 
-  // MARK: - Forgot password and recovery
-
-  /// Paper GQL → G2U → KH7 → GS6 → KIL → GUM: the other iPhone's yes signs in, and the
-  /// data stays locked until the words.
   @MainActor
   func testForgotPasswordThroughTheOtherIPhone() throws {
     let app = launch(scenario: "signInPassword")
@@ -168,7 +144,6 @@ final class SignInSecurityUITests: XCTestCase {
     try audit(app)
   }
 
-  /// Paper GYP → GZT → G5E → H43 → H5V on the service's order: the words, then the code.
   @MainActor
   func testRecoveryWithTheWordsThenTheCode() throws {
     let app = launch(scenario: "signInPassword")
@@ -181,7 +156,6 @@ final class SignInSecurityUITests: XCTestCase {
     assertEntryClearOfTheBar(app)
     attach(app, "Recover · 12 words")
     type(app, "phraseEntry.field", Self.phrase.prefix(6).joined(separator: " ") + " ")
-    // The twelfth row (6 and 12) stays clear too once half the words are in (Paper GZT).
     assertEntryClearOfTheBar(app)
     el(app, "phraseEntry.field").typeText(Self.phrase.dropFirst(6).joined(separator: " ") + "\n")
     XCTAssertTrue(el(app, "code.field").waitForExistence(timeout: 10))
@@ -211,7 +185,6 @@ final class SignInSecurityUITests: XCTestCase {
     XCTAssertFalse(UIPasteboard.general.hasStrings)
   }
 
-  /// No words (Paper H9F): the honest end, then back to the words.
   @MainActor
   func testTheHonestEndLeadsBackToTheWords() throws {
     let app = launch(scenario: "unlockPasswordOnly")
@@ -223,27 +196,20 @@ final class SignInSecurityUITests: XCTestCase {
     XCTAssertTrue(el(app, "phraseEntry.field").waitForExistence(timeout: uiWait))
   }
 
-  // MARK: - Sign-in & security
-
   @MainActor
   func testSecurityForAPasswordOnlyAccount() throws {
     let app = launch(scenario: "passwordOnly")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
     app.buttons["header.profile"].firstMatch.tap()
-    // "Sign-in & security" and "● Password only" can't share a line at the default size:
-    // the status goes under the title (the two-line row) rather than cutting the title.
     let row = el(app, "profile.security")
     XCTAssertTrue(row.waitForExistence(timeout: 10))
     XCTAssertGreaterThanOrEqual(row.frame.height, 64, "the row title is cut beside its status")
     tap(app, "profile.security")
     XCTAssertTrue(app.staticTexts["Password only"].waitForExistence(timeout: 10))
-    // Password-only accounts never see "View your 12 words" (S-41).
     XCTAssertFalse(el(app, "security.viewPhrase").exists)
     attach(app, "Sign-in & security · password only")
     try audit(app)
 
-    // Adding a passkey asks for the password and this iPhone's key (Paper IT2); a wrong
-    // password keeps the sheet up with its line.
     tap(app, "security.addPasskey")
     XCTAssertTrue(app.staticTexts["This iPhone signs it too"].waitForExistence(timeout: uiWait))
     type(app, "confirm.password", "not it at all")
@@ -256,7 +222,6 @@ final class SignInSecurityUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Protected"].waitForExistence(timeout: 10))
   }
 
-  /// Delete account says how a password-only account confirms (Paper IAM, updated copy).
   @MainActor
   func testDeleteSaysHowThisAccountConfirms() throws {
     let app = launch(scenario: "passwordOnly")
@@ -285,7 +250,6 @@ final class SignInSecurityUITests: XCTestCase {
     attach(app, "Sign-in & security · passkey")
     try audit(app)
 
-    // View your 12 words: Face ID first (Paper INK), then the cover, hidden until tapped.
     tap(app, "security.viewPhrase")
     XCTAssertTrue(app.staticTexts["Show your 12 words"].waitForExistence(timeout: uiWait))
     tap(app, "confirm.submit")
@@ -294,7 +258,6 @@ final class SignInSecurityUITests: XCTestCase {
     attach(app, "View your 12 words")
     try audit(app)
     tap(app, "phrase.done")
-    // Closed, the words are gone: another look asks again and starts hidden.
     XCTAssertTrue(el(app, "security.viewPhrase").waitForExistence(timeout: uiWait))
     XCTAssertFalse(app.staticTexts["scissors"].exists)
     tap(app, "security.viewPhrase")
@@ -303,14 +266,12 @@ final class SignInSecurityUITests: XCTestCase {
     XCTAssertFalse(app.staticTexts["scissors"].exists)
     tap(app, "phrase.close")
 
-    // Freeze: the alert, then Face ID (Paper P2.6), then the wall on every iPhone.
     tap(app, "security.freeze")
     app.alerts.buttons["Freeze my account"].tap()
     tap(app, "confirm.submit")
     XCTAssertTrue(app.staticTexts["Your account is frozen"].waitForExistence(timeout: 10))
     attach(app, "Frozen")
     try audit(app)
-    // Unfreeze takes a full sign-in (Paper MUT).
     tap(app, "frozen.unfreeze")
     XCTAssertTrue(el(app, "unfreeze.passkey").waitForExistence(timeout: uiWait))
     attach(app, "Unfreeze")
@@ -319,10 +280,6 @@ final class SignInSecurityUITests: XCTestCase {
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
   }
 
-  /// The four alerts ask first (Paper HS1, HWP, I1C, I5Z), and "Confirm it's you" names
-  /// the change (IHY); closing it changes nothing.
-  /// Words not yet written: Home asks for them, and seeing them in Sign-in & security
-  /// answers it too; a look that stops at Face ID or the hidden grid doesn't.
   @MainActor
   func testSeeingTheWordsInSecurityAnswersHomesCard() throws {
     let app = launch(scenario: "passkeyUser", arguments: ["-HasalaPhraseUnseen"])
@@ -390,7 +347,6 @@ final class SignInSecurityUITests: XCTestCase {
     app.alerts.buttons["Cancel"].tap()
   }
 
-  /// This iPhone's data is sealed, so a password step-up can't be signed here (Paper IYT).
   @MainActor
   func testAnIPhoneWithoutItsKeyCantConfirm() throws {
     let app = launch(scenario: nil, screen: "confirm.noKey")
@@ -400,8 +356,6 @@ final class SignInSecurityUITests: XCTestCase {
     try audit(app)
   }
 
-  /// Change email (Paper LPY, LRC): Face ID, the new address, both codes, then the page
-  /// shows the new address.
   @MainActor
   func testChangeEmailWithTwoCodes() throws {
     let app = launch(scenario: "passkeyUser")
@@ -431,7 +385,6 @@ final class SignInSecurityUITests: XCTestCase {
     XCTAssertFalse(el(app, "frozen.unfreeze").exists)
     try audit(app)
     tap(app, "frozen.leave")
-    // The banner keeps the operator's freeze: no Unfreeze there either.
     XCTAssertTrue(el(app, "frozenBanner.details").waitForExistence(timeout: 10))
     XCTAssertFalse(el(app, "frozenBanner.unfreeze").exists)
     tap(app, "frozenBanner.details")
@@ -490,7 +443,6 @@ final class SignInSecurityUITests: XCTestCase {
     type(app, "approval.code", "ABCD EFGH IJKL MNOP")
     tap(app, "approval.approve")
     XCTAssertTrue(app.staticTexts["That code doesn't match a request. Nothing was approved."].waitForExistence(timeout: 10))
-    // The keyboard went away on Approve, so the line above is in view.
     XCTAssertFalse(app.keyboards.firstMatch.exists)
     replaceText(app, "approval.code", "WMO6 C7ID 7TYM 2M5S")
     tap(app, "approval.approve")
@@ -511,7 +463,6 @@ final class SignInSecurityUITests: XCTestCase {
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
   }
 
-  /// A new-iPhone sign-in killed before unlock, then relaunched: unlock, not setup.
   @MainActor
   func testRelaunchAfterASignInGoesToUnlock() throws {
     let app = launch(scenario: "relaunchSignedIn")
@@ -527,7 +478,6 @@ final class SignInSecurityUITests: XCTestCase {
     try audit(app)
   }
 
-  /// Sign-in & security at `.accessibility3` reflows instead of clipping (spec 04 §17).
   @MainActor
   func testSecurityAtLargeTextSizes() throws {
     let app = launch(
@@ -541,7 +491,6 @@ final class SignInSecurityUITests: XCTestCase {
     try audit(app, atLargeText: true)
   }
 
-  /// Unlock and the 12-word entry at `.accessibility3`: one column, no clipping.
   @MainActor
   func testUnlockAtLargeTextSizes() throws {
     let app = launch(
@@ -554,14 +503,6 @@ final class SignInSecurityUITests: XCTestCase {
 }
 
 extension SignInSecurityUITests {
-  /// `audit(_:)` for "Confirm it's you" over Sign-in & security (a fitted sheet over the
-  /// profile's large sheet). Over that page the audit reports "Potentially inaccessible
-  /// text" with no element, and the tree gives the sheet's elements frames about 0.9 of
-  /// their drawn size, so the audit's text and the elements don't line up. Every element of
-  /// the sheet is in the tree with its label (the test asserts the title and the line), and
-  /// the same sheet over the password page passes the plain audit (IT2, IYT), so
-  /// element-less issues are let through here only; any issue that names an element still
-  /// fails.
   @MainActor
   func auditOverThePage(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) throws {
     var issues: [String] = []
@@ -577,8 +518,6 @@ extension SignInSecurityUITests {
       XCTFail("accessibility audit:\n" + issues.joined(separator: "\n"), file: file, line: line)
     }
   }
-
-  // MARK: - Helpers
 
   @MainActor
   private func assertEntryClearOfTheBar(_ app: XCUIApplication, line: UInt = #line) {

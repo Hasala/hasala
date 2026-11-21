@@ -1,17 +1,4 @@
 // lint-allow: [String: each record is built in a Dictionary and every object's keys are sorted by UTF-8 bytes (sortingKeysByUTF8) before writing, so no iteration order reaches the output.
-//
-// `serializeState` (replay/state.ts, ported): the canonical JSON of a state, the
-// witness that makes "two replicas converge" checkable.
-//
-// Maps become arrays of `[key, value]` pairs sorted by the UTF-8 bytes of the
-// key, object keys are sorted the same way, sets become sorted arrays, every
-// 64-bit integer that the oracle holds as a bigint is a decimal string, arrays
-// keep their order (their order is meaning), and `appliedAtCursor` is not
-// witnessed. On a v1-v3 log the bytes equal the TypeScript oracle's.
-//
-// v4 additions follow 03c §1.9: a field added to a v3 record is emitted only
-// when not at its default; a new top-level map only when non-empty; a record
-// written by a v4 op in its v4 shape. `maxAuthored` is never emitted.
 import CoreJSON
 import CorePrimitives
 import Foundation
@@ -19,17 +6,14 @@ import HasalaText
 import OrderedCollections
 
 extension State {
-  /// The canonical JSON bytes of this state.
   public func serialized(blankingDiagnostics: Bool = false) -> [UInt8] {
     JSONWriter(numbers: .literal, keyOrder: .insertion).bytes(witness(blankingDiagnostics: blankingDiagnostics))
   }
 
-  /// SHA-256 (lower-case hex) of ``serialized(blankingDiagnostics:)``.
   public func serializedSHA256(blankingDiagnostics: Bool = false) -> String {
     Hex.encode(sha256(serialized(blankingDiagnostics: blankingDiagnostics)))
   }
 
-  /// The witness as a `JSONValue`, keys already sorted.
   public func witness(blankingDiagnostics: Bool = false) -> JSONValue {
     var o: [(String, JSONValue)] = [
       ("anomalies", .array(anomalies.map { a in obj(["at_seq": dec(a.atSeq), "detail": .string(blankingDiagnostics ? "" : a.detail), "kind": .string(a.kind)]) })),
@@ -68,7 +52,6 @@ extension State {
         ])
       })),
     ]
-    // v4 top-level additions, only when non-empty (03c §1.9 rule 2).
     if !merchantNames.isEmpty {
       o.append(("merchantNames", pairs(merchantNames) { k in obj(["display_name": k.value.map(JSONValue.string) ?? .null, "op_id": .string(k.opID)]) }))
     }
@@ -126,8 +109,6 @@ extension State {
     }
     return JSONValue.object(JSONObject(o)).sortingKeysByUTF8()
   }
-
-  // MARK: Records
 
   static func txnJSON(_ t: Txn) -> JSONValue {
     var o: [String: JSONValue] = [
@@ -269,7 +250,6 @@ extension State {
     return obj(o)
   }
 
-  /// 03a §4.3.
   static func planJSON(_ p: PlanState) -> JSONValue {
     func write(_ w: PlanWrite?) -> JSONValue {
       guard let w else { return .null }
@@ -318,18 +298,14 @@ extension State {
   }
 }
 
-// MARK: - Builders
-
 private func dec(_ v: Int64) -> JSONValue { .string(String(v)) }
 private func num(_ v: Int64) -> JSONValue { .number(JSONNumber(v)) }
 private func str(_ v: String?) -> JSONValue { v.map(JSONValue.string) ?? .null }
 
-/// An object from unordered members; the witness sorts every object's keys.
 private func obj(_ members: [String: JSONValue]) -> JSONValue {
   .object(JSONObject(members.map { ($0.key, $0.value) }))
 }
 
-/// A map as `[key, value]` pairs sorted by the key's UTF-8 bytes.
 private func pairs<V>(_ m: OrderedDictionary<String, V>, _ f: (V) -> JSONValue) -> JSONValue {
   .array(m.keys.sorted { compareUTF8($0, $1) < 0 }.map { k in .array([.string(k), f(m[k]!)]) })
 }

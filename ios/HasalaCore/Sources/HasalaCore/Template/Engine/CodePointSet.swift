@@ -1,15 +1,5 @@
-// Code point sets and simple case folding for the ICU translation.
-//
-// Case-insensitive matching is NOT left to ICU's UREGEX_CASE_INSENSITIVE, which applies FULL
-// case folding (so a pattern "ss" would match "ß" and "fi" would match the ligature U+FB01).
-// Go's `(?i)` and JavaScript's `iu` both use SIMPLE case folding (CaseFolding.txt statuses C
-// and S): a character matches when its simple fold equals the pattern character's. The
-// translator therefore expands every case-insensitive literal and class into the explicit
-// set of characters that share its simple fold (its "orbit": `k` is {K, k, U+212A}, `s` is
-// {S, s, U+017F}), and compiles the result case-sensitively.
 import HasalaICU
 
-/// A set of Unicode code points as sorted, disjoint, non-adjacent closed ranges.
 struct CodePointSet: Equatable, Sendable {
   private(set) var ranges: [ClosedRange<UInt32>]
 
@@ -58,7 +48,6 @@ struct CodePointSet: Equatable, Sendable {
 
   func union(_ other: CodePointSet) -> CodePointSet { CodePointSet(ranges: ranges + other.ranges) }
 
-  /// Everything in U+0000-U+10FFFF not in this set.
   var complement: CodePointSet {
     var out: [ClosedRange<UInt32>] = []
     var next: UInt32 = 0
@@ -72,8 +61,6 @@ struct CodePointSet: Equatable, Sendable {
     return CodePointSet(ranges: out)
   }
 
-  /// The set closed under simple case folding: every character that shares a simple fold
-  /// with a member is added (JavaScript's `iu` CharSetMatcher; Go's folded classes).
   var caseClosed: CodePointSet {
     var extra: [UInt32] = []
     for orbit in CaseFold.orbits where orbit.contains(where: contains) {
@@ -84,11 +71,8 @@ struct CodePointSet: Equatable, Sendable {
 }
 
 enum CaseFold {
-  /// ICU's simple case folding (u_foldCase with U_FOLD_CASE_DEFAULT).
   static func fold(_ c: UInt32) -> UInt32 { UInt32(bitPattern: u_foldCase(Int32(bitPattern: c), 0)) }
 
-  /// Every non-trivial orbit (characters sharing one simple fold, two or more of them),
-  /// computed once from ICU's tables over the whole code space.
   static let orbits: [[UInt32]] = {
     var byFold: [UInt32: [UInt32]] = [:]
     var c: UInt32 = 0
@@ -101,7 +85,6 @@ enum CaseFold {
     return byFold.keys.sorted().map { byFold[$0]!.sorted() }
   }()
 
-  /// The orbit of `c` (just `[c]` when nothing else folds with it).
   static let orbitIndex: [UInt32: Int] = {
     var idx: [UInt32: Int] = [:]
     for (i, o) in orbits.enumerated() {

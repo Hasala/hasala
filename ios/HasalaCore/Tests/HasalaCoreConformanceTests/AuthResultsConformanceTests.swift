@@ -1,6 +1,3 @@
-// conformance/authres: every vector the ledgerd TypeScript oracle (src/mail/authres.ts) wrote,
-// Gmail and Outlook.com, reproduced by `AuthResults` as the README says. The
-// file is read in place from the repository (never bundled); HASALA_CONFORMANCE_DIR overrides.
 import CoreJSON
 import Foundation
 import Testing
@@ -114,7 +111,6 @@ struct AuthResultsConformanceTests {
     #expect(a.verdict.trusted == v.expect.trusted)
     #expect(a.verdict.reason.rawValue == v.expect.reason)
     #expect(a.domain == v.expect.domain)
-    // The public entry points agree with the one reading.
     switch provider {
     case .gmail:
       #expect(AuthResults.gmailVerdict(raw) == a.verdict)

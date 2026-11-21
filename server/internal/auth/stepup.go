@@ -1,33 +1,5 @@
 package auth
 
-// Step-up (spec 01 §10.2, spec 02 §8): an action-bound, single-use proof that
-// the user approved one operation with its exact parameters.
-//
-//	begin(action, params_hash, proof_kind) → nonce, C = SHA256("hasala/v1/step-up" ‖ 00 ‖ nonce ‖ action ‖ 00 ‖ params_hash)
-//	the guarded request carries {nonce, proof}; the server recomputes params_hash
-//	from the ACTUAL request, checks the row, verifies the proof, and spends the
-//	nonce in the same transaction as the action.
-//
-// Proof kinds:
-//   - passkey: a UV WebAuthn assertion over C by one of the account's
-//     credentials;
-//   - device: the bound writer's DAK over DeviceStepUpMessage(C, writer_id),
-//     then the password S. The DAK is checked first, so only an enrolled
-//     iPhone with its owner present can submit a password here, and a valid
-//     DAK signature makes the attempt bound: the account's pause and the
-//     per-address counter do not apply, the writer's password-writer budget
-//     does (review 2 F-01);
-//   - device_code: only for password.reset (C8): the same DAK signature, then
-//     the password_reset code begin emailed. C8's codes have a per-account
-//     budget of their own.
-//
-// A failed proof burns the nonce in its own statement, committed even though
-// the guarded action rolls back (spec 02 §8.1 step 4), with two exceptions
-// that also move counters: a device proof with a valid DAK and a wrong S, and
-// a device_code proof with a valid DAK and a wrong code (which keeps the nonce
-// until the fifth wrong code). An action that fails after a good proof leaves
-// the nonce usable until it expires.
-
 import (
 	"context"
 	"crypto/subtle"
@@ -46,17 +18,13 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtx"
 )
 
-// StepUpTTL is the challenge row's lifetime (spec 02 §8.1, the CHECK's bound).
 const StepUpTTL = 5 * time.Minute
 
-// C8's per-account code budget (spec 02 §8.1 step 2, V2-2).
 const (
 	deviceCodeBeginsPerHour = 5
 	deviceCodeBurnPause     = 15 * time.Minute
 )
 
-// Step-up errors. The HTTP layer answers ErrStepUpRequired with 403
-// step_up_required and every failure with one 403 step_up_failed.
 var (
 	ErrStepUpRequired   = errors.New("auth: step-up required")
 	ErrStepUpFailed     = errors.New("auth: step-up failed")
@@ -64,38 +32,33 @@ var (
 	ErrWriterUnbound    = errors.New("auth: the session is not bound to a live writer")
 )
 
-// StepUpProof is the step_up.proof object (spec 02 §7).
 type StepUpProof struct {
 	Kind      string          `json:"kind"`
-	Assertion json.RawMessage `json:"assertion,omitempty"` // passkey: the PublicKeyCredential
-	WriterID  string          `json:"writer_id,omitempty"` // device kinds
-	Sig       []byte          `json:"sig,omitempty"`       // device kinds: P-256 r ‖ s (b64)
-	Verifier  []byte          `json:"verifier,omitempty"`  // device: S (b64)
-	Code      string          `json:"code,omitempty"`      // device_code
+	Assertion json.RawMessage `json:"assertion,omitempty"`
+	WriterID  string          `json:"writer_id,omitempty"`
+	Sig       []byte          `json:"sig,omitempty"`
+	Verifier  []byte          `json:"verifier,omitempty"`
+	Code      string          `json:"code,omitempty"`
 }
 
-// StepUpObject is the step_up field of a guarded request.
 type StepUpObject struct {
 	Nonce []byte      `json:"-"`
 	Proof StepUpProof `json:"proof"`
 }
 
-// Proven says how a step-up was proved, for the guarded action's own checks
-// (keys.wrap.put's credential, account.unfreeze's age rule, auth events).
 type Proven struct {
 	Kind         keyproto.ProofKind
-	CredentialID []byte // passkey
-	WriterID     string // device kinds
+	CredentialID []byte
+	WriterID     string
 	Nonce        []byte
 }
 
-// StepUp owns step_up_challenges.
 type StepUp struct {
 	Pool     *pgxpool.Pool
 	Passkeys *Passkeys
-	Keys     *authkeys.Keys // device proofs: the pepper and the code MACs
+	Keys     *authkeys.Keys
 	Gate     *authkeys.Gate
-	Mail     *Mailer // device_code: the password_reset code email
+	Mail     *Mailer
 	Now      func() time.Time
 }
 
@@ -106,18 +69,13 @@ func (s *StepUp) now() time.Time {
 	return time.Now()
 }
 
-// Begun is what step-up/begin answers.
 type Begun struct {
 	Nonce            []byte
 	Challenge        [32]byte
 	ExpiresAt        time.Time
-	AllowCredentials [][]byte // passkey only: every credential of the account
+	AllowCredentials [][]byte
 }
 
-// Begin issues a challenge for one action. boundWriter is the session's bound
-// writer ("" when unbound); a device proof needs it to be live and to hold a
-// DAK. A device_code begin also issues the password_reset code, within the
-// account's own budget, and emails it after commit.
 func (s *StepUp) Begin(ctx context.Context, userID uuid.UUID, sessionHash []byte, boundWriter string,
 	action keyproto.Action, paramsHash []byte, kind keyproto.ProofKind) (Begun, error) {
 	if s == nil || s.Pool == nil {
@@ -133,8 +91,6 @@ func (s *StepUp) Begin(ctx context.Context, userID uuid.UUID, sessionHash []byte
 	}
 	defer pgtx.Rollback(ctx, tx)
 	if action == keyproto.ActionAccountUnfreeze {
-		// Only the operator lifts an operator freeze (review 2 F-03): nothing
-		// is issued.
 		var by *string
 		if err := tx.QueryRow(ctx, `SELECT frozen_by FROM users WHERE id = $1`, userID).Scan(&by); err != nil {
 			return Begun{}, fmt.Errorf("auth: step-up begin: %w", err)
@@ -229,8 +185,6 @@ func (s *StepUp) Begin(ctx context.Context, userID uuid.UUID, sessionHash []byte
 	return b, nil
 }
 
-// liveWriterWithDAK reports whether writerID is a live writer of userID (every
-// writer has a DAK by the schema).
 func liveWriterWithDAK(ctx context.Context, q querier, userID uuid.UUID, writerID string) (bool, error) {
 	if writerID == "" {
 		return false, nil
@@ -247,20 +201,17 @@ func liveWriterWithDAK(ctx context.Context, q querier, userID uuid.UUID, writerI
 	return live, nil
 }
 
-// querier is the read surface of a pool and a transaction.
 type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// Guarded describes one guarded request: who, which session, which action,
-// and the params hash the server recomputed from the request itself.
 type Guarded struct {
 	UserID      uuid.UUID
 	SessionHash []byte
 	BoundWriter string
 	Action      keyproto.Action
 	ParamsHash  [32]byte
-	StepUp      *StepUpObject // nil: none was sent
+	StepUp      *StepUpObject
 }
 
 func guardFor(session SessionInfo, action keyproto.Action, su *StepUpObject, fields ...[]byte) (Guarded, error) {
@@ -272,15 +223,8 @@ func guardFor(session SessionInfo, action keyproto.Action, su *StepUpObject, fie
 		Action: action, ParamsHash: ph, StepUp: su}, nil
 }
 
-// failure is what a failed proof leaves behind, committed alone after the
-// rollback: counters, and whether the nonce burns.
 type failure func(ctx context.Context, tx pgx.Tx) (burn bool, err error)
 
-// Run verifies g's step-up and runs action in the same transaction, spending
-// the nonce only if action succeeds. A failed proof rolls back, applies its
-// failure effects and burns the nonce in their own transaction, and returns
-// ErrStepUpFailed; a missing step-up returns ErrStepUpRequired and touches
-// nothing.
 func (s *StepUp) Run(ctx context.Context, g Guarded, action func(ctx context.Context, tx pgx.Tx, p Proven) error) error {
 	if g.StepUp == nil || len(g.StepUp.Nonce) == 0 {
 		return ErrStepUpRequired
@@ -325,9 +269,6 @@ func (s *StepUp) Run(ctx context.Context, g Guarded, action func(ctx context.Con
 		if rerr := abort(tx); rerr != nil {
 			return rerr
 		}
-		// An action may refuse the proof itself (keys.wrap.put: the asserting
-		// credential is not the wrap's; account.unfreeze: the factor is not
-		// older than the trigger); that is a failed proof and burns.
 		if errors.Is(err, ErrStepUpFailed) {
 			if ferr := s.fail(ctx, g, nil); ferr != nil {
 				return ferr
@@ -405,8 +346,6 @@ func (s *StepUp) refund(ctx context.Context, g Guarded, ch charged) error {
 	return refundWriterPasswordAttempt(ctx, s.Pool, g.UserID, g.StepUp.Proof.WriterID, ch.at)
 }
 
-// fail commits a failed proof's effects and (unless they say otherwise) the
-// burn of its nonce, in one transaction of their own.
 func (s *StepUp) fail(ctx context.Context, g Guarded, f failure) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -477,7 +416,6 @@ func (s *StepUp) checkChallenge(ch challenge, g Guarded) error {
 	return nil
 }
 
-// verify is spec 02 §8.1 step 5.1–5.3 inside tx: the row, then the proof.
 func (s *StepUp) verify(ctx context.Context, tx pgx.Tx, g Guarded, charge charged) (Proven, failure, error) {
 	ch, err := readChallenge(ctx, tx, g.StepUp.Nonce, true)
 	if err != nil {
@@ -523,9 +461,6 @@ func (s *StepUp) verify(ctx context.Context, tx pgx.Tx, g Guarded, charge charge
 	return Proven{}, nil, fmt.Errorf("%w: proof kind %q", ErrStepUpFailed, kind)
 }
 
-// verifyDAK checks the proof's writer is the session's live writer and its
-// DAK signed DeviceStepUpMessage(C, writer_id). An invalid signature changes no
-// counter.
 func (s *StepUp) verifyDAK(ctx context.Context, q querier, g Guarded, c [32]byte, w string) error {
 	if w == "" || w != g.BoundWriter {
 		return fmt.Errorf("%w: the proof's writer is not the session's", ErrStepUpFailed)
@@ -546,9 +481,6 @@ func (s *StepUp) verifyDAK(ctx context.Context, q querier, g Guarded, c [32]byte
 	return nil
 }
 
-// verifyDevicePassword is the device proof's second half: the account's
-// password, bound by the DAK (no pause, no per-address counter; the writer's
-// budget instead), through the gate.
 func (s *StepUp) verifyDevicePassword(ctx context.Context, tx pgx.Tx, g Guarded, p Proven, charge charged) (Proven, failure, error) {
 	st, err := readAccount(ctx, tx, g.UserID, false)
 	if err != nil {
@@ -585,8 +517,6 @@ func (s *StepUp) verifyDevicePassword(ctx context.Context, tx pgx.Tx, g Guarded,
 	return p, nil, nil
 }
 
-// verifyDeviceCode is the device_code proof's second half: C8's code, gated
-// by the DAK and by limitCodeVerify, like every other code check.
 func (s *StepUp) verifyDeviceCode(ctx context.Context, tx pgx.Tx, g Guarded, p Proven, codeID uuid.UUID, charge charged) (Proven, failure, error) {
 	if !charge.code {
 		return Proven{}, nil, fmt.Errorf("%w: the check was not counted", ErrStepUpFailed)
@@ -605,7 +535,6 @@ func (s *StepUp) verifyDeviceCode(ctx context.Context, tx pgx.Tx, g Guarded, p P
 	}, fmt.Errorf("%w: wrong code", ErrStepUpFailed)
 }
 
-// ReapStepUps is spec 02 §9.7's step-up sweep.
 func (s *StepUp) ReapStepUps(ctx context.Context) (int64, error) {
 	tag, err := s.Pool.Exec(ctx, `DELETE FROM step_up_challenges WHERE expires_at < $1`, s.now().Add(-time.Hour))
 	if err != nil {

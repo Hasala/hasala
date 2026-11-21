@@ -1,5 +1,3 @@
-// Unit tests for CoreStore (owner: WS-11): the §4.2 schema, each §5
-// transaction boundary, the §4.4 item formats and the §4.1 file hygiene.
 import CoreAuth
 import CorePrimitives
 import CoreWire
@@ -80,7 +78,6 @@ struct LedgerStoreTests {
     #expect(try s.syncState().lastPullAt == 9)
     #expect(try s.chainHeads()[other] == Chain.Head(counter: 2, hash: h(2)))
     #expect(try s.wireRows().map(\.disposition) == [.folded, .alarm])
-    // A duplicate (writer, counter) rolls the whole page back.
     let dup = WireRowRecord(
       seq: 3, writerID: other, counter: 2, sizeBucket: 1024, blobHash: h(3), prevHash: h(2), createdAt: "t",
       blob: Data(count: 1024), headSig: nil, disposition: .folded)
@@ -106,7 +103,6 @@ struct LedgerStoreTests {
     try s.persistBatch(batch)
     #expect(try s.inflight() == batch)
     #expect(throws: StoreError.batchInFlight) { try s.persistBatch(batch) }
-    // A partial acknowledgement (409 conflict) keeps the rest.
     try s.acknowledge(counters: [1], head: Chain.Head(counter: 1, hash: h(1)), at: 5)
     #expect(try s.inflight().map(\.counter) == [2])
     #expect(try s.pendingOps().map(\.opID) == ["op3"])
@@ -116,8 +112,6 @@ struct LedgerStoreTests {
     #expect(try s.syncState().authoredHead == Chain.Head(counter: 2, hash: h(2)))
     #expect(try s.syncState().lastPushAt == 6)
 
-    // A batch sealed from a stale read is refused inside the transaction:
-    // it must continue the authored head and carry only pending ops.
     try s.enqueue([
       PendingOp(opID: "op4", opJSON: Data("{}".utf8), opType: "home_currency_set", entityKind: nil, entityID: nil,
         enqueuedAt: 0)
@@ -126,17 +120,16 @@ struct LedgerStoreTests {
       InflightBlob(counter: c, batchID: "C", prevHash: prev, blobHash: h(UInt8(c)), sizeBucket: 1024,
         blob: Data(count: 1024), opIDs: ids, headSig: Data(repeating: 5, count: 64), createdAt: 0)
     }
-    #expect(throws: StoreError.staleBatch) { try s.persistBatch([blob(2, prev: h(1), ids: ["op4"])]) }  // re-uses counter 2
-    #expect(throws: StoreError.staleBatch) { try s.persistBatch([blob(3, prev: h(1), ids: ["op4"])]) }  // wrong prev
-    #expect(throws: StoreError.staleBatch) { try s.persistBatch([blob(3, prev: h(2), ids: ["op3"])]) }  // op3 acked
+    #expect(throws: StoreError.staleBatch) { try s.persistBatch([blob(2, prev: h(1), ids: ["op4"])]) }
+    #expect(throws: StoreError.staleBatch) { try s.persistBatch([blob(3, prev: h(1), ids: ["op4"])]) }
+    #expect(throws: StoreError.staleBatch) { try s.persistBatch([blob(3, prev: h(2), ids: ["op3"])]) }
     #expect(throws: StoreError.staleBatch) {
-      try s.persistBatch([blob(3, prev: h(2), ids: ["op4"]), blob(5, prev: h(3), ids: [])])  // a gap
+      try s.persistBatch([blob(3, prev: h(2), ids: ["op4"]), blob(5, prev: h(3), ids: [])])
     }
     #expect(throws: StoreError.staleBatch) { try s.persistBatch([]) }
     #expect(try s.inflight().isEmpty)
     try s.persistBatch([blob(3, prev: h(2), ids: ["op4"])])
     #expect(try s.inflight().map(\.counter) == [3])
-    // An older acknowledgement never moves the head back.
     try s.acknowledge(counters: [], head: Chain.Head(counter: 1, hash: h(1)), at: 7)
     #expect(try s.syncState().authoredHead.counter == 2)
   }
@@ -390,7 +383,6 @@ struct SecretTests {
     #expect(SecretItem.readerWordKey.accessibility == .afterFirstUnlockThisDeviceOnly)
     #expect(SecretItem.textKeySecret.service == "app.hasala.text-key")
     #expect(SecretItem.textKeySecret.accessibility == .afterFirstUnlockThisDeviceOnly)
-    // The Gmail item keeps its pre-provider service, so existing links need no migration.
     #expect(SecretItem.gmailRefresh(userID: user) == .mailRefresh(provider: .gmail, userID: user))
     #expect(SecretItem.mailRefresh(provider: .gmail, userID: user).service == "app.hasala.gmail.refresh")
     #expect(SecretItem.mailRefresh(provider: .outlook, userID: user).service == "app.hasala.outlook.refresh")

@@ -1,26 +1,4 @@
 #!/usr/bin/env bash
-# screens.sh: screenshots of app screens by id, on the mocks, for comparing with the Paper
-# boards (plan 0.4, B6). Each id is a Debug `-HasalaScreen` launch: the app opens straight
-# on that screen from its own scenario, with motion settled (`-HasalaMotion off`).
-#
-#   ios/scripts/screens.sh <simulator udid> [--release] [--reduce] [--no-build]
-#     [--scenario <name>] [--identity <name>] [--size <category>] <id>... | --all
-#
-#   --release          the Release surface (`-HasalaReleaseSurface`); files end in .release.png
-#   --reduce           the Reduce Motion substitutes (`-HasalaMotion reduce`) instead of settled
-#   --no-build         reuse the last build in the derived data directory
-#   --scenario <name>  every id over this `-HasalaScenario` (mayaWorst, mayaEmpty, mayaOne,
-#                      mayaHuge ...); files end in .<name>.png
-#   --identity <name>  the account identity (`-HasalaIdentity` worst, one, empty or huge) over
-#                      the screen's own scenario; files end in .id-<name>.png
-#   --size <category>  a Dynamic Type size (`-UIPreferredContentSizeCategoryName`, for example
-#                      UICTContentSizeCategoryAccessibilityXXXL); files end in .<category>.png
-#   --all              every id registered in ios/Hasala/App/Debug/ScreenLaunch+*.swift
-#
-# It builds Debug once (derived data $HASALA_SCREENS_DD, default one directory per checkout,
-# /tmp/hasala-dd-screens-<n>), installs it, launches each id, waits for it to settle
-# ($HASALA_SCREENS_WAIT seconds, default 2.5) and writes $HASALA_SCREENS_OUT/<id>[.release].png
-# (default /tmp/hasala-screens-<n>). Debug builds only: the hook is compiled out of Release.
 set -euo pipefail
 
 usage() {
@@ -62,7 +40,6 @@ while (($#)); do
 		shift
 		;;
 	--all)
-		# The registry's ids, as each area file writes them: Screen("<id>", ...
 		while IFS= read -r id; do ids+=("$id"); done < <(
 			sed -n 's/^ *Screen("\([^"]*\)".*/\1/p' "$ios"/Hasala/App/Debug/ScreenLaunch+*.swift
 		)
@@ -73,7 +50,6 @@ while (($#)); do
 done
 ((${#ids[@]})) || usage
 
-# Xcode's tools by path: the Nix devShell's PATH and SDKROOT can shadow them.
 xcrun=(env -u SDKROOT /usr/bin/xcrun)
 "${xcrun[@]}" simctl boot "$udid" 2>/dev/null || true
 "${xcrun[@]}" simctl bootstatus "$udid" -b >/dev/null

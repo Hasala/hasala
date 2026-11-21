@@ -8,7 +8,6 @@ import (
 	"testing"
 )
 
-// Synthetic clientStates: 43 base64url characters, like the link's.
 var (
 	csA = strings.Repeat("A", 42) + "a"
 	csB = strings.Repeat("b", 42) + "_"
@@ -46,7 +45,6 @@ func TestParse(t *testing.T) {
 	msg := map[string]any{"clientState": csA, "changeType": "created", "resource": "Users/x/Messages/y",
 		"resourceData": map[string]any{"id": "y"}}
 
-	// Duplicates collapse; order of first appearance; bad shapes are counted.
 	p, err := Parse(body(t, msg, map[string]any{"clientState": csB}, msg,
 		map[string]any{"clientState": "short"}, map[string]any{}, map[string]any{"clientState": 7},
 		map[string]any{"clientState": strings.Repeat("A", 42) + "="}), false)
@@ -57,7 +55,6 @@ func TestParse(t *testing.T) {
 		t.Fatalf("parsed %+v", p)
 	}
 
-	// The lifecycle path wakes only for the three events.
 	p, err = Parse(body(t,
 		map[string]any{"clientState": csA, "lifecycleEvent": EventReauthorizationRequired},
 		map[string]any{"clientState": csB, "lifecycleEvent": "somethingNew"},
@@ -95,8 +92,6 @@ func TestParse(t *testing.T) {
 	}
 }
 
-// The parser has no field for what names a message: a type that grew one
-// would hold it in memory and invite logging it.
 func TestEntryHasNoResourceFields(t *testing.T) {
 	b, _ := json.Marshal(entry{})
 	for _, f := range []string{"resource", "resourceData", "subscriptionId", "tenantId"} {

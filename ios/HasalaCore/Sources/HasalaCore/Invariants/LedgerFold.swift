@@ -1,21 +1,13 @@
-// The fold seam of a pull (spec 04 §5.2 steps 4-5, §5.6): a page the reader
-// decided is folded onto a COPY of the state, the incremental invariants run,
-// and only a clean result is handed back to be persisted with the page. A
-// hard stop keeps the whole page out (the caller persists nothing).
 import CoreCrypto
 import CoreReplay
 import CoreWire
 
 public enum FoldHalt: Error, Sendable, Equatable {
-  /// An op or blob newer than this build: the "Update Hasala" wall.
   case updateRequired
-  /// The page's seqs do not move forward (a reader or server fault).
   case order(String)
-  /// The folded state breaks an invariant: the `inconsistent` wall.
   case inconsistent([Violation])
 }
 
-/// One decided row of a page.
 public struct FoldRow: Sendable {
   public let seq: Int64
   public let writerID: String
@@ -31,7 +23,6 @@ public struct FoldRow: Sendable {
 }
 
 public enum LedgerFold {
-  /// Folds `rows` onto `state` and checks it; returns the new state, or halts.
   public static func page(_ rows: [FoldRow], onto state: State) throws(FoldHalt) -> State {
     var s = state
     do {

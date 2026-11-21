@@ -1,19 +1,13 @@
-// Transaction detail: one sheet with all of a transaction's actions and the
-// bank email it came from.
-
 public struct EmbeddedPace: Sendable, Hashable {
-  /// "Groceries this month".
   public var title: String
   public var left: Money
   public var budget: Money
   public var progress: Permille
   public var today: Permille?
   public var verdict: Verdict
-  /// "on course for 2,518".
   public var projection: MoneyPhrase?
 }
 
-/// Why a transaction has its category ("Sorted by your rule" · "carrefour → Groceries").
 public struct SortedBy: Sendable, Hashable {
   public var title: String
   public var detail: String
@@ -32,14 +26,12 @@ public struct TransactionDetail: Sendable, Hashable, Identifiable {
   public var monogram: String?
   public var amount: Money
   public var isIncome: Bool
-  /// "Fri 9 Oct, 19:12 · Emirates NBD ···4412".
   public var meta: String
   public var category: CategoryOption?
   public var pace: EmbeddedPace?
   public var account: String?
   public var note: String
   public var provenance: Provenance?
-  /// "Sorted by your rule" / "carrefour → Groceries".
   public var sortedBy: SortedBy?
   public var splits: [SplitLineModel]
   public var isRefund: Bool
@@ -48,11 +40,8 @@ public struct TransactionDetail: Sendable, Hashable, Identifiable {
   public var needsReview: Bool
   public var reviewReason: TxnReviewReason?
   public var project: String?
-  /// A row of the App Review sample: no bank email is behind it.
   public var isSample: Bool = false
-  /// The pipeline's guess for a row still in review ("Suggested: Groceries").
   public var suggestion: CategoryOption?
-  /// One of the person's rules sorted it, so the provenance row opens the rules.
   public var sortedByRule: Bool = false
   public var home: HomeAmount? = nil
   public var canAlwaysUse: Bool = false
@@ -148,16 +137,11 @@ public enum TransactionEngine {
     return detail
   }
 
-  /// Whether split lines add up to the transaction (`validateSplitDraft`, simplified).
-  /// TODO(spec 04 §16.2 T4): over/under edge states with their own copy.
   public static func splitAddsUp(_ lines: [SplitLine], total: Money) -> Bool {
     lines.count >= 2 && lines.allSatisfy { $0.amount.minor > 0 }
       && lines.reduce(Int128(0), { $0 + Int128($1.amount.minor) }) == Int128(total.minor)
   }
 
-  /// What the split editor says under the amount while lines are typed (`nil` is a line
-  /// with no amount yet). Only `.addsUp` may be saved, and it means `splitAddsUp` holds:
-  /// a line that is empty or zero never "adds up exactly", even when the others do.
   public static func splitDraftVerdict(_ amounts: [Int64?], total: Money) -> SplitDraftVerdict {
     let placed = amounts.reduce(Int128(0)) { $0 + Int128($1 ?? 0) }
     let target = Int128(total.minor)
@@ -172,6 +156,5 @@ public enum SplitDraftVerdict: Sendable, Hashable {
   case addsUp
   case leftToPlace(Money)
   case over(Money)
-  /// The amounts add up, but a line has nothing on it.
   case emptyLine
 }

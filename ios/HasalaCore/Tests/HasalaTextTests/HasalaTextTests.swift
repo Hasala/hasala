@@ -1,5 +1,3 @@
-// HasalaText unit tests. The Go-verdict tables for whitespace and lower-casing
-// run against conformance/dict/matching.json in HasalaCoreConformanceTests.
 import Testing
 
 @testable import HasalaText
@@ -11,7 +9,7 @@ struct ScalarSetTests {
     #expect(ScalarSet.goSpace.members.count == 25)
     #expect(ScalarSet.goSpace.contains(0x85))
     #expect(!ScalarSet.goSpace.contains(0xfeff))
-    #expect(!ScalarSet.goSpace.contains(0x200b))  // ZWSP is not White_Space
+    #expect(!ScalarSet.goSpace.contains(0x200b))
   }
 
   @Test("each named trim removes only its own set, only at the edges")
@@ -23,7 +21,7 @@ struct ScalarSetTests {
     #expect("\u{85}x\u{85}".trimmingGoSpace == "x")
     #expect("\u{FEFF}x".trimmingGoSpace == "\u{FEFF}x")
     #expect("\u{FEFF}\u{2028} x \u{3000}".trimming(.jsTrim) == "x")
-    #expect("\u{85}x".trimming(.jsTrim) == "\u{85}x")  // NEL is not JS whitespace
+    #expect("\u{85}x".trimming(.jsTrim) == "\u{85}x")
     #expect("".trimming(.goSpace) == "" && "   ".trimming(.goSpace) == "")
   }
 
@@ -53,10 +51,8 @@ struct CompareTests {
   func utf8Order() {
     #expect(compareUTF8("a", "b") < 0 && compareUTF8("b", "a") > 0 && compareUTF8("a", "a") == 0)
     #expect(compareUTF8("a", "ab") < 0 && compareUTF8("", "a") < 0)
-    // U+1F600 sorts ABOVE U+E000 in UTF-8 and scalar order, below it in UTF-16.
     #expect(compareUTF8("\u{1F600}", "\u{E000}") > 0)
     #expect(compareScalars("\u{1F600}", "\u{E000}") > 0)
-    // NFC "é" and NFD "e\u{301}" are == as Swift Strings, different as bytes.
     let nfc = "\u{E9}"
     let nfd = "e\u{301}"
     #expect(nfc == nfd)
@@ -102,8 +98,8 @@ struct CompareTests {
   @Test("Go's simple lower case: one scalar per scalar, no Final_Sigma context")
   func goLower() {
     #expect(GoCase.lower("CARREFOUR") == "carrefour")
-    #expect(GoCase.lower("\u{130}") == "i")  // JavaScript gives "i\u{307}"
-    #expect(GoCase.lower("ΟΔΟΣ") == "οδοσ")  // JavaScript gives a final ς
+    #expect(GoCase.lower("\u{130}") == "i")
+    #expect(GoCase.lower("ΟΔΟΣ") == "οδοσ")
     #expect(GoCase.lower("مرحبا") == "مرحبا")
   }
 }
@@ -113,13 +109,11 @@ struct TextRuleTests {
   @Test("Label bounds, forbidden scalars and edge space")
   func label() {
     #expect(TextRules.checkLabel("Groceries") == nil)
-    #expect(TextRules.checkLabel("بقالة\u{200F}") == nil)  // RLM allowed
+    #expect(TextRules.checkLabel("بقالة\u{200F}") == nil)
     #expect(TextRules.checkLabel("") == .empty)
     #expect(TextRules.checkLabel(String(repeating: "a", count: 64)) == nil)
     #expect(TextRules.checkLabel(String(repeating: "a", count: 65)) == .tooManyScalars(max: 64))
-    #expect(TextRules.checkLabel(String(repeating: "ب", count: 64)) == nil)  // 128 bytes
-    // 64 four-byte scalars are exactly 256 bytes: the byte bound never binds
-    // before the scalar bound, and both are checked anyway.
+    #expect(TextRules.checkLabel(String(repeating: "ب", count: 64)) == nil)
     #expect(TextRules.checkLabel(String(repeating: "\u{1F600}", count: 64)) == nil)
     #expect(TextRules.checkLabel("a\u{2028}b") == .forbiddenScalar(0x2028))
     #expect(TextRules.checkLabel("a\nb") == .forbiddenScalar(0x0a))
@@ -135,7 +129,7 @@ struct TextRuleTests {
     #expect(TextRules.checkNote("tab\there") == .forbiddenScalar(0x09))
     #expect(TextRules.checkNote(String(repeating: "x", count: 500)) == nil)
     #expect(TextRules.checkNote(String(repeating: "x", count: 501)) == .tooManyScalars(max: 500))
-    #expect(TextRules.checkNote(String(repeating: "\u{1F600}", count: 500)) == nil)  // exactly 2000 bytes
+    #expect(TextRules.checkNote(String(repeating: "\u{1F600}", count: 500)) == nil)
   }
 
   @Test("Token grammar over bytes", arguments: [

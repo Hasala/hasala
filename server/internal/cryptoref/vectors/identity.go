@@ -14,10 +14,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// ---------------------------------------------------------------------------
-// phrase.json: spec 01 §4.3.
-// ---------------------------------------------------------------------------
-
 type phraseVector struct {
 	Entropy H      `json:"entropy"`
 	Words   string `json:"words"`
@@ -38,8 +34,6 @@ type phraseCase struct {
 	Error      *phraseError `json:"error,omitempty"`
 }
 
-// published are BIP-39's own 128-bit English vectors (the Trezor reference
-// set); the generator checks Words reproduces each.
 var published = []phraseVector{
 	{Hex("00000000000000000000000000000000"), "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"},
 	{Hex("7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f"), "legal winner thank year wave sausage worth useful legal winner thank yellow"},
@@ -153,10 +147,6 @@ func genPhrase(f Files, _ string) error {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// password.json: spec 01 §4.10, §4.11 (A19, A19-K).
-// ---------------------------------------------------------------------------
-
 type emailCase struct {
 	Input string `json:"input"`
 	Norm  string `json:"email_norm,omitempty"`
@@ -225,7 +215,7 @@ func genPassword(f Files, _ string) error {
 		"under_score@example.com", "dash-ed@ex-ample.com", "o'brien@example.ie", "digits123@456.example",
 		"UPPER.lower@MiXeD.Example.ORG", "a.b.c.d@e.f", "user%tag@example.com", "!#$&*=?^`{|}~@example.com",
 		"maya@xn--mgbh0fb.example", strings.Repeat("l", 64) + "@example.com", "m@" + strings.Repeat("d", 60) + ".example",
-		"Maya.Rahman+Hasala@Gmail.COM", strings.Repeat("l", 64) + "@" + strings.Repeat("d", 185) + ".com", // 254 bytes
+		"Maya.Rahman+Hasala@Gmail.COM", strings.Repeat("l", 64) + "@" + strings.Repeat("d", 185) + ".com",
 	}
 	invalid := []string{
 		"maya@exämple.com", "mäya@example.com", "maya@@example.com", "maya@ex@ample.com", "maya@example",
@@ -255,8 +245,8 @@ func genPassword(f Files, _ string) error {
 	if !bytesEq(sSrv, k19k.PasswordSalt(norm)) {
 		return errors.New("password.json: s_srv depends on auth_key")
 	}
-	pw12 := "abcdefghijk" + "é"                   // 12 scalars after NFC
-	pw128 := strings.Repeat("Hasala ", 18) + "ab" // 128 scalars
+	pw12 := "abcdefghijk" + "é"
+	pw128 := strings.Repeat("Hasala ", 18) + "ab"
 	var stretches []stretchCase
 	for _, p := range []struct{ name, pw string }{
 		{"ASCII", "correct horse battery staple"},
@@ -323,10 +313,6 @@ func sumStr(s string) H { return sum([]byte(s)) }
 
 func bytesEq(a, b []byte) bool { return string(a) == string(b) }
 
-// ---------------------------------------------------------------------------
-// codes.json: spec 01 §10.14.
-// ---------------------------------------------------------------------------
-
 type codeCase struct {
 	Keys     string    `json:"keys"`
 	Purpose  string    `json:"purpose"`
@@ -392,10 +378,6 @@ func genCodes(f Files, _ string) error {
 		Purposes: authkeys.CodePurposes(), Cases: cases, Mismatches: mis,
 	})
 }
-
-// ---------------------------------------------------------------------------
-// approval.json: spec 01 §10.16 (C9), A25.
-// ---------------------------------------------------------------------------
 
 type approvalCase struct {
 	Name       string    `json:"name"`

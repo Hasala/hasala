@@ -1,8 +1,3 @@
-// The bundled sample seed, loaded as a review account would load it (the
-// account's open authors home currency and the USD rate first), folded and
-// projected, then read back through LedgerReader's queries, including the
-// bills-and-accounts ones: the figures the reviewer sees on Home, Activity,
-// Review, Bills and the Japan trip (MayaLedger's).
 import CoreCategorize
 import CoreDomain
 import CoreInvariants
@@ -19,7 +14,7 @@ import Testing
 
 @Suite("The sample seed, projected")
 struct SampleSeedProjectionTests {
-  static let anchor: Int64 = 1_791_625_200_000  // 2026-10-10T09:40:00Z
+  static let anchor: Int64 = 1_791_625_200_000
   static let writer = "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
   static let october = CivilMonth(year: 2026, month: 10)!
   static let today = CivilDate(year: 2026, month: 10, day: 10)!
@@ -79,8 +74,6 @@ struct SampleSeedProjectionTests {
     let first = try ProjectionStore.open(directory: dir)
     try first.project(s, pending: [], writerID: Self.writer, dictionary: dictionary, projectedAtMs: Self.anchor)
     #expect(try first.reader.rules().count == 6 && first.reader.parts(txn.id).count == 2)
-    // An older layout: another version number, plus a table this build no longer
-    // has that references `rule` and holds a row (it must go too, in any order).
     try first.queue.write { db in
       try db.execute(sql: "UPDATE projection_meta SET value = '1' WHERE key = 'projection_version'")
       try db.execute(sql: "CREATE TABLE legacy_rule_note (rule_id TEXT NOT NULL REFERENCES rule(id), note TEXT)")
@@ -88,7 +81,7 @@ struct SampleSeedProjectionTests {
     }
     let reopened = try ProjectionStore.open(directory: dir)
     #expect(try reopened.reader.meta()?.version == ProjectionSchema.version)
-    #expect(try reopened.reader.isUsable() == false)  // rebuilt empty, waiting for the observer's projection
+    #expect(try reopened.reader.isUsable() == false)
     #expect(try reopened.queue.read { db in try db.tableExists("legacy_rule_note") } == false)
     try reopened.project(s, pending: [], writerID: Self.writer, dictionary: dictionary, projectedAtMs: Self.anchor + 1)
     #expect(try reopened.reader.rules().count == 6 && reopened.reader.parts(txn.id).count == 2)
@@ -109,7 +102,6 @@ struct SampleSeedProjectionTests {
     let byName = Dictionary(grouping: rows, by: \.displayName)
     #expect(byName["Carrefour"]?.count == 3 && byName["Talabat"]?.count == 2 && byName["Starbucks"]?.first?.location == "DIFC")
     #expect(byName["Steam"]?.first?.needsReview == true)
-    // Card rows take their account from the card; manual rows from their annotation.
     let enbd = OpAuthor.cardAccountID(bank: "enbd", last4: "4412")
     #expect(rows.first { $0.displayName == "Waitrose" }?.effectiveAccountID == enbd)
     #expect(rows.first { $0.merchantRaw == "Al Habtoor" }?.effectiveAccountID == enbd)

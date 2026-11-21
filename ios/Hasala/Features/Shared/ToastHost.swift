@@ -1,20 +1,9 @@
 import HasalaDesign
 import SwiftUI
 
-/// Floats the app's toast (Paper page 14 §03 "Toast"): the glass strip, hugging its words up to 320 and centred,
-/// 14 above the tab bar, or on the home indicator's safe area (34 from the bottom) where
-/// there is no bar. Every tab root, sheet and pushed screen that can show a toast hosts one
-/// (`toast`, with its action as a button inside).
-///
-/// It rises 12 and fades in over 220 ms, and fades out in place over 180 ms (`HMotion`
-/// `.toastIn` / `.toastOut`); with Reduce Motion it only fades. A touch holds it, a swipe
-/// down sends it away, and Magic Tap runs its action. How long it stays and what VoiceOver
-/// hears are `AppModel`'s.
 struct ToastHost: View {
   enum Placement {
-    /// Over a tab: 14 above the bar.
     case tabBar
-    /// Over a sheet, a cover or a flow with no bar: on the bottom safe area.
     case bottom
   }
 
@@ -50,8 +39,6 @@ struct ToastHost: View {
     }
   }
 
-  /// Down holds the toast; a pull down past 24 pt sends it away; a shorter one lets it go
-  /// back and stay its full time.
   private var touch: some Gesture {
     DragGesture(minimumDistance: 0)
       .updating($touching) { _, state, _ in state = true }

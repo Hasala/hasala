@@ -1,17 +1,4 @@
 ---
-/**
- * Where the waitlist form lands without JavaScript.
- *
- * "api" mode: the API answers a script-free form post with a 303 to
- * HASALA_WEB_WAITLIST_DONE_URL, which must be https://hasala.app/joined.
- * Success shows "Check your email." with the confirm step (Paper "Waitlist ·
- * After the form"); "You're on the list" waits for /waitlist/confirm. A validation
- * error comes back as ?error=<code>; a few lines of script then show what
- * went wrong instead.
- *
- * "email" mode (src/lib/env.ts): the form sends nothing and lands here; the
- * page says to email SITE.supportEmail with the address and bank.
- */
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
 import WaitlistCoin from '../components/brand/WaitlistCoin.astro';
@@ -128,7 +115,6 @@ const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Ha
     fill: #fff;
     fill-opacity: 0.16;
   }
-  /* "email" mode: the coin still waits in the slot, as on the form. */
   .joined__panel[data-state='email'] :global(.wl-coin-body) {
     display: inline;
   }

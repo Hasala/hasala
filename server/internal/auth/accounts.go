@@ -18,15 +18,10 @@ import (
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
-// Accounts owns the account ceremonies of spec 02 §10.4 and §10.7–§10.13:
-// signup and account creation, password sign-in, set, change, remove and the
-// two resets, access recovery, email change and re-verification, freeze and
-// unfreeze. Passkeys owns the WebAuthn halves; StepUp the step-ups; Sessions
-// the tokens.
 type Accounts struct {
 	Pool     *pgxpool.Pool
 	Keys     *authkeys.Keys
-	Gate     *authkeys.Gate // the PBKDF2 gate (spec 02 §16.2); nil runs ungated
+	Gate     *authkeys.Gate
 	Sessions *Sessions
 	Passkeys *Passkeys
 	StepUp   *StepUp
@@ -43,25 +38,23 @@ func (a *Accounts) now() time.Time {
 	return time.Now()
 }
 
-// Errors the account ceremonies share. Each maps to one answer (spec 02 §6.3).
 var (
-	ErrBadRequest        = errors.New("auth: malformed request")                         // 400 bad_request
-	ErrBadEmail          = errors.New("auth: not an address this beta accepts")          // 400 bad_email
-	ErrEmailInUse        = errors.New("auth: the proven address already has an account") // 409 email_in_use
-	ErrPasswordRejected  = errors.New("auth: password sign-in failed")                   // 403 password_rejected
-	ErrRecoveryRefused   = errors.New("auth: recovery refused")                          // 403 recovery_refused
-	ErrResetRefused      = errors.New("auth: reset refused")                             // 403 reset_refused
-	ErrNotApproved       = errors.New("auth: the reset is not approved yet")             // 409 not_approved
-	ErrFreezeRefused     = errors.New("auth: device freeze refused")                     // 403 freeze_refused
-	ErrAccountFrozen     = errors.New("auth: the account is frozen")                     // 403 account_frozen
-	ErrAccountSuspended  = errors.New("auth: the account is suspended")                  // 403 account_suspended
-	ErrConflict          = errors.New("auth: the account already has a password")        // 409 conflict
-	ErrLastAuthenticator = errors.New("auth: it is the account's last authenticator")    // 409 last_authenticator
-	ErrUnavailable       = errors.New("auth: try again shortly")                         // 503 unavailable
-	ErrNoSuchAccount     = errors.New("auth: no such account")                           // 404 not_found (#7)
+	ErrBadRequest        = errors.New("auth: malformed request")
+	ErrBadEmail          = errors.New("auth: not an address this beta accepts")
+	ErrEmailInUse        = errors.New("auth: the proven address already has an account")
+	ErrPasswordRejected  = errors.New("auth: password sign-in failed")
+	ErrRecoveryRefused   = errors.New("auth: recovery refused")
+	ErrResetRefused      = errors.New("auth: reset refused")
+	ErrNotApproved       = errors.New("auth: the reset is not approved yet")
+	ErrFreezeRefused     = errors.New("auth: device freeze refused")
+	ErrAccountFrozen     = errors.New("auth: the account is frozen")
+	ErrAccountSuspended  = errors.New("auth: the account is suspended")
+	ErrConflict          = errors.New("auth: the account already has a password")
+	ErrLastAuthenticator = errors.New("auth: it is the account's last authenticator")
+	ErrUnavailable       = errors.New("auth: try again shortly")
+	ErrNoSuchAccount     = errors.New("auth: no such account")
 )
 
-// gateErr maps the PBKDF2 gate's refusal.
 func gateErr(err error) error {
 	if errors.Is(err, authkeys.ErrGateBusy) {
 		return fmt.Errorf("%w: %v", ErrUnavailable, err)
@@ -77,7 +70,6 @@ func uniqueViolation(err error) *pgconn.PgError {
 	return nil
 }
 
-// newCeremonyIDN is b64url of n random bytes.
 func newCeremonyIDN(n int) (string, error) {
 	raw := make([]byte, n)
 	if _, err := rand.Read(raw); err != nil {
@@ -94,7 +86,6 @@ func randBytes(n int) ([]byte, error) {
 	return b, nil
 }
 
-// accountState is what the ceremonies read about an account.
 type accountState struct {
 	ID              uuid.UUID
 	EmailNorm       string
@@ -136,7 +127,6 @@ func scanAccount(row pgx.Row) (accountState, error) {
 	return s, err
 }
 
-// readAccount reads an account by id; forUpdate locks the row in tx.
 func readAccount(ctx context.Context, q querier, userID uuid.UUID, forUpdate bool) (accountState, error) {
 	sql := `SELECT ` + accountColumns + ` FROM users u WHERE u.id = $1`
 	if forUpdate {
@@ -152,7 +142,6 @@ func readAccount(ctx context.Context, q querier, userID uuid.UUID, forUpdate boo
 	return s, nil
 }
 
-// accountByEmail reads an account by address, or ok = false.
 func accountByEmail(ctx context.Context, q querier, emailNorm string) (accountState, bool, error) {
 	s, err := scanAccount(q.QueryRow(ctx, `SELECT `+accountColumns+` FROM users u WHERE u.email_norm = $1`, emailNorm))
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -164,13 +153,11 @@ func accountByEmail(ctx context.Context, q querier, emailNorm string) (accountSt
 	return s, true, nil
 }
 
-// AccountStatus is the gate requireSession applies (spec 02 §9.6, §9.8).
 type AccountStatus struct {
 	Suspended bool
 	Frozen    bool
 }
 
-// normEmail applies email_norm, mapping a refusal to ErrBadEmail.
 func normEmail(x string) (string, error) {
 	n, err := keyproto.EmailNorm(x)
 	if err != nil {

@@ -1,17 +1,3 @@
-# checks.x86_64-linux.qa-vm (spec 05 §4.2, §14, AT-V*): boots services.hasala in
-# a NixOS VM with dummy secrets, the tunnel off (the VM has no route to
-# Cloudflare), backups on (to a deterministic test recipient) and the console on.
-#
-# Needs KVM, so it runs in CI's nixos-vm job, never on a Mac; there,
-# `nix flake check --no-build` evaluates it.
-#
-# The console (spec 07 §8) is not built yet: `hasalad console` validates its
-# whole environment and then refuses, exit 2, "not built yet". Until it is, the
-# test asserts exactly that refusal (so the module's console environment is
-# proven to pass the server's own checks), proves the kernel rule with a
-# stand-in listener on the console port, and logs the header checks as skipped.
-# The day the console serves, the same test runs the header checks against it
-# without any edit here.
 self:
 { lib, ... }:
 let
@@ -21,8 +7,6 @@ let
   consoleHost = "console.vm.test";
   consoleLogin = "tester@example";
   consoleTailnet = "vm-test.ts.net";
-  # The public half of the test identity the script derives at run time from
-  # sha256("hasala-vm-test-identity"); no secret key is in the repository.
   testRecipient = "age1uqtdju3geshs2ad6fc6jj0eg22g8xwhe74w09vdwlp5vpfqazpnq779v4u";
 in
 {
@@ -31,10 +15,6 @@ in
   nodes.machine =
     { config, pkgs, ... }:
     let
-      # Dummy secrets: well-formed, derived from fixed labels, never used for
-      # anything real. M22 refuses a secret under the Nix store, so they are
-      # written at boot (hasala-vm-secrets below), root-only, outside it, and
-      # reach the units through LoadCredential= like the host's sops files do.
       secretDir = "/var/lib/hasala-vm-secrets";
       dummy = name: "${secretDir}/${name}";
       hex64 = label: builtins.hashString "sha256" "hasala-vm-test-${label}";
@@ -50,8 +30,6 @@ in
 
       services.hasala = {
         enable = true;
-        # The VM's disk is a few GiB: the default 16 GiB floor would trip the
-        # disk fuse and refuse every write.
         headroomFloorBytes = 64 * 1024 * 1024;
         authKeyFile = dummy "auth-key";
         saltKeyFile = dummy "salt-key";
@@ -63,8 +41,6 @@ in
           keyFile = dummy "apns.p8";
           keyId = "ABCDE12345";
         };
-        # The Gmail mailbox link without the Pub/Sub push (gmail.* unset): the
-        # QA host's shape until its push subscription exists (AT-V2c).
         google.iosClientId = "000000000000-vm-test.apps.googleusercontent.com";
         mailboxRouteKeyFile = dummy "mailbox-route-key";
         backup = {
@@ -77,10 +53,8 @@ in
           logins = [ consoleLogin ];
           tailnet = consoleTailnet;
         };
-        # The test starts hasala-health by hand (P10); its timer stays off.
         monitoring.healthCheck.enable = true;
         monitoring.onFailure = [ "hasala-vm-alert@%n.service" ];
-        # A stand-in for a neighbour's state that no Hasala unit may read.
         hardening.inaccessiblePaths = [
           "-/var/lib/postgresql"
           "-/run/postgresql"
@@ -97,7 +71,6 @@ in
       systemd.timers.hasala-health.wantedBy = lib.mkForce [ ];
       systemd.timers.hasala-email-token-check.wantedBy = lib.mkForce [ ];
 
-      # Before any service (sysinit), so every LoadCredential= finds its file.
       systemd.services.hasala-vm-secrets = {
         description = "Dummy Hasala secrets for the VM test, written at boot outside the store";
         wantedBy = [ "sysinit.target" ];
@@ -132,8 +105,6 @@ in
         '';
       };
 
-      # AT-V13: an egress probe the test runs inside hasalad's own cgroup,
-      # where IPAddressDeny's BPF filter applies.
       environment.etc."hasala-vm/egress.py".text = ''
         import socket
         import sys
@@ -158,8 +129,6 @@ in
             print(f"tcp=errno{e.errno}")
       '';
 
-      # The kernel rule lets only this user reach the console port. The VM has
-      # no nginx; the test acts as the nginx user directly.
       users.users.nginx = {
         isSystemUser = true;
         group = "nginx";

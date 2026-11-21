@@ -28,32 +28,13 @@ func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
 
 var bg = context.Background()
 
-// ---------------------------------------------------------------------------
-// Seeding a user into EVERY table that references them
-// ---------------------------------------------------------------------------
-//
-// The seeders below are keyed by table name and are looked up from the set
-// UserScopedTables DISCOVERS, never from a list written here. A table added by
-// a later change therefore fails seedAFullyPopulatedUser with "no seeder for
-// user-scoped table X" long before it can fail silently in production, which is
-// the whole point of discovering the set rather than enumerating it.
-//
-// They are raw INSERTs, run as the runtime role, rather than calls into
-// auth/oplog: this file is a test ABOUT THE SCHEMA. Going through the packages
-// would mean a table whose package has no writer yet quietly contributes no
-// row, and the completeness proof would pass by never having populated it.
-
 type seeder func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID)
 
-// ensureWriter enrols the account's one device writer, device-1, under the
-// key deviceKey returns; several seeders need it (op_log and apns_tokens
-// reference writers).
 func ensureWriter(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 	exec(t, pool, `INSERT INTO writers (user_id, writer_id, alg, pubkey, dak_pubkey, registered_at)
 	               VALUES ($1, 'ios-00000000-0000-4000-8000-000000000206', 'ed25519', $2, $3, now()) ON CONFLICT DO NOTHING`, u, devicePub(t, u), oplogtest.DAK(t))
 }
 
-// ensureSession gives the account one live session and returns its hash.
 func ensureSession(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) []byte {
 	var h []byte
 	err := pool.QueryRow(bg, `SELECT token_hash FROM sessions WHERE user_id = $1 LIMIT 1`, u).Scan(&h)
@@ -72,7 +53,6 @@ var seeders = map[string]seeder{
 		exec(t, pool, `INSERT INTO oplog_seq (user_id, next_seq) VALUES ($1, 3)
 		               ON CONFLICT (user_id) DO UPDATE SET next_seq = 3`, u)
 	},
-	// Two real sealed frames: the op_log CHECKs refuse anything else.
 	"public.op_log": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		ensureWriter(t, pool, u)
 		prev := blob.ZeroHash
@@ -97,8 +77,6 @@ var seeders = map[string]seeder{
 		exec(t, pool, `INSERT INTO writer_challenges (nonce, user_id, issued_at, expires_at)
 		               VALUES ($2, $1, now(), now() + interval '5 minutes')`, u, randBytes(t, 32))
 	},
-	// An APNs token names the device writer and the session that registered
-	// it, so revoking either silences it (spec 02 §9.3).
 	"public.apns_tokens": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		ensureWriter(t, pool, u)
 		session := ensureSession(t, pool, u)
@@ -106,7 +84,6 @@ var seeders = map[string]seeder{
 		               VALUES ($1, 'ios-00000000-0000-4000-8000-000000000206', $2, $3, 'production', now(), now())`,
 			u, session, hex.EncodeToString(randBytes(t, 32)))
 	},
-	// The Gmail mailbox link and its challenge (spec 02 §13.2).
 	"public.mailbox_links": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		ensureWriter(t, pool, u)
 		exec(t, pool, `INSERT INTO mailbox_links (user_id, provider, address_hmac, route_key_id, holder_writer_id, created_at, updated_at)
@@ -118,7 +95,6 @@ var seeders = map[string]seeder{
 		exec(t, pool, `INSERT INTO mailbox_link_challenges (nonce_hash, user_id, session_hash, issued_at, expires_at)
 		               VALUES ($2, $1, $3, now(), now() + interval '15 minutes')`, u, randBytes(t, 32), session)
 	},
-	// Spec 07: an app bank request and an alert in the email log.
 	"public.bank_requests": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		exec(t, pool, `INSERT INTO bank_requests (other_key, other_text, source, user_id, created_at)
 		               VALUES ('some bank', 'Some Bank', 'app', $1, now())`, u)
@@ -129,17 +105,12 @@ var seeders = map[string]seeder{
 		  VALUES ($2, $1, $3, $4, 1, true, true, $5, now())`,
 			u, randBytes(t, 20), randBytes(t, 32), randBytes(t, 77), randBytes(t, 32))
 	},
-	// An 'add' ceremony, the only kind that names an account: a registration's
-	// account does not exist yet and a discoverable login does not know whose
-	// it is. Those carry a NULL user_id and correctly survive a purge.
 	"public.webauthn_ceremonies": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		exec(t, pool, `INSERT INTO webauthn_ceremonies
 		  (id, kind, user_id, user_handle, session_data, add_nonce, created_at, expires_at)
 		  VALUES ($2, 'add', $1, $3, '{"challenge":"x"}'::jsonb, $4, now(), now() + interval '5 minutes')`,
 			u, u.String()+"-ceremony", randBytes(t, 32), randBytes(t, 32))
 	},
-	// The account's wrapped key material: a blob that outlived its user would
-	// be the one artefact capable of opening that user's data.
 	"public.account_keys": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		exec(t, pool, `INSERT INTO account_keys
 		  (user_id, format_version, amk_commitment, authority_pubkey, recovery_pubkey, recovery_wrap, phrase_box,
@@ -164,17 +135,12 @@ var seeders = map[string]seeder{
 			u, credential, randBytes(t, 32), randBytes(t, 77), randBytes(t, 32))
 		exec(t, pool, `INSERT INTO reapply_kept_credentials (user_id, credential_id, kept_at) VALUES ($1, $2, now())`, u, credential)
 	},
-	// A step-up challenge names the account and the session it was issued to.
 	"public.step_up_challenges": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		session := ensureSession(t, pool, u)
 		exec(t, pool, `INSERT INTO step_up_challenges (nonce, user_id, session_hash, action, params_hash, proof_kind, issued_at, expires_at)
 		               VALUES ($2, $1, $3, 'passkey.delete', $4, 'passkey', now(), now() + interval '5 minutes')`,
 			u, randBytes(t, 32), session, randBytes(t, 32))
 	},
-	// The per-account isolation tables: how many bytes a forgotten person
-	// stored, the ceiling an operator set for one named account, and which
-	// days that account was hitting walls. The DEFAULT limit row (user_id
-	// NULL) is policy, not anyone's data, and must survive.
 	"public.account_usage": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		exec(t, pool, `INSERT INTO account_usage (user_id, resource, amount) VALUES ($1, 'oplog_hot_bytes', 2048)
 		               ON CONFLICT (user_id, resource) DO UPDATE SET amount = EXCLUDED.amount`, u)
@@ -186,9 +152,6 @@ var seeders = map[string]seeder{
 		exec(t, pool, `INSERT INTO account_refusals (user_id, day, resource, count)
 		               VALUES ($1, current_date, 'oplog_hot_bytes', 3)`, u)
 	},
-	// The account ceremonies (spec 02 §5.3). A signup ceremony carries the
-	// reserved id with no foreign key (the account does not exist yet), so the
-	// purge's explicit sweep is what erases its plaintext address.
 	"public.signup_ceremonies": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		exec(t, pool, `INSERT INTO signup_ceremonies (id, user_id, invite_code_hash, email_norm, email_tag, display_name,
 		                 email_proven, signup_nonce, claimed_at, created_at, expires_at)
@@ -247,12 +210,6 @@ func newUser(t *testing.T, pool *pgxpool.Pool, sub string) uuid.UUID {
 	return u
 }
 
-// seedAFullyPopulatedUser puts at least one row for a fresh user in EVERY
-// relation the schema says references them, and fails loudly if it cannot.
-//
-// A materialized view is skipped rather than seeded: nothing can INSERT into
-// one. It is populated by whatever it selects from, which is what makes it a
-// stored copy, and the matview tests below build their own.
 func seedAFullyPopulatedUser(t *testing.T, pool *pgxpool.Pool, sub string) uuid.UUID {
 	t.Helper()
 	u := newUser(t, pool, sub)
@@ -291,8 +248,6 @@ func rowsFor(t *testing.T, pool *pgxpool.Pool, r Relation, u uuid.UUID) int {
 	return n
 }
 
-// rel is the Relation for a plain table in `public`, for the tests that name
-// one directly.
 func rel(name string) Relation { return Relation{Schema: "public", Name: name, Kind: 'r'} }
 
 func exec(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) {
@@ -318,10 +273,6 @@ func randBytes(t *testing.T, n int) []byte {
 	return b
 }
 
-// deviceKey returns a stable Ed25519 keypair per user. It must be stable
-// because writers and key_history are seeded separately and the pair has to
-// look like one enrollment — and because a test that signs with it needs the
-// private half of the key the roster holds.
 var (
 	keyMu   sync.Mutex
 	devKeys = map[uuid.UUID]ed25519.PrivateKey{}
@@ -355,10 +306,6 @@ func countRows(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) int {
 	}
 	return n
 }
-
-// ---------------------------------------------------------------------------
-// Completeness
-// ---------------------------------------------------------------------------
 
 func TestPurgeLeavesNoRowInAnyUserScopedTable(t *testing.T) {
 	pool := pgtest.New(t)
@@ -416,10 +363,6 @@ func TestPurgeTakesTheIsolationLedgerAndLeavesTheDefaultPolicy(t *testing.T) {
 	}
 }
 
-// Every table in the database is classified: user-scoped (discovered), handled
-// without a user_id column, or deliberately not user-linked. A table added by a
-// later change lands in none of those and fails here — and, by the same call
-// inside Purge, refuses to purge at all rather than purging incompletely.
 func TestEveryTableIsClassified(t *testing.T) {
 	pool := pgtest.New(t)
 	c, err := Classify(bg, pool)
@@ -447,9 +390,6 @@ func TestEveryTableIsClassified(t *testing.T) {
 	}
 }
 
-// What the cascade pre-flight read for the append-only tables and the push
-// tokens is ON DELETE CASCADE, so `DELETE FROM users` really does take them:
-// the runtime role cannot DELETE from op_log, key_history or writers at all.
 func TestTheCascadeCheckCoversTheLogAndItsKeys(t *testing.T) {
 	pool := pgtest.New(t)
 	actions, err := cascadeActions(bg, pool)
@@ -476,7 +416,6 @@ func TestTheCascadeCheckCoversTheLogAndItsKeys(t *testing.T) {
 func TestPurgeRefusesWhenATableIsUnclassified(t *testing.T) {
 	pool, owner := pgtest.NewWithOwner(t)
 	u := seedAFullyPopulatedUser(t, pool, "purge-me")
-	// A later change's table, with no user_id and no classification.
 	exec(t, owner, `CREATE TABLE later_task_notes (id bigserial PRIMARY KEY, note text)`)
 
 	_, err := Purge(bg, pool, u)
@@ -491,18 +430,6 @@ func TestPurgeRefusesWhenATableIsUnclassified(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// The object classes information_schema could not see
-// ---------------------------------------------------------------------------
-//
-// Discovery reads pg_class, not information_schema, which is blind to a
-// materialized view, to any other schema, and to anything the current role
-// lacks privileges on. In each case the relation must be purged or the purge
-// must refuse, never be skipped. See relationFilter in purge.go.
-
-// A matview over op_log is a stored COPY of the user's frames; it survives the
-// cascade and cannot be DELETEd from. Refreshing it needs ownership, so the
-// runtime role's purge refuses (loudly, naming it) and the owner's reaches it.
 func TestPurgeReachesAMaterializedViewOnlyAsItsOwner(t *testing.T) {
 	pool, owner := pgtest.NewWithOwner(t)
 	u := seedAFullyPopulatedUser(t, pool, "purge-me")
@@ -543,7 +470,6 @@ func TestPurgeReachesAMaterializedViewOnlyAsItsOwner(t *testing.T) {
 	}
 }
 
-// A matview with no user_id is still a relation nobody has classified.
 func TestPurgeRefusesAnUnclassifiedMaterializedView(t *testing.T) {
 	pool, owner := pgtest.NewWithOwner(t)
 	u := seedAFullyPopulatedUser(t, pool, "purge-me")
@@ -561,8 +487,6 @@ func TestPurgeRefusesAnUnclassifiedMaterializedView(t *testing.T) {
 	}
 }
 
-// `archive.op_log_2026` — the obvious thing a DBA creates, in the obvious place
-// a `WHERE table_schema = 'public'` filter cannot see.
 func TestPurgeReachesATableOutsideThePublicSchema(t *testing.T) {
 	pool, owner := pgtest.NewWithOwner(t)
 	exec(t, owner, `CREATE SCHEMA archive`)
@@ -592,9 +516,6 @@ func TestPurgeReachesATableOutsideThePublicSchema(t *testing.T) {
 	}
 }
 
-// information_schema shows only what the current role has privileges on, and
-// the purge runs as the non-owner hasala_runtime. A relation that role cannot
-// read must be DISCOVERED, and the count against it must fail loudly.
 func TestPurgeSeesARelationTheRoleCannotRead(t *testing.T) {
 	pool, owner := pgtest.NewWithOwner(t)
 	u := seedAFullyPopulatedUser(t, pool, "purge-me")
@@ -624,8 +545,6 @@ func TestPurgeSeesARelationTheRoleCannotRead(t *testing.T) {
 	}
 }
 
-// A user_id column with no foreign key at all: nothing cascades into it. The
-// sweep catches it, and says so in the report.
 func TestPurgeSweepsAUserScopedTableWithNoForeignKey(t *testing.T) {
 	pool, owner := pgtest.NewWithOwner(t)
 	exec(t, owner, `CREATE TABLE later_task_rows (id bigserial PRIMARY KEY, user_id uuid NOT NULL, note text NOT NULL)`)
@@ -647,9 +566,6 @@ func TestPurgeSweepsAUserScopedTableWithNoForeignKey(t *testing.T) {
 	}
 }
 
-// The other shapes of a user_id foreign key that is not ON DELETE CASCADE. SET
-// NULL is the dangerous one: the rows survive with a blanked user_id, so every
-// count-by-user_id here reads zero. All are refused BEFORE anything is touched.
 func TestPurgeRefusesAUserIDForeignKeyThatDoesNotCascade(t *testing.T) {
 	for _, tc := range []struct{ name, action, wants string }{
 		{name: "set null", action: "ON DELETE SET NULL", wants: "SET NULL"},
@@ -707,9 +623,6 @@ func TestPurgeDoesNotTouchOtherUsers(t *testing.T) {
 	}
 }
 
-// op_log and key_history are append-only and writers revoke-once: the runtime
-// role holds no DELETE on them and the triggers refuse even the owner while
-// the account exists. The purge therefore has to arrive through the cascade.
 func TestPurgeSatisfiesTheAppendOnlyTriggers(t *testing.T) {
 	pool, owner := pgtest.NewWithOwner(t)
 	u := seedAFullyPopulatedUser(t, pool, "purge-me")
@@ -746,10 +659,6 @@ func TestPurgeIsIdempotentAndReportsAnUnknownUserAsNothingToDo(t *testing.T) {
 	}
 }
 
-// Spec 02 §15.2 step 3, AT-DEL-2 (review 2 F-14), spec 07 §6.6: the purge
-// erases the account's address from email-log rows that never carried its
-// user_id, deletes its joined waitlist entry and any signup ceremony holding
-// the address, and leaves other addresses alone.
 func TestPurgeErasesTheAddressFromTheEmailLog(t *testing.T) {
 	pool := pgtest.New(t)
 	u := newUser(t, pool, "erase-address")
@@ -843,7 +752,6 @@ func TestPurgeErasesAnEarlierAddressFromTheEmailLog(t *testing.T) {
 	}
 }
 
-// sumTagger stands in for the server's email tagger.
 type sumTagger struct{}
 
 func (sumTagger) EmailTag(addr string) []byte {
@@ -851,10 +759,6 @@ func (sumTagger) EmailTag(addr string) []byte {
 	return h[:]
 }
 
-// Spec 02 §15.2 steps 2 to 4 in serve: the address's codes that belong to no
-// account and a joined waitlist entry found only by its tag are deleted, and
-// the goodbye is queued to the address with no account, after the queued rows
-// to it were deleted. Other addresses' rows stay.
 func TestPurgeWithTheKeyErasesTheTagsAndQueuesTheGoodbye(t *testing.T) {
 	pool := pgtest.New(t)
 	u := newUser(t, pool, "erase-tags")
@@ -907,9 +811,6 @@ func TestPurgeWithTheKeyErasesTheTagsAndQueuesTheGoodbye(t *testing.T) {
 	}
 }
 
-// The CLI (spec 02 §15.4) holds no key: the tag steps are skipped, the
-// goodbye is queued without a tag (serve's worker fills it in), and a plain
-// Purge (a replay after a restore) queues nothing.
 func TestPurgeWithoutTheKeyStillQueuesTheGoodbye(t *testing.T) {
 	pool := pgtest.New(t)
 	u := newUser(t, pool, "cli-purge")

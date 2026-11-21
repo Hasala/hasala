@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# The spec 06 §8 vectors for build_number.sh (AT-04). devshell_test.sh runs this with
-# GNU date first on PATH too.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fail=0
@@ -14,7 +12,6 @@ check 2026-01-02T03:04:00Z 260102.10304
 check 2026-12-31T23:59:59Z 261231.12359
 check 2027-01-01T00:00:00Z 270101.10000
 check 2026-10-11T15:30:00+04:00 261011.11130
-# One number per UTC minute: archive.sh refuses a second archive in the same minute.
 check 2026-10-11T15:30:00Z 261011.11530
 if "$here/build_number.sh" 2026-10-11T15:30:00 >/dev/null 2>&1; then
 	echo "FAIL an instant without a zone was accepted"
@@ -23,7 +20,6 @@ else
 	echo "ok   an instant without a zone is refused"
 fi
 
-# The monotonicity rule archive.sh and upload.sh share (code 21).
 # shellcheck source=../release-common.sh
 source "$here/release-common.sh"
 newer() {

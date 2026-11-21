@@ -1,7 +1,3 @@
-// `PlanEngine` (spec 03a §6): pure plan math over the folded plan records, the
-// counted money lines (03c §3.9.3 `money_line`), the taxonomy, bill
-// expectations and `today`. No I/O, no clock. Money is `Int64` minor units
-// with `Int128` products; `÷` is floor division over non-negative operands.
 import CoreCategorize
 import CoreReplay
 import CoreTime
@@ -15,7 +11,6 @@ private func planSum<S: Sequence>(_ s: S) -> Int64 where S.Element == Int64 {
   Int64(clamping: s.reduce(Int128(0)) { $0 + Int128($1) })
 }
 
-/// One `money_line` row (03c §3.9.3).
 public struct MoneyLine: Sendable, Equatable {
   public enum Flow: String, Sendable {
     case spend, refund, income, excluded
@@ -55,11 +50,9 @@ public struct MoneyLine: Sendable, Equatable {
 
   public var localMonth: CivilMonth { localDate.yearMonth }
 
-  /// 03a §6.2 `countsInPlan`.
   public var countsInPlan: Bool { confirmed && signedHome != nil && (flow == .spend || flow == .refund) && inPlan }
 }
 
-/// 03b §3.12 `BillExpectation`, as the plan reads it.
 public struct BillExpectation: Sendable, Equatable {
   public enum Status: String, Sendable {
     case upcoming, due, late, paid, skipped
@@ -102,23 +95,16 @@ public enum PaceVerdict: String, Sendable {
   case done, short, inProgress
 }
 
-/// 03a §6.7 figures (current phase only where marked).
 public struct PaceFigures: Sendable, Equatable {
   public var verdict: PaceVerdict
   public var budget: Int64
   public var spent: Int64
   public var left: Int64
-  /// `(max(S,0)·100) ÷ B` (current, B > 0).
   public var usedPercent: Int64?
-  /// `(d·100) ÷ D` (current).
   public var monthPercent: Int64?
-  /// `S ≤ 0 ? 0 : (S·D) ÷ d` (current).
   public var projection: Int64?
-  /// `L > 0 ? L ÷ (D − d + 1) : nil` (current).
   public var allowancePerDay: Int64?
-  /// `B ÷ D`.
   public var dailyBudget: Int64?
-  /// overPace only: `ceil(B·d / S)`.
   public var runOutDay: Int?
   public var daysEarly: Int?
 }
@@ -131,9 +117,7 @@ public struct EverydayHero: Sendable, Equatable {
   public var left: Int64
   public var pace: PaceFigures
   public var billsPaid: Int64
-  /// nil when there is no bill expectation at all for the month ("—").
   public var billsToCome: Int64?
-  /// `E == 0 && SE == 0`: the "Set your plan" hero.
   public var isEmpty: Bool { budget == 0 && spent == 0 }
 }
 
@@ -152,7 +136,6 @@ public struct IncomeBreakdown: Sendable, Equatable {
 
 public struct PlanCategoryRow: Sendable, Equatable {
   public var info: CategoryInfo
-  /// `everyday` or `bills` for need/want; nil for saving.
   public var role: String?
   public var assigned: Int64
   public var spent: Int64
@@ -165,7 +148,6 @@ public struct GoalProgress: Sendable, Equatable {
   public var progress: Int64
   public var target: Int64
   public var percent: Int64
-  /// 03a §6.9 `required(g, M)`.
   public var required: Int64?
 }
 
@@ -176,13 +158,9 @@ public struct PlanEngine: Sendable {
   public let bills: [BillExpectation]
   public let template: BudgetSplit?
   public let today: CivilDate
-  /// Goals (id, record), for auto-assign's goal step.
   public let goals: [(id: String, goal: Goal)]
-  /// Every project-linked line, whatever its month (03c §6.1 `spent_net` covers
-  /// all months); nil reads `lines`.
   public let projectLines: [MoneyLine]?
 
-  /// 03a §6.20 default roles.
   public static let defaultBills: [String] = ["rent", "utilities", "insurance", "subscriptions"]
   public static let paydayWindow = 4
   static let defaultSplit = BudgetSplit(need: 50, want: 30, saving: 20)
@@ -201,22 +179,17 @@ public struct PlanEngine: Sendable {
     self.today = today
   }
 
-  // MARK: Phase and roles
-
   public func phase(_ m: CivilMonth) -> Phase {
     if m < today.yearMonth { return .past }
     if today.yearMonth < m { return .future }
     return .current(day: today.day, days: m.daysInMonth)
   }
 
-  /// `role(c) = roles[c] ?? default(c)` (need/want spending only; nil otherwise).
   public func role(_ c: String) -> String? {
     guard let info = taxonomy.info(c), info.kind == .spending, info.bucket == .need || info.bucket == .want else { return nil }
     if let r = plan.roles[c]?.role { return r }
     return Self.defaultBills.contains(c) ? "bills" : "everyday"
   }
-
-  // MARK: Assigned (03a §6.1)
 
   public func assigned(_ m: CivilMonth, _ c: String) -> Int64 {
     guard let row = plan.cells[c] else { return 0 }
@@ -233,7 +206,6 @@ public struct PlanEngine: Sendable {
     return planAdd(base, row[m.wire]?.movesAll ?? 0)
   }
 
-  /// Plan start month: the earliest month holding a set.
   public var planStart: CivilMonth? {
     var out: CivilMonth?
     for (_, row) in plan.cells {
@@ -243,8 +215,6 @@ public struct PlanEngine: Sendable {
     }
     return out
   }
-
-  // MARK: Activity (03a §6.2)
 
   public func activity(_ m: CivilMonth) -> [String: Int64] {
     var out: [String: Int128] = [:]
@@ -257,16 +227,12 @@ public struct PlanEngine: Sendable {
 
   public func spent(_ m: CivilMonth, _ c: String) -> Int64 { activity(m)[c] ?? 0 }
 
-  /// Counted rows with no home amount yet (03a §6.2, PO-17).
   public func unconverted(_ m: CivilMonth) -> Int {
     lines.filter { $0.localMonth == m && $0.confirmed && ($0.flow == .spend || $0.flow == .refund) && $0.signedHome == nil }.count
   }
 
-  // MARK: Income (03a §6.3)
-
   private func incomeCategories() -> [String] { taxonomy.ordered.filter { $0.kind == .income }.map(\.id) }
 
-  /// The month an income line belongs to, by the payday rule.
   func attributedMonth(_ l: MoneyLine) -> CivilMonth {
     let x = l.localDate
     let xm = x.yearMonth
@@ -291,7 +257,6 @@ public struct PlanEngine: Sendable {
     return xm
   }
 
-  /// `received_c(M)`: credits +home, debits −home, over income lines attributed to `M`.
   public func received(_ m: CivilMonth, _ c: String) -> Int64 {
     var r: Int128 = 0
     for l in lines where l.flow == .income && l.confirmed && utf8Equal(l.category ?? "", c) {
@@ -320,8 +285,6 @@ public struct PlanEngine: Sendable {
     return IncomeBreakdown(total: Int64(clamping: total), expected: Int64(clamping: exp), received: Int64(clamping: rec))
   }
 
-  // MARK: Ready to assign and buckets (03a §6.4-§6.5)
-
   public func planned(_ m: CivilMonth) -> Int64 {
     planSum(taxonomy.ordered.filter { $0.kind == .spending }.map { assigned(m, $0.id) })
   }
@@ -337,7 +300,6 @@ public struct PlanEngine: Sendable {
     }
   }
 
-  /// 03a §6.5 split shares by largest remainder; nil when hidden.
   public func splitShares(_ m: CivilMonth) -> [Bucket: Int64]? {
     let bs = buckets(m)
     let p = bs.reduce(Int128(0)) { $0 + Int128($1.assigned) }
@@ -349,7 +311,6 @@ public struct PlanEngine: Sendable {
     return out
   }
 
-  /// `q_i = w_i ÷ P`; the `total − Σq` largest remainders get +1, ties to the earlier index.
   static func largestRemainder(total: Int64, weights: [Int128], divisor: Int128) -> [Int64] {
     var q = weights.map { Int64(clamping: $0 / divisor) }
     let r = weights.map { $0 % divisor }
@@ -363,8 +324,6 @@ public struct PlanEngine: Sendable {
     }
     return q
   }
-
-  // MARK: Pace (03a §6.7)
 
   public enum PaceKind: Sendable { case everyday, bills, saving }
 
@@ -418,8 +377,6 @@ public struct PlanEngine: Sendable {
     return f
   }
 
-  // MARK: The everyday hero (03a §6.6)
-
   private func categories(role r: String) -> [CategoryInfo] {
     taxonomy.ordered.filter { $0.kind == .spending && ($0.bucket == .need || $0.bucket == .want) && role($0.id) == r }
   }
@@ -445,9 +402,6 @@ public struct PlanEngine: Sendable {
       billsPaid: billsPaid, billsToCome: toCome)
   }
 
-  // MARK: Category rows (03a §6.7-§6.9, §6.19)
-
-  /// The spending rows shown for `m`: active with A ≠ 0 or S ≠ 0, or retired with either.
   public func categoryRows(_ m: CivilMonth) -> [PlanCategoryRow] {
     let act = activity(m)
     let ph = phase(m)
@@ -463,16 +417,12 @@ public struct PlanEngine: Sendable {
     return out
   }
 
-  /// 03a §6.5 "✓ Done": every saving category with A > 0 has S ≥ A, and one has A > 0.
   public func savingsDone(_ m: CivilMonth) -> Bool {
     let act = activity(m)
     let funded = taxonomy.ordered.filter { $0.kind == .spending && $0.bucket == .saving && assigned(m, $0.id) > 0 }
     return !funded.isEmpty && funded.allSatisfy { (act[$0.id] ?? 0) >= assigned(m, $0.id) }
   }
 
-  // MARK: Goals (03a §6.9)
-
-  /// Q-GOAL-SAVED: confirmed spend/refund lines of `category` with `since ≤ local_date ≤ until`.
   public func goalSaved(category: String, since: CivilDate, until: CivilDate) -> Int64 {
     planSum(
       lines.filter {
@@ -497,11 +447,6 @@ public struct PlanEngine: Sendable {
     return GoalProgress(goalID: id, progress: progress, target: g.targetMinor, percent: pct, required: required)
   }
 
-  // MARK: Projects (03c §6.1 roll-ups, as 03a §6.10 shows them)
-
-  /// `spent_net`: confirmed lines linked to the project, flows spend, refund and
-  /// uncategorized_out (debit +, credit −), over `projectLines` (every month)
-  /// or, without them, the months in `lines`.
   public func projectSpent(_ projectID: String) -> Int64 {
     planSum(
       (projectLines ?? lines).filter {
@@ -510,12 +455,6 @@ public struct PlanEngine: Sendable {
       }.map { $0.signedHome ?? 0 })
   }
 
-  // MARK: Auto-assign (03a §6.11)
-
-  /// The allocations that bring Ready to assign to 0: bill shortfalls, goal
-  /// targets, template deficits, the remainder by the template, then within
-  /// each bucket by cumulative floor over the assigned amounts. Empty for a
-  /// past month or when Ready to assign is not positive.
   public func autoAssign(_ m: CivilMonth) -> [(category: String, amount: Int64)] {
     let ph = phase(m)
     var r = readyToAssign(m)
@@ -528,7 +467,6 @@ public struct PlanEngine: Sendable {
       a[c] = planAdd(a[c] ?? 0, v)
     }
     let act = activity(m)
-    // 1. Bill shortfalls, by earliest unpaid expected day, then sortKey.
     let monthBills = bills.filter { $0.expectedDay.yearMonth == m }
     let billCats = billsCategories().map { info -> (CategoryInfo, CivilDate?) in
       (info, monthBills.filter { utf8Equal($0.categoryID, info.id) && $0.status.isUnpaid }.map(\.expectedDay).min())
@@ -547,7 +485,6 @@ public struct PlanEngine: Sendable {
       give(info.id, g)
       r = planSub(r, g)
     }
-    // 2. Goal targets, grouped by funding category, in (target_month, id) order.
     var needByFund: [(String, Int64)] = []
     let sortedGoals = goals.filter { $0.goal.status == "active" && $0.goal.source.kind == "category" }
       .sorted { x, y in
@@ -564,7 +501,6 @@ public struct PlanEngine: Sendable {
       give(f, g)
       r = planSub(r, g)
     }
-    // 3. Template deficits; 4. the remainder by the template.
     let t = template ?? Self.defaultSplit
     let pct: [Bucket: Int64] = [.need: t.need, .want: t.want, .saving: t.saving]
     let inc = income(m).total
@@ -588,7 +524,6 @@ public struct PlanEngine: Sendable {
       for (i, b) in Bucket.allCases.enumerated() { giveB[b] = planAdd(giveB[b] ?? 0, parts[i]) }
       r = 0
     }
-    // 5. Within each bucket, by cumulative floor over A(M,c) in sortKey order.
     for b in Bucket.allCases {
       let total = giveB[b] ?? 0
       guard total > 0 else { continue }
@@ -606,11 +541,8 @@ public struct PlanEngine: Sendable {
         give(c, Int64(clamping: Int128(total) * cum / w - before))
       }
     }
-    // 6. In order of first touch.
     return touched.map { ($0, a[$0]!) }
   }
-
-  // MARK: Setup 2 seeding (03a §6.12)
 
   public static let seedWeights: [(Bucket, [(String, Int64)])] = [
     (.need, [("rent", 6000), ("utilities", 700), ("groceries", 1800), ("transport", 700), ("healthcare", 300), ("insurance", 500)]),
@@ -618,8 +550,6 @@ public struct PlanEngine: Sendable {
     (.saving, [("savings", 6000), ("investments", 4000), ("debt", 0)]),
   ]
 
-  /// Bucket amounts by largest remainder over the template, then category seeds
-  /// by cumulative floor over the weights. Zero-weight categories are omitted.
   public static func seed(income: Int64, split: BudgetSplit?) -> (buckets: [Bucket: Int64], categories: [(String, Int64)]) {
     let s = split ?? defaultSplit
     let parts = largestRemainder(

@@ -1,17 +1,7 @@
 ---
-/**
- * The Hasala lockup: the slot mark, "Hasala" and "حصّالة", all outlined, so
- * neither Inter nor Tajawal has to load for it. Source:
- * design/icon/hasala-wordmark.svg, with coordinates rounded by
- * scripts/icons.ts into public/brand/hasala-wordmark.svg.
- *
- * Inline (the nav, so it paints with the page) or as an <img> (the footer,
- * cached). `compact` crops to the mark and "Hasala" at small widths.
- */
 import raw from '../../public/brand/hasala-wordmark.svg?raw';
 
 interface Props {
-  /** Unique per page: the SVG's gradient and clip ids are prefixed with it. */
   id: string;
   img?: boolean;
   class?: string;

@@ -154,15 +154,12 @@ struct AppModelTests {
     #expect(!Scenario.maya.startsWithAmountsHidden)
   }
 
-  /// The wash stays at the top of the screen while the content is at rest, pulled down, or
-  /// held down by a refresh, and scrolls away with the content (Paper: absolute, 420 tall).
   @Test func theWashMovesOnlyUpWithTheContent() {
     let inset = 116.0
-    #expect(WashPin.offset(contentOffset: -inset, insetTop: inset) == 0)  // at rest
-    #expect(WashPin.offset(contentOffset: -inset - 140, insetTop: inset) == 0)  // pulled
-    // The spinner's hold: the inset grows by the spinner and the content is held below it.
+    #expect(WashPin.offset(contentOffset: -inset, insetTop: inset) == 0)
+    #expect(WashPin.offset(contentOffset: -inset - 140, insetTop: inset) == 0)
     #expect(WashPin.offset(contentOffset: -inset - 60, insetTop: inset + 60) == 0)
-    #expect(WashPin.offset(contentOffset: -inset + 120, insetTop: inset) == -120)  // scrolled
+    #expect(WashPin.offset(contentOffset: -inset + 120, insetTop: inset) == -120)
     #expect(WashPin.offset(contentOffset: -inset + 0.5, insetTop: inset) == -0.5)
   }
 
@@ -183,8 +180,6 @@ struct AppModelTests {
     #expect(app.toast == nil)
   }
 
-  /// The toast's disc and what VoiceOver hears (Paper page 14 §03): a done edit gets the
-  /// accent check and "… Undo available."; a note gets its glyph on the ink disc.
   @Test func aToastSaysWhatHappenedAndWhatItOffers() throws {
     let app = AppModel(store: InMemoryLedger())
     #expect(app.perform(.categorize("lulu", "groceries", learnRule: false, project: nil)))
@@ -199,7 +194,6 @@ struct AppModelTests {
     #expect(app.toast.map(AppModel.announcement(for:)) == "Outlook connected. Checking for alerts.")
   }
 
-  /// A touch holds the toast; letting go starts its time again, and it can be sent away.
   @Test func aHeldToastStaysUntilLetGo() {
     let app = AppModel(store: InMemoryLedger())
     app.say("Bill marked as paid")
@@ -294,10 +288,6 @@ struct AppModelTests {
     #expect(app.avatarInitial == app.snapshot.header.avatarInitial)
   }
 
-  // MARK: Routing (plan B7.2)
-
-  /// Never two sheets at once: a second waits for the first to go, then opens with its
-  /// profile path; a sheet that went takes its pushed pages with it.
   @Test func sheetsQueueAndTakeTheirPagesWithThem() {
     let app = AppModel(store: InMemoryLedger())
     let router = app.router
@@ -327,7 +317,6 @@ struct AppModelTests {
     #expect(router.sheet == nil && router.cover == nil)
   }
 
-  /// The Review tab's badge is the queue (6 on Maya), and follows the ledger.
   @Test func theReviewBadgeCountsTheQueue() {
     let app = AppModel(store: InMemoryLedger())
     #expect(app.reviewCount == 6)

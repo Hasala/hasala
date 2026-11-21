@@ -2,12 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Sign-in & security (Paper P2.5 HB9 passkey user, HNJ password-only user; spec 04 §6.9),
-/// pushed inside the profile's large sheet: the status hero, then Email, Passkeys, Password,
-/// Devices and Recovery phrase, each a titled white card with a footnote, then sign out,
-/// sign out everywhere and delete. Only the account actions this build carries out are
-/// offered (`AccountSession.capabilities`); the rest point to support. Every change asks
-/// "Are you sure?" where it can't be undone (native alerts), then "Confirm it's you".
 struct SecurityView: View {
   @Environment(\.hBiometry) private var biometry
   let session: AccountSession
@@ -24,8 +18,6 @@ struct SecurityView: View {
     _model = State(initialValue: SecurityModel(session: session))
   }
 
-  /// The system alerts (Paper HS1, HWP, I1C, I5Z): the question names the thing; the
-  /// message says what is lost and what stays; the button repeats the verb.
   enum PendingAlert: Identifiable {
     case removePasskey(PasskeyRow)
     case removeDevice(DeviceRow)
@@ -116,10 +108,7 @@ struct SecurityView: View {
     }
   }
 
-  /// Whether this build offers `action` (spec: only actions in `capabilities` are shown).
   private func can(_ action: AccountCapabilities) -> Bool { model.capabilities.contains(action) }
-
-  // MARK: Hero
 
   private func hero(_ s: SecurityState) -> some View {
     Group {
@@ -136,7 +125,6 @@ struct SecurityView: View {
           title: "Password only",
           body: can(.addPasskey)
             ? "Your 12 words are set. A passkey\nwould make sign-in one glance."
-            // The passkey hero's two lines in the same words, so neither wraps (HNJ-0).
             : "Password and 12 words are set.\nLast sign-in \(s.lastSignIn).",
           hue: .sand, icon: .faceID)
       }
@@ -176,8 +164,6 @@ struct SecurityView: View {
     }
   }
 
-  // MARK: Sections
-
   private func section<C: View>(
     _ title: String, footer: String? = nil, tip: String? = nil, tipAbout: String = "",
     @ViewBuilder _ content: () -> C
@@ -200,7 +186,6 @@ struct SecurityView: View {
     SecurityRow(tile: .plate(.envelope, .sky), title: s.email,
                 detail: s.emailVerified ? Self.emailDetail : "Not verified yet",
                 titleLabel: "Email address \(s.email)", titleLines: 2) {
-      // The email change has no live ceremony yet (C6): Debug only, with the capability.
       if can(.changeEmail), BuildSurface.showsUnfinished {
         Button("Change") { model.requestEmailChange() }
           .buttonStyle(.pill(.secondary, size: .small))
@@ -215,7 +200,6 @@ struct SecurityView: View {
         if i > 0 { HDivider() }
         SecurityRow(tile: p.isThisCredential ? .plate(.faceID, .sky) : .plate(.passkey, .other), title: p.provider,
                     detail: p.detail, titleLines: 2, titleTruncation: .tail) {
-          // The passkey in hand isn't removed from here; another way in must remain.
           if can(.removePasskey), s.canRemove(p) {
             InlineDestructive(title: "Remove", identifier: "security.removePasskey.\(p.id)") {
               alert = .removePasskey(p)
@@ -321,7 +305,6 @@ struct SecurityView: View {
           EmptyView()
         }
       }
-      // No ceremony makes new words yet (C7): Debug only, with the capability.
       if can(.rotatePhrase), BuildSurface.showsUnfinished {
         HDivider()
         AddRow(title: "New recovery phrase", identifier: "security.newWords", plus: false) {
@@ -372,8 +355,6 @@ struct SecurityView: View {
     .padding(.top, 8)
   }
 
-  // MARK: Alerts
-
   static let removeThisIPhoneTitle = "Remove this iPhone?"
 
   static let removeThisIPhoneMessage =
@@ -404,10 +385,8 @@ struct SecurityView: View {
     case .removePassword:
       return "You'll sign in with your passkey only. You'll confirm with \(biometry.noun) next."
     case .signOut:
-      // The profile's Sign out says the same (requests/p8.md 4).
       return AccountCopy.signOutMessage
     case .signOutEverywhere:
-      // Every session ends; each device keeps its copy and its keys (`02` §9.3).
       return LockdownView.signOutEverywhereMessage
     case .freeze:
       return "Signs everyone out and blocks password sign-in, resets and the recovery phrase. To unfreeze, use a passkey or your password on one of your iPhones."
@@ -436,18 +415,9 @@ struct SecurityView: View {
   }
 }
 
-// MARK: - Rows
-
-/// A Sign-in & security row (Paper "ListRow (two-line, with leading tile)"): a 40 tile, a
-/// 16/22 title over a 13/18 line, and a trailing pill, action or status. At least 64 tall.
-/// The line wraps beside the trailing part (Paper HB9 "Optional. Signs you in where / Face
-/// ID can't." next to "Set one"); at the accessibility sizes the trailing part moves under
-/// the text.
 struct SecurityRow<Trailing: View>: View {
   enum Tile {
-    /// Radius 12 (a key, an address, a device).
     case plate(HIcon, Hue)
-    /// Round (the recovery phrase).
     case disc(HIcon, Hue)
   }
 
@@ -515,8 +485,6 @@ struct SecurityRow<Trailing: View>: View {
   }
 }
 
-/// An action row in the link colour (Paper "ListRow (action, accent)"): a 40 accent-subtle
-/// tile with "+" (or an empty 40 lane), at least 56 tall.
 private struct AddRow: View {
   var title: String
   var identifier: String
@@ -551,8 +519,6 @@ private struct AddRow: View {
   }
 }
 
-/// "Remove" inside a row (Paper "InlineDestructiveAction"): 15/20 semibold destructive in a
-/// 44 target.
 private struct InlineDestructive: View {
   var title: String
   var identifier: String
@@ -571,7 +537,6 @@ private struct InlineDestructive: View {
   }
 }
 
-/// A 15/20 semibold text link in a 44 row (Paper "TextLink44" under the footer button).
 struct TextLink: View {
   var title: String
   var identifier: String
@@ -592,11 +557,7 @@ struct TextLink: View {
   }
 }
 
-// MARK: - Confirm it's you, hosted
-
 extension View {
-  /// "Confirm it's you" for the change waiting in `model`, when `host` is the page on top.
-  /// `onEnterWords` lets the no-key variant open the words.
   func confirmSheet(
     _ model: SecurityModel, host: SecurityModel.Host = .page, onEnterWords: (() -> Void)? = nil
   ) -> some View {
@@ -625,11 +586,6 @@ private struct ConfirmSheetHost: View {
   }
 }
 
-// MARK: - Password
-
-/// Set or change the password (Paper doesn't draw it; spec 09 §21 "password screens"),
-/// pushed inside the profile sheet: the new password, its strength and the repeat. Saving
-/// asks "Confirm it's you" over this page, which closes once the change is through.
 struct PasswordEditPage: View {
   @Bindable var model: SecurityModel
 

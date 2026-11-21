@@ -11,12 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// The anchor inputs of spec 01 §15.5. Every generator and test in this tree
-// that reproduces an anchor takes its inputs from here, so an input can never
-// differ between the file that writes a vector and the test that pins it.
-
-// Range is the run of consecutive byte values a, a+1, …, b (spec 01 §1's
-// "x..y"), wrapping at 0xff.
 func Range(a, b byte) []byte {
 	var out []byte
 	for v := a; ; v++ {
@@ -27,8 +21,6 @@ func Range(a, b byte) []byte {
 	}
 }
 
-// Hex decodes a hex string that may contain spaces or newlines; it panics on
-// bad input (anchors are constants).
 func Hex(s string) []byte {
 	b, err := hex.DecodeString(strings.Join(strings.Fields(s), ""))
 	if err != nil {
@@ -37,7 +29,6 @@ func Hex(s string) []byte {
 	return b
 }
 
-// Anchor inputs (spec 01 §15.5, "Inputs").
 var (
 	AnchorUser           = uuid.MustParse("6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d")
 	AnchorWriterID       = "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
@@ -54,7 +45,7 @@ var (
 	AnchorFrameNonce1    = Range(0xd0, 0xdb)
 	AnchorFrameNonce2    = Range(0xe0, 0xeb)
 	AnchorStepUpNonce    = append(Range(0xf0, 0xff), Range(0x00, 0x0f)...)
-	AnchorWriterNonce    = Range(0x50, 0x6f) // also C1-P's signup nonce (A14-P)
+	AnchorWriterNonce    = Range(0x50, 0x6f)
 	AnchorRegisterNonce  = Range(0x20, 0x3f)
 	AnchorLoginChallenge = Range(0x70, 0x8f)
 	AnchorRecoverNonce   = Range(0x90, 0xaf)
@@ -62,8 +53,8 @@ var (
 	AnchorClientDataJSON = []byte(`{"type":"webauthn.create","challenge":"AAAA","origin":"https://hasala.app"}`)
 	AnchorDAKScalar      = Range(0x01, 0x20)
 	AnchorSaltKey        = Range(0x11, 0x30)
-	AnchorAuthKeyA19     = Range(0x11, 0x30) // A19: the same bytes as salt_key
-	AnchorAuthKeyA19K    = Range(0x31, 0x50) // A19-K: keys apart
+	AnchorAuthKeyA19     = Range(0x11, 0x30)
+	AnchorAuthKeyA19K    = Range(0x31, 0x50)
 	AnchorEmailInput     = "  Maya.Rahman+Hasala@Gmail.COM "
 	AnchorPasswordNFD    = "Hasala cafe\u0301 2026!"
 	AnchorPasswordNFCHex = "486173616c6120636166c3a9203230323621"
@@ -75,11 +66,10 @@ var (
 	AnchorEKSeed         = Range(0xb0, 0xcf)
 	AnchorResetNonce     = Range(0x10, 0x2f)
 	AnchorNewEmailInput  = "Maya@Example.AE"
-	AnchorRotateE        = bytes.Repeat([]byte{0x80}, 16) // A18: E' = 80×16
-	AnchorRotateWrap     = Range(0x11, 0x8f)              // A18: the new wrap, 127 B
+	AnchorRotateE        = bytes.Repeat([]byte{0x80}, 16)
+	AnchorRotateWrap     = Range(0x11, 0x8f)
 )
 
-// AnchorDAK is the P-256 key whose private scalar is 01..20 (A13's public key).
 func AnchorDAK() *ecdsa.PrivateKey {
 	c := elliptic.P256()
 	d := new(big.Int).SetBytes(AnchorDAKScalar)
@@ -87,7 +77,6 @@ func AnchorDAK() *ecdsa.PrivateKey {
 	return &ecdsa.PrivateKey{PublicKey: ecdsa.PublicKey{Curve: c, X: x, Y: y}, D: d}
 }
 
-// AnchorDAKPub is A13's DAK.pub, X9.63 uncompressed.
 func AnchorDAKPub() []byte {
 	k := AnchorDAK()
 	out := []byte{0x04}
@@ -95,8 +84,6 @@ func AnchorDAKPub() []byte {
 	return append(out, k.Y.FillBytes(make([]byte, 32))...)
 }
 
-// Anchor outputs (spec 01 §15.5, "Outputs"), as printed. Keys are the anchor
-// id and a short field name.
 var Anchors = map[string]string{
 	"A01 PRF_SALT":   "6bd5a9ebcc65e64bfab48f34528496a6449975b922e87a7ac79518c742170d01",
 	"A02 phrase":     "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic",

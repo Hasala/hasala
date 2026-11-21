@@ -13,10 +13,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// appRoutes is every route the iOS app calls in the TestFlight build (the
-// client API the PR lists), as serve mounts them with the server keys and a
-// relying party. Each must exist: an absent one answers the API's 404, and a
-// wrong method 405.
 var appRoutes = []struct{ method, path string }{
 	{"GET", "/api/v1/meta"},
 	{"POST", "/api/v1/auth/signup/begin"},
@@ -53,7 +49,6 @@ func TestTheAppsRoutesAreMounted(t *testing.T) {
 	for _, rt := range appRoutes {
 		w := h.req(rt.method, rt.path, "", map[string]any{})
 		if rt.path == "/api/v1/bank-requests" {
-			// Without the website group only the signed-in request exists.
 			wantStatus(t, w, http.StatusNotFound)
 			continue
 		}
@@ -63,12 +58,6 @@ func TestTheAppsRoutesAreMounted(t *testing.T) {
 	}
 }
 
-// The reviewer's path on the server (integration plan §2.5; spec 02 §14.2):
-// a review invite, a password signup, #40 reporting the review flag, the
-// calls the app makes while setting up, a second iPhone signing in with the
-// password, and the account deleting itself with the DAK and the password
-// (the only factor a password account has), after which every device gets
-// 410 account_deleted.
 func TestTheReviewAccountPathOverHTTP(t *testing.T) {
 	h := newHarness(t).passkeys()
 	keys, fake, q := h.accounts()
@@ -78,7 +67,6 @@ func TestTheReviewAccountPathOverHTTP(t *testing.T) {
 	}
 	a := h.passwordSignupWith(keys, fake, "review@example.com", code)
 
-	// #40 and #14.
 	w := h.req("GET", "/api/v1/account", a.token, nil)
 	wantStatus(t, w, http.StatusOK)
 	acct := decodeJSON[AccountResponse](t, w)
@@ -94,14 +82,11 @@ func TestTheReviewAccountPathOverHTTP(t *testing.T) {
 	if s := decodeJSON[SessionWire](t, w); s.WriterID == nil || *s.WriterID != a.device.WriterID || s.Restricted {
 		t.Fatalf("session %+v", s)
 	}
-	// An account from an ordinary invite is not a review account.
 	plain := h.passwordSignup(keys, fake, "plain@example.com")
 	if decodeJSON[AccountResponse](t, h.req("GET", "/api/v1/account", plain.token, nil)).ReviewAccount {
 		t.Fatal("a printed invite made a review account")
 	}
 
-	// Setup: the display name (#76), the meta document, keys, the writers'
-	// challenge, the APNs token, and the app's bank request (#74, source app).
 	wantStatus(t, h.req("PUT", "/api/v1/account/display-name", a.token, DisplayNameRequest{DisplayName: "Maya"}),
 		http.StatusNoContent)
 	w = h.req("GET", "/api/v1/meta", "", nil)
@@ -136,7 +121,6 @@ func TestTheReviewAccountPathOverHTTP(t *testing.T) {
 		t.Fatalf("%d app bank requests, want 2 (once per bank)", n)
 	}
 
-	// A second iPhone (C2-P): the password alone, no device yet.
 	w = h.passwordLogin(a, a.s)
 	wantStatus(t, w, http.StatusOK)
 	second := decodeJSON[SignInResponse](t, w)
@@ -145,8 +129,6 @@ func TestTheReviewAccountPathOverHTTP(t *testing.T) {
 	}
 	wantStatus(t, h.req("GET", "/api/v1/account", second.SessionToken, nil), http.StatusOK)
 
-	// Delete the account: account.delete step-up with the DAK and the
-	// password, and the writer's signature over the same nonce.
 	deviceStepUp := func() (*StepUpWire, []byte) {
 		t.Helper()
 		ph, _ := keyproto.ParamsHash(keyproto.ActionAccountDelete, []byte(a.user))
@@ -172,8 +154,6 @@ func TestTheReviewAccountPathOverHTTP(t *testing.T) {
 		}
 		return b64(ed25519.Sign(a.device.DWK, msg))
 	}
-	// Without a step-up, and with a signature over another nonce: refused, and
-	// the account stays.
 	wantStatus(t, h.req("DELETE", "/api/v1/account", a.token, DeleteAccountRequest{StepUp: nil, WriterID: a.device.WriterID,
 		Sig: deletion(make([]byte, 32))}), http.StatusForbidden)
 	su, _ := deviceStepUp()
@@ -202,8 +182,6 @@ func TestTheReviewAccountPathOverHTTP(t *testing.T) {
 	if h.countAPNs(mustUUID(t, a.user)) != 0 {
 		t.Fatal("the APNs token outlived the account")
 	}
-	// The goodbye (spec 02 §15.2 step 4) is queued in the purge, sent, and
-	// then nothing in the email log holds the address any more.
 	if _, err := q.Drain(bg); err != nil {
 		t.Fatal(err)
 	}
@@ -219,9 +197,6 @@ func TestTheReviewAccountPathOverHTTP(t *testing.T) {
 	}
 }
 
-// #41 with a passkey step-up: a UV assertion over the account.delete
-// challenge and the writer's signature over the same nonce. A frozen account
-// is refused (unfreeze first).
 func TestAPasskeyAccountDeletesItselfWithAStepUp(t *testing.T) {
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
@@ -232,7 +207,6 @@ func TestAPasskeyAccountDeletesItselfWithAStepUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := DeleteAccountRequest{StepUp: su, WriterID: k.device.WriterID, Sig: b64(ed25519.Sign(k.device.DWK, msg))}
-	// Not mixed with ledgerd's form, which is gone.
 	wantStatus(t, h.req("DELETE", "/api/v1/account", k.token, map[string]any{"step_up": su, "writer_id": k.device.WriterID,
 		"sig": body.Sig, "nonce": b64(nonce)}), http.StatusBadRequest)
 	if _, err := h.pool.Exec(bg, `UPDATE users SET frozen_at = now(), freeze_trigger_at = now(), frozen_by = 'holder'

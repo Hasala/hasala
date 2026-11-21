@@ -6,20 +6,9 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// Home · Default (Paper 14O7-0, spec 10 §2): one question first, "am I okay this month?" The
-/// hero shows what is spent on needs and wants with its pace and a verdict in words, then the
-/// widgets Maya arranges. Anything that needs her arrives behind the bell: its badge counts what
-/// needs a look and it opens the Notifications sheet. There is no "Needs you" section.
-///
-/// The wash follows the verdict (blue on track, sand ahead of pace, rose over) and cross-fades
-/// when it changes. The period pill opens the period picker; another period scopes the hero,
-/// shows that month's Budget pace and "Still about now". This month's widgets follow the
-/// arrangement kept on this iPhone ("Edit", "Add widget"). A Release build leaves out taps on
-/// widgets without a detail screen (`BuildSurface`). A review account's ledger is sample data, and Home says so.
 struct HomeView: View {
   @Bindable var app: AppModel
   let model: any HomeModel
-  /// Present once the account gate runs; it knows whether this is the review account.
   @Environment(AccountSession.self) private var session: AccountSession?
   @Environment(OnboardingStore.self) private var onboarding: OnboardingStore?
 
@@ -77,8 +66,6 @@ struct HomeView: View {
           setPlan: { if let finish { finish.setPlan() } else { app.openPlan() } },
           hold: HomeViewModel.hold(snapshot.hero, reading: app.store.state.reading, period: app.period),
           openReading: { _ in app.router.open(.profile, profile: [.bankAlerts]) })
-          // Paper: 12 from the header to the pill's row (content 8, hero 4); the tab screen's
-          // column starts 20 down for a large title.
           .padding(.top, -8)
         if app.syncNotices.uploadsStuck {
           UploadsStuckBanner(notices: app.syncNotices)
@@ -218,8 +205,6 @@ struct HomeImportPill: View {
   }
 }
 
-/// "Sample data" over Home on the App Review demo account (`review_account`, spec 06
-/// §13.4): its month was loaded from the bundled sample, not read from email.
 struct SampleDataLabel: View {
   var body: some View {
     HStack(spacing: 6) {

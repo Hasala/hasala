@@ -6,35 +6,17 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// Review · Deck (Paper 26H-0): a focused full-screen flow, one card at a time. Drag right
-/// for Need, left for Want, down for Save, up for Transfer (the horizontal pair follows the
-/// Swipe directions setting), or tap the pill on that side: both do the same thing.
-///
-/// The card follows the finger and tilts, 3° at the commit point; the glow and the pill on
-/// that side wake as it goes, and the pill turns active with a light tap as the card crosses
-/// the commit point. Let go before it and the card springs back (`.cardReturn`); let go past
-/// it (or flick) and the pick sheet asks which category. Filing flies the card out (200 ms,
-/// `.cardCommit`, 140% of its width and 16°, fading) while the next one rises into place on
-/// spring-drop (`.cardNext`, 0.96 → 1, lifting 8). "Use" files the suggestion the same way.
-/// With Reduce Motion nothing tilts or travels: the card fades and the next fades in.
 struct ReviewDeckView: View {
   @Bindable var app: AppModel
   let model: any ReviewDeckModel
 
-  /// Where the finger has the top card.
   @State private var drag: CGSize = .zero
   @GestureState private var touched: TxnID?
-  /// The edge the card is dragged past the commit point toward.
   @State private var crossed: SwipeEdge?
-  /// The edge the card is held toward while its pick sheet is up.
   @State private var held: SwipeEdge?
-  /// Cards on their way out, drawn over the deck until their flight ends.
   @State private var flights: [Flight] = []
-  /// The edge each filed card left by, so Undo brings it back from that side.
   @State private var departures: [String: SwipeEdge] = [:]
-  /// One light tap per commit (`HHaptic.impactLight`, plan B1.4).
   @State private var tap = 0
-  /// The pick sheet's choice, filed once the sheet has gone.
   @State private var pendingSort: PendingSort?
   @State private var reasonInfo: ReviewCardModel?
   @State private var pendingArchive: ReviewCardModel?
@@ -88,12 +70,10 @@ struct ReviewDeckView: View {
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   @Environment(\.dynamicTypeSize) private var typeSize
 
-  /// The deck's motion: the app's policy, honouring the system setting even without it.
   private var motion: MotionPolicy {
     MotionPolicy(reduceMotion: policy.reduceMotion || systemReduceMotion, settled: policy.settled)
   }
 
-  /// Cards remain, or the last one is still flying out.
   private var showsDeck: Bool { !model.cards.isEmpty || !flights.isEmpty }
 
   var body: some View {
@@ -139,8 +119,6 @@ struct ReviewDeckView: View {
         }
       }
     }
-    // On the bottom safe area for the scrolling deck at the largest text sizes; otherwise
-    // the deck carries it just above its footer (`deck`).
     .overlay(alignment: .bottom) {
       if showsDeck, deckFit == .scroll { ToastHost(app: app, placement: .bottom) }
     }
@@ -166,7 +144,6 @@ struct ReviewDeckView: View {
     }
     .onAppear {
       SortSound.shared.prepare()
-      // A pick sheet already up (a Debug screen launch): hold the card toward it.
       if let p = model.picking { holdToward(edge(for: p.choice), animated: false) }
     }
     .onDisappear { SortSound.shared.rest() }
@@ -182,9 +159,6 @@ struct ReviewDeckView: View {
     Binding(get: { model.picking }, set: { model.picking = $0 })
   }
 
-  // MARK: Header and progress
-
-  /// Close, "Review" over "2 of 6", More (Paper "Header · Review").
   private func header(done: Bool) -> some View {
     HStack {
       GlassIconButton(.close, label: "Close") { model.close(goToActivity: false) }
@@ -241,7 +215,6 @@ struct ReviewDeckView: View {
           Button("About this alert") { reasonInfo = top }
         }
         if BuildSurface.showsUnfinished, !top.fromText {
-          // TODO(spec 04 §16.2 G7): the bank email, once the holder re-fetch exists.
           Button("View bank email") { app.say("Coming in a later build", icon: .envelope) }
         }
       }
@@ -255,8 +228,6 @@ struct ReviewDeckView: View {
     .accessibilityIdentifier("review.more")
   }
 
-  /// "2 of 6" as a bar: 6 tall, radius 3, accent on the pace track, filled to the card in
-  /// front (Paper: 121 of 362 at 2 of 6, full at All caught up).
   private var progress: some View {
     let step = showsDeck ? model.position : model.total
     let share = model.total > 0 ? Double(step) / Double(model.total) : 1
@@ -274,11 +245,6 @@ struct ReviewDeckView: View {
     .accessibilityHidden(true)
   }
 
-  // MARK: Deck
-
-  /// At the accessibility text sizes the deck scrolls, the card does not drag (the pills,
-  /// "Use" and the VoiceOver actions sort it), and Want and Need sit under the card instead
-  /// of over its text (spec 04 §17).
   @ViewBuilder
   private func deck(_ top: ReviewCardModel?) -> some View {
     layout(top, fit: deckFit)
@@ -327,12 +293,9 @@ struct ReviewDeckView: View {
       }
     } else {
       VStack(spacing: 0) {
-        // Transfer and Save keep Paper's 44 slot: active, a pill grows to 48 about its
-        // middle instead of pushing the card 4 down (a jump with Reduce Motion).
         pill(.up).frame(height: Self.pillSlot).padding(.top, 20)
         stack(top, fit: fit)
           .overlay {
-            // Want and Need ride the card's middle, 10 from the screen's edges.
             HStack {
               pill(.left)
               Spacer(minLength: 0)
@@ -347,8 +310,6 @@ struct ReviewDeckView: View {
         Spacer(minLength: 12)
         footer(top)
           .padding(.bottom, 2)
-          // The toast after a sort sits just above Skip, in the room under the Save pill,
-          // so neither Skip nor the pills are covered while its Undo waits.
           .overlay(alignment: .top) {
             ToastHost(app: app, placement: .bottom)
               .padding(.horizontal, -HSpacing.insetPage)
@@ -358,13 +319,9 @@ struct ReviewDeckView: View {
     }
   }
 
-  /// The two peeks a further 10 down each.
   private static let peekDepth: CGFloat = 20
-  /// The idle direction pill's height (Paper "Direction pill · Transfer (top)", 402 × 44).
   private static let pillSlot: CGFloat = 44
 
-  /// The top card over two peeks (Paper: 340 × 430, peeks 324 and 308 wide, 10 steps down),
-  /// and any card still flying out.
   private func stack(_ top: ReviewCardModel?, fit: DeckFit) -> some View {
     let count = model.cards.count
     let scrolls = fit == .scroll
@@ -382,14 +339,12 @@ struct ReviewDeckView: View {
         }
       }
     }
-    // At the accessibility sizes the card grows with its words and the deck scrolls.
     .frame(maxWidth: Self.cardWidth,
            minHeight: scrolls ? (typeSize.isAccessibilitySize ? Self.cardHeight : nil) : (fit == .compact ? Self.compactFloor : 300),
            maxHeight: scrolls ? .infinity : Self.cardHeight)
     .fixedSize(horizontal: false, vertical: scrolls)
     .padding(.bottom, Self.peekDepth)
     .padding(.horizontal, 31)
-    // Undo, a skip or a sort from elsewhere: the card that arrives rises on spring-drop.
     .animation(motion.animation(.cardNext), value: top?.id)
     .animation(motion.animation(.fade), value: count)
   }
@@ -408,8 +363,6 @@ struct ReviewDeckView: View {
       .transition(.opacity)
   }
 
-  /// The top card: it follows the finger, tilts with the horizontal drag, and carries the
-  /// VoiceOver actions that do what the swipes do.
   private func live(_ card: ReviewCardModel, compact: Bool) -> some View {
     let lean = leanEdge
     let asksText = model.repeatAnswers.asks(card)
@@ -448,8 +401,6 @@ struct ReviewDeckView: View {
     .accessibilityIdentifier("review.card")
   }
 
-  /// The live card's angle: with the horizontal drag, 3° at the commit point and no more;
-  /// held toward Need or Want while its pick sheet is up, the full 3° (Paper "Pick a need").
   private var tilt: Double {
     if motion.isStill { return 0 }
     switch held {
@@ -460,7 +411,6 @@ struct ReviewDeckView: View {
     }
   }
 
-  /// Where the card leans: the finger's direction, or the side it is held toward.
   private var leanEdge: SwipeEdge? {
     if let held { return held }
     guard drag != .zero else { return nil }
@@ -471,7 +421,6 @@ struct ReviewDeckView: View {
     held != nil ? 1 : SwipePhysics.strength(dx: drag.width, dy: drag.height)
   }
 
-  /// The arriving card: back from the side it left by (Undo), or up from the peek.
   private func arrival(for id: String) -> AnyTransition {
     if motion.settled { return .identity }
     if motion.reduceMotion { return .asymmetric(insertion: .opacity, removal: .identity) }
@@ -482,8 +431,6 @@ struct ReviewDeckView: View {
     return .asymmetric(insertion: motion.transition(.cardNext), removal: .identity)
   }
 
-  // MARK: Pills
-
   private func choice(for edge: SwipeEdge) -> ReviewChoice {
     SwipePhysics.choice(for: edge, needOnRight: model.needOnRight)
   }
@@ -492,8 +439,6 @@ struct ReviewDeckView: View {
     SwipePhysics.edge(for: choice, needOnRight: model.needOnRight)
   }
 
-  /// A direction pill: idle glass, waking toward 1.06 as the card leans its way, active
-  /// (48, the bucket's tint and ring) past the commit point. A real button, 44 at least.
   @ViewBuilder
   private func pill(_ edge: SwipeEdge) -> some View {
     let top = model.cards.first
@@ -518,7 +463,6 @@ struct ReviewDeckView: View {
     .buttonStyle(HPressStyle(in: Capsule()))
     .scaleEffect(motion.isStill ? 1 : 1 + 0.06 * waking)
     .hAnimation(.thumbSlide, value: active)
-    // Paper's Pick a need draws the deck without its pills or footer behind the sheet.
     .opacity(model.picking == nil ? 1 : 0)
     .hAnimation(.fade, value: model.picking == nil)
     .disabled(model.cards.isEmpty)
@@ -528,8 +472,6 @@ struct ReviewDeckView: View {
 
   static func hidesPill(asking: Bool, leaning: Bool) -> Bool { asking && !leaning }
 
-  // MARK: Footer
-
   private func footer(_ top: ReviewCardModel?) -> some View {
     HStack(spacing: 0) {
       footerLink("Skip for now", id: "review.skip") {
@@ -538,7 +480,6 @@ struct ReviewDeckView: View {
       if BuildSurface.showsUnfinished, top?.fromText != true {
         HColor.borderSubtle.frame(width: 1, height: 20)
         Button {
-          // TODO(spec 04 §16.2 G7): the bank email, once the holder re-fetch exists.
           app.say("Coming in a later build", icon: .envelope)
         } label: {
           HStack(spacing: 6) {
@@ -571,8 +512,6 @@ struct ReviewDeckView: View {
     .accessibilityIdentifier(id)
   }
 
-  // MARK: Gesture
-
   private func dragGesture(_ card: ReviewCardModel) -> some Gesture {
     DragGesture(minimumDistance: 6)
       .updating($touched) { _, state, _ in state = card.id }
@@ -581,7 +520,6 @@ struct ReviewDeckView: View {
         drag = value.translation
         let past = SwipePhysics.pastCommit(dx: drag.width, dy: drag.height)
         if past != crossed {
-          // The light tap plays as the card crosses into a commit, not as it comes back.
           if past != nil { tap += 1 }
           crossed = past
         }
@@ -598,10 +536,8 @@ struct ReviewDeckView: View {
           model.holding = nil
           return
         }
-        // A flick commits without crossing: it still gets its tap.
         if crossed != edge { tap += 1 }
         crossed = nil
-        // The card settles on its side, leaning, while the sheet asks which category.
         holdToward(edge, animated: true)
         model.pick(card.id, choice(for: edge))
       }
@@ -617,10 +553,6 @@ struct ReviewDeckView: View {
     }
   }
 
-  // MARK: Filing
-
-  /// A pill (or a VoiceOver action) sends the card one way: it leans there and the pick
-  /// sheet asks which category.
   private func send(_ card: ReviewCardModel, _ choice: ReviewChoice) {
     tap += 1
     model.holding = card.id
@@ -628,9 +560,6 @@ struct ReviewDeckView: View {
     model.pick(card.id, choice)
   }
 
-  /// Holds the card toward its pill while the pick sheet is up. With Reduce Motion the card
-  /// stays at rest (spec 12: a static card): only the pill and the glow show the choice, and
-  /// a card the finger let go of elsewhere goes back to rest at once.
   private func holdToward(_ edge: SwipeEdge, animated: Bool) {
     let lean: CGFloat = motion.reduceMotion ? 0 : 40
     let pose: CGSize = switch edge {
@@ -645,10 +574,6 @@ struct ReviewDeckView: View {
     }
   }
 
-  /// The pick sheet's "Sort into Groceries": the sheet goes, then the card flies to its side
-  /// and the toast comes up (Paper: "files the card, closes the sheet, and advances the
-  /// deck"; "a toast may appear after a sheet closes, never on top of one"). Filing once the
-  /// sheet is down also keeps the fly-out from sharing frames with the sheet's own motion.
   private func sortPicked(_ pick: ReviewPick, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) {
     pendingSort = PendingSort(pick: pick, into: .category(category), alwaysUse: alwaysUse, project: project)
     model.picking = nil
@@ -664,8 +589,6 @@ struct ReviewDeckView: View {
     return nil
   }
 
-  /// The sheet has gone: file what it chose, or, closed without a sort (close, swipe down,
-  /// the scrim), spring the card back.
   private func pickClosed() {
     if let card = pendingMerge {
       pendingMerge = nil
@@ -694,7 +617,6 @@ struct ReviewDeckView: View {
     }
   }
 
-  /// "Use": files the suggestion, flying the card toward its bucket's side.
   private func use(_ card: ReviewCardModel) {
     guard model.repeatAnswers.allowsUse(card), let s = card.suggestion else { return }
     tap += 1
@@ -744,8 +666,6 @@ struct ReviewDeckView: View {
     }
   }
 
-  /// Takes the card off the deck: it flies from where it is now (or fades, for a skip and
-  /// with Reduce Motion) while the edit lands and the next card rises.
   private func file(
     _ card: ReviewCardModel, toward edge: SwipeEdge?, as filedAs: String?, chime: Bool = false, _ edit: () -> Bool
   ) {
@@ -776,7 +696,6 @@ struct ReviewDeckView: View {
     if let filedAs { announce(model.filedAnnouncement(filedAs)) }
   }
 
-  /// After the toast's own announcement ("Sorted into Groceries. Undo available."), queued.
   private func announce(_ text: String) {
     var line = AttributedString(text)
     line.accessibilitySpeechAnnouncementPriority = .low
@@ -795,15 +714,10 @@ private struct LiveCard<G: Gesture>: ViewModifier {
       .offset(drag)
       .rotationEffect(.degrees(tilt))
       .gesture(gesture, including: passive ? .subviews : .all)
-      // A container, so the identifier names the card without replacing its elements' own
-      // (`review.merchant`, `review.use`).
       .accessibilityElement(children: .contain)
   }
 }
 
-/// A card on its way out: it starts where the finger left it and flies 140% of its size
-/// toward its edge, turning to 16° and fading, over 200 ms; a skip only fades and settles
-/// back a little. With Reduce Motion it fades in place.
 struct Flight: Identifiable {
   let id = UUID()
   let card: ReviewCardModel
@@ -827,9 +741,7 @@ private struct FlyingCard: View {
   let hidden: Bool
   let motion: MotionPolicy
   let landed: () -> Void
-  /// Travelled and turned.
   @State private var gone = false
-  /// Faded out.
   @State private var faded = false
 
   var body: some View {
@@ -844,12 +756,6 @@ private struct FlyingCard: View {
       .onAppear(perform: fly)
   }
 
-  /// The card always leaves from rest (held toward its pill, or still for "Use"), so the
-  /// fly-out cannot ride ease-out-soft: that curve covers 60% of the way in the first two
-  /// frames and the card was gone before it was seen. It travels and turns at an even pace
-  /// over the 200 ms instead, readable for about eight frames before it clears the screen,
-  /// and fades on ease-in-out, so it stays solid while it starts and thins as it goes. A
-  /// skip, and every card with Reduce Motion, only fades, in place.
   private func fly() {
     guard flight.edge != nil, travels, let curve = motion.curve(.cardCommit) else {
       withAnimation(motion.animation(flight.edge == nil ? .fade : .cardCommit)) {
@@ -869,7 +775,6 @@ private struct FlyingCard: View {
     }
   }
 
-  /// With Reduce Motion nothing travels, turns or shrinks.
   private var travels: Bool { !motion.reduceMotion }
 
   private var offset: CGSize {
@@ -887,9 +792,6 @@ private struct FlyingCard: View {
   }
 }
 
-/// The inside of a direction pill (Paper "Direction pill · …"): arrow, bucket dot and label
-/// on glass; active, the bucket's start tint with a 1 pt end ring, the label 16/22 bold in
-/// the bucket's ink. The arrow sits on the side the card goes.
 private struct DirectionPillLabel: View {
   let choice: ReviewChoice
   let label: String
@@ -932,9 +834,6 @@ private struct DirectionPillLabel: View {
   }
 }
 
-/// The top card (Paper "Card · Lulu Hypermarket", 340 × 430, radius 28): who and what, the
-/// bank's own words, the amount at hero size, and the suggestion strip with "Use". The glow of
-/// the bucket it leans toward fades in from that edge.
 struct ReviewCardView<Actions: View>: View {
   let card: ReviewCardModel
   let hidden: Bool
@@ -962,7 +861,6 @@ struct ReviewCardView<Actions: View>: View {
       .padding(.top, compact ? 16 : 24)
       .padding(.horizontal, 24)
       .padding(.bottom, compact ? 14 : 22)
-      // The card drags, so its words read as one element; the sorts are its actions.
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(spoken)
       .accessibilityActions { actions() }
@@ -1125,7 +1023,6 @@ struct ReviewCardView<Actions: View>: View {
     .accessibilityIdentifier("review.reasonStrip.\(r.rawValue)")
   }
 
-  /// "Looks like Groceries" with "Use" (Paper "Suggestion strip": 14 / 16 / 14 / 24, gap 12).
   private func strip(_ s: CategoryOption) -> some View {
     let layout = typeSize.isAccessibilitySize
       ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
@@ -1162,8 +1059,6 @@ struct ReviewCardView<Actions: View>: View {
     .overlay(alignment: .top) { HColor.borderSubtle.frame(height: 1) }
   }
 
-  /// The bucket's hue from the edge the card leans toward: 170 deep, end 58% at the edge,
-  /// start 26% halfway, then clear.
   @ViewBuilder private var glow: some View {
     if let lean, let leanEdge, strength > 0 {
       let hue = lean.pillHue
@@ -1188,7 +1083,6 @@ struct ReviewCardView<Actions: View>: View {
     }
   }
 
-  /// The glow's shadow sits toward the lean (Paper: 18 right, 4 down for Need).
   private var glowShift: CGSize {
     switch leanEdge {
     case .right: CGSize(width: 18, height: 4)
@@ -1199,8 +1093,6 @@ struct ReviewCardView<Actions: View>: View {
     }
   }
 
-  /// "Lulu Hypermarket, AED 214.30, spent Friday 9 October. New merchant. Looks like
-  /// Groceries." (Paper 16 · 06).
   private var spoken: String {
     let amount = hidden
       ? "Amount hidden"

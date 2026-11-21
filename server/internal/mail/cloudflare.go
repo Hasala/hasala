@@ -1,9 +1,5 @@
 package mail
 
-// cloudflare.go is the Cloudflare Email Service REST client (spec 02 §14.4).
-// Tests point BaseURL at an httptest server; nothing in this repository's
-// tests calls the real API.
-
 import (
 	"bytes"
 	"context"
@@ -16,26 +12,18 @@ import (
 	"time"
 )
 
-// DefaultBaseURL is the provider's API root.
 const DefaultBaseURL = "https://api.cloudflare.com/client/v4"
 
 const sendTimeout = 10 * time.Second
 
-// Cloudflare sends through Email Service. Build it with NewCloudflare.
 type Cloudflare struct {
 	accountID, token, from string
-	// FromName is the sender's display name ("Hasala"); empty sends the bare
-	// address. config refuses a name with <, >, ", @ or a line break.
-	FromName string
-	// ReplyTo is the Reply-To address (support@hasala.app); empty sends none.
-	// config refuses anything but a plain address at hasala.app.
-	ReplyTo string
-	BaseURL string
-	HTTP    *http.Client
+	FromName               string
+	ReplyTo                string
+	BaseURL                string
+	HTTP                   *http.Client
 }
 
-// NewCloudflare validates its inputs. from is the sender address
-// (no-reply@hasala.app); set FromName for a display name.
 func NewCloudflare(accountID, token, from string) (*Cloudflare, error) {
 	if accountID == "" || token == "" || from == "" {
 		return nil, errors.New("mail: Cloudflare needs an account id, a token and a sender")
@@ -50,7 +38,7 @@ func NewCloudflare(accountID, token, from string) (*Cloudflare, error) {
 
 type cfRequest struct {
 	To      string            `json:"to"`
-	From    any               `json:"from"` // the address, or cfAddress with a name
+	From    any               `json:"from"`
 	ReplyTo string            `json:"reply_to,omitempty"`
 	Subject string            `json:"subject"`
 	Text    string            `json:"text"`
@@ -58,7 +46,6 @@ type cfRequest struct {
 	Headers map[string]string `json:"headers,omitempty"`
 }
 
-// cfAddress is the API's named address: {"address": ..., "name": ...}.
 type cfAddress struct {
 	Address string `json:"address"`
 	Name    string `json:"name"`
@@ -79,8 +66,6 @@ type cfResponse struct {
 	} `json:"result"`
 }
 
-// Send posts one message. The error carries the class, the HTTP status and the
-// provider's numeric code, never the provider's body (it echoes addresses).
 func (c *Cloudflare) Send(ctx context.Context, m Message) (string, error) {
 	if m.To == "" || strings.ContainsAny(m.To, "\r\n,; ") || strings.ContainsAny(m.Subject, "\r\n") {
 		return "", fmt.Errorf("%w: a message has one plain recipient and a one-line subject", ErrPermanent)

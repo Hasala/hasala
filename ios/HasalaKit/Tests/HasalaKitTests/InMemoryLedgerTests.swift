@@ -2,7 +2,6 @@ import HasalaMocks
 import HasalaModels
 import Testing
 
-/// The Maya clock and calendar every engine reads (spec 04 §15.3). Frozen after Stage F.
 @Suite("Maya ledger · clock")
 struct MayaClockTests {
   let s = MayaLedger.state
@@ -111,7 +110,6 @@ struct InMemoryLedgerTests {
   @Test func undoKeepsALaterEditToAnotherField() throws {
     let ledger = InMemoryLedger()
     let sorted = try #require(try ledger.apply(.categorize("lulu", "groceries", learnRule: true, project: nil)))
-    // A note shows no toast, so the categorise's Undo is still on screen.
     #expect(try ledger.apply(.setNote("lulu", "Weekly shop")) == nil)
     try ledger.apply(.setRuleEnabled("r-zuma", false))
     ledger.undo(sorted)

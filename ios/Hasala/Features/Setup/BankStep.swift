@@ -2,10 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Setup · Connect your bank alerts (Paper X4 "Proposal · Step 4 · Bank alerts +
-/// Gmail"): the banks the beta reads, all picked to start, how to turn on their email
-/// alerts, a card for a bank that isn't listed, the mailbox they go to, what Google's own
-/// screens will show, and the provider's sign-in, which runs from here.
 struct BankStep: View {
   @Bindable var model: SetupModel
   @State private var choosingBanks = false
@@ -402,8 +398,6 @@ private struct NumberedLine: View {
   }
 }
 
-/// The banks in one list card (Paper "ListGroup · Banks"): rows 56 tall, the divider
-/// inset to the text.
 struct BankList: View {
   let chosen: Set<SupportedBank>
   var toggle: (SupportedBank) -> Void
@@ -420,11 +414,6 @@ struct BankList: View {
   }
 }
 
-/// One bank in a pick list (`bank.<bank>`, Paper "Row · Emirates NBD · Selected"): the
-/// bank's monogram plate, its name and note, and the filled check circle (page 12 "Pick
-/// several"), empty with a grey ring when not picked. The whole row is the target; it
-/// highlights, never scales. Setup's bank step, and the banks asked for before a connect
-/// from the profile when the account reads none (`ConnectMailPage`).
 struct BankChoiceRow: View {
   let bank: SupportedBank
   let on: Bool
@@ -454,10 +443,6 @@ struct BankChoiceRow: View {
   }
 }
 
-/// The bank's monogram on its hue plate (Paper 40, radius 12, gradient 160°): "ENBD" on
-/// sky, "DIB" on mint. The plate never grows, so its letters keep their size: it is a
-/// picture of the bank's mark, drawn in a canvas (no text for VoiceOver or Dynamic Type to
-/// reach), and the row beside it says the bank's name in text that grows.
 struct BankMonogram: View {
   let bank: SupportedBank
 
@@ -489,9 +474,6 @@ struct BankMonogram: View {
   }
 }
 
-/// The pick-several mark (page 12 "Checks" 2): a 24 accent circle with a white 14 tick when
-/// picked; a 2 pt `control-check-unselected` ring when not. Colour never says it alone: the
-/// tick does, and the row reads "Selected".
 struct CheckCircle: View {
   let on: Bool
 
@@ -507,10 +489,6 @@ struct CheckCircle: View {
   }
 }
 
-/// "Bank not listed?" (Paper X4 "Bank not listed?"): a ringed "+" plate, the line, and the
-/// "Tell us" pill, which asks for the bank's name. Where the account offers sample data it
-/// says so; where it can read bank texts, "Use bank texts" goes back to the source choice;
-/// otherwise Skip is the way on, by hand.
 struct AnotherBankCard: View {
   let sent: Bool
   let sample: Bool

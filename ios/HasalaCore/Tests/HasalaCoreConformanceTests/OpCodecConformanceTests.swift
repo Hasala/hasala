@@ -1,12 +1,3 @@
-// CoreWire's op codec against the executors that already agree:
-//
-//   - conformance/op/manifest.json (Go): the v3 registry, every pinned body,
-//     the refusals;
-//   - conformance/ts (TypeScript-sealed blobs): `encodeBlobOps` of the decoded
-//     ops reproduces the TypeScript encoder's plaintext BYTE FOR BYTE, which is
-//     the byte-identity claim (wire/op.ts encodes and the frame stores those
-//     bytes);
-//   - conformance/blob and conformance/ts frames open through `FrameV1Reader`.
 import CoreJSON
 import CorePrimitives
 import CoreTime
@@ -42,8 +33,6 @@ struct OpCodecConformanceTests {
     let again = try OpCodec.encodeBlobOps(try OpCodec.decodeBlobOps(once))
     #expect(once == again)
     #expect(try OpCodec.decodeBlobOps(once) == ops)
-    // Go writes `…:00Z`; the TypeScript encoder (and this one) `…:00.000Z`: the
-    // same instant, different bytes, which is the documented divergence.
     #expect(String(decoding: once, as: UTF8.self).contains("2026-06-05T10:00:00.000Z"))
   }
 
@@ -157,8 +146,6 @@ struct OpCodecConformanceTests {
     }
   }
 
-  // MARK: TypeScript byte identity
-
   static func tsOpCases() -> [String] {
     guard let m = try? Fixtures.json("ts/manifest.json"), let f = m["fixtures"]?.arrayValue else { return [] }
     return f.filter { $0["kind"]?.stringValue == "ops" }.compactMap { $0["file"]?.stringValue }
@@ -175,8 +162,6 @@ struct OpCodecConformanceTests {
 
   @Test("the TypeScript cases are the ones expected")
   func typeScriptCaseCount() { #expect(Self.tsOpCases().count == 2) }
-
-  // MARK: v1 frames
 
   static func frameCases() -> [String] {
     ["ts", "blob"].flatMap { dir -> [String] in
@@ -223,8 +208,6 @@ struct OpCodecConformanceTests {
       prev = next
     }
   }
-
-  // MARK: Helpers
 
   static func error(_ bytes: [UInt8]) -> WireDecodeError? {
     do {

@@ -1,6 +1,3 @@
-// CoreMoney unit tests: the 03c §1.3 grammars and base vectors 01, 02, 07 and
-// 08 (spec 03c "Test vectors"), and the PWA's minorMoney.test.ts and
-// flowBars.test.ts `compactMinor` cases, ported.
 import Testing
 
 @testable import CoreMoney
@@ -67,7 +64,6 @@ struct GrammarTests {
     for code in ["AED", "KWD", "JPY"] {
       #expect(MoneyFormat.exponentRange.contains(MinorExponent.v1(CurrencyCode(code)!)))
     }
-    // The top of MoneyFormat's exponent range is still exact at Int64.max.
     #expect(MoneyFormat.formatMinor(.max, exponent: 18) == "9.223372036854775807")
     #expect(MoneyFormat.parseMinorDraft("9.223372036854775807", exponent: 18) == .amount(.max))
     #expect(MoneyFormat.parseMinorDraft("9.223372036854775808", exponent: 18) == .refused(.tooLarge))
@@ -81,7 +77,7 @@ struct MathTests {
     #expect(MoneyMath.add(.max, 1) == nil && MoneyMath.add(1, 2) == 3)
     #expect(MoneyMath.subtract(.min, 1) == nil)
     #expect(MoneyMath.multiply(.max, 2) == nil && MoneyMath.multiply(3, 4) == 12)
-    #expect(MoneyMath.sum([.max, 1, -1]) == .max)  // the partial sum overflows, the total does not
+    #expect(MoneyMath.sum([.max, 1, -1]) == .max)
     #expect(MoneyMath.sum([.max, .max]) == nil)
     #expect(MoneyMath.wideSum([.max, .max]) == Int128(Int64.max) * 2)
   }
@@ -99,7 +95,6 @@ struct MathTests {
     #expect(MoneyMath.apportion(home: 5, parts: [0, 0]) == nil)
     let big = MoneyMath.apportion(home: .max, parts: [.max, 1])!
     #expect(big.reduce(Int128(0)) { $0 + Int128($1) } == Int128(Int64.max))
-    // H·c_i leaves Int128 (2^63 · 3·2^63): nil, never a trap (R9).
     #expect(MoneyMath.apportion(home: .max, parts: [.max, .max, .max]) == nil)
     #expect(MoneyMath.apportion(home: .min, parts: [.max, .max, .max]) == nil)
   }
@@ -109,16 +104,14 @@ struct MathTests {
     #expect(MoneyMath.pctChange(64275, 54470) == 18)
     #expect(MoneyMath.pctChange(54470, 64275) == -15)
     #expect(MoneyMath.pctChange(1, 0) == nil)
-    #expect(MoneyMath.pctChange(201, 200) == 1)  // 0.5% rounds up
-    #expect(MoneyMath.pctChange(199, 200) == -1)  // and away from zero
+    #expect(MoneyMath.pctChange(201, 200) == 1)
+    #expect(MoneyMath.pctChange(199, 200) == -1)
     #expect(MoneyMath.pctChange(200, 200) == 0)
-    #expect(MoneyMath.pctChange(.max, 1) == nil)  // ~9.2e20 percent does not fit
-    // A negative base keeps the sign of d/b, rounded like a positive base
-    // (pending the 03c §1.3 owner's confirmation; see MoneyMath.pctChange).
+    #expect(MoneyMath.pctChange(.max, 1) == nil)
     #expect(MoneyMath.pctChange(-50, -100) == -50)
     #expect(MoneyMath.pctChange(-5, -10) == -50)
     #expect(MoneyMath.pctChange(-15, -10) == 50)
-    #expect(MoneyMath.pctChange(-199, -200) == -1)  // -0.5% rounds away from zero
+    #expect(MoneyMath.pctChange(-199, -200) == -1)
     #expect(MoneyMath.pctChange(5, -10) == -150)
     #expect(MoneyMath.pctChange(.min, .max) == -200)
     #expect(MoneyMath.pctChange(.max, .min) == -200)

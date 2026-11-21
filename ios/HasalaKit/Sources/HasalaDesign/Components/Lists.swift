@@ -1,11 +1,6 @@
 import HasalaModels
 import SwiftUI
 
-// Lists and section headings (Paper page 15 "One row, many lists."): one row inside a white
-// list card on the grey canvas. Fixed leading and trailing slots keep every row in a list on
-// the same lanes. Rows never scale on press; the fill changes instead. At the accessibility
-// sizes a row stacks: the leading item above, the trailing value under the supporting line.
-
 public struct SwipeRowPan: Sendable, Equatable {
   private enum Phase: Sendable, Equatable {
     case idle
@@ -71,8 +66,6 @@ public struct SwipeRowPan: Sendable, Equatable {
   }
 }
 
-/// A white list card, radius 24, no shadow, no padding of its own: rows fill it edge to edge
-/// and its corners clip the first and last row.
 public struct HListCard<Content: View>: View {
   let alignment: HorizontalAlignment
   let content: Content
@@ -90,19 +83,12 @@ public struct HListCard<Content: View>: View {
   }
 }
 
-/// The 1 pt divider between rows, inset to where the text starts. None above the first row
-/// or after the last.
 public struct HDivider: View {
   public enum Inset: Sendable {
-    /// After a 40 pt disc: 16 + 40 + 12.
     case disc68
-    /// After a 22 pt icon: 16 + 22 + 14.
     case icon52
-    /// Text-only rows, and every row at the accessibility sizes.
     case text16
-    /// A step list's dot lane: 16 + 7 + 12.
     case lane35
-    /// Key–value rows inside a padded details card: spans the card's inner width.
     case none
 
     var value: CGFloat {
@@ -131,56 +117,33 @@ public struct HDivider: View {
   }
 }
 
-/// One list row: a leading slot, the title over an optional supporting line, a trailing slot
-/// (page 15 §01). Title 16/22 600, supporting 13/18 secondary; two-line rows are at least 64
-/// tall with a 40 disc, one-line rows 52. VoiceOver reads the row as one sentence: title,
-/// supporting facts, then the trailing value (an amount as money).
 public struct HListRow: View {
   public enum Leading {
-    /// A 40 category disc.
     case disc(Hue, HIcon)
-    /// A 40 grey monogram for a merchant with no category.
     case monogram(String)
-    /// A 40 bank plate.
     case plate(initials: String, hue: Hue)
-    /// A 40 provider tile (mailboxes, Choose your email).
     case provider(MailProviderKind)
-    /// A 22 line icon (settings and actions); the gap to the text is 14.
     case icon22(HIcon, color: Color = HColor.listRowIcon)
     case none
   }
 
-  /// The second line: facts joined by " · ", or a status in its tone.
   public enum Supporting: ExpressibleByStringLiteral {
-    /// One line at the default size; above it, it wraps.
     case text(String)
-    /// A longer line that wraps at every size (a status
-    /// sentence, a provider's account kinds).
     case wrapping(String)
-    /// A figure-bearing line that Hide amounts reaches ("Japan trip · 7,140.00 left").
     case phrase(MoneyPhrase)
-    /// A 7 dot and words in the tone ("To review · 18:42", "Expected the 7th").
     case status(String, StatusTone)
 
     public init(stringLiteral value: String) { self = .text(value) }
   }
 
   public enum Trailing {
-    /// An amount: 16/22 bold, tabular, no currency; money in gets "+" and green.
     case amount(Money, in: Bool = false, approx: Bool = false)
-    /// A value in 15/20 secondary ("AED", "Important only").
     case value(String)
-    /// A chevron: a tap goes somewhere.
     case chevron
-    /// A value then a chevron.
     case valueChevron(String)
-    /// The iOS switch, tinted accent; the whole row flips it.
     case `switch`(Binding<Bool>)
-    /// A tick in a fixed 24 slot (pick one); empty when not selected.
     case check(Bool)
-    /// A count in the 22 row badge, then a chevron.
     case badge(Int)
-    /// A status pill (a mailbox state, "Price change").
     case status(StatusPill)
     case none
   }
@@ -196,8 +159,6 @@ public struct HListRow: View {
   let supportingID: String?
   @Environment(\.dynamicTypeSize) private var typeSize
 
-  /// `titleColor` is `listRowAction` for an action row ("Add a rule") and `listRowDestructive`
-  /// for a destructive one ("Archive", in its own card, last).
   public init(leading: Leading = .none, title: String, supporting: Supporting? = nil, trailing: Trailing = .none,
               titleColor: Color = HColor.listRowTitle, hidden: Bool = false, project: String? = nil,
               spokenSupporting: String? = nil, supportingID: String? = nil)
@@ -330,8 +291,6 @@ public struct HListRow: View {
   }
 }
 
-/// One VoiceOver stop per row; a switch row keeps the switch as the element, so the row title
-/// labels it and a double-tap flips it.
 struct RowAccessibility: ViewModifier {
   let isSwitch: Bool
   let label: String
@@ -349,8 +308,6 @@ struct RowAccessibility: ViewModifier {
   }
 }
 
-/// A row's second line (page 15): facts in 13/18 secondary, or a status: a 7 dot and words
-/// 13/18 600 in the tone.
 struct SupportingLine: View {
   let line: HListRow.Supporting
   let hidden: Bool
@@ -397,9 +354,6 @@ extension HListRow.Supporting {
   }
 }
 
-/// A key–value detail row (page 15 · details card, page 11 · value rows): the key in 15/20
-/// secondary on the left, the value 15/20 600 on the right, at least 48 tall. A chevron means it
-/// opens a picker or editor; a bucket dot may lead the value ("● Groceries").
 public struct KeyValueRow: View {
   let key: String
   let value: String
@@ -407,7 +361,6 @@ public struct KeyValueRow: View {
   let chevron: Bool
   let placeholder: Bool
 
-  /// `placeholder` draws the value in secondary ("Add a note").
   public init(_ key: String, value: String, dot: Hue? = nil, chevron: Bool = false, placeholder: Bool = false) {
     self.key = key
     self.value = value
@@ -428,7 +381,6 @@ public struct KeyValueRow: View {
         if chevron {
           HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
         } else {
-          // The chevron's lane stays, so values line up down the card.
           Color.clear.frame(width: HSpacing.iconSmall, height: HSpacing.iconSmall)
         }
       }
@@ -440,8 +392,6 @@ public struct KeyValueRow: View {
   }
 }
 
-/// A settings row (page 15 · one-line rows, page 12 · switch): a 22 icon at 1.8, the title,
-/// then a value and chevron, a chevron alone, or a switch. Min 52, 14 from icon to text.
 public struct SettingsRow: View {
   public enum Accessory {
     case chevron
@@ -452,9 +402,7 @@ public struct SettingsRow: View {
 
   public enum Role: Sendable {
     case standard
-    /// An accent row ("Add a rule"): icon and title in `listRowAction`, no chevron.
     case action
-    /// A destructive row ("Archive"): icon and title in `listRowDestructive`.
     case destructive
   }
 
@@ -493,9 +441,6 @@ public struct SettingsRow: View {
   }
 }
 
-/// A screen's section heading (page 15 §02): 22/28 bold, −0.35, 12 above its card. A trailing
-/// link ("See all", "Edit") in 15/20 medium blue on the same baseline, or a quiet fact ("next
-/// 7 days"), or an ink count badge. An optional line under the title says what waits.
 public struct HSectionHeader: View {
   public enum Trailing {
     case link(String, action: () -> Void)
@@ -549,9 +494,6 @@ public struct HSectionHeader: View {
   }
 }
 
-/// A day or group overline just inside a card's edge (page 15 §02): 13/16 600, 0.06 em,
-/// uppercase in styling, `--color-text-grouped-header`, inset 4. Day groups add the day's total
-/// on the right.
 public struct OverlineHeader<Trailing: View>: View {
   let title: String
   let trailing: Trailing
@@ -579,10 +521,6 @@ public extension OverlineHeader where Trailing == EmptyView {
   }
 }
 
-/// A transaction row (page 15 §02, Activity · Overview): a 40 category disc, or a grey monogram
-/// for a merchant not sorted yet; the merchant 16/22 600 over "Dining · 13:20"; the amount in
-/// the trailing slot, 16/22 bold tabular. A row to review leads its line with an accent dot and
-/// the words in accent. At the accessibility sizes the amount moves under the line. Min 64.
 public struct TransactionRow: View {
   let row: MiniTxnRow
   let hidden: Bool
@@ -674,9 +612,6 @@ public struct ProjectChipFlow<Detail: View>: View {
   }
 }
 
-/// A bill or income line (Activity · Coming up, Bills · Upcoming and Recently paid; page 16
-/// §12): disc, name, the due line, then the amount, with "~" for an expected amount and "+"
-/// in green for income. A late bill's line is a red dot and words ("Expected the 7th").
 public struct BillRowView: View {
   let row: BillRowModel
   let hidden: Bool
@@ -727,8 +662,6 @@ public struct BillRowView: View {
   }
 }
 
-/// A line of `PlanDetailPart`s joined with " · ": figures through `MoneyPhrase`, so Hide
-/// amounts reaches them; a status part draws a 7 dot and words 600 in its tone.
 struct DetailParts: View {
   let parts: [PlanDetailPart]
   let hidden: Bool
@@ -763,9 +696,6 @@ struct DetailParts: View {
   }
 }
 
-/// A row with a leading and a trailing part. It stays one line while both fit at their
-/// natural width; otherwise, and always at the accessibility text sizes, the trailing
-/// part moves under the leading one instead of either truncating (spec 04 §17).
 public struct ReflowingRow<Leading: View, Trailing: View>: View {
   let spacing: CGFloat
   let alignment: VerticalAlignment

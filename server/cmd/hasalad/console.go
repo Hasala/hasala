@@ -16,13 +16,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
-// runConsole is the operator console's mode (spec 07 §8): a separate process
-// on its own loopback port and OS user, never mounted by serve. It refuses
-// serve's secrets (fence F7-4), checks its own environment (§8.1) and serves
-// the minimal console (internal/console) until SIGINT or SIGTERM.
-//
-// Until the hasala_console role exists (spec 05's role split) it connects
-// with HASALA_PG_DSN like the other operator modes.
 func runConsole(env *runEnv, args []string) error {
 	fs := newFlags(env, "console")
 	if err := parseFlags(fs, args); err != nil {

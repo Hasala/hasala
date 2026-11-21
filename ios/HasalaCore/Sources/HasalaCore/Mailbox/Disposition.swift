@@ -1,19 +1,3 @@
-// What one downloaded bank message becomes (spec 04 §7.5 steps 7d-7e, §7.6; port of fetch.ts
-// `disposeMessage`, re-cut into two halves so the first-connect scan can stage between them):
-//
-//   parse(...)    raw bytes -> set aside | ParsedMail   (trust analysis, normalizer, templates,
-//                                                       posted_at conversion; no fold state)
-//   finalize(...) ParsedMail + decide() -> MailboxIngestDraft (the txn_ingested payload and its
-//                                                       review flag)
-//
-// This is op-authoring code. Its two disciplines, from fetch.ts:
-//   1. Nothing is silently dropped. A message is set aside (not a bank: no op, recorded and
-//      shown), or becomes an op: filed, prefilled-for-review, or the EMPTY review shape.
-//   2. Filing without review needs every gate: the provider's verdict `pass` (Gmail's A-R; Outlook's
-//      known sender in the Inbox at a DMARC p=reject domain), the VERIFIED domain in
-//      the trusted set T, a template hit with a usable amount (or a template-free reading that both
-//      readers agree on at 0.8 or more, direction included, with no ambiguous direction word), not forwarded, not in Spam, and a recipient check that is
-//      not a mismatch. Anything less is `needs_review: true`.
 import CoreCategorize
 import CoreExtract
 import CoreJSON
@@ -25,21 +9,15 @@ import CoreTemplate
 import CoreTime
 import Foundation
 
-/// The per-message size cap (fetch.ts MAILBOX_MAX_MESSAGE_BYTES): at or over it, unreadable.
 public enum MailboxLimits {
   public static let maxMessageBytes = 1_000_000
   public static let maxResponseBytes = maxMessageBytes / 3 * 4 + 65_536
   public static let maxAmountMinor: Int64 = ExtractReading.maxAmountMinor
 }
 
-/// The trust and parse facts a row records in its `gates` object (03c §3.1), display only.
 public struct MailGates: Sendable, Equatable, Codable {
-  /// AuthResults.Reason raw value: pass | no_ar | multiple_ar | not_topmost | fail | parse_error |
-  /// no_eop | not_inbox | unknown_sender | no_dmarc_reject (Outlook).
   public var ar: String
-  /// The verified domain is in the trusted set T.
   public var senderTrusted: Bool
-  /// `<id>@<version>` of the template that read the message, nil when none did.
   public var template: String?
   public var forwarded: Bool
   public var kind: String? = nil
@@ -52,28 +30,19 @@ public struct ParsedFields: Sendable, Equatable, Codable {
   public var direction: String
   public var merchant: String
   public var last4: String
-  /// Canonical UTC instant.
   public var postedAt: String
-  /// "time" or "day".
   public var precision: String
   public var isTransfer: Bool
 }
 
-/// A downloaded bank message, read as far as the device can, before categorization. This is
-/// what the first-connect scan stages.
 public struct ParsedMail: Sendable, Equatable, Codable {
   public var messageID: String
-  /// hex(SHA-256(raw)), lower case.
   public var ingestID: String
   public var internalDateMs: Int64
-  /// The template's bank id ("" when no template read it).
   public var bank: String
-  /// "" when the template has no card field or none was extracted.
   public var last4: String
   public var gates: MailGates
-  /// nil: the empty review shape (no template hit with a usable amount).
   public var fields: ParsedFields?
-  /// The empty shape's day (canonical instant of local midnight), always set.
   public var dayPostedAt: String
   public var headerIDHash: String? = nil
   public var recipient: RecipientCheck? = nil
@@ -83,8 +52,6 @@ public struct ParsedMail: Sendable, Equatable, Codable {
   public var held: Bool? = nil
 }
 
-/// The at-ingest categorization decision (03c §8.2, `decide`), supplied by CoreCategorize's
-/// owner. `source` is the `CategorySource` JSON (03c §3.2.1).
 public struct IngestDecision: Sendable, Equatable {
   public var category: String?
   public var source: JSONValue
@@ -99,15 +66,11 @@ public protocol IngestCategorizer: Sendable {
   func decide(merchantRaw: String, direction: String) -> IngestDecision
 }
 
-/// No rules, no dictionary: everything files uncategorized (until CoreCategorize lands).
 public struct NoCategorizer: IngestCategorizer {
   public init() {}
   public func decide(merchantRaw: String, direction: String) -> IngestDecision { .none }
 }
 
-/// One `txn_ingested` to author: its ingest id (the envelope's), the payload, and whether it is a
-/// review item. The op itself (ULID entity id, op id, authored_at, envelope) is built by
-/// CoreDomain's OpAuthor behind `MailboxPersistence` (spec 04 §2.4 R5).
 public struct MailboxIngestDraft: Sendable, Equatable {
   public let messageID: String
   public let ingestID: String
@@ -118,16 +81,11 @@ public struct MailboxIngestDraft: Sendable, Equatable {
 
 public enum MessageDisposer {
   public enum Parse: Sendable, Equatable {
-    /// Neither the claimed nor the verified domain is a bank domain (a sender-query false
-    /// positive, spec 04 §7.5 step 7b): no op; domain + date only.
     case setAside(domain: String)
     case mail(ParsedMail)
     case interrupted
   }
 
-  /// Reads one raw message. `topLevelFrom` is the message's own From (from the metadata
-  /// fetch, or the raw headers); `bankDomains` is the listing set, `trusted` the trust set T;
-  /// `analyze` is the provider's Authentication-Results rule (`MailProvider.analyzeAuthResults`).
   public static func parse(
     raw: [UInt8], messageID: String, internalDateMs: Int64, topLevelFrom: String,
     templates: [CompiledTemplate], bankDomains: [String], trusted: [String], provider: MailProviderID,
@@ -296,8 +254,6 @@ public enum MessageDisposer {
     return mail
   }
 
-  /// The payload for a parsed message, with the filing gates and the categorization applied.
-  /// `provider` is `provenance.provider` (the mailbox the message came from).
   public static func finalize(
     _ m: ParsedMail, provider: MailProviderID, grantID: String, categorizer: any IngestCategorizer,
     texts: TextOverlap? = nil
@@ -307,8 +263,6 @@ public enum MessageDisposer {
         ("provider", .string(provider.rawValue)), ("grant_id", .string(grantID)), ("message_id", .string(m.messageID)),
       ]))
     guard let f = m.fields else {
-      // The empty needs-review shape (spec 04 §7.6 row 2): no amount, no currency, no direction,
-      // no body text; dated at local midnight of the email's local day.
       let gates = gatesJSON(m.gates, template: "none")
       var p = JSONObject([
         ("unparsed", .bool(true)), ("needs_review", .bool(true)), ("posted_at", .string(m.dayPostedAt)),
@@ -419,12 +373,10 @@ public enum MessageDisposer {
     return .object(o)
   }
 
-  /// hex(SHA-256(raw)), lower case.
   public static func ingestID(_ raw: [UInt8]) -> String {
     Hex.encode(sha256(Data(raw)))
   }
 
-  /// Canonical instant of local midnight (+04:00) of the instant's local day.
   public static func dayInstant(_ epochMs: Int64) -> String {
     guard let d = LocalClock.localDate(epochMs), let s = Instant.iso(LocalClock.startOfDay(d)) else {
       return "1970-01-01T00:00:00.000Z"
@@ -432,10 +384,6 @@ public enum MessageDisposer {
     return s
   }
 
-  /// 03c §1.5: the template renders the bank's zoneless UAE wall clock with a `Z`. With a time:
-  /// `wall − 4 h`, precision "time". A bare date D: Gmail's internalDate when it falls on D
-  /// locally, precision "time"; otherwise local midnight, `(D−1)T20:00:00.000Z`, precision "day".
-  /// No body date (`date_from: "email"`): Gmail's internalDate, already UTC.
   static func postedAt(_ x: Extraction, template t: CompiledTemplate, internalDateMs: Int64) -> (String, String)? {
     if x.postedAt.isEmpty {
       guard let s = Instant.iso(internalDateMs) else { return nil }
@@ -445,11 +393,8 @@ public enum MessageDisposer {
     let layouts = t.definition.extract.filter { $0.field == "date" }.flatMap(\.layouts)
     let timed = layouts.map { $0.contains("hh") || $0.contains("HH") }
     let isMidnight = Civil.floorDiv(wallMs, Civil.msPerDay) * Civil.msPerDay == wallMs
-    // A bare-date layout renders midnight. When the template has both kinds of layout, a
-    // midnight value is read as a bare date (a printed 12:00 AM loses its time; it keeps its day).
     let dayOnly = !timed.contains(true) || (isMidnight && timed.contains(false))
     if dayOnly {
-      // The wall value's own civil date D (it is a zoneless wall clock, so no offset applies).
       guard let d = CivilDate(daysSinceEpoch: Civil.floorDiv(wallMs, Civil.msPerDay)) else { return nil }
       if LocalClock.localDate(internalDateMs) == d, let s = Instant.iso(internalDateMs) {
         return (s, "time")
@@ -461,9 +406,6 @@ public enum MessageDisposer {
     return (s, "time")
   }
 
-  /// A template hit is usable when the amount is positive, the currency is three upper-case
-  /// letters and the direction is debit or credit; otherwise it is a miss (the safe direction:
-  /// the message becomes the empty review shape).
   static func usableFields(_ x: Extraction, posted: (String, String)) -> ParsedFields? {
     guard ExtractReading.usableAmount(x.amountMinor, currency: x.currency), ExtractDirection(rawValue: x.direction) != nil
     else { return nil }

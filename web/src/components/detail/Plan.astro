@@ -263,9 +263,6 @@ const BUCKETS = [
     }
   }
 
-  /* As the 50/30/20 bar itself comes into view it fills left to right
-     (small screens); on large ones each bucket's categories drop in after
-     it. */
   @media (prefers-reduced-motion: no-preference) {
     .split span {
       transform-origin: left;
@@ -277,7 +274,6 @@ const BUCKETS = [
     .split span:nth-child(3) {
       transition-delay: 440ms;
     }
-    /* The fill is the bar's whole entrance: no fade or rise around it. */
     :global(.js) .split:not(:global(.is-in)) {
       opacity: 1;
       transform: none;

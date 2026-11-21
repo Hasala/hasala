@@ -1,10 +1,4 @@
 ---
-/**
- * Home section 05: "Split your pay three ways." Paper AV0-0 (desktop, tall
- * cards with category chips) and BOA-0 (phone, one row per bucket plus a
- * 50/30/20 bar). Copy differs a little between the two boards, so the
- * variants are both in the markup and the unused one is display:none.
- */
 const BUCKETS = [
   {
     key: 'needs',
@@ -137,7 +131,6 @@ const BUCKETS = [
     gap: 2px 12px;
     border-radius: 26px;
     padding: 22px;
-    /* Phones: the card is the size container for its percentage. */
     container-type: inline-size;
   }
   .bucket__foot {
@@ -148,8 +141,6 @@ const BUCKETS = [
   .bucket__fig {
     grid-area: pct;
   }
-  /* One line, shrinks with the card (global .fig-fit): "50%" is 2.11em wide,
-     and on phones it may take at most ~26% of the card. */
   .bucket__pct {
     --fig-max: 64px;
     --fig-k: 3.9;
@@ -205,7 +196,6 @@ const BUCKETS = [
     line-height: 18px;
   }
 
-  /* Pin the phone board's integers (BOA-0); fluid type scales above 390. */
   @media (max-width: 390px) {
     .plan__title h2 {
       font-size: 34px;
@@ -277,9 +267,6 @@ const BUCKETS = [
       flex-grow: 20;
       padding-inline: 24px;
     }
-    /* head block: pct + name sit together at the top, foot pinned below */
-    /* Large screens: the full-width block above the name is the container, so
-       the card still sizes to its chips and the percentage fits the card. */
     .bucket__fig {
       container-type: inline-size;
     }
@@ -360,9 +347,6 @@ const BUCKETS = [
     }
   }
 
-  /* The bar fills left to right as it scrolls in (phones); each bucket's
-     chips drop in after the card on large screens. Still states are the
-     default, so nothing depends on JS. */
   @media (prefers-reduced-motion: no-preference) {
     .split span {
       transform-origin: left;

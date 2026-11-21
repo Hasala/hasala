@@ -3,9 +3,6 @@ import Testing
 
 @testable import Hasala
 
-/// What the account, setup and mailbox suites share (B7.4): the mock services, the typed
-/// invite code, and a mock whose phrase the test chooses. Each suite conforms to
-/// `AccountSuite` and calls `services(_:sample:)` and `Self.code` as one suite did before.
 @MainActor
 protocol AccountSuite {}
 
@@ -22,13 +19,11 @@ extension AccountSuite {
                            notifications: MockNotificationPermission())
   }
 
-  /// "Tap to show your words": what lets "I've written them down" publish.
   func showPhrase(_ m: SignupModel) {
     m.phraseRevealed = true
   }
 }
 
-/// A mock whose phrase is chosen by the test.
 @MainActor
 final class StubPhraseAccount: AccountService {
   let mock = MockAccountService()

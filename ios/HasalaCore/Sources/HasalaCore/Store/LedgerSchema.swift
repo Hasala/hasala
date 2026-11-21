@@ -1,10 +1,3 @@
-// `ledger.sqlite`, GRDB migration "v1" (spec 04 §4.2), table for table.
-//
-// The Gmail lane's, the notification planner's and onboarding's tables are
-// created here too, because §4.2 puts them in this one migration; their owners
-// (WS-12, WS-13) read and write them through their own repositories. 03c §8.6.7's
-// `fm_cache` and `pipeline_meta` are 03c's DDL and are added by the
-// categorization lane in a later migration (TODO(WS-10/WS-16)).
 import GRDB
 
 enum LedgerSchema {

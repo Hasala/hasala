@@ -1,16 +1,7 @@
-// UI read models for Home (Paper "Home · Default", spec 10, page 16 §01–02).
-//
-// They are plain values: `HomeEngine` builds them from the ledger, the Maya mock writes the
-// board's figures by hand, and HasalaDesign draws them. Nothing here reads a clock or a
-// database.
-
-/// The six hues of the design plus the neutral "other" (spec 04 §14.2).
-/// Rose is reserved for late or missed bills and over-budget; never a bucket.
 public enum Hue: String, Sendable, Hashable, CaseIterable, Codable {
   case sky, sand, rose, lilac, mint, peach, other
 }
 
-/// Budget buckets and the hue each one aliases (Paper `--color-bucket-*`).
 public enum Bucket: String, Sendable, Hashable, CaseIterable, Codable {
   case needs, wants, savings, income, project, other
 
@@ -26,7 +17,6 @@ public enum Bucket: String, Sendable, Hashable, CaseIterable, Codable {
   }
 }
 
-/// The pace verdict. Colour carries it, and the sentence always says it too.
 public enum Verdict: String, Sendable, Hashable, Codable {
   case onTrack, overPace, overBudget, done
 
@@ -40,16 +30,13 @@ public enum Verdict: String, Sendable, Hashable, Codable {
   }
 }
 
-/// Semantic icons. HasalaDesign maps each to a drawing; models never name an image.
 public enum Glyph: String, Sendable, Hashable, Codable {
   case review, insurance, utilities, travel, savingsJar, dining, budgetPie, trendUp, add
   case rent, groceries, transport, shopping, salary, transfer, flag
-  // The rest of taxonomy v1 (03c §4.1) and the profile rows.
   case healthcare, entertainment, subscriptions, investments, debt, freelance, refunds
   case bank, tag, bill, wallet, envelope, rule, chat
 }
 
-/// The tone of a small status pill ("2 new today", "3 days late", "In 4 days").
 public enum StatusTone: String, Sendable, Hashable, Codable {
   case accent, error, warning, success
 }
@@ -57,7 +44,6 @@ public enum StatusTone: String, Sendable, Hashable, Codable {
 public struct StatusPill: Sendable, Hashable, Codable {
   public var text: String
   public var tone: StatusTone
-  /// Paper draws a 7 pt dot before the text on poster pills, not on widget chips.
   public var showsDot: Bool
 
   public init(_ text: String, tone: StatusTone, showsDot: Bool = true) {
@@ -75,9 +61,6 @@ public struct HeaderState: Sendable, Hashable {
   }
 }
 
-// MARK: - The hero (Paper "Hero · Spent on needs + wants", page 16 §01–02)
-
-/// One stat tile under the hero bar: Needs, Wants or Savings.
 public struct HeroTile: Sendable, Hashable, Identifiable {
   public var id: String { label }
   public var label: String
@@ -129,42 +112,25 @@ public struct AboutNowRow: Sendable, Hashable, Identifiable {
   }
 }
 
-/// "Am I okay this month?" (page 06 §6.4): what is spent on needs and wants against their
-/// combined plan, where spending should be today, and the verdict in words. Savings is never
-/// in the figure or on the bar; it has its own tile.
 public struct SpendHero: Sendable, Hashable {
   public enum State: Sendable, Hashable {
-    /// The month so far, against the plan and today's tick.
     case live
-    /// No needs or wants budget yet (S8): the spending still counts, with nothing to measure
-    /// it against.
     case noPlan
-    /// The first import is running and no transaction has arrived (S9): zero, filling in.
     case syncing
     case ended
     case range
   }
 
   public var state: State
-  /// "Day 10 of 31" (drawn in capitals).
   public var overline: String
-  /// Everything spent in the period (`Spending.total`).
   public var spent: Money
-  /// Needs + wants budgets this month; zero with no plan.
   public var plan: Money
-  /// Planned spend by today: bills paid so far, plus the rest of the plan spread over the days
-  /// gone. Nil with no plan.
   public var tick: Money?
-  /// On track, ahead of pace (`overPace`) or over the plan (`overBudget`). Nil with no plan.
   public var verdict: Verdict?
-  /// "On track", "Ahead of pace", "Over by AED 1,240.00", "No plan yet".
   public var word: MoneyPhrase
-  /// "AED 8,711.66 left" (drawn after a "·"); nil when over or with no plan.
   public var fact: MoneyPhrase?
-  /// "spent of 19,000 on needs and wants", or "spent on needs and wants" with no plan.
   public var caption: MoneyPhrase
   public var tiles: [HeroTile]
-  /// The wash behind the hero: sky on track, sand ahead of pace, rose over.
   public var wash: Hue
   public var bars: [HeroMonthBar]
   public var note: MoneyPhrase?
@@ -229,19 +195,14 @@ public struct SpendHero: Sendable, Hashable {
     self.wash = wash
   }
 
-  /// What is left of the plan (negative when over).
   public var left: Money { Money(minor: plan.minor.minus(spent.minor), currency: plan.currency) }
 }
 
-/// The big figure on a brief card's poster: a count ("6 to sort"), an amount, or a word
-/// ("Gmail") when the card is about something with no number.
 public enum PosterFigure: Sendable, Hashable {
   case count(Int, unit: String)
   case money(Money)
   case word(String)
 }
-
-// MARK: - Widgets (Paper "Widgets · launch set", the Home canvas)
 
 public struct BucketPaceRow: Sendable, Hashable, Codable, Identifiable {
   public var id: Bucket { bucket }
@@ -262,7 +223,6 @@ public struct BucketPaceRow: Sendable, Hashable, Codable, Identifiable {
 }
 
 public struct BudgetPaceWidget: Sendable, Hashable, Codable {
-  /// "Day 10 of 31".
   public var monthGone: String
   public var rows: [BucketPaceRow]
   public var unsorted: Money?
@@ -283,7 +243,6 @@ public struct NextBillWidget: Sendable, Hashable, Codable {
   public var hue: Hue
   public var due: StatusPill
   public var amount: Money
-  /// "DEWA · expected Wed".
   public var caption: String
 
   public init(glyph: Glyph, hue: Hue, due: StatusPill, amount: Money, caption: String) {
@@ -298,7 +257,6 @@ public struct NextBillWidget: Sendable, Hashable, Codable {
 public struct NetWorthWidget: Sendable, Hashable, Codable {
   public var total: Money
   public var change: MoneyPhrase
-  /// Twelve points for the sparkline, as permille of the drawn range (geometry only).
   public var spark: [Permille]
   public var mark: TotalMark?
 
@@ -320,7 +278,6 @@ public struct ProjectWidget: Sendable, Hashable, Codable {
   public var glyph: Glyph
   public var left: Money
   public var unit: Unit
-  /// "of 12,000 · flies 14 Dec".
   public var caption: MoneyPhrase
   public var progress: Permille?
 
@@ -343,7 +300,6 @@ public struct GoalWidget: Sendable, Hashable, Codable {
   public var name: String
   public var glyph: Glyph
   public var progress: Permille
-  /// "38,500 of 50,000 · Jan".
   public var caption: MoneyPhrase
 
   public init(id: GoalID? = nil, name: String, glyph: Glyph, progress: Permille, caption: MoneyPhrase) {
@@ -354,7 +310,6 @@ public struct GoalWidget: Sendable, Hashable, Codable {
     self.caption = caption
   }
 
-  /// "77%": whole percent, rounded down, so 99.9% never reads as done.
   public var percentLabel: String { "\(progress.value / 10)%" }
 }
 
@@ -363,13 +318,10 @@ public struct MiniTxnRow: Sendable, Hashable, Codable, Identifiable {
   public var merchant: String
   public var glyph: Glyph
   public var hue: Hue
-  /// "Dining · 09:05 · DIFC".
   public var detail: String
   public var amount: Money
   public var isIncome: Bool
-  /// A merchant's first letter, drawn instead of the glyph for a merchant not sorted yet.
   public var monogram: String?
-  /// The to-review variant: an accent dot before the title (Paper "kit Lists and cards").
   public var toReview: Bool
   public var reviewReason: TxnReviewReason?
   public var project: Project?
@@ -407,7 +359,6 @@ public struct MiniTxnRow: Sendable, Hashable, Codable, Identifiable {
 }
 
 public struct TodayWidget: Sendable, Hashable, Codable {
-  /// "2 transactions · 91.50".
   public var summary: MoneyPhrase
   public var rows: [MiniTxnRow]
 
@@ -417,7 +368,6 @@ public struct TodayWidget: Sendable, Hashable, Codable {
   }
 }
 
-/// One tile on the Home canvas, in the order the person arranged them.
 public enum HomeWidget: Sendable, Hashable, Identifiable, CanvasSized {
   case budgetPace(BudgetPaceWidget)
   case nextBill(NextBillWidget)
@@ -465,12 +415,9 @@ public enum HomeWidget: Sendable, Hashable, Identifiable, CanvasSized {
   }
 }
 
-/// Everything Home draws at one instant. The bell's list comes with it, so one ledger change
-/// recomputes both once.
 public struct HomeSnapshot: Sendable, Hashable {
   public var header: HeaderState
   public var hero: SpendHero
-  /// What needs a look (the bell's badge and its sheet), from the ledger.
   public var notifications: NotificationsSnapshot
   public var widgets: [HomeWidget]
   public var period: Period?
@@ -503,8 +450,6 @@ public struct HomeSnapshot: Sendable, Hashable {
 }
 
 public extension Array where Element: CanvasSized {
-  /// Lays the canvas out in rows: a medium widget alone, small widgets in pairs
-  /// (an unpaired small widget sits alone at the left), as on Paper's canvas.
   var canvasRows: [[Element]] {
     var rows: [[Element]] = []
     var pending: Element?

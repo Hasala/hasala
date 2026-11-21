@@ -1,16 +1,3 @@
-// The two cross-device scenarios of the TestFlight plan's Lane A, written once
-// and run against FakeServer (SampleSeedSyncTests, GmailToReplayTests) and
-// against a local hasalad (LiveSampleSeedTests, LiveGmailToReplayTests):
-//
-//   sample   A (a review account) loads the sample seed; B signs in, pulls and
-//            projects: 26 October transactions, 8 bills, 6 to review, "Japan
-//            trip", ENBD ···4412
-//   gmail    FakeGmail's synthetic alerts → the real MailboxEngine (stub link
-//            server, stub step-up) on A → RuntimeMailboxLedger → the real Outbox
-//            and SyncEngine → the server → B pulls, folds and projects
-//   outlook  the same, with FakeGraph's alerts through an OutlookProvider: the
-//            rows carry provenance "outlook" and, while the Outlook trust gate is
-//            closed, all wait in Review
 import CoreAuth
 import CoreCategorize
 import CoreDomain
@@ -27,20 +14,13 @@ import Foundation
 import Testing
 
 enum Scenarios {
-  /// Saturday 10 October 2026, 13:40 in Dubai: the sample's anchor.
   static let anchor: Int64 = 1_791_625_200_000
   static let october = CivilMonth(year: 2026, month: 10)!
 
-  // MARK: Sample
-
-  /// A bootstraps and loads the sample at the anchor; both upload and pull.
-  /// `account(review)` sets A's review flag on the server the test runs
-  /// against and returns A's `GET /account`.
   static func sampleOnSecondDevice(_ a: Runtime, _ b: Runtime, account: (_ review: Bool) async throws -> AccountInfo)
     async throws
   {
     try await a.bootstrap()
-    // AT-34: not a review account (the server's own answer): refused, nothing authored.
     let before = try a.context.store.pendingCount()
     let plain = try await account(false)
     #expect(plain.review_account != true)
@@ -48,12 +28,10 @@ enum Scenarios {
     #expect(try a.context.store.pendingCount() == before)
     let account = try await account(true)
     #expect(account.review_account == true && account.user_id == a.context.userID.string)
-    // Another account's answer never opens this one's gate.
     let other = AccountInfo(user_id: "00000000-0000-4000-8000-000000000000", review_account: true)
     await #expect(throws: SampleLoadError.seed(.refused(.notReviewAccount))) { _ = try await a.loadSample(account: other) }
     let ops = try await a.loadSample(account: account)
     #expect(ops > 100)
-    // One-shot: a second tap on A, before or after the upload, is refused.
     await #expect(throws: SampleLoadError.seed(.refused(.alreadyLoaded))) { _ = try await a.loadSample(account: account) }
     #expect(try a.reader.activity(month: october, limit: 500).allSatisfy(\.pending))
     let out = await a.run(.authored)
@@ -64,12 +42,10 @@ enum Scenarios {
     #expect(pulled.stop == nil, "\(String(describing: pulled.stop))")
     try expectMayaSample(b.reader, month: october)
     #expect(try await a.state().serialized() == b.state().serialized())
-    // B, on the same review account, sees the sample: refused, nothing authored.
     await #expect(throws: SampleLoadError.seed(.refused(.alreadyLoaded))) { _ = try await b.loadSample(account: account) }
     #expect(try b.context.store.pendingCount() == 0)
   }
 
-  /// The reviewer's figures on a device that pulled the sample.
   static func expectMayaSample(_ r: LedgerReader, month: CivilMonth) throws {
     #expect(try r.activity(month: month, limit: 500).count == 26)
     #expect(try r.review().count == 6)
@@ -82,14 +58,11 @@ enum Scenarios {
     #expect(hero.budget == 970_000 && hero.spent == 228_245)
   }
 
-  // MARK: Gmail
-
   struct ConsentPresenter: GmailAuthSessionPresenter {
     let gmail: FakeGmail
     func authorize(url: URL, callbackScheme: String) async throws(GmailOAuthError) -> URL { gmail.consent(authorizeURL: url) }
   }
 
-  /// hasalad's link routes, answered here: this iPhone holds the link, no wake topic.
   actor LinkServer: MailboxServer {
     var linked = false
     func linkStatus() async throws(MailboxServerError) -> MailboxLinkStatus {
@@ -113,7 +86,6 @@ enum Scenarios {
     }
   }
 
-  /// The Gmail lane of `a`, composed as the app's GmailLane composes it.
   static func mailbox(_ a: Runtime, gmail: FakeGmail, clock: any CoreTime.Clock) -> (MailboxEngine, RuntimeMailboxLedger) {
     let oauth = GoogleOAuthClient(
       config: GmailOAuthConfig(
@@ -132,14 +104,11 @@ enum Scenarios {
     return (engine, ledger)
   }
 
-  // MARK: Outlook
-
   struct GraphConsentPresenter: MailAuthSessionPresenter {
     let graph: FakeGraph
     func authorize(url: URL, callbackScheme: String) async throws(MailOAuthError) -> URL { graph.consent(authorizeURL: url) }
   }
 
-  /// The Outlook lane of `a`, composed as the app composes it (its Keychain items in A's secrets).
   static func outlookMailbox(_ a: Runtime, graph: FakeGraph, clock: any CoreTime.Clock)
     -> (MailboxEngine, RuntimeMailboxLedger)
   {
@@ -203,16 +172,11 @@ enum Scenarios {
     #expect(again.ops == 0 && again.haltedOn == nil, "\(again)")
   }
 
-  /// "DD-MM-YYYY" of the local day of `ms` (DIB's body date).
   static func dibDay(_ ms: Int64) -> String {
     let d = LocalClock.localDate(ms)!
     return String(format: "%02d-%02d-%04d", d.day, d.month, d.year)
   }
 
-  /// A 90-day first scan of `count` synthetic alerts (DIB cards, ENBD debits and
-  /// statement notices), connected and read the way the setup's first scan reads it:
-  /// `runFirstScan` until the window is in. Every alert lands as an op, through the real
-  /// persistence, op author, outbox and sync, and uploads.
   static func gmailBackfill(_ a: Runtime, clock: any CoreTime.Clock, count: Int = 500) async throws {
     let day: Int64 = 86_400_000
     let now = clock.nowMs()
@@ -343,7 +307,6 @@ enum Scenarios {
     gmail.add(SyntheticMail.enbdAlert(id: "e1", amount: "12.34", dateMs: now - day / 2))
     gmail.add(SyntheticMail.bankNotice(id: "n1", dateMs: now - day / 4))
     let (engine, ledger) = mailbox(a, gmail: gmail, clock: clock)
-    // The bank step trusts the senders (03c §7.1); the lane lists only trusted senders.
     try await ledger.authorSenderTrust(domain: "dib.ae", trusted: true)
     try await ledger.authorSenderTrust(domain: "alerts@emiratesnbd.com", trusted: true)
     #expect(await ledger.senderTrust() == ["dib.ae": true, "emiratesnbd.com": true])
@@ -353,25 +316,22 @@ enum Scenarios {
       Issue.record("connect: \(connected)")
       return
     }
-    // The first scan lists, stages and authors in one run: there is no cards step.
     let done = await engine.runCycle(trigger: .launch)
     #expect(done.staged == 4, "\(done)")
     #expect(done.phase == .active && done.ops == 4 && done.haltedOn == nil, "\(done)")
     #expect(done.sortedBy["dictionary"] == 1)
-    #expect(try a.context.store.pendingCount() == 0)  // the lane flushed
+    #expect(try a.context.store.pendingCount() == 0)
     #expect(await ledger.isIngested(MessageDisposer.ingestID(d1.raw)))
 
-    // B pulls, folds and projects what A read.
     #expect(await b.run(.launch).stop == nil)
     let rows = try b.reader.activity(limit: 50)
-    #expect(Set(rows.compactMap(\.mailboxMessageID)) == ["d1", "d2", "e1"])  // n1 is unparsed: Review, not Activity
+    #expect(Set(rows.compactMap(\.mailboxMessageID)) == ["d1", "d2", "e1"])
     let starbucks = try #require(rows.first { $0.mailboxMessageID == "d1" })
     #expect(starbucks.amountMinor == 6_450 && starbucks.category == "dining" && starbucks.categorySource == "dictionary")
-    #expect(starbucks.effectiveAccountID == nil)  // no card was linked, and none is needed
+    #expect(starbucks.effectiveAccountID == nil)
     #expect(try b.reader.review(lanes: ReviewLane.allCases).contains { $0.mailboxMessageID == "n1" && $0.unparsed })
     #expect(try b.reader.accounts().isEmpty && b.reader.cards().isEmpty)
     #expect(try await a.state().serialized() == b.state().serialized())
-    // Running the lane again lists nothing new and authors nothing twice.
     let again = await engine.runCycle(trigger: .refresh)
     #expect(again.ops == 0 && again.haltedOn == nil, "\(again)")
   }

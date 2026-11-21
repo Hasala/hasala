@@ -4,25 +4,11 @@ import Icon from './Icon.astro';
 import { NAV as PAGES } from '../data/site';
 
 interface Props {
-  /** full: landing, legal, 404. invite: /i. minimal: /freeze (lockup only). */
   variant?: 'full' | 'invite' | 'minimal';
 }
 const { variant = 'full' } = Astro.props;
-/* Every item is its own page (the detail pages in src/data/site.ts), so
-   nav.ts marks the current one. The bar says "Privacy" for short. Banks stays
-   a homepage section, not a nav item. */
 const NAV = PAGES.map((item) => ({ ...item, label: item.href === '/how-privacy-works' ? 'Privacy' : item.label }));
-/* /i keeps its own "How privacy works" button, so its links leave it out. */
 const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-privacy-works') : NAV;
-/*
- * Client-side navigation (<ClientRouter /> in Base.astro): the header is kept,
- * not re-rendered, between pages with the same variant, so its markup must be
- * the same on all of them (nav.ts marks the current page's link, per page).
- * The bar and the lockup carry view-transition names, so they hold still
- * while the page fades under them; between variants the bar cross-fades.
- * The name sits on .nav itself, the element with the backdrop-filter, so
- * the frost still blurs the page.
- */
 ---
 
 <header class="site-nav" data-nav data-variant={variant} transition:persist={`nav-${variant}`}>
@@ -173,7 +159,6 @@ const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-pr
     color: var(--text-primary);
     border-radius: 12px;
   }
-  /* Below 560 px only the mark and "Hasala" show: the lockup is cropped. */
   .nav__wordmark {
     display: block;
     height: 25px;
@@ -209,7 +194,6 @@ const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-pr
   .nav__link[aria-current='page'] {
     color: var(--accent);
   }
-  /* The current-page dot: always there, so it crossfades between links. */
   .nav__link::after {
     content: '';
     position: absolute;
@@ -259,7 +243,6 @@ const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-pr
       transition-duration: var(--t-hover-in);
     }
   }
-  /* "Get an invite" on a phone, "Request an invite" from 1024. */
   .nav__cta-long {
     display: none;
   }
@@ -288,8 +271,6 @@ const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-pr
     scale: 0.95;
   }
 
-  /* .site-nav lets taps through to the page; the open menu must take them,
-     or a tap falls through to the backdrop and only light-dismisses it. */
   .nav__menu {
     pointer-events: auto;
     inset: 80px 16px auto;
@@ -353,8 +334,6 @@ const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-pr
   .nav__menu::backdrop {
     background: rgb(0 0 0 / 12%);
   }
-  /* The menu opens out of its button (top right) and closes a little faster.
-     Where transitions on display/overlay aren't supported it is instant. */
   @media (prefers-reduced-motion: no-preference) {
     .nav__menu {
       transform-origin: top right;
@@ -397,8 +376,6 @@ const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-pr
     }
   }
 
-  /* Phones: the lockup, "Request an invite" and the menu button share one
-     row; below 380 px only the mark shows. */
   @media (max-width: 559px) {
     .nav {
       gap: 8px;
@@ -432,7 +409,6 @@ const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-pr
       padding: 0 10px 0 24px;
       border-radius: 34px;
     }
-    /* Paper: lockup, links and the CTA group spread with equal gaps. */
     .nav__links {
       display: flex;
     }

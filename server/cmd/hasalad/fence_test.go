@@ -1,23 +1,5 @@
 package main
 
-// The build-graph and source fences of spec 02 §4.4. They are what keeps
-// hasalad blind: the oracle packages, the test sealers and every retired
-// ledgerd capability stay out of the binary, and no code reachable from it
-// can encrypt, decrypt or hold a review bypass.
-//
-// Two third-party edges are tolerated by name, and only those two (recorded
-// as a deviation from fences 1 and 5 in WS-1's branch notes):
-//
-//   - github.com/jackc/pgx/v5/pgconn imports golang.org/x/text/secure/precis
-//     (SASLprep for SCRAM). hasalad authenticates to Postgres by peer auth,
-//     but the package is linked regardless.
-//   - github.com/go-webauthn/x/revoke imports golang.org/x/crypto/ocsp (the
-//     attestation metadata path of go-webauthn), so x/crypto stays in go.mod
-//     as an `// indirect` requirement.
-//
-// No package of this module may import either, directly or through anything
-// other than those two edges.
-
 import (
 	"bufio"
 	"encoding/json"
@@ -48,14 +30,11 @@ type listedPackage struct {
 	Standard   bool
 }
 
-// deps is `go list -deps -json ./cmd/hasalad`: every package linked into the
-// binary, tests excluded.
 func deps(t *testing.T) []listedPackage {
 	t.Helper()
 	return depsOf(t, module+"/cmd/hasalad")
 }
 
-// depsOf is `go list -deps -json <target>`.
 func depsOf(t *testing.T, target string) []listedPackage {
 	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
@@ -94,7 +73,6 @@ func own(pkgs []listedPackage) []listedPackage {
 
 func rel(importPath string) string { return strings.TrimPrefix(importPath, module+"/") }
 
-// Fences 1, 5 and F7-1's import half.
 func TestFenceTheBuildGraph(t *testing.T) {
 	pkgs := deps(t)
 	forbidden := []string{
@@ -114,9 +92,6 @@ func TestFenceTheBuildGraph(t *testing.T) {
 			}
 		}
 	}
-	// F7-1: the console is linked into hasalad for its own mode (spec 07
-	// §15.1: cmd/hasalad/console.go), but serve's handler can never reach it:
-	// internal/api depends on neither the console nor the TestFlight client.
 	for _, p := range depsOf(t, module+"/internal/api") {
 		for _, f := range []string{module + "/internal/console", module + "/internal/testflight"} {
 			if p.ImportPath == f || strings.HasPrefix(p.ImportPath, f+"/") {
@@ -143,7 +118,6 @@ func TestFenceTheBuildGraph(t *testing.T) {
 	}
 }
 
-// Fences 2 and 5's go.mod halves.
 func TestFenceGoMod(t *testing.T) {
 	f, err := os.Open("../../go.mod")
 	if err != nil {
@@ -170,11 +144,10 @@ func TestFenceGoMod(t *testing.T) {
 	}
 }
 
-// sourceFile is one parsed non-test file of a package reachable from hasalad.
 type sourceFile struct {
 	pkg, path string
 	file      *ast.File
-	imports   map[string]string // local name -> import path
+	imports   map[string]string
 }
 
 func reachableSources(t *testing.T) []sourceFile {
@@ -203,14 +176,11 @@ func reachableSources(t *testing.T) []sourceFile {
 	return out
 }
 
-// Fences 3 and 6, and F7's literal halves. Comments are not scanned.
 func TestFenceTheSource(t *testing.T) {
 	files := reachableSources(t)
 	banned := []string{
 		"gmail.googleapis.com", "oauth2.googleapis.com/token", "authentication-results",
 		"/.well-known/", "smtp", "vapid", "x-forwarded-for", "true-client-ip",
-		// The phone reads Outlook; the server never calls Graph or holds a
-		// Microsoft token.
 		"graph.microsoft.com", "/oauth2/v2.0/token", "/oauth2/v2.0/authorize",
 	}
 	onlyIn := map[string]string{
@@ -295,7 +265,6 @@ func TestFenceTheSource(t *testing.T) {
 	}
 }
 
-// Fence 4: the corpus database is the oracle's alone.
 func TestFenceCorpusDatabase(t *testing.T) {
 	name := "HASALA_" + "CORPUS_DB"
 	root := "../.."
@@ -323,8 +292,6 @@ func TestFenceCorpusDatabase(t *testing.T) {
 	}
 }
 
-// F7-1: serve answers 404 for console paths. Nothing here touches the
-// database: an unknown path never reaches a handler.
 func TestFenceServeHasNoConsole(t *testing.T) {
 	h := (&api.Server{}).Handler()
 	for _, path := range []string{"/console", "/console/", "/console/login", "/admin", "/admin/", "/ui/", "/"} {
@@ -336,11 +303,6 @@ func TestFenceServeHasNoConsole(t *testing.T) {
 	}
 }
 
-// Spec 01 §12.2's fences and AT-X4: no production file computes K_blob, K_1,
-// K_pv or a wrap key (the server holds no data key and cannot open the phrase
-// box), so the domain strings those derivations use appear in hasalad only as
-// keyproto's registry constants and are referenced from nowhere else; and no
-// retired ledgerd domain string appears at all.
 func TestFenceNoDataKeyDerivationAndNoRetiredDomain(t *testing.T) {
 	dataKey := map[string]bool{
 		"DomainRecoveryKey": true, "DomainWrapRecovery": true, "DomainWrapPRF": true, "DomainWrap": true,
@@ -357,10 +319,6 @@ func TestFenceNoDataKeyDerivationAndNoRetiredDomain(t *testing.T) {
 		"ledger-v2-account-keys", "ledger-v2-prf-wrap-v1", "ledger-v2-prf-unlock-v1", "ledger-v2-ingest-key",
 		"ledger-v2-device-comparison", "ledger-phase2-encv2", "ledger/dict/key-epoch/v1", "hasala-stepup-v1",
 	}
-	// Tolerated by name until account deletion moves to step-up account.delete
-	// with spec 01's DeletionMessage (D16): purge still verifies ledgerd's
-	// deletion message, under ledgerd's domain, so that one domain never names
-	// two formats.
 	tolerated := map[string]string{"ledger/v2 account-delete": "internal/purge"}
 	for _, sf := range reachableSources(t) {
 		isRegistry := sf.pkg == "internal/keyproto" && filepath.Base(sf.path) == "domains.go"
@@ -396,9 +354,6 @@ func TestFenceNoDataKeyDerivationAndNoRetiredDomain(t *testing.T) {
 	}
 }
 
-// F7-5: every email passes through the email log, so a file outside
-// internal/mail and internal/mailq that imports internal/mail never calls a
-// method named Send (the only Send in its API is Sender.Send).
 func TestFenceMailIsSentOnlyByTheQueue(t *testing.T) {
 	scanned := 0
 	for _, sf := range reachableSources(t) {

@@ -1,7 +1,3 @@
-// The fold snapshot row (spec 04 §5.3): written with its page, bound to the
-// row at the cursor, and every load check in order (version, fold print,
-// bound tip, digest, decode, cursor), each rejection deleting the row and leaving a
-// content-free fold event. Also the pending-op reads the authors use.
 import CorePrimitives
 import CoreWire
 import Foundation
@@ -20,7 +16,6 @@ struct FoldSnapshotStoreTests {
       blob: Data(count: 1024), headSig: nil, disposition: .folded)
   }
 
-  /// A store with rows 1-2 and a snapshot saved with the page.
   static func stored(payload: Data = Data("state".utf8)) throws -> LedgerStore {
     let s = try created()
     try s.persistPage(
@@ -61,13 +56,11 @@ struct FoldSnapshotStoreTests {
       return
     }
     #expect(loaded == r)
-    // A page that fails rolls the snapshot back with it.
     let dup = Self.row(3, 2, prev: h(2))
     #expect(throws: StoreError.self) {
       try s.persistPage(rows: [dup], heads: [:], cursor: 3, at: 7, snapshot: .save(foldPrint: Self.print, payload: Data("new".utf8)))
     }
     #expect(try s.foldSnapshot()?.payload == Data("state".utf8))
-    // `.delete` removes it; `.keep` leaves it.
     try s.persistPage(rows: [Self.row(3, 3, prev: h(2))], heads: [:], cursor: 3, at: 8, snapshot: .delete)
     #expect(try s.foldSnapshot() == nil)
   }
@@ -89,7 +82,6 @@ struct FoldSnapshotStoreTests {
 
   @Test("each load check rejects in order, deletes the row and records why")
   func rejections() throws {
-    // Absent while rows exist (cursor 0 is a fresh store: nothing to report).
     let fresh = try created()
     #expect(try fresh.loadFoldSnapshot(foldPrint: Self.print, at: 1) == nil)
     let bare = try created()
@@ -109,7 +101,6 @@ struct FoldSnapshotStoreTests {
     try check({ s in try s.db.write { db in try db.execute(sql: "UPDATE fold_snapshot SET bound_tip = zeroblob(32)") } }, .logDiverged)
     try check({ s in try s.db.write { db in try db.execute(sql: "UPDATE fold_snapshot SET payload = x'00'") } }, .corrupt)
     try check({ s in try s.persistPage(rows: [Self.row(3, 3, prev: h(2))], heads: [:], cursor: 3, at: 8) }, .cursorDisagreement)
-    // The caller's own decode check.
     let s = try Self.stored()
     try s.rejectFoldSnapshot(.undecodable, at: 9)
     #expect(try s.foldSnapshot() == nil && Self.events(s) == ["snapshot_rejected:undecodable"])
@@ -117,7 +108,6 @@ struct FoldSnapshotStoreTests {
 
   @Test("decode comes before the cursor (§5.3 order), and a decoded payload comes back with its row")
   func decodeBeforeCursor() throws {
-    // Undecodable and behind the cursor: the decode failure is the one recorded.
     let s = try Self.stored()
     try s.persistPage(rows: [Self.row(3, 3, prev: h(2))], heads: [:], cursor: 3, at: 8)
     let r = try s.loadFoldSnapshot(foldPrint: Self.print, at: 9) { (_: FoldSnapshotRecord) -> String? in nil }
@@ -126,7 +116,6 @@ struct FoldSnapshotStoreTests {
       return
     }
     #expect(try s.foldSnapshot() == nil && Self.events(s) == ["snapshot_rejected:undecodable"])
-    // Decodable and behind the cursor: cursor_disagreement.
     let t = try Self.stored()
     try t.persistPage(rows: [Self.row(3, 3, prev: h(2))], heads: [:], cursor: 3, at: 8)
     guard case .failure(.cursorDisagreement)? = try t.loadFoldSnapshot(foldPrint: Self.print, at: 9, decode: { $0.cursorHot })
@@ -134,7 +123,6 @@ struct FoldSnapshotStoreTests {
       Issue.record("want cursor_disagreement")
       return
     }
-    // Every check passes: the row and what `decode` made of it.
     let u = try Self.stored()
     guard case .success(let ok)? = try u.loadFoldSnapshot(foldPrint: Self.print, at: 9, decode: { String(decoding: $0.payload, as: UTF8.self) })
     else {
@@ -152,8 +140,7 @@ struct FoldSnapshotStoreTests {
     #expect(try Self.events(s) == ["snapshot_skipped:over_budget"])
     #expect(try s.saveFoldSnapshot(foldPrint: Self.print, payload: Data("cold".utf8), at: 3))
     #expect(try s.foldSnapshot()?.cursorHot == 2 && s.foldSnapshot()?.boundTip == s.boundTip(at: 2))
-    #expect(try !created().saveFoldSnapshot(foldPrint: Self.print, payload: Data("x".utf8), at: 1))  // no row at cursor 0
-    // Every page over budget records it; the log stays at its newest 64.
+    #expect(try !created().saveFoldSnapshot(foldPrint: Self.print, payload: Data("x".utf8), at: 1))
     let big = Data(count: FoldSnapshotRecord.byteBudget + 1)
     for i in Int64(3)...Int64(80) {
       try s.persistPage(

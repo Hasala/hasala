@@ -8,9 +8,6 @@ import (
 	"testing"
 )
 
-// corpusPath returns the scratch .backup copy of the v1 database, or skips.
-// The corpus is never committed, so every test that needs it is opt-in via
-// HASALA_CORPUS_DB pointing at a root-made `.backup` copy.
 func corpusPath(t *testing.T) string {
 	t.Helper()
 	p := os.Getenv("HASALA_CORPUS_DB")
@@ -38,7 +35,6 @@ func TestOpenRefusesTheLiveDatabase(t *testing.T) {
 		if !errors.Is(err, ErrLiveDatabase) {
 			t.Fatalf("Open(%q) = %v; want ErrLiveDatabase", path, err)
 		}
-		// The error must name the constraint so a future reader understands why.
 		if !strings.Contains(err.Error(), "/var/lib/ledger") {
 			t.Fatalf("Open(%q) error %q does not name the forbidden directory", path, err)
 		}
@@ -48,9 +44,6 @@ func TestOpenRefusesTheLiveDatabase(t *testing.T) {
 func TestCountMatchesTheDatabase(t *testing.T) {
 	path := corpusPath(t)
 
-	// Independent ground truth: a plain query through database/sql. Asserting
-	// against a constant would rot — the live corpus grows every time the v1
-	// instance ingests mail (6994 at plan time, 6998 at extraction time).
 	raw, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +88,6 @@ func TestEachStreamsGunzippedRFC822(t *testing.T) {
 		if m.RawBody[0] == 0x1f && m.RawBody[1] == 0x8b {
 			t.Fatalf("message %d: RawBody still gzipped", m.ID)
 		}
-		// Real RFC822: CRLF header block terminated by a blank line.
 		if i := strings.Index(string(m.RawBody), "\r\n\r\n"); i > 0 {
 			withHeaders++
 		}

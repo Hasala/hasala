@@ -7,8 +7,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/auth"
 )
 
-// routes_recover.go: access recovery with an email code and the phrase (C4,
-// spec 02 §10.4, routes #7, #48, #8). Owner: WS-3.
 func (s *Server) mountRecover(mux *http.ServeMux) {
 	if s.Accounts == nil {
 		return
@@ -18,12 +16,10 @@ func (s *Server) mountRecover(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/recover/finish", s.limited(s.handleRecoverFinish, s.RecoverPerIP, s.PasskeyGlobal))
 }
 
-// RecoverBeginRequest is #7's body.
 type RecoverBeginRequest struct {
-	RecoveryPubkey string `json:"recovery_pubkey"` // b64, 32 bytes
+	RecoveryPubkey string `json:"recovery_pubkey"`
 }
 
-// RecoverBeginResponse is #7's answer.
 type RecoverBeginResponse struct {
 	CeremonyID string `json:"ceremony_id"`
 	EmailHint  string `json:"email_hint"`
@@ -46,14 +42,12 @@ func (s *Server) handleRecoverBegin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, RecoverBeginResponse{CeremonyID: out.CeremonyID, EmailHint: out.EmailHint})
 }
 
-// RecoverVerifyRequest is #48's body.
 type RecoverVerifyRequest struct {
 	CeremonyID string `json:"ceremony_id"`
 	Code       string `json:"code"`
-	Kind       string `json:"kind"` // passkey | password
+	Kind       string `json:"kind"`
 }
 
-// RecoverVerifyResponse is #48's answer.
 type RecoverVerifyResponse struct {
 	Nonce           string          `json:"nonce"`
 	UserID          string          `json:"user_id"`
@@ -90,16 +84,14 @@ func (s *Server) handleRecoverVerify(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// RecoverWriterWire is the writer #8 registers.
 type RecoverWriterWire struct {
 	WriterID        string `json:"writer_id"`
 	Alg             string `json:"alg"`
-	PubKey          string `json:"pubkey"`           // b64, 32
-	DAKPubkey       string `json:"dak_pubkey"`       // b64, 65
-	RegistrationSig string `json:"registration_sig"` // b64, 64: the AAK over RegistrationMessage(recover nonce, …)
+	PubKey          string `json:"pubkey"`
+	DAKPubkey       string `json:"dak_pubkey"`
+	RegistrationSig string `json:"registration_sig"`
 }
 
-// RecoverFinishRequest is #8's body (either kind).
 type RecoverFinishRequest struct {
 	CeremonyID string            `json:"ceremony_id"`
 	Kind       string            `json:"kind"`

@@ -1,15 +1,7 @@
 ---
-/**
- * The review deck (Paper AQJ-0 / BM7-0 on the landing, the same deck on
- * /how-it-works). One live deck, used twice: `<Review stage />` renders only
- * the stage (the landing's "Sort a week in a minute" section brings its own
- * words and legend), `<Review />` renders the whole /how-it-works section.
- * Behaviour is in scripts/review.ts.
- */
 import Icon from '../Icon.astro';
 
 interface Props {
-  /** Render only the interactive stage, for a section that has its own copy. */
   stage?: boolean;
 }
 const { stage = false } = Astro.props;
@@ -76,7 +68,6 @@ const CARDS = [
     isNew: true,
   },
 ] as const;
-// The first card is "2 of 6", as in the app: one was already sorted.
 const TOTAL = CARDS.length + 1;
 ---
 
@@ -305,7 +296,6 @@ const TOTAL = CARDS.length + 1;
     flex-direction: column;
     gap: 28px;
   }
-  /* Small screens: heading, then the stage, then the direction chips. */
   .review__copy {
     display: contents;
   }
@@ -327,7 +317,6 @@ const TOTAL = CARDS.length + 1;
   .dirs li {
     display: flex;
   }
-  /* The legend chips are buttons too: tap one to sort the top card. */
   .dir {
     position: relative;
     display: flex;
@@ -345,7 +334,6 @@ const TOTAL = CARDS.length + 1;
   .dir:active {
     transform: scale(0.97);
   }
-  /* The legend answers the swipe: the chosen direction swells and rings. */
   .dir::after {
     content: '';
     position: absolute;
@@ -404,7 +392,6 @@ const TOTAL = CARDS.length + 1;
     line-height: 22px;
   }
 
-  /* Stage */
   .review__stage {
     position: relative;
     height: 560px;
@@ -427,7 +414,6 @@ const TOTAL = CARDS.length + 1;
     display: none;
   }
 
-  /* Deck */
   .deck {
     position: absolute;
     left: 50%;
@@ -444,7 +430,6 @@ const TOTAL = CARDS.length + 1;
     box-shadow: rgb(0 0 0 / 1%) 0 1px 2px, rgb(0 0 0 / 4%) 0 6px 16px;
     transition: opacity 240ms var(--ease-out-soft);
   }
-  /* The third card's edge only shows while three or more are left. */
   .deck:is([data-left='0'], [data-left='1'], [data-left='2']) .deck__ghost {
     opacity: 0;
   }
@@ -497,7 +482,6 @@ const TOTAL = CARDS.length + 1;
   .deck__again:active {
     transform: scale(0.97);
   }
-  /* Nothing left to sort: the direction pills step aside. */
   .review__stage[data-done] .rpill {
     opacity: 0;
     visibility: hidden;
@@ -660,7 +644,6 @@ const TOTAL = CARDS.length + 1;
     font-weight: 600;
   }
 
-  /* Glass pills on the card edges */
   .rpill {
     position: absolute;
     z-index: 5;
@@ -944,7 +927,6 @@ const TOTAL = CARDS.length + 1;
       inset: 0;
       border-radius: 3px;
       background: var(--accent);
-      /* Clipped, not scaled, so the leading end keeps its round cap. */
       clip-path: inset(0 calc(100% * 4 / 6) 0 0 round 3px);
       transition: clip-path 240ms var(--ease-out-soft);
     }

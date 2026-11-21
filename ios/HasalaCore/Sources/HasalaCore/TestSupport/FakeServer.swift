@@ -1,17 +1,3 @@
-// An in-process hasalad for the core's tests (spec 04 §2.2 `FakeServer`):
-// the routes of `02` §7 that the sync and auth clients call, with `02`'s
-// paths, JSON names, error codes and check order, and the checks that make the
-// server blind (§11.1: framing, LooksSealed, the AAD position, the chain, the
-// signed head; nothing else about a blob is read).
-//
-// Faithful where the client can observe it; simplified where it cannot: the
-// password verifier is compared as SHA256(S) (the real server runs PBKDF2 under
-// a pepper), there are no limiters or emails (a code is readable through
-// `lastCode`), and WebAuthn checks only what go-webauthn's outcome depends on
-// for these tests (type, challenge, origin, RP ID hash, UP/UV, the ES256
-// signature, the sign count).
-//
-// Tamper switches (§19.1 T3) change what the next answers carry.
 import CoreAuth
 import CoreCrypto
 import CorePrimitives
@@ -23,8 +9,6 @@ import Synchronization
 public final class FakeServer: Transport, @unchecked Sendable {
   public static let rpID = "hasala.app"
   public static let origin = "https://hasala.app"
-
-  // MARK: State
 
   struct Credential {
     let id: Data
@@ -73,7 +57,7 @@ public final class FakeServer: Transport, @unchecked Sendable {
     let id: UserID
     var emailNorm: String
     var displayName: String
-    var passwordHash: Data?  // SHA256(S)
+    var passwordHash: Data?
     var authorityPending: Data?
     var keys: KeysResponse?
     var phraseBox: Data?
@@ -83,7 +67,6 @@ public final class FakeServer: Transport, @unchecked Sendable {
     var log: [StoredRow] = []
     var frozen = false
     var deleted = false
-    /// `users.review_account` (02 #40; 07's reviewer invite).
     var review = false
     var phraseUnseenSince: String?
   }
@@ -116,7 +99,7 @@ public final class FakeServer: Transport, @unchecked Sendable {
   }
 
   struct State {
-    var invites: [String: String?] = [:]  // code → addressed email_norm
+    var invites: [String: String?] = [:]
     var signups: [String: SignupCeremony] = [:]
     var users: [UserID: User] = [:]
     var credentials: [Data: Credential] = [:]
@@ -131,7 +114,6 @@ public final class FakeServer: Transport, @unchecked Sendable {
     var seq: Int64 = 0
     var historyID: Int64 = 0
     var lastCode: String?
-    // tamper switches
     var cannedRefusals: [String: [(Int, String, String)]] = [:]
     var loseNextUploadResponse = false
     var loseNextRegisterAnswer = false
@@ -146,7 +128,6 @@ public final class FakeServer: Transport, @unchecked Sendable {
     var opVersionCeiling: Int?
     var uploads = 0
     var pullLimitOverride: Int?
-    /// `GET /account` answers this address instead of the stored one.
     var misreportedEmail: [UserID: String?] = [:]
   }
 
@@ -156,21 +137,16 @@ public final class FakeServer: Transport, @unchecked Sendable {
 
   public init(secret: String = "fake-server-secret") { self.secret = Data(secret.utf8) }
 
-  // MARK: Test controls
-
   public func addInvite(_ code: String, addressedTo email: String? = nil) {
     state.withLock { $0.invites[code] = .some(email) }
   }
 
-  /// The last email code the server "sent".
   public var lastCode: String? { state.withLock { $0.lastCode } }
 
-  /// The next call to `route` (e.g. `"POST /api/v1/sync"`) answers this refusal.
   public func refuseNext(_ route: String, status: Int, code: String, detail: String = "") {
     state.withLock { $0.cannedRefusals[route, default: []].append((status, code, detail)) }
   }
 
-  /// The next upload is applied, but its answer is lost (a transport error).
   public func loseNextUploadResponse() { state.withLock { $0.loseNextUploadResponse = true } }
 
   public func loseNextRegisterAnswer() { state.withLock { $0.loseNextRegisterAnswer = true } }
@@ -179,14 +155,10 @@ public final class FakeServer: Transport, @unchecked Sendable {
 
   public func loseNextAccountDeleteAnswer() { state.withLock { $0.loseNextAccountDeleteAnswer = true } }
 
-  /// The next upload stores only its first `rows` rows; the client sees a
-  /// transport error, and its resend then meets `409 conflict`.
   public func partiallyApplyNextUpload(rows: Int) { state.withLock { $0.partialApplyNextUpload = rows } }
 
-  /// Pulls serve rows without `head_sig` (R2b must stop them).
   public func setDropHeadSigs(_ v: Bool) { state.withLock { $0.dropHeadSigs = v } }
 
-  /// Pulls serve the row at `seq` with one blob byte flipped.
   public func flipBlobByte(atSeq seq: Int64?) { state.withLock { $0.flipBlobByteAtSeq = seq } }
 
   public func setLogGeneration(_ g: Int64) { state.withLock { $0.logGeneration = g } }
@@ -194,7 +166,6 @@ public final class FakeServer: Transport, @unchecked Sendable {
 
   public func setPullLimit(_ n: Int?) { state.withLock { $0.pullLimitOverride = n } }
 
-  /// Revokes a writer server-side as if another device removed it.
   public func revoke(user: UserID, writer: WriterID) {
     state.withLock { s in
       let head = s.users[user]?.log.last(where: { $0.writerID == writer.string })
@@ -203,14 +174,10 @@ public final class FakeServer: Transport, @unchecked Sendable {
     }
   }
 
-  /// `GET /account` answers `email` (nil: no address at all) for this user.
   public func misreportEmail(user: UserID, _ email: String?) {
     state.withLock { $0.misreportedEmail[user] = .some(email) }
   }
 
-  /// A malicious server un-revokes a writer: the revocation entry leaves the
-  /// key history (still a valid, signed history) and `GET /writers` shows the
-  /// writer live again (spec 01 §10.13 says a device must refuse this).
   public func rollBackRevocation(user: UserID, writer: WriterID) {
     state.withLock { s in
       s.users[user]?.history.removeAll { $0.writerID == writer.string && $0.event == "revoked" }
@@ -239,7 +206,6 @@ public final class FakeServer: Transport, @unchecked Sendable {
 
   public func freeze(user: UserID) { state.withLock { $0.users[user]?.frozen = true } }
 
-  /// Marks the account a review account (`account review <uuid> on`), or not.
   public func setReviewAccount(user: UserID, _ on: Bool) { state.withLock { $0.users[user]?.review = on } }
 
   public func loseLogTail(user: UserID, after seq: Int64) {
@@ -250,7 +216,6 @@ public final class FakeServer: Transport, @unchecked Sendable {
 
   public var uploadCount: Int { state.withLock { $0.uploads } }
 
-  /// Writes a row directly into a user's log (a malicious server).
   public func injectRow(
     user: UserID, writerID: String, counter: Int64, prevHash: Data, blob: Data, headSig: Data?
   ) {
@@ -263,8 +228,6 @@ public final class FakeServer: Transport, @unchecked Sendable {
           blob: blob, headSig: headSig))
     }
   }
-
-  // MARK: Transport
 
   public func send(_ request: APIRequest) async throws(TransportError) -> APIResponse {
     let path = String(request.path.split(separator: "?", maxSplits: 1).first ?? "")
@@ -327,7 +290,6 @@ public final class FakeServer: Transport, @unchecked Sendable {
     case "POST /api/v1/auth/recover/finish": return recoverFinish(r)
     default: break
     }
-    // Session routes.
     guard let token = r.bearer, let sess = state.withLock({ $0.sessions[token] }), !sess.revoked else {
       return Self.error(401, "unauthorized")
     }
@@ -397,8 +359,6 @@ public final class FakeServer: Transport, @unchecked Sendable {
       return Self.error(404, "not_found")
     }
   }
-
-  // MARK: Helpers
 
   static func ok(_ v: some Encodable, status: Int = 200) -> APIResponse {
     let e = JSONEncoder()

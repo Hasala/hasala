@@ -1,13 +1,3 @@
-// The fresh-install purge (spec 04 §4.4 `installCheck`; spec 01 §11.3; R-03).
-//
-// At process start, before anything reads the Keychain, and only while
-// protected data is available: if `app.hasala.installID` is unset, delete every
-// item of every app service in both access groups; only when every delete
-// answered success or not-found, remove the widget snapshot directory and set
-// `installID`. Otherwise `installID` stays unset (the next launch retries) and
-// boot waits (`.notNow`). Before first unlock UserDefaults may read as empty, so
-// a missing `installID` is never trusted then. App process only; extensions
-// never purge.
 import CorePrimitives
 import CoreStore
 import Foundation

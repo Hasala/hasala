@@ -11,9 +11,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// The recovery phrase (spec 01 §4.3): 16 bytes of entropy as 12 BIP-39
-// English words.
-
 var wordlist = strings.Fields(wordlistText)
 
 var wordIndex = func() map[string]int {
@@ -24,12 +21,8 @@ var wordIndex = func() map[string]int {
 	return m
 }()
 
-// Wordlist returns the 2048 words in index order.
 func Wordlist() []string { return append([]string(nil), wordlist...) }
 
-// Words encodes 16 bytes of entropy: checksum = SHA256(E)[0] >> 4, and the 132
-// bits E ‖ checksum are cut, most significant bit first, into twelve 11-bit
-// indices.
 func Words(e []byte) []string {
 	if len(e) != EntropySize {
 		panic("cryptoref: phrase entropy is 16 bytes")
@@ -48,12 +41,11 @@ func Words(e []byte) []string {
 	return out
 }
 
-// PhraseError is a validation failure, named as the Swift client names it.
 type PhraseError struct {
-	Kind  string // "length", "unknownWord" or "checksum"
-	Count int    // length: the number of words found
-	Index int    // unknownWord: 0-based
-	Word  string // unknownWord: the normalized word
+	Kind  string
+	Count int
+	Index int
+	Word  string
 }
 
 func (e *PhraseError) Error() string {
@@ -66,7 +58,6 @@ func (e *PhraseError) Error() string {
 	return e.Kind
 }
 
-// isW is the whitespace set W of §4.3 (the JavaScript \s set).
 func isW(r rune) bool {
 	switch {
 	case r >= 0x09 && r <= 0x0d, r == 0x20, r == 0xa0, r == 0x1680,
@@ -77,8 +68,6 @@ func isW(r rune) bool {
 	return false
 }
 
-// NormalizePhrase is §4.3's normalization of typed input: NFKD, lowercase,
-// every maximal run of W to one U+0020, trim, split on U+0020.
 func NormalizePhrase(input string) []string {
 	s := strings.ToLower(norm.NFKD.String(input))
 	var b strings.Builder
@@ -101,8 +90,6 @@ func NormalizePhrase(input string) []string {
 	return strings.Split(t, " ")
 }
 
-// ParsePhrase validates typed input in §4.3's order (count, then each word by
-// exact match, then the checksum) and returns the entropy.
 func ParsePhrase(input string) ([]byte, error) {
 	words := NormalizePhrase(input)
 	if len(words) != 12 {
@@ -133,20 +120,14 @@ func ParsePhrase(input string) ([]byte, error) {
 	return append([]byte(nil), e...), nil
 }
 
-// The password stretch (spec 01 §4.10), device side.
-
-// StretchIterations is fixed; no server field can lower it.
 const StretchIterations = 600_000
 
-// PasswordSaltC is salt_c = "hasala/v1/password" ‖ 00 ‖ s_srv ‖ utf8(email_norm).
 func PasswordSaltC(sSrv []byte, emailNorm string) []byte {
 	return cat(dom(keyproto.DomainPassword), sSrv, []byte(emailNorm))
 }
 
-// NFC is Unicode Normalization Form C.
 func NFC(s string) string { return norm.NFC.String(s) }
 
-// Stretch is S = PBKDF2(utf8(NFC(password)), salt_c, 600000, 32).
 func Stretch(password string, sSrv []byte, emailNorm string) []byte {
 	pw := norm.NFC.String(password)
 	k, err := pbkdf2.Key(sha256.New, pw, PasswordSaltC(sSrv, emailNorm), StretchIterations, 32)

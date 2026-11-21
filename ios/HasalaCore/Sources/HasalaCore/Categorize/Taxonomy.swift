@@ -1,10 +1,3 @@
-// Taxonomy v1 (spec 03c §4.1): the 18 built-in categories, implicit constants
-// that every account has with no op. A `category_defined` with a built-in id
-// overrides it. The taxonomy is applied by readers and the pipeline, never by
-// the fold (03c §1.11 rule 3).
-//
-// It lives in CoreCategorize, the lowest module that needs it (the dictionary
-// gate and `decide`); CoreDomain's `TaxonomyView` and the projection build on it.
 import HasalaText
 
 public enum CategoryKind: String, Sendable, Codable, CaseIterable {
@@ -18,7 +11,6 @@ public enum Bucket: String, Sendable, Codable, CaseIterable {
 public enum Hue: String, Sendable, Codable {
   case sand, lilac, mint, sky, grey
 
-  /// 03c §4.1: hue is a function of kind and bucket, never data.
   public static func of(_ kind: CategoryKind, _ bucket: Bucket?) -> Hue {
     switch (kind, bucket) {
     case (.spending, .need?): .sand
@@ -30,8 +22,6 @@ public enum Hue: String, Sendable, Codable {
   }
 }
 
-/// One category as readers see it: a built-in, a built-in overridden, or a
-/// user category.
 public struct CategoryInfo: Sendable, Equatable {
   public let id: String
   public let name: String
@@ -40,7 +30,6 @@ public struct CategoryInfo: Sendable, Equatable {
   public let icon: String
   public let active: Bool
   public let builtin: Bool
-  /// `category.ord`: the taxonomy ord for a built-in, `100 + first-definition index` for a user id.
   public let sortKey: Int
   public let parent: String?
 
@@ -64,7 +53,6 @@ public struct CategoryInfo: Sendable, Equatable {
 public enum TaxonomyV1 {
   public static let version = 1
 
-  /// The 18 built-ins in Paper order (03c §4.1).
   public static let builtins: [CategoryInfo] = [
     b(1, "rent", "Rent", .spending, .need, "house"),
     b(2, "utilities", "Utilities", .spending, .need, "bolt"),
@@ -109,10 +97,8 @@ public enum TaxonomyV1 {
     return (b.kind, b.bucket)
   }
 
-  /// The default icon of a user category (03c §4.2).
   public static let userIcon = "tag"
 
-  /// The model-tier hints of 03c §8.6.4.
   public static let modelHints: [(id: String, hint: String)] = [
     ("rent", "rent and housing payments"), ("utilities", "electricity, water, gas, telecom, internet"),
     ("groceries", "supermarkets and grocery stores"), ("transport", "taxis, ride-hailing, fuel, parking, tolls, public transport"),
@@ -123,14 +109,10 @@ public enum TaxonomyV1 {
   ]
 }
 
-/// The effective category table a decision is made against: the taxonomy
-/// overlaid with the account's definitions. Built by CoreDomain's
-/// `TaxonomyView` or the projection; the pipeline only reads it.
 public protocol CategoryLookup: Sendable {
   func info(_ id: String) -> CategoryInfo?
 }
 
-/// The built-ins alone (no account definitions).
 public struct BuiltinCategories: CategoryLookup {
   public init() {}
   public func info(_ id: String) -> CategoryInfo? { TaxonomyV1.builtin(id) }

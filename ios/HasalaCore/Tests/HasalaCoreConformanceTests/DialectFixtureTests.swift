@@ -1,9 +1,3 @@
-// conformance/dialect/patterns.json (Go's literal output, internal/tmpl
-// TestWriteDialectConformanceFixtures): the Swift validator must give the same reason codes in
-// the same order as Go and TypeScript, and the ICU engine (through the translation layer) must
-// match and capture exactly what Go's RE2 did on every accepted pattern and every hostile
-// probe input (CR, U+2028, U+2029, NBSP, VT, BOM, the Kelvin sign, long s, Arabic). A generated
-// 9,324-pattern corpus pins the validator as a FUNCTION, through a SHA-256 of its verdicts.
 import CoreJSON
 import CorePrimitives
 import Foundation
@@ -47,8 +41,6 @@ enum DialectFixture {
     return out
   }()
 
-  /// A transliteration of `dialectCorpus()` (internal/tmpl/conformance_test.go and
-  /// tmpl/dialect.test.ts), edit for edit: the digest is over the SEQUENCE.
   static func corpus() -> [String] {
     let atoms = ["a", "[a-z]", "[^\\n]", "\\n", "م"]
     let quants = ["", "?", "*", "+", "{2}", "{1,4}", "{0,2}", "{2,}", "{1,32}"]
@@ -109,8 +101,6 @@ struct DialectFixtureTests {
     #expect(Dialect.toJS(c.pattern) == c.jsPattern)
   }
 
-  /// The engine claim: ICU, through the translation, reproduces RE2's match, full match text
-  /// and every named group (absent vs. empty kept apart) on every probe.
   @Test("engine agreement on every probe", arguments: DialectFixture.accepted())
   func engine(_ c: AcceptedPattern) throws {
     let re = try ICUPattern.compile(c.pattern, caseInsensitive: c.flags.contains("i"))

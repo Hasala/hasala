@@ -1,16 +1,9 @@
-// gmail-sync: the first scan of a large window (a 90-day backfill of hundreds of alerts)
-// against Gmail's per-user rate limit (250 quota units a second, a moving average; each
-// message is two 5-unit `messages.get` calls). The limit is modelled on the rig's clock,
-// which the engine's waits advance. Every message is synthetic.
 import CoreMailbox
 import CoreTestSupport
 import CoreTime
 import Foundation
 import Testing
 
-/// Gmail's per-user limit as these tests see it: `allowance` message requests, then every
-/// request answers 429 until `penaltyMs` have passed on `clock`, then the allowance again.
-/// `forever` answers 429 to every request.
 final class GmailRateLimit: @unchecked Sendable {
   private let lock = NSLock()
   private let clock: ManualClock
@@ -55,7 +48,6 @@ final class GmailRateLimit: @unchecked Sendable {
 }
 
 @Suite struct FirstScanTests {
-  /// `count` alerts over the last 89 days, newest first.
   static func backfill(_ rig: Rig, count: Int) {
     for i in 0..<count {
       let t = Rig.t0 - 60_000 - Int64(i) * (89 * day / Int64(count))
@@ -68,8 +60,6 @@ final class GmailRateLimit: @unchecked Sendable {
   }
 
   @Test func aRateLimitedDownloadWaitsLongEnoughForTheLimitToPass() async {
-    // One download at a time, so the waits are the only time that passes. The old 400 ms and
-    // 1.2 s retries ended inside a 5 s penalty, and the cycle stopped there.
     let rig = Rig { $0.downloadWidth = 1 }
     Self.backfill(rig, count: 60)
     let limit = GmailRateLimit(clock: rig.clock, allowance: 40, penaltyMs: 5_000)
@@ -81,8 +71,6 @@ final class GmailRateLimit: @unchecked Sendable {
   }
 
   @Test func theFirstScanReadsAFiveHundredAlertWindowThroughTheRateLimit() async {
-    // A penalty longer than one download's retries: the cycle stops partway, as the shipped
-    // build's first scan did ("Reading your bank alerts stopped"), and the next one goes on.
     let rig = Rig()
     Self.backfill(rig, count: 500)
     let limit = GmailRateLimit(clock: rig.clock, allowance: 300, penaltyMs: 60_000)
@@ -99,7 +87,6 @@ final class GmailRateLimit: @unchecked Sendable {
     #expect(reports.reduce(0) { $0 + $1.ops } == 500)
     #expect(Set(await rig.enqueued().map(\.messageID)).count == 500)
     #expect(await rig.state().watermarkMs == Rig.t0)
-    // The board never showed "stopped" for a stop the scan rode out, and ended done.
     #expect(!seen.all.contains { if case .failed = $0.stage { true } else { false } })
     #expect(seen.all.last == MailboxProgress(stage: .done, done: 500, total: 500, thisMonthRead: true))
   }
@@ -116,15 +103,12 @@ final class GmailRateLimit: @unchecked Sendable {
 
     let start = rig.clock.nowMs()
     let reports = await rig.engine.runFirstScan()
-    // One cycle, then one more after each stall wait (2, 5, 15 and 30 s), then it stops: no
-    // spinning against a limit that does not lift.
     #expect(reports.count == 5, "\(reports)")
     #expect(reports.allSatisfy { $0.haltedOn == .gmail || $0.haltedOn == .quota })
     #expect(reports.last?.phase == .scanning)
     #expect(rig.clock.nowMs() - start >= 52_000)
     #expect(!seen.all.contains { if case .failed = $0.stage { true } else { false } })
 
-    // The limit lifts; the next trigger reads the window from where it was.
     limit.forever = false
     let later = await rig.engine.runCycle(trigger: .foreground)
     #expect(later.phase == .active && later.ops == 20, "\(later)")

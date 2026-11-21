@@ -1,31 +1,19 @@
 import HasalaModels
 import SwiftUI
 
-// Content cards (Paper page 15 §02): solid white, radius 24, on the grey canvas. Only cards that
-// ask you to act get a shadow; glass is never used for content.
-
 public extension View {
-  /// The two-layer card shadow Paper uses on cards that stand alone (`--color-elevation-*`).
   func elevation() -> some View {
     hElevation(.nearFar)
   }
 
-  /// A white list card, r24 (Paper "kit Lists and cards").
   func listCard() -> some View {
     background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
   }
 }
 
-/// A card that asks for a decision (page 15 · Brief card, page 16 §12): a hue poster with a
-/// glyph plate, a label, a status pill and the figure, over a white body with a primary and a
-/// secondary button, 44 tall. Bills stacks them full width (poster 104); the Core kit's 272 card
-/// with a 120 poster is the first rail's, kept for its one remaining caller. At the
-/// accessibility sizes the buttons stack, primary on top.
 public struct BriefCard: View {
   public enum Poster: Sendable {
-    /// 104 tall, padding 13/16, body 15/20 primary (Bills).
     case short104
-    /// 120 tall, padding 14/16, a title 17/24 over a 15/20 secondary line.
     case tall120
   }
 
@@ -48,9 +36,6 @@ public struct BriefCard: View {
   @Environment(\.dynamicTypeSize) private var typeSize
   private var accessibilityLayout: Bool { typeSize.isAccessibilitySize }
 
-  /// A decision card. `figureCaption` follows the figure in on-hue secondary ("every month");
-  /// `title` is the tall poster's headline. Rose is for a bill that may be late only, sand for a
-  /// price change, sky for a new bill.
   public init(
     hue: Hue, icon: HIcon, label: String, status: StatusPill, figure: PosterFigure, figureCaption: String? = nil,
     title: String? = nil, body: MoneyPhrase, primaryTitle: String, secondaryTitle: String,
@@ -86,7 +71,6 @@ public struct BriefCard: View {
           Text(message.rendered(hidden: hidden))
             .hType(.subheadline)
             .foregroundStyle(title == nil ? HColor.textPrimary : HColor.textSecondary)
-            // A title's line is one line at the default size; a body alone may take three.
             .lineLimitAtDefaultTextSize(title == nil ? 3 : 1)
             .accessibilityLabel(message.spoken(hidden: hidden))
         }
@@ -142,8 +126,6 @@ public struct BriefCard: View {
     }
     .padding(.horizontal, 16)
     .padding(.vertical, poster == .tall120 ? 14 : 13)
-    // At least the poster height; taller when the text needs it. fixedSize settles the height
-    // first, so the spacer still pushes the figure to the bottom.
     .frame(maxWidth: .infinity, minHeight: poster == .tall120 ? 120 : 104, maxHeight: .infinity, alignment: .topLeading)
     .fixedSize(horizontal: false, vertical: true)
     .background(hue.perceptualGradient)
@@ -166,7 +148,6 @@ public struct BriefCard: View {
   }
 }
 
-/// A screen-level placeholder for areas that are not built yet (Debug only).
 public struct PlaceholderCard: View {
   let systemImage: String
   let title: String

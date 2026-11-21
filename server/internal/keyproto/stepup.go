@@ -8,18 +8,8 @@ import (
 	"slices"
 )
 
-// Step-up bytes, spec 01 §10.2 (adopted from spec 02 §8.3):
-//
-//	enc(T)      = for each field f of T, in order: u32be(|f|) ‖ f      (empty tuple → zero bytes)
-//	params_hash = SHA256("hasala/v1/step-up-params" ‖ 00 ‖ action ‖ 00 ‖ enc(T))
-//	C           = SHA256("hasala/v1/step-up" ‖ 00 ‖ nonce32 ‖ action ‖ 00 ‖ params_hash)
-//
-// The bytes are the same for every proof kind (anchor A11).
-
-// Action is a step-up action name from the closed set of spec 01 §10.2.
 type Action string
 
-// The 20 actions (spec 01 §10.2, spec 02 §8.2).
 const (
 	ActionPasskeyAdd         Action = "passkey.add"
 	ActionPasskeyDelete      Action = "passkey.delete"
@@ -43,10 +33,8 @@ const (
 	ActionAccountUnfreeze    Action = "account.unfreeze"
 )
 
-// ProofKind is how a step-up proves the user approved C.
 type ProofKind string
 
-// The three proof kinds (spec 01 §10.2).
 const (
 	ProofPasskey    ProofKind = "passkey"
 	ProofDevice     ProofKind = "device"
@@ -58,7 +46,6 @@ var (
 	passkeyDev  = []ProofKind{ProofPasskey, ProofDevice}
 )
 
-// proofKinds is the last column of spec 01 §10.2's table, in its row order.
 var proofKinds = []struct {
 	action Action
 	kinds  []ProofKind
@@ -85,7 +72,6 @@ var proofKinds = []struct {
 	{ActionAccountUnfreeze, passkeyDev},
 }
 
-// Actions returns the closed set of 20 actions, in spec 01 §10.2's order.
 func Actions() []Action {
 	out := make([]Action, len(proofKinds))
 	for i, r := range proofKinds {
@@ -94,8 +80,6 @@ func Actions() []Action {
 	return out
 }
 
-// AllowedProofs returns the proof kinds an action accepts, or nil for a name
-// outside the closed set.
 func AllowedProofs(a Action) []ProofKind {
 	for _, r := range proofKinds {
 		if r.action == a {
@@ -105,17 +89,12 @@ func AllowedProofs(a Action) []ProofKind {
 	return nil
 }
 
-// ProofAllowed reports whether kind is one of action's proof kinds.
 func ProofAllowed(a Action, kind ProofKind) bool { return slices.Contains(AllowedProofs(a), kind) }
 
 var actionGrammar = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`)
 
-// ValidAction reports whether a is in the closed set (which implies the
-// §10.2 grammar and the 48-byte bound).
 func ValidAction(a Action) bool { return AllowedProofs(a) != nil }
 
-// EncTuple is enc(T): every field, in order, as u32be(len) ‖ bytes. An empty
-// tuple is zero bytes; an empty field is u32be(0).
 func EncTuple(fields ...[]byte) []byte {
 	n := 0
 	for _, f := range fields {
@@ -136,10 +115,6 @@ func checkAction(a Action) error {
 	return nil
 }
 
-// ParamsHash is SHA256("hasala/v1/step-up-params" ‖ 00 ‖ action ‖ 00 ‖ enc(T)).
-// It accepts any name of the §10.2 grammar, so the vectors can pin the bytes
-// of names outside the closed set too; the server's routes only ever pass
-// their own action.
 func ParamsHash(a Action, fields ...[]byte) ([32]byte, error) {
 	if err := checkAction(a); err != nil {
 		return [32]byte{}, err
@@ -152,9 +127,6 @@ func ParamsHash(a Action, fields ...[]byte) ([32]byte, error) {
 	return sha256.Sum256(m), nil
 }
 
-// StepUpChallenge is C = SHA256("hasala/v1/step-up" ‖ 00 ‖ nonce32 ‖ action ‖
-// 00 ‖ params_hash): the 32 bytes a passkey asserts over and a DAK signs
-// inside DeviceStepUpMessage.
 func StepUpChallenge(nonce []byte, a Action, paramsHash [32]byte) ([32]byte, error) {
 	if err := need("nonce", nonce, NonceSize); err != nil {
 		return [32]byte{}, err

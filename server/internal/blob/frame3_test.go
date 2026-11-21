@@ -48,7 +48,6 @@ func TestParse3ReadsTheCleartextHeader(t *testing.T) {
 	if ep, err := KeyEpoch(f); err != nil || ep != 7 {
 		t.Fatalf("KeyEpoch = %d, %v", ep, err)
 	}
-	// Spec 01 A09's header for this envelope at epoch 1.
 	h1, _ := Header3(e, 1)
 	const a09 = "0300000001005336663163326239652d346433612d346635622d386337642d306531" +
 		"6632613362346335647c686f747c696f732d30613162326333642d346535662d3461" +
@@ -56,7 +55,6 @@ func TestParse3ReadsTheCleartextHeader(t *testing.T) {
 	if got := hexOf(h1); got != a09 {
 		t.Fatalf("Header3 = %s, want A09's %s", got, a09)
 	}
-	// Nothing is read from a frame that fails the predicate.
 	f[0] = 1
 	if _, err := EmbeddedAAD(f); err == nil {
 		t.Fatal("EmbeddedAAD read a v1 frame")

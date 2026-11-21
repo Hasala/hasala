@@ -18,86 +18,27 @@ import (
 	"golang.org/x/text/encoding/htmlindex"
 )
 
-// This file generates the two artifacts a client twin (once TypeScript, now
-// the Swift port) cannot derive for itself, and then checks that what is committed is what this build would
-// generate today.
-//
-//   - conformance/normalizer/charset-tables.ts — the byte tables of every legacy
-//     charset the Go normalizer can decode. TypeScript cannot use TextDecoder
-//     for this. Bun 1.3's TextDecoder does not implement windows-1256 AT ALL —
-//     the corpus's only non-UTF-8 charset, 110 messages — and where both do
-//     implement a label they disagree, because TextDecoder follows the WHATWG
-//     index and golang.org/x/text/encoding/charmap follows the Unicode
-//     consortium's mapping files. Measured, not assumed: windows-1252 differs
-//     at 5 of 256 bytes (0x81, 0x8D, 0x8F, 0x90, 0x9D — U+FFFD in Go, the C1
-//     control in WHATWG) and iso-8859-6 at 32. Generating the tables from the
-//     registry the Go normalizer actually uses is the only way the two
-//     executors can be byte-identical by construction rather than by hope.
-//
-//   - conformance/normalizer/edge-cases.json — Go-authored expectations for the
-//     input classes the 7,002-message corpus contains ZERO of: quoted-printable
-//     leniency, malformed base64, unknown charsets and transfer encodings,
-//     broken MIME trees, header recovery. The corpus fixtures pin what real
-//     bank mail does; these pin what the contract says about everything else,
-//     which is exactly where two independent implementations drift apart.
-//
-// Both are regenerated with
-//
-//	HASALA_WRITE_CONFORMANCE=1 go test ./internal/norm/ -run TestWriteTwinArtifacts
-//
-// and both have a freshness test below that runs unconditionally.
-
 const (
 	charsetTablesPath = conformanceDir + "/charset-tables.ts"
 	edgeCasesPath     = conformanceDir + "/edge-cases.json"
 )
 
-// ---------------------------------------------------------------------------
-// Charset classification
-// ---------------------------------------------------------------------------
-
-// charsetKind is how the TypeScript twin must treat a declared charset label.
 type charsetKind string
 
 const (
-	// kindPassthrough: the bytes reach stage 3 undecoded and NO error is raised.
-	// The two labels go-message short-circuits ("utf-8", "us-ascii") and every
-	// label whose resolved encoding is UTF-8 anyway.
 	kindPassthrough charsetKind = "passthrough"
-	// kindUnresolved: the bytes ALSO reach stage 3 undecoded, because go-message
-	// leaves the body untouched when its registry cannot resolve the label — but
-	// it additionally returns an UnknownCharsetError, and that error is only
-	// tolerated on the TOP-LEVEL entity. On a sub-part it comes back out of
-	// NextPart and aborts the whole walk, which is why this cannot be folded into
-	// kindPassthrough even though the two produce identical text.
-	kindUnresolved charsetKind = "unresolved"
-	// kindSingleByte: a 256-entry byte table, reproduced exactly in TypeScript.
-	kindSingleByte charsetKind = "single-byte"
-	// kindUnsupported: Go decodes it with a stateful or multi-byte codec that
-	// TypeScript has no byte-identical equivalent for. The twin THROWS rather
-	// than guessing — see the contract note in charset.ts.
+	kindUnresolved  charsetKind = "unresolved"
+	kindSingleByte  charsetKind = "single-byte"
 	kindUnsupported charsetKind = "unsupported"
 )
 
-// charsetLabels is the candidate list the tables are generated from.
-//
-// The corpus needs exactly three of these (utf-8: 6,905 leaves, windows-1256:
-// 110, us-ascii: 1). The rest are here so that a bank that switches encoding
-// tomorrow lands on a table rather than on the divergence class: every label
-// listed resolves through the SAME registry the Go normalizer uses, so whatever
-// this generator records is by definition what Go does.
 var charsetLabels = []string{
-	// what the corpus actually contains
 	"utf-8", "us-ascii", "windows-1256",
-	// utf-8 aliases and near-misses
 	"utf8", "utf_8", "unicode-1-1-utf-8", "ascii", "iso-ir-6", "ansi_x3.4-1968",
 	"ansi_x3.4-1986", "cp367", "csascii", "ibm367", "iso646-us", "us",
-	// the two go-message quirk labels
 	"ansi_x3.110-1983", "x-utf_8j",
-	// arabic
 	"cp1256", "windows_1256", "x-cp1256", "ms-arab", "iso-8859-6", "iso_8859-6",
 	"arabic", "csisolatinarabic", "asmo-708", "ecma-114", "iso-ir-127",
-	// western european and the rest of the windows-125x family
 	"windows-1250", "windows-1251", "windows-1252", "windows-1253", "windows-1254",
 	"windows-1255", "windows-1257", "windows-1258", "cp1250", "cp1251", "cp1252",
 	"cp1253", "cp1254", "cp1255", "cp1257", "cp1258", "x-cp1252",
@@ -106,20 +47,14 @@ var charsetLabels = []string{
 	"iso-8859-2", "iso-8859-3", "iso-8859-4", "iso-8859-5", "iso-8859-7",
 	"iso-8859-8", "iso-8859-9", "iso-8859-10", "iso-8859-13", "iso-8859-14",
 	"iso-8859-15", "iso-8859-16", "latin2", "latin3", "latin4", "latin5", "latin6",
-	// cyrillic, greek, thai, mac
 	"koi8-r", "koi8-u", "macintosh", "mac", "csmacintosh", "x-mac-cyrillic",
 	"windows-874", "tis-620", "ibm866", "cp866",
-	// ibm code pages that turn up in bank gateways
 	"ibm037", "ibm437", "ibm850", "ibm852", "ibm855", "ibm858", "ibm860",
 	"ibm862", "ibm863", "ibm865", "cp437", "cp850",
-	// multi-byte: listed so the generator can CLASSIFY them as the divergence
-	// class rather than silently leaving them to the passthrough default
 	"utf-16", "utf-16le", "utf-16be", "unicodefffe", "csunicode", "iso-10646-ucs-2",
 	"utf-32", "utf-32le", "utf-32be",
 	"gb2312", "gbk", "gb18030", "big5", "big5-hkscs", "euc-jp", "euc-kr",
 	"shift_jis", "sjis", "ms_kanji", "iso-2022-jp", "iso-2022-kr", "iso-2022-cn",
-	// every other label golang.org/x/text/encoding/htmlindex resolves (the WHATWG label
-	// set), so no label Go decodes is left to the passthrough default by omission
 	"unicode11utf8", "unicode20utf8", "x-unicode20utf8", "866", "csibm866", "csisolatin2",
 	"iso-ir-101", "iso8859-2", "iso88592", "iso_8859-2", "iso_8859-2:1987", "l2",
 	"csisolatin3", "iso-ir-109", "iso8859-3", "iso88593", "iso_8859-3", "iso_8859-3:1988",
@@ -144,31 +79,22 @@ var charsetLabels = []string{
 	"csksc56011987", "iso-ir-149", "korean", "ks_c_5601-1987", "ks_c_5601-1989",
 	"ksc5601", "ksc_5601", "windows-949", "csiso2022kr", "hz-gb-2312", "iso-2022-cn-ext",
 	"replacement", "ucs-2", "unicode", "unicodefeff", "x-user-defined",
-	// deliberately unresolvable, to pin the passthrough default
 	"x-nope", "unknown-8bit",
 }
 
-// utf8ProbeInputs decide whether a resolved encoding is UTF-8 in disguise. A
-// label that decodes byte-identically to the stage-3 WHATWG UTF-8 decoder needs
-// no table: passthrough already produces the same answer in both executors.
 var utf8ProbeInputs = [][]byte{
 	[]byte("plain ascii"),
-	{0xD8, 0xA7, 0xD9, 0x84, 0xD8, 0xB9}, // arabic, valid utf-8
-	{0x41, 0xE2, 0x82},                   // truncated 3-byte
-	{0x41, 0xC0, 0x80, 0x42},             // overlong
-	{0xEF, 0xBB, 0xBF, 0x41},             // BOM
-	{0x41, 0xF5, 0x80, 0x80, 0x80, 0x42}, // out of range
-	{0x80, 0x81, 0x82},                   // bare continuations
-	{0x41, 0xED, 0xA0, 0x80, 0x42},       // surrogate
-	{0xF0, 0x9F, 0x92, 0xA9},             // 4-byte
-	{0x00, 0x01, 0x7F, 0x80, 0xFF},       // mixed
+	{0xD8, 0xA7, 0xD9, 0x84, 0xD8, 0xB9},
+	{0x41, 0xE2, 0x82},
+	{0x41, 0xC0, 0x80, 0x42},
+	{0xEF, 0xBB, 0xBF, 0x41},
+	{0x41, 0xF5, 0x80, 0x80, 0x80, 0x42},
+	{0x80, 0x81, 0x82},
+	{0x41, 0xED, 0xA0, 0x80, 0x42},
+	{0xF0, 0x9F, 0x92, 0xA9},
+	{0x00, 0x01, 0x7F, 0x80, 0xFF},
 }
 
-// classifyDecoder is the shared single-byte / stateful / UTF-8-alike probe. It
-// takes the decode function so the two registries below are classified by the
-// SAME logic — the body path (go-message's charsetReader) and the RFC 2047 word
-// path (htmlindex alone) resolve labels differently, and each has to be
-// measured against its own registry rather than assumed to match the other.
 func classifyDecoder(dec func([]byte) ([]byte, error)) (kind charsetKind, table []rune, note string) {
 	if _, err := dec([]byte("a")); err != nil {
 		return kindUnresolved, nil, "registry cannot resolve"
@@ -243,14 +169,6 @@ func classifyDecoder(dec func([]byte) ([]byte, error)) (kind charsetKind, table 
 	return kindSingleByte, tab, "single-byte table"
 }
 
-// resolveWordCharsetLabel classifies a label for the RFC 2047 WORD path, which
-// goes through htmlindex ALONE — norm's mime.WordDecoder is wired straight to
-// htmlindex.Get, not to go-message's four-step chain. The two genuinely differ:
-// "ansi_x3.110-1983" is an ISO-8859-1 alias for a body and is unknown to a word,
-// and every ianaindex-only name (ibm037, iso-8859-16, …) is the same story.
-// mime.WordDecoder's own utf-8 / iso-8859-1 / us-ascii branches are handled in
-// the TypeScript twin before this map is consulted, exactly as Go handles them
-// before calling CharsetReader.
 func resolveWordCharsetLabel(label string) (charsetKind, []rune, string) {
 	low := strings.ToLower(label)
 	return classifyDecoder(func(b []byte) ([]byte, error) {
@@ -262,9 +180,6 @@ func resolveWordCharsetLabel(label string) (charsetKind, []rune, string) {
 	})
 }
 
-// resolveCharsetLabel reproduces go-message's charsetReader dispatch exactly:
-// the "utf-8"/"us-ascii" short circuit first, then the registry, then the
-// body-untouched behaviour when the registry fails.
 func resolveCharsetLabel(label string) (kind charsetKind, table []rune, resolvedNote string) {
 	low := strings.ToLower(label)
 	if low == "utf-8" || low == "us-ascii" {
@@ -283,7 +198,6 @@ func resolveCharsetLabel(label string) (kind charsetKind, table []rune, resolved
 	return k, t, note
 }
 
-// buildCharsetTablesTS renders the generated TypeScript module.
 func buildCharsetTablesTS() string {
 	type entry struct {
 		label string
@@ -304,8 +218,7 @@ func buildCharsetTablesTS() string {
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].label < entries[j].label })
 
-	// Deduplicate identical tables: many labels alias one encoding.
-	tableIndex := map[string]int{} // table contents -> index
+	tableIndex := map[string]int{}
 	var tables []string
 	tableKeyOf := func(t []rune) int {
 		var b strings.Builder
@@ -397,7 +310,6 @@ func buildCharsetTablesTS() string {
 	}
 	b.WriteString("];\nvoid UNRESOLVED;\n\n")
 
-	// The RFC 2047 word path, classified against htmlindex alone.
 	wordSingle := map[string]int{}
 	var wordUnsupported, wordPassthrough []entry
 	for _, e := range entries {
@@ -485,7 +397,6 @@ export const KNOWN_LABELS: readonly string[] = [
 	return b.String()
 }
 
-// escapeTSRune renders one rune as a TypeScript string-literal fragment.
 func escapeTSRune(r rune) string {
 	switch r {
 	case '"':
@@ -505,17 +416,13 @@ func escapeTSRune(r rune) string {
 	return string(r)
 }
 
-// ---------------------------------------------------------------------------
-// Edge-case fixtures: the input classes the corpus has none of
-// ---------------------------------------------------------------------------
-
 type edgeCase struct {
 	Name  string `json:"name"`
 	Class string `json:"class"`
 	Note  string `json:"note,omitempty"`
 	Raw   string `json:"raw_base64"`
 
-	ExpectError         string `json:"expect_error"` // "" | "no_text_part"
+	ExpectError         string `json:"expect_error"`
 	ExpectTextBase64    string `json:"expect_text_base64"`
 	ExpectPart          string `json:"expect_part"`
 	ExpectCharset       string `json:"expect_charset"`
@@ -526,8 +433,6 @@ type edgeCase struct {
 	ExpectDateSource    string `json:"expect_date_source"`
 }
 
-// edgeInputs are built here rather than loaded, so the file is the record of
-// what was asked as well as what was answered.
 func edgeInputs() []struct{ Name, Class, Note, Raw string } {
 	hdr := "From: a@b.c\r\nSubject: Hi\r\nMIME-Version: 1.0\r\n"
 	textPlain := func(cte, body string) string {
@@ -544,12 +449,10 @@ func edgeInputs() []struct{ Name, Class, Note, Raw string } {
 	mp := func(body string) string {
 		return hdr + "Content-Type: multipart/alternative; boundary=\"BND\"\r\n\r\n" + body
 	}
-	// A short arabic phrase in windows-1256 and in iso-8859-1 high bytes.
 	w1256 := base64.StdEncoding.EncodeToString([]byte{0xC7, 0xE1, 0xD9, 0xD1, 0xC8, 0xED})
 	high := base64.StdEncoding.EncodeToString([]byte{0x41, 0x80, 0x8D, 0xA0, 0xE9, 0xFF, 0x5A})
 
 	return []struct{ Name, Class, Note, Raw string }{
-		// --- quoted-printable leniency ------------------------------------
 		{"qp-soft-break-crlf", "quoted-printable", "= CRLF is a soft break: removed", textPlain("quoted-printable", "AAA=\r\nBBB\r\n")},
 		{"qp-soft-break-lf", "quoted-printable", "= LF is a soft break too (Go deviation 1)", textPlain("quoted-printable", "AAA=\nBBB\n")},
 		{"qp-bad-hex-is-literal", "quoted-printable", "= not followed by two hex digits is a literal = (Go deviation 4)", textPlain("quoted-printable", "A=ZZB\r\n")},
@@ -565,7 +468,6 @@ func edgeInputs() []struct{ Name, Class, Note, Raw string } {
 		{"qp-eq-one-hex-at-eof", "quoted-printable", "", textPlain("quoted-printable", "x=4")},
 		{"qp-eq-line-alone", "quoted-printable", "a line that is only = followed by CRLF vanishes", textPlain("quoted-printable", "x\r\n=\r\ny\r\n")},
 
-		// --- base64 --------------------------------------------------------
 		{"b64-embedded-space", "base64", "RFC 2045 permits whitespace; go-message rewrites space and tab to LF first", textPlain("base64", "SGVsbG8g d29ybGQ=\r\n")},
 		{"b64-embedded-tab", "base64", "", textPlain("base64", "SGVsbG8g\td29ybGQ=\r\n")},
 		{"b64-continuation-indent", "base64", "", textPlain("base64", "SGVsbG8g\r\n  d29ybGQ=\r\n")},
@@ -575,14 +477,12 @@ func edgeInputs() []struct{ Name, Class, Note, Raw string } {
 		{"b64-trailing-garbage-kills-leaf", "base64", "data after the padding is fatal", textPlain("base64", "SGVsbG8=extra\r\n")},
 		{"b64-empty-payload", "base64", "an empty leaf is not recorded, so there is no text part", textPlain("base64", "\r\n")},
 
-		// --- transfer encodings --------------------------------------------
 		{"cte-7bit", "transfer-encoding", "", textPlain("7bit", "Hello world\r\n")},
 		{"cte-8bit-raw-utf8", "transfer-encoding", "", textPlain("8bit", "H\xc3\xa9llo\r\n")},
 		{"cte-absent", "transfer-encoding", "", textPlain("", "Hello world\r\n")},
 		{"cte-unknown-top-level-passes", "transfer-encoding", "an unknown CTE on the TOP-LEVEL entity is tolerated and the body passes through undecoded", textPlain("x-uuencode", "Hello world\r\n")},
 		{"cte-mixed-case", "transfer-encoding", "", textPlain("Base64", "SGVsbG8gd29ybGQ=\r\n")},
 
-		// --- charset --------------------------------------------------------
 		{"charset-windows-1256", "charset", "the corpus's only non-UTF-8 charset", withCharset("windows-1256", w1256)},
 		{"charset-cp1256-alias", "charset", "", withCharset("cp1256", w1256)},
 		{"charset-iso-8859-1-is-true-latin1", "charset", "ianaindex resolves iso-8859-1 to TRUE Latin-1, where WHATWG/TextDecoder would give windows-1252. The bytes 0x80 and 0x8D are the tell", withCharset("iso-8859-1", high)},
@@ -592,7 +492,6 @@ func edgeInputs() []struct{ Name, Class, Note, Raw string } {
 		{"charset-absent", "charset", "", hdr + "Content-Type: text/plain\r\n\r\nHello world\r\n"},
 		{"charset-uppercase-label", "charset", "", withCharset("WINDOWS-1256", w1256)},
 
-		// --- MIME structure --------------------------------------------------
 		{"mp-html-wins-over-plain", "structure", "", mp("preamble\r\n--BND\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nPLAIN\r\n--BND\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<b>HTML</b>\r\n--BND--\r\nepilogue\r\n")},
 		{"mp-first-html-wins", "structure", "", mp("--BND\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<b>ONE</b>\r\n--BND\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<b>TWO</b>\r\n--BND--\r\n")},
 		{"mp-first-empty-html-skipped", "structure", "first NON-EMPTY, not first", mp("--BND\r\nContent-Type: text/html; charset=utf-8\r\n\r\n--BND\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<b>TWO</b>\r\n--BND--\r\n")},
@@ -609,7 +508,6 @@ func edgeInputs() []struct{ Name, Class, Note, Raw string } {
 		{"mp-only-octet-stream", "structure", "", mp("--BND\r\nContent-Type: application/octet-stream\r\n\r\nAAA\r\n--BND--\r\n")},
 		{"ct-unparseable-skips-leaf", "structure", "a Content-Type mime.ParseMediaType rejects yields the RAW field as the media type, which matches neither text/html nor text/plain", hdr + "Content-Type: text/html (html); charset=utf-8\r\n\r\n<b>hi</b>\r\n"},
 
-		// --- headers and the raw fallback ------------------------------------
 		{"hdr-broken-first-line-raw", "headers", "the stage-1 raw fallback, with Subject and From recovered by the explicit scan", "!!! this line is not a header field\r\n" + textPlain("", "hello\r\n")},
 		{"hdr-leading-space-first-line-raw", "headers", "a header block may not begin with a folded line", " leading\r\n" + textPlain("", "hello\r\n")},
 		{"hdr-colonless-line-raw", "headers", "", "From: a@b.c\r\nNOCOLON\r\nSubject: Hi\r\n\r\nbody\r\n"},
@@ -643,7 +541,6 @@ func edgeInputs() []struct{ Name, Class, Note, Raw string } {
 		{"hdr-raw-8bit-nbsp-padding", "headers", "the header trim is over RUNES: the two-byte encoding of U+00A0 is trimmed, and the value keeps its interior spacing", "From: a@b.c\r\nSubject: \u00a0\u00a0Hi there\u00a0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n"},
 		{"hdr-raw-8bit-display-name", "headers", "", "From: \u0645\u0631\u062d\u0628\u0627 <a@b.c>\r\nSubject: Hi\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n"},
 
-		// --- stages 5-9 -------------------------------------------------------
 		{"html-entities-single-pass", "stages", "&amp;lt; must become &lt; and STOP; a chain of six replaces would produce <", hdr + "Content-Type: text/html; charset=utf-8\r\n\r\n<p>&amp;lt; &amp;amp; &copy; &nbsp;x&#39;y</p>\r\n"},
 		{"html-script-and-style-become-space", "stages", "", hdr + "Content-Type: text/html; charset=utf-8\r\n\r\n<div>A<script>var x = '<b>';</script>B<style>p{}</style>C</div>\r\n"},
 		{"html-block-tags-become-newlines", "stages", "", hdr + "Content-Type: text/html; charset=utf-8\r\n\r\nA<br>B<br/>C</p>D</tr>E</div>F<BR>G\r\n"},
@@ -654,7 +551,6 @@ func edgeInputs() []struct{ Name, Class, Note, Raw string } {
 		{"trim-set-keeps-next-line", "stages", "U+0085 is trimmed by Go's TrimSpace and not by this contract", hdr + "Content-Type: text/plain; charset=utf-8\r\n\r\nA\r\n\u0085\r\nB\r\n"},
 		{"plain-part-is-not-html-stripped", "stages", "a text/plain leaf skips stage 5 entirely, so markup survives", hdr + "Content-Type: text/plain; charset=utf-8\r\n\r\n<b>kept</b> &amp; decoded\r\n"},
 
-		// --- stage 10 ---------------------------------------------------------
 		{"fwd-gmail-same-line-headers", "forward", "", hdr + "Content-Type: text/plain; charset=utf-8\r\n\r\n---------- Forwarded message ---------\r\nFrom: Bank <alerts@bank.example>\r\nDate: Mar 3, 2026 at 2:07 PM\r\nSubject: Inner subject\r\nTo: <me@example.com>\r\n\r\nBODY LINE\r\n"},
 		{"fwd-apple-next-line-headers", "forward", "", hdr + "Content-Type: text/plain; charset=utf-8\r\n\r\nSent from my iPhone\r\n\r\nBegin forwarded message:\r\n\r\nFrom:\r\nBank <alerts@bank.example>\r\nDate:\r\n3 March 2026 at 14:07:02\r\nSubject:\r\nInner subject\r\nTo:\r\nme@example.com\r\n\r\nBODY LINE\r\n"},
 		{"fwd-quoted-recovers-nothing", "forward", "the shape 50 of the corpus's 56 forwards have: the marker is unquoted, every header line is > quoted, so nothing is recovered and the body is unchanged", hdr + "Content-Type: text/plain; charset=utf-8\r\n\r\nBegin forwarded message:\r\n\r\n> From: Bank <alerts@bank.example>\r\n> Subject: Inner subject\r\n\r\n> BODY LINE\r\n"},
@@ -782,10 +678,6 @@ func edgeCasesJSON(t *testing.T) []byte {
 	return append(b, '\n')
 }
 
-// ---------------------------------------------------------------------------
-// Writer + freshness
-// ---------------------------------------------------------------------------
-
 func TestWriteTwinArtifacts(t *testing.T) {
 	if os.Getenv(writeFixturesEnv) == "" {
 		t.Skipf("%s is unset; the generated artifacts are committed and regenerated deliberately", writeFixturesEnv)
@@ -802,12 +694,6 @@ func TestWriteTwinArtifacts(t *testing.T) {
 	t.Logf("wrote %s and %s", charsetTablesPath, edgeCasesPath)
 }
 
-// TestTwinArtifactsAreFresh is the un-regenerated-generator check.
-//
-// Both artifacts are produced by Go and consumed by the Swift port (CoreNorm).
-// Without this, a change to the Go normalizer or to the charset registry would
-// leave the Swift executor running against a fossil and passing — the exact
-// blind spot a one-way generated artifact has.
 func TestTwinArtifactsAreFresh(t *testing.T) {
 	for _, a := range []struct {
 		path string
@@ -828,12 +714,6 @@ func TestTwinArtifactsAreFresh(t *testing.T) {
 	}
 }
 
-// TestEveryCorpusCharsetHasATable is the guard on the divergence class.
-//
-// The TypeScript twin throws for any charset Go decodes with a multi-byte or
-// stateful codec. That is only acceptable while no such message exists, so the
-// claim is checked rather than asserted — against the corpus when one is
-// available, and against the fixture set always.
 func TestEveryCorpusCharsetHasATable(t *testing.T) {
 	for _, label := range []string{"utf-8", "us-ascii", "windows-1256"} {
 		kind, _, note := resolveCharsetLabel(label)

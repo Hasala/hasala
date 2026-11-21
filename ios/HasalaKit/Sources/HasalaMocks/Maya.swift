@@ -1,21 +1,9 @@
 import HasalaModels
 
-// The Maya scenario (spec 04 §15.3, page 06 §6.8): Maya Rahman, Dubai Marina, with the clock
-// fixed at Saturday 10 October 2026 13:40 in Dubai. Every figure is synthetic and matches the
-// Paper Home board ("Home · Default", 14O7-0) where the ledger agrees with it, so a screen can
-// be compared with its board side by side. Debug builds, previews and UI tests only: no Release
-// code path reaches this module (spec 04 §1.4, AT-REV-4).
-
-/// The mock scenarios a Debug build can launch with `-HasalaScenario <name>`.
 public enum Scenario: String, Sendable, CaseIterable {
-  /// Home · Default ("Home · Default").
   case maya
-  /// Home · Amounts hidden ("Home · Amounts hidden"): the same data with Hide amounts on.
   case mayaHidden
-  /// Review · All caught up: the same ledger with the review queue already sorted.
   case mayaCaughtUp
-  /// The App Review demo account: the same ledger loaded as sample data, so every row read
-  /// from a bank alert carries a `sample-<n>` message id instead of a Gmail one.
   case mayaSample
   case firstDays
   case mayaCopy
@@ -32,7 +20,6 @@ public enum Scenario: String, Sendable, CaseIterable {
   case mayaOne
   case mayaHuge
 
-  /// Reads `-HasalaScenario <name>` from launch arguments; `maya` when absent or unknown.
   public static func fromLaunchArguments(_ arguments: [String]) -> Scenario {
     guard let i = arguments.firstIndex(of: "-HasalaScenario"), i + 1 < arguments.count else {
       return .maya
@@ -44,7 +31,6 @@ public enum Scenario: String, Sendable, CaseIterable {
 
   public var now: LocalDateTime { self == .firstDays ? MayaHistory.firstDaysNow : MayaLedger.now }
 
-  /// The ledger the scenario starts from.
   public var state: LedgerState {
     if self == .firstDays { return MayaHistory.firstDays }
     switch self {
@@ -132,13 +118,6 @@ public enum Maya {
     widgets: widgets
   )
 
-  // Spent: 11,115.62 of 19,000 (12,350 + 6,650), 7,884.38 left: needs and wants 10,288.34 plus
-  // 827.28 not sorted yet (savings moves and the transfer in don't count). Today's tick is
-  // the 8,005.89 of bills paid so far plus 9,954.96 (the plan less this month's 9,045.04 of
-  // bills) × 10 ÷ 31 = 3,211.28: 11,217.17, so spending is behind it: on track.
-  // Savings: both standing orders went out on the 2nd, so the ledger has the 5,000 saved (the
-  // Paper Home board draws "0 of 5,000"; Paper's own Plan board and this ledger say 5,000, plan
-  // D.3 open decision 5).
   static let hero = SpendHero(
     overline: "Day 10 of 31",
     spent: .aed(11_115_62),
@@ -157,7 +136,6 @@ public enum Maya {
     unsorted: .aed(827_28)
   )
 
-  /// Home · Notifications (11Y9-0), "Needs a look", newest first: four items, the bell's 4.
   static let notifications = NotificationsSnapshot(needsALook: [
     NotificationItem(
       id: "review", disc: .hue(.sky, .review), title: "6 transactions to sort",
@@ -197,7 +175,6 @@ public enum Maya {
     .netWorth(NetWorthWidget(
       total: .aed(227_568_00),
       change: MoneyPhrase([.signedMoney(.aed(2_140_00), style: .rounded, hiddenGlyphs: 3), .text(" this month")]),
-      // The board's sparkline, sampled every 18 pt, as permille of its 70 pt band.
       spark: [171, 229, 200, 329, 300, 429, 400, 557, 529, 686, 743].map(Permille.init)
     )),
     .project(ProjectWidget(

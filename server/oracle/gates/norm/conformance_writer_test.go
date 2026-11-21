@@ -1,10 +1,5 @@
 package norm_test
 
-// The corpus-reading half of internal/norm's conformance suite, moved to the
-// oracle module with the corpus reader (spec 02 §4.3): the fixture writer and
-// the header-extraction probe. The fixture list and the case type are
-// internal/norm's exported CorpusFixtures and ConformanceCase (fixtures.go).
-
 import (
 	"encoding/base64"
 	"encoding/json"
@@ -20,18 +15,8 @@ import (
 	"github.com/salehtl/hasala/server/oracle/corpus"
 )
 
-// writeFixturesEnv gates the writer: a test that rewrites its own reference
-// on every run pins nothing.
 const writeFixturesEnv = "HASALA_WRITE_CONFORMANCE"
 
-// TestWriteNormalizerFixtures regenerates the real-mail cases from a scratch
-// .backup copy of the v1 corpus. They are written into the PRIVATE fixtures
-// checkout (conformance/normalizer/ inside $HASALA_PRIVATE_FIXTURES), never
-// into this repository, and are committed there.
-//
-//	HASALA_WRITE_CONFORMANCE=1 HASALA_CORPUS_DB=/scratch/corpus.db \
-//	HASALA_PRIVATE_FIXTURES=/path/to/hasala-fixtures \
-//	  go test ./gates/norm/ -run TestWriteNormalizerFixtures -v   # in server/oracle
 func TestWriteNormalizerFixtures(t *testing.T) {
 	if os.Getenv(writeFixturesEnv) == "" {
 		t.Skipf("%s is unset; fixtures are committed and regenerated deliberately", writeFixturesEnv)
@@ -165,15 +150,6 @@ func TestWriteNormalizerFixtures(t *testing.T) {
 	t.Logf("wrote %d fixtures + manifest to %s", len(entries), outDir)
 }
 
-// ---------------------------------------------------------------------------
-// Corpus-gated equivalence probes
-// ---------------------------------------------------------------------------
-
-// TestCorpusHeaderExtractionMatchesV1 checks that reading Subject and From out
-// of the raw message reproduces what v1's IMAP ENVELOPE handed the cascade.
-// Task 16 owns the full body-equivalence gate; this is the cheap half of it,
-// and it is the half most likely to be quietly wrong, because v1 never parsed
-// these headers itself.
 func TestCorpusHeaderExtractionMatchesV1(t *testing.T) {
 	path := os.Getenv("HASALA_CORPUS_DB")
 	if path == "" {

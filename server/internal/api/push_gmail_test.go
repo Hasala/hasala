@@ -25,7 +25,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// recWaker records every wake instead of sending it.
 type recWaker struct {
 	mu    sync.Mutex
 	wakes []wakeRec
@@ -35,7 +34,7 @@ type wakeRec struct {
 	user   uuid.UUID
 	writer string
 	others bool
-	tokens []string // WakeTokens only
+	tokens []string
 	r      pushv2.Reason
 }
 
@@ -69,8 +68,6 @@ func (w *recWaker) take() []wakeRec {
 	return out
 }
 
-// fakeVerifier stands in for googlejwt: a token is base64url(JSON claims), or
-// "down" (the key set is unreachable), or anything else (rejected).
 type fakeVerifier struct{ audience string }
 
 type fakeClaims struct {
@@ -113,14 +110,12 @@ const (
 
 const testTopic = "projects/test-project/topics/hasala-gmail-qa"
 
-// withPushAndGmail mounts the mailbox link and the Pub/Sub push.
 func withPushAndGmail(h *harness) (*recWaker, *GmailOptions) {
 	h.t.Helper()
 	return withGmail(h, &GmailPush{Topic: testTopic, Hook: fakeVerifier{testAudience}, Subscription: testSub,
 		ServiceAccount: testSA})
 }
 
-// withGmail mounts the mailbox link, and the push when push is not nil.
 func withGmail(h *harness, push *GmailPush) (*recWaker, *GmailOptions) {
 	h.t.Helper()
 	rk, err := gmailpush.NewRouteKey(bytes.Repeat([]byte{7}, 32))
@@ -146,7 +141,6 @@ func TestAPNsTokenRoutes(t *testing.T) {
 	h.writer(u, w1)
 	tok := h.session(u)
 
-	// Unbound sessions cannot register a token.
 	wantStatus(t, h.req("PUT", "/api/v1/push/apns", tok, PutAPNsRequest{TokenHex: tokenHexFor(1), Environment: "production"}),
 		http.StatusForbidden)
 	h.bind(tok, w1)
@@ -163,7 +157,6 @@ func TestAPNsTokenRoutes(t *testing.T) {
 		t.Fatalf("devices %+v", devs)
 	}
 
-	// AT-APNS-7: another writer of the same account takes the token over.
 	w1b := "ios-12222222-2222-4222-8222-222222222222"
 	h.writer(u, w1b)
 	tokB := h.session(u)
@@ -176,8 +169,6 @@ func TestAPNsTokenRoutes(t *testing.T) {
 		t.Fatalf("the token is held by %q (%v), want the second writer", holder, err)
 	}
 
-	// Another account cannot take a token whose row is live; once that
-	// session is gone, it moves and one row remains.
 	v := h.user("apns-other")
 	w2 := "ios-22222222-2222-4222-8222-222222222222"
 	h.writer(v, w2)
@@ -270,7 +261,6 @@ func TestAnUploadWakesTheOtherDevices(t *testing.T) {
 	}
 }
 
-// linkChallenge asks for a nonce on tok's session.
 func linkChallenge(h *harness, tok string) string {
 	h.t.Helper()
 	w := h.req("POST", "/api/v1/mailbox/link/challenge", tok, map[string]any{})
@@ -290,19 +280,15 @@ func link(k *keyed, tok, idToken string) *httptest.ResponseRecorder {
 		StepUp: k.stepUp(tok, keyproto.ActionMailboxLink, th[:])})
 }
 
-// AT-GM-1, -2, -6, -9: the link proves the nonce, the step-up and the claims;
-// only the HMAC is stored; the holder and the watch.
 func TestMailboxLink(t *testing.T) {
 	h := newHarness(t).passkeys()
 	wk, g := withPushAndGmail(h)
 	k := h.onboard(true)
 
-	// Without a step-up: 403 step_up_required, nothing stored.
 	n := linkChallenge(h, k.token)
 	wantStatus(t, h.req("PUT", "/api/v1/mailbox/link", k.token, LinkRequest{IDToken: fakeToken(goodClaims(n))}),
 		http.StatusForbidden)
 
-	// Claim failures: each a 403 link_rejected.
 	other := h.session(k.user)
 	h.bind(other, k.device.WriterID)
 	foreign := linkChallenge(h, other)
@@ -326,11 +312,9 @@ func TestMailboxLink(t *testing.T) {
 	if got.Holder.WriterID != k.device.WriterID || !got.Holder.IsThisDevice || got.Provider != "gmail" {
 		t.Fatalf("link %+v", got)
 	}
-	// Reused nonce.
 	if w := link(k, k.token, fakeToken(goodClaims(n))); w.Code != http.StatusForbidden {
 		t.Fatalf("a reused nonce linked: %d", w.Code)
 	}
-	// The address is stored nowhere: scan every text and bytea column.
 	assertNoAddress(t, h, testMailbox)
 	var stored []byte
 	if err := h.pool.QueryRow(bg, `SELECT address_hmac FROM mailbox_links WHERE user_id = $1`, k.user).Scan(&stored); err != nil ||
@@ -341,7 +325,6 @@ func TestMailboxLink(t *testing.T) {
 		t.Fatalf("link wakes %+v", ws)
 	}
 
-	// The watch: holder only, within 8 days.
 	wantStatus(t, h.req("PUT", "/api/v1/mailbox/link/watch", k.token,
 		LinkWatchRequest{ExpiresAt: time.Now().Add(9 * 24 * time.Hour)}), http.StatusBadRequest)
 	wantStatus(t, h.req("PUT", "/api/v1/mailbox/link/watch", k.token,
@@ -350,8 +333,6 @@ func TestMailboxLink(t *testing.T) {
 		t.Fatal("#37 does not report the watch #36 recorded")
 	}
 
-	// A second device takes over: the first sees is_this_device = false and
-	// its watch report is 409 not_holder.
 	d2 := authtest.NewDevice(t)
 	tok2 := k.enrol(d2)
 	if ws := wk.take(); len(ws) != 1 || ws[0].writer != d2.WriterID || ws[0].r != pushv2.ReasonSecurity {
@@ -371,13 +352,11 @@ func TestMailboxLink(t *testing.T) {
 		t.Fatalf("holder change wakes %+v, want the others (the old holder among them)", ws)
 	}
 
-	// Unlink with a step-up.
 	wantStatus(t, h.req("DELETE", "/api/v1/mailbox/link", tok2, UnlinkRequest{}), http.StatusForbidden)
 	wantStatus(t, h.req("DELETE", "/api/v1/mailbox/link", tok2,
 		UnlinkRequest{StepUp: k.stepUp(tok2, keyproto.ActionMailboxUnlink)}), http.StatusNoContent)
 	wantStatus(t, h.req("GET", "/api/v1/mailbox/link", k.token, nil), http.StatusNotFound)
 
-	// Each link and the unlink are auth events with no alert (spec 02 §10.16).
 	var linked, unlinked, alerts int
 	if err := h.pool.QueryRow(bg, `SELECT count(*) FILTER (WHERE kind = 'mailbox_linked'),
 	    count(*) FILTER (WHERE kind = 'mailbox_unlinked') FROM auth_events WHERE user_id = $1`, k.user).
@@ -390,7 +369,6 @@ func TestMailboxLink(t *testing.T) {
 	}
 }
 
-// mailboxRoutes is #34–#38.
 var mailboxRoutes = []struct{ method, path string }{
 	{"POST", "/api/v1/mailbox/link/challenge"},
 	{"PUT", "/api/v1/mailbox/link"},
@@ -399,7 +377,6 @@ var mailboxRoutes = []struct{ method, path string }{
 	{"DELETE", "/api/v1/mailbox/link"},
 }
 
-// wantNotFound wants the catch-all's 404 not_found: the route is not mounted.
 func wantNotFound(t *testing.T, w *httptest.ResponseRecorder, what string) {
 	t.Helper()
 	if w.Code != http.StatusNotFound || decodeJSON[errorBody](t, w).Error != "not_found" {
@@ -407,7 +384,6 @@ func wantNotFound(t *testing.T, w *httptest.ResponseRecorder, what string) {
 	}
 }
 
-// Without [gmail] nothing of #34–#39 is mounted and /meta offers no topic.
 func TestNoGmailMountsNothing(t *testing.T) {
 	h := newHarness(t)
 	for _, rt := range mailboxRoutes {
@@ -420,23 +396,17 @@ func TestNoGmailMountsNothing(t *testing.T) {
 	}
 }
 
-// The mailbox link without the Pub/Sub push: #34–#38 are mounted and link,
-// report and unlink a mailbox as they do with it; #36 records no watch (409
-// no_watch_topic), #37 reports none, /meta offers no topic, and the hook (#39)
-// is not mounted, so nothing is ever woken.
 func TestMailboxLinkWithoutPush(t *testing.T) {
 	h := newHarness(t).passkeys()
 	wk, g := withGmail(h, nil)
 	k := h.onboard(true)
 
-	// Mounted: without a session each is the one 401, not the catch-all 404.
 	for _, rt := range mailboxRoutes {
 		if w := h.req(rt.method, rt.path, "", map[string]any{}); w.Code != http.StatusUnauthorized {
 			t.Fatalf("%s %s: %d %s, want 401 (mounted)", rt.method, rt.path, w.Code, w.Body)
 		}
 	}
 
-	// The link: the same nonce, step-up and claims as with the push.
 	n := linkChallenge(h, k.token)
 	wantStatus(t, h.req("PUT", "/api/v1/mailbox/link", k.token, LinkRequest{IDToken: fakeToken(goodClaims(n))}),
 		http.StatusForbidden)
@@ -458,7 +428,6 @@ func TestMailboxLinkWithoutPush(t *testing.T) {
 		t.Fatalf("link wakes %+v", ws)
 	}
 
-	// #36: no topic, no watch.
 	w = h.req("PUT", "/api/v1/mailbox/link/watch", k.token, LinkWatchRequest{ExpiresAt: time.Now().Add(7 * 24 * time.Hour)})
 	if w.Code != http.StatusConflict || decodeJSON[errorBody](t, w).Error != "no_watch_topic" {
 		t.Fatalf("watch without the push: %d %s, want 409 no_watch_topic", w.Code, w.Body)
@@ -469,7 +438,6 @@ func TestMailboxLinkWithoutPush(t *testing.T) {
 		t.Fatalf("a watch was recorded without the push: %v %v", watch, err)
 	}
 
-	// #37: the holder, and no watch, even one recorded while the push was on.
 	if _, err := h.pool.Exec(bg, `UPDATE mailbox_links SET watch_expires_at = now() + interval '3 days' WHERE user_id = $1`,
 		k.user); err != nil {
 		t.Fatal(err)
@@ -479,12 +447,10 @@ func TestMailboxLinkWithoutPush(t *testing.T) {
 		t.Fatalf("status %+v", st)
 	}
 
-	// /meta: no topic, so the app never calls users.watch.
 	if m := decodeJSON[MetaResponse](t, h.req("GET", "/api/v1/meta", "", nil)); m.GmailWatchTopic != nil {
 		t.Fatalf("meta offers the topic %q without the push", *m.GmailWatchTopic)
 	}
 
-	// #39: not mounted, even for a well-formed, well-signed notice of a linked mailbox.
 	pushToken := "Bearer " + fakeToken(fakeClaims{Aud: testAudience, Email: testSA, EmailVerified: true})
 	wantNotFound(t, h.hook(pushToken, pubsubBody(t, testSub, map[string]any{"emailAddress": testMailbox, "historyId": "1"})),
 		"the hook without the push")
@@ -492,7 +458,6 @@ func TestMailboxLinkWithoutPush(t *testing.T) {
 		t.Fatalf("the hook woke %+v without the push", ws)
 	}
 
-	// #38.
 	wantStatus(t, h.req("DELETE", "/api/v1/mailbox/link", k.token,
 		UnlinkRequest{StepUp: k.stepUp(k.token, keyproto.ActionMailboxUnlink)}), http.StatusNoContent)
 	wantStatus(t, h.req("GET", "/api/v1/mailbox/link", k.token, nil), http.StatusNotFound)
@@ -555,7 +520,6 @@ func (h *harness) hook(authz string, body []byte) *httptest.ResponseRecorder {
 	return w
 }
 
-// AT-GM-3, -4, -5, -10: the hook's answers and who it wakes.
 func TestGmailHook(t *testing.T) {
 	h := newHarness(t)
 	wk, g := withPushAndGmail(h)
@@ -609,7 +573,6 @@ func TestGmailHook(t *testing.T) {
 		t.Fatalf("last_wake_hour not recorded: %v", err)
 	}
 
-	// hook-link: the burst for one address runs out; another is unaffected.
 	limited := 0
 	for range 20 {
 		h.hook(pushToken, good)
@@ -654,7 +617,6 @@ func TestGmailHookUnverifiedRequestsSpendNoGlobalBudget(t *testing.T) {
 	}
 }
 
-// AT-GM-7: the nudge sweep.
 func TestNudgeSweep(t *testing.T) {
 	h := newHarness(t)
 	_, g := withPushAndGmail(h)
@@ -729,7 +691,6 @@ func TestNudgeNotQueuedIsRetriedOnTheNextRun(t *testing.T) {
 	}
 }
 
-// putToken registers an APNs token for a bound session.
 func putToken(h *harness, tok string, b byte) string {
 	h.t.Helper()
 	wantStatus(h.t, h.req("PUT", "/api/v1/push/apns", tok, PutAPNsRequest{TokenHex: tokenHexFor(b), Environment: "production"}),
@@ -737,8 +698,6 @@ func putToken(h *harness, tok string, b byte) string {
 	return tokenHexFor(b)
 }
 
-// Spec 02 §12.5: a revoked writer and the devices a logout-all signs out are
-// woken through tokens collected before their rows went away.
 func TestRevokeAndLogoutAllWakeCollectedTokens(t *testing.T) {
 	h := newHarness(t).passkeys()
 	wk, _ := withPushAndGmail(h)
@@ -764,12 +723,10 @@ func TestRevokeAndLogoutAllWakeCollectedTokens(t *testing.T) {
 		t.Fatalf("revoke wakes %+v, want the others and the revoked writer's token", ws)
 	}
 
-	// logout-all: every other device's token, never the caller's.
 	d3 := authtest.NewDevice(t)
 	tok3 := k.enrol(d3)
 	t3 := putToken(h, tok3, 3)
 	wk.take()
-	// It needs a session.logout_all step-up (spec 02 §9.3).
 	wantStatus(t, h.req("POST", "/api/v1/auth/logout-all", k.token, map[string]any{}), http.StatusForbidden)
 	if ws := wk.take(); len(ws) != 0 {
 		t.Fatalf("a refused logout-all woke %+v", ws)
@@ -785,8 +742,6 @@ func TestRevokeAndLogoutAllWakeCollectedTokens(t *testing.T) {
 	}
 }
 
-// Spec 02 §12.5: account deletion wakes every device, account-gone, through
-// tokens collected before the purge.
 func TestAccountDeletionWakesEveryDevice(t *testing.T) {
 	h := newHarness(t).passkeys()
 	wk, _ := withPushAndGmail(h)

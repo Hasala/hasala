@@ -1,13 +1,10 @@
 import XCTest
 
-/// The profile on the Maya mock: one large sheet whose rows push inside it (Bills, one bill,
-/// Accounts, Categories and rules, Notifications), and Hide amounts reaching it.
 final class ProfileUITests: XCTestCase {
   override func setUp() {
     continueAfterFailure = false
   }
 
-  /// The Maya mock, once Home has appeared.
   @MainActor
   private func launchHome(_ scenario: String = "maya", arguments: [String] = []) -> XCUIApplication {
     let app = launch(scenario: scenario, arguments: arguments)
@@ -21,10 +18,6 @@ final class ProfileUITests: XCTestCase {
     XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: uiWait))
   }
 
-  /// Drags the page until `element` sits clear of the header and the tab bar, each drag
-  /// resting before it lifts, so the page is still when the audit reads it (a fling still
-  /// coasting makes the audit see text mid-move and call it clipped). Returns whether it
-  /// got there.
   @MainActor
   private func bringUp(_ app: XCUIApplication, _ element: XCUIElement) -> Bool {
     let height = app.frame.height
@@ -41,8 +34,6 @@ final class ProfileUITests: XCTestCase {
     return element.isHittable
   }
 
-  /// Screenshots down a long page (for the comparison with its Paper board): one per
-  /// screenful, each drag resting before it lifts so the page stops where it was dragged.
   @MainActor
   private func attachPage(_ app: XCUIApplication, _ name: String, screens: Int) {
     attach(app, "\(name) · 1")
@@ -54,7 +45,6 @@ final class ProfileUITests: XCTestCase {
     }
   }
 
-  /// Profile: the sheet, Bills (track a found bill), rules, notifications, Hide amounts.
   @MainActor
   func testProfileBillsAndSettings() throws {
     let app = launchHome()
@@ -66,7 +56,6 @@ final class ProfileUITests: XCTestCase {
     try audit(app)
     attachPage(app, "Profile", screens: 3)
     XCTAssertTrue(el(app, "profile.buildFooter").label.hasSuffix("End\u{2011}to\u{2011}end encrypted, never sold"))
-    // Back to the top: the sheet's own stack keeps its place.
     app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
       .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
 
@@ -98,7 +87,6 @@ final class ProfileUITests: XCTestCase {
     XCTAssertEqual(el(app, "profile.notifications").value as? String, "Everything")
     el(app, "profile.close").tap()
 
-    // Hide amounts reaches the profile sheet and the transaction sheet.
     app.buttons["header.hideAmounts"].firstMatch.tap()
     openProfile(app)
     XCTAssertTrue(el(app, "profile.accounts").waitForLabel(containing: "net worth Amount hidden"))
@@ -113,8 +101,6 @@ final class ProfileUITests: XCTestCase {
     attach(app, "Transaction · Amounts hidden")
   }
 
-  /// One bill, from Profile › Bills: what we noticed and the history; "I paid it" marks it
-  /// (with Undo); ending it asks for the last payment, then Bills lists it as ended.
   @MainActor
   func testOneBillFromTheProfile() throws {
     let app = launchHome()
@@ -143,22 +129,18 @@ final class ProfileUITests: XCTestCase {
     XCTAssertTrue(el(app, "bills.ended.toggle").exists)
   }
 
-  /// A rule learned today (Lulu sorted into Groceries with "Always use") carries its chip, and
-  /// the list still passes the audit.
   @MainActor
   func testARuleLearnedTodayShowsItsChip() throws {
     let app = launch(scenario: nil, screen: "profile.rulesLearned")
     let row = el(app, "rule.learned-lulu")
     XCTAssertTrue(row.waitForExistence(timeout: 15))
     XCTAssertTrue(row.label.contains("learned today"), row.label)
-    // The chip goes under a pattern too long to share its line; the page keeps its width.
     XCTAssertLessThanOrEqual(row.frame.maxX, app.frame.width - 20, "the learned rule widens the page")
     XCTAssertTrue(bringUp(app, row))
     attach(app, "Categories and rules · Learned today")
     try audit(app)
   }
 
-  /// A price change opens its bill from "Details"; Home's Bills pushes the bill in Home.
   @MainActor
   func testAPriceChangeOpensItsBill() throws {
     let app = launch(scenario: "maya", screen: "bills")
@@ -171,7 +153,6 @@ final class ProfileUITests: XCTestCase {
     attach(app, "du · Price change")
   }
 
-  /// Accounts, from Profile › Accounts: net worth, the year, everyday money and tracking.
   @MainActor
   func testAccountsFromTheProfile() throws {
     let app = launchHome()
@@ -226,7 +207,6 @@ final class ProfileUITests: XCTestCase {
     XCTAssertTrue(el(app, "rate.error").waitForExistence(timeout: uiWait))
   }
 
-  /// Profile, Bills, one bill and Accounts at `.accessibility3` (spec 04 §17).
   @MainActor
   func testProfileAtLargeTextSizes() throws {
     let app = launchHome(arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"])

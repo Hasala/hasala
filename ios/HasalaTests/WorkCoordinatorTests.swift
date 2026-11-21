@@ -5,8 +5,6 @@ import Testing
 
 @testable import Hasala
 
-/// The trigger coordinator (spec 04 §3 "one entry point"): one run in flight, one
-/// trailing rerun, the stages in order, and the stops only the gate acts on.
 @Suite("Work coordinator")
 struct WorkCoordinatorTests {
   nonisolated final class Log: Sendable {
@@ -67,7 +65,6 @@ struct WorkCoordinatorTests {
       for _ in 0..<5 { g.addTask { _ = await c.run(.authored) } }
       g.addTask { _ = await c.run(.silentPush) }
     }
-    // The first run, then ONE trailing rerun with the strongest trigger asked for.
     #expect(await c.runs == 2)
     #expect(log.all.filter { $0.hasPrefix("sync.") } == ["sync.authored", "sync.silentPush"])
   }
@@ -113,8 +110,6 @@ struct WorkCoordinatorTests {
     }
   }
 
-  // MARK: Budgets and cancellation
-
   nonisolated final class Probe: Sendable {
     let deadlines = Mutex<[ContinuousClock.Instant?]>([])
     let mailSawCancel = Mutex<Bool>(false)
@@ -137,8 +132,6 @@ struct WorkCoordinatorTests {
         committed: { p.committed.withLock { $0 += 1 } }, stopped: { _ in }))
   }
 
-  /// A silent push behind a long launch run returns when its own 25 s (here 200 ms) run
-  /// out, not when the launch run ends.
   @Test func aBudgetedCallerWaitsNoLongerThanItsBudget() async {
     let p = Probe()
     let c = Self.probed(p, syncFor: .milliseconds(1500))
@@ -152,8 +145,6 @@ struct WorkCoordinatorTests {
     _ = await launch.value
   }
 
-  /// The trailing rerun runs to its own callers' deadline: none when one of them has no
-  /// budget, never the first run's (long past here).
   @Test func theRerunRunsToItsCallersDeadline() async {
     let p = Probe()
     let c = Self.probed(p, syncFor: .milliseconds(300))
@@ -186,8 +177,6 @@ struct WorkCoordinatorTests {
     }
   }
 
-  /// A BGTask's expiration cancels its job: the caller returns at once, and with nobody
-  /// else waiting the run stops (the Gmail cycle sees the cancellation, no reload).
   @Test func cancellingTheOnlyCallerStopsTheRun() async {
     let p = Probe()
     let c = Self.probed(p, syncFor: .milliseconds(50), mailFor: .milliseconds(800))
@@ -217,8 +206,6 @@ struct WorkCoordinatorTests {
     #expect(p.committed.withLock { $0 } >= 1)
   }
 
-  /// Before a deletion wipes the store: the run in flight ends first, and nothing new
-  /// starts until `resume`.
   @Test func pauseWaitsForTheRunAndHoldsNewOnes() async {
     let p = Probe()
     let c = Self.probed(p, syncFor: .milliseconds(200))

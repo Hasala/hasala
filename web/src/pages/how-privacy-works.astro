@@ -1,14 +1,4 @@
 ---
-/**
- * How privacy works (Paper NFK-0): the plain-words explainer on the navy band.
- * /privacy (the policy) and /security stay the documents of record; this page
- * explains and links to them. The dedicated privacy page: the nav's "How
- * privacy works" and the homepage band link here.
- *
- * Motion (Paper C83-0): the head rises in on arrival (CSS only), the flow
- * draws as it comes into view, and the who-can-see rows reveal one by one
- * (data-play-in, set by PrivacyFlow's script). Reduced motion: all still.
- */
 import Base from '../layouts/Base.astro';
 import PrivacyFlow from '../components/detail/PrivacyFlow.astro';
 import Icon from '../components/Icon.astro';
@@ -109,13 +99,9 @@ const rows = [
 </Base>
 
 <style>
-  /* Navy behind the band too, so no white shows at a sub-pixel seam with the
-     footer. An image, as in global.css, so Safari still reads html's colour. */
   :global(body.hpw-page) {
     background: linear-gradient(oklab(23% -0.004 -0.069), oklab(23% -0.004 -0.069));
   }
-  /* The band runs from the top of the screen, under the nav, to the footer,
-     which carries the navy on. The top padding clears the nav. */
   .hpw {
     --section-pt: calc(56px + 92px);
     --section-pb: 88px;
@@ -400,8 +386,6 @@ const rows = [
       transition-duration: 200ms;
     }
   }
-  /* Motion: the head rises in on arrival, 60 ms apart; each row of the table
-     reveals as it scrolls in (data-play, from PrivacyFlow's script). */
   @media (prefers-reduced-motion: no-preference) {
     .hpw__head > * {
       animation: hpw-rise var(--t-reveal) var(--ease-out-soft) both;

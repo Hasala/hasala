@@ -2,30 +2,17 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-// Parts the Plan screens share: the pushed screen around Plan · Dining and Plan · Japan
-// trip, a budget row's line of facts, the overline, the bucket dot and the two glyphs Plan
-// draws that the kit has no icon for. Figures go through MoneyText and MoneyPhrase, so Hide
-// amounts reaches every one (spec 04 §12).
-
-/// One item of a pushed screen's More menu (page 14 §04: a native menu, verb first).
 struct PlanMenuItem: Identifiable {
   let title: String
   let action: () -> Void
   var id: String { title }
 }
 
-/// A pushed Plan screen (Paper "Plan · Dining", "Plan · Japan trip"): the system bar with
-/// its back button, the title and, when there is something to do, More; the hue's wash
-/// scrolling away with the content; sections 32 apart from 20 under the bar, 160 at the
-/// bottom so the last card clears the tab bar, and the soft edge over the tab bar.
 struct PlanDetailScreen<Content: View>: View {
   let app: AppModel
   let title: String
   let wash: HWash
-  /// The More menu; none when empty (a menu with nothing in it would promise an action).
   var more: [PlanMenuItem] = []
-  /// Hosts the toast where nothing above does (the Plan tab's root hosts its own, but a pushed
-  /// screen covers it; the profile sheet hosts one over all its pages).
   var hostsToast = true
   @ViewBuilder let content: () -> Content
   @Environment(\.inProfileSheet) private var inProfileSheet
@@ -39,8 +26,6 @@ struct PlanDetailScreen<Content: View>: View {
       .padding(.bottom, HSpacing.scrollContentBottom)
       .frame(maxWidth: .infinity, alignment: .leading)
     }
-    // The wash starts at the top of the screen, behind the bar, and scrolls away with the
-    // content (Paper: absolute, 420 tall); a pull or a refresh doesn't carry it down.
     .washBehind(wash)
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .background(HColor.surfaceSecondary)
@@ -53,9 +38,6 @@ struct PlanDetailScreen<Content: View>: View {
   }
 }
 
-/// The More glass button and its native menu, on the trailing side of a pushed screen's bar.
-/// With nothing to offer there is no toolbar at all: an empty one still leaves the bar a
-/// zero-sized item, which the accessibility audit reads as a control too small to tap.
 private struct MoreMenu: ViewModifier {
   let items: [PlanMenuItem]
 
@@ -78,19 +60,10 @@ private struct MoreMenu: ViewModifier {
   }
 }
 
-/// Two parts side by side on one baseline while they fit, else one above the other (Paper
-/// draws them side by side; at larger text sizes they stack). The same views either way, so
-/// their identity holds while the text size changes (a `ViewThatFits` swaps in a second copy,
-/// which VoiceOver and the accessibility audit see as new text that never grew).
 struct SideBySideOrStacked: Layout {
-  /// Side by side: the least room between the parts.
   var spacing: CGFloat = 6
-  /// Stacked: the room between the lines.
   var lineSpacing: CGFloat = 2
-  /// Side by side: the first part at the leading edge and the last at the trailing edge
-  /// (a field's label and value); otherwise the parts sit together, centred.
   var spreads = true
-  /// Stacked: how the lines line up.
   var stackedAlignment: HorizontalAlignment = .leading
 
   private func sideBySide(_ subviews: Subviews, width: CGFloat?) -> Bool {
@@ -141,7 +114,6 @@ struct SideBySideOrStacked: Layout {
   }
 }
 
-/// "NEW BUDGET", "TO", "TAKE FROM": the 13/16 overline just inside a block's edge.
 struct PlanOverline: View {
   let title: String
 
@@ -212,21 +184,15 @@ struct ChartPatternFill: View {
   }
 }
 
-/// The glyphs Plan draws that the kit has no icon for, from the Paper boards' paths: the
-/// wallet of Ready to assign (Plan · October, Move money) and the before → after arrow (Move
-/// money). Line drawings on the 24 grid with round caps and joins, like `HIconView`.
 struct PlanGlyph: View {
   enum Kind {
-    /// Plan · October "Ready to assign": a wallet with its flap and clasp.
     case wallet
-    /// Move money "Before and after": an arrow to the right.
     case arrowRight
   }
 
   let kind: Kind
   let size: CGFloat
   let color: Color
-  /// The main stroke in grid units (the wallet's clasp is drawn a little heavier).
   var stroke: CGFloat = 1.9
 
   private var lines: [(d: String, width: CGFloat)] {
@@ -256,17 +222,11 @@ struct PlanGlyph: View {
   }
 }
 
-/// A budget row's second line (page 16 §05): "spent of plan", then one short fact. Words run
-/// together with " · "; a status leads with a 7 dot and is set 600 in its colour: green for a
-/// paid bill, amber words with the brighter amber dot for "Over pace", red for a late bill.
-/// One line at the default size; at the accessibility sizes it wraps, the dot riding in the
-/// text. VoiceOver reads the words, with "Amount hidden" for each hidden figure.
 struct PlanFactsLine: View {
   let parts: [PlanDetailPart]
   let hidden: Bool
   @Environment(\.dynamicTypeSize) private var typeSize
 
-  /// Adjacent words are one run; a status stands alone.
   private enum Run {
     case words(String)
     case status(String, StatusTone)
@@ -315,8 +275,6 @@ struct PlanFactsLine: View {
     .accessibilityLabel(spoken)
   }
 
-  /// Paper's drawing: runs 6 apart, " ·" closing the words before a status and "· " opening
-  /// the words after one.
   private var line: some View {
     let kept = parts.filter(Self.hasMoney)
     let drops = !kept.isEmpty && kept.count < parts.count
@@ -348,7 +306,6 @@ struct PlanFactsLine: View {
     .lineLimit(1)
   }
 
-  /// The same line as one wrapping text, the dot a character in it.
   private var wrapped: Text {
     var out = Text(verbatim: "")
     for (i, run) in runs.enumerated() {
@@ -386,7 +343,6 @@ struct PlanFactsLine: View {
   }
 }
 
-/// "✓ Done", "✓ Done for October": the 14 check (stroke 3) and the words, 600 green.
 struct DoneMark: View {
   let words: String
 
@@ -402,8 +358,6 @@ struct DoneMark: View {
   }
 }
 
-/// A white list card's rows with Paper's dividers between them (1 pt `--color-border-subtle`,
-/// inset to where the text starts; 16 at the accessibility sizes, where rows stack).
 struct PlanListCard<Content: View>: View {
   var inset: HDivider.Inset = .disc68
   @ViewBuilder let content: Content

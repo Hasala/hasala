@@ -2,14 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// "Your invite is ready" (Paper E5B-0; spec 07 S3): the invite's universal link opened the
-/// app with the code filled in. It is never submitted on its own: "Create my account" goes
-/// on to About you, "Use a different code" to the code field (with this code in it).
-///
-/// The link carries the code and a key, not the address the invite went to or how long it
-/// lasts, so the card says where the code came from instead of Paper's "For
-/// maya@example.com" and "Saved until Sunday 25 October", and the copy promises no code only
-/// for the address the invite went to (the key proves that one, spec 04 §13.5).
 struct InviteReadyView: View {
   let store: OnboardingStore
 
@@ -110,7 +102,6 @@ struct InviteReadyView: View {
     "Save your 12 recovery words, now or from Home",
   ]
 
-  /// Paper "Card · What happens next": the three steps of creating the account.
   private var nextSteps: some View {
     VStack(alignment: .leading, spacing: 14) {
       Text("What happens next")

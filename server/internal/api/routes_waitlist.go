@@ -1,11 +1,5 @@
 package api
 
-// routes_waitlist.go: spec 07's website routes P1–P3 and P5 (spec 02 §7
-// #71–#73, #75): the waitlist submit, the confirm and leave links, and CORS
-// for https://hasala.app only. Every valid submission gets the same answer
-// whether the address is new, pending, confirmed, invited or already an
-// account; the difference is only which email the worker sends later.
-
 import (
 	"context"
 	"errors"
@@ -22,7 +16,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
-// Spec 07 §5.9's limiters.
 const (
 	waitlistIPRate      = 6.0 / 3600
 	waitlistIPBurst     = 3
@@ -46,23 +39,16 @@ const (
 	publicMaxBody       = 4 << 10
 )
 
-// WebOptions configures spec 07's public routes. A nil *WebOptions leaves them
-// unmounted (404), which is how a server without an auth key runs.
 type WebOptions struct {
 	Waitlist *waitlist.Service
-	// Origins is HASALA_WEB_ORIGINS; empty turns CORS off (a request with an
-	// Origin is then refused).
-	Origins []string
-	// DoneURL is HASALA_WEB_WAITLIST_DONE_URL, the 303 target of a script-free
-	// form post.
-	DoneURL string
+	Origins  []string
+	DoneURL  string
 
 	WaitlistIP, WaitlistPrefix, WaitlistGlobal, LinkIP, BankIP, BankPrefix, BankGlobal, BankUser, PreflightIP *Limiter
 
 	Turnstile         TokenVerifier
 	TurnstileRequired bool
 
-	// Outcomes counts waitlist_submit's outcome words and the honeypot.
 	Honeypot, Submitted atomic.Int64
 }
 
@@ -105,8 +91,6 @@ func (s *Server) mountWaitlist(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/waitlist/unsubscribe", s.handleWaitlistUnsubscribe)
 }
 
-// publicRoute is spec 07 §5.1–§5.2 and §5.7 around one POST handler: the
-// method gate (405 with Allow), the CORS origin check, and the preflight.
 func (s *Server) publicRoute(post http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -126,8 +110,6 @@ func (s *Server) publicRoute(post http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// corsAllowed applies the origin rule: no Origin is processed normally; a
-// listed one is echoed with Vary; any other is 403 with no CORS header.
 func (s *Server) corsAllowed(w http.ResponseWriter, r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
@@ -162,7 +144,6 @@ func (s *Server) handlePreflight(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// publicBody is the union of P1's and P4's fields, JSON or form.
 type publicBody struct {
 	Email          string `json:"email"`
 	Bank           string `json:"bank"`
@@ -173,7 +154,6 @@ type publicBody struct {
 	Token          string `json:"token"`
 }
 
-// formKeys maps a form field to the body field it fills (P1, P4).
 var formKeys = map[string]func(*publicBody) *string{
 	"email":                 func(b *publicBody) *string { return &b.Email },
 	"bank":                  func(b *publicBody) *string { return &b.Bank },
@@ -183,9 +163,6 @@ var formKeys = map[string]func(*publicBody) *string{
 	"cf-turnstile-response": func(b *publicBody) *string { return &b.TurnstileToken },
 }
 
-// decodePublic reads a JSON (application/json or text/plain) or, where
-// allowed, a form body of at most 4 KiB, strictly. It reports whether the body
-// was a form and whether it already answered.
 func decodePublic(w http.ResponseWriter, r *http.Request, allowForm bool, jsonDst any, form *publicBody) (isForm, ok bool) {
 	ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	switch {
@@ -216,8 +193,6 @@ func decodePublic(w http.ResponseWriter, r *http.Request, allowForm bool, jsonDs
 	return false, false
 }
 
-// wantsRedirect: a browser navigating without script posts a form and accepts
-// HTML; it gets a 303 to the website's done page instead of JSON.
 func wantsRedirect(r *http.Request, isForm bool) bool {
 	return isForm && strings.Contains(r.Header.Get("Accept"), "text/html")
 }
@@ -246,7 +221,6 @@ func (s *Server) answerPublic(w http.ResponseWriter, r *http.Request, isForm boo
 	writeJSON(w, status, body)
 }
 
-// StatusResponse is the public routes' success body.
 type StatusResponse struct {
 	Status string `json:"status"`
 }
@@ -326,7 +300,6 @@ func (s *Server) handleWaitlistSubmit(w http.ResponseWriter, r *http.Request) {
 	s.answerPublic(w, r, isForm, http.StatusAccepted, accepted, "", "")
 }
 
-// publicErrCode maps validation errors to spec 07 §5.8's codes.
 func publicErrCode(err error) string {
 	switch {
 	case err == nil:

@@ -1,19 +1,3 @@
-/**
- * Third-party software that the built site (dist/) ships to the browser, for
- * /licenses. Keep this list in step with what the build actually emits: the
- * font in src/assets/fonts/ and the code bundled into dist/_astro/*.js
- * (`V=1 bun scripts/check-dist.ts` lists each page's files). Build-time-only
- * tools (Astro's compiler, sharp, the sitemap integration) ship nothing and
- * are not listed. The repository's NOTICE file says the same.
- *
- * /licenses shows each package's own licence file verbatim where the build
- * can read it (Inter's OFL, Astro's and uqr's LICENSE); Vite's LICENSE.md
- * also carries the licences of everything Vite bundles into its own build,
- * none of which reaches the site, so Vite's entry is the MIT License with
- * Vite's own copyright line.
- */
-
-/** The MIT License's permission notice, without its copyright line. */
 const MIT_TERMS = `Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
@@ -32,12 +16,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.`;
 
-/** The full MIT License text for one set of copyright lines. */
 export const mitLicense = (copyright: readonly string[]) => `MIT License\n\n${copyright.join('\n')}\n\n${MIT_TERMS}\n`;
 
 export interface ThirdParty {
   name: string;
-  /** What it does on hasala.app. */
   use: string;
   copyright: readonly string[];
   license: 'MIT' | 'OFL-1.1';

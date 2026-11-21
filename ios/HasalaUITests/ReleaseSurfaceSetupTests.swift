@@ -1,15 +1,10 @@
 import XCTest
 
-/// Setup on the Release surface: Gmail and Outlook (personal Microsoft accounts only, one
-/// mailbox), then Home's Finish setting up, with nothing "coming soon" and no notifications
-/// promised (the sheet says so, and offers no Lock Screen choice the app can't change later).
 final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
   @MainActor
   func testSetupPromisesOnlyWhatWorks() throws {
     let app = launchRelease("setupBank", waitForHome: false)
 
-    // Bank alerts and Gmail on one screen: "Bank not listed?" asks for yours and points to
-    // Skip; nothing is "coming soon"; what Google will show is said before it shows.
     XCTAssertTrue(el(app, "bank.summary").waitForExistence(timeout: 15))
     let connect = el(app, "mail.connect.gmail")
     XCTAssertTrue(connect.waitForExistence(timeout: 10))
@@ -58,8 +53,6 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     tap(app, "plan.use")
     XCTAssertTrue(el(app, "home.finish.plan").waitForNonExistence(timeout: uiWait))
 
-    // Notifications, once the alerts are read: the sheet says the beta sends none yet, and
-    // offers no Lock Screen choice (Profile has no Notifications row to change it later).
     let note = el(app, "home.finish.notifications")
     XCTAssertTrue(note.waitForExistence(timeout: uiWait))
     let deadline = Date().addingTimeInterval(30)
@@ -97,7 +90,6 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(item.waitForExistence(timeout: uiWait))
   }
 
-  /// The review account's email step offers the sample month, with the same honest copy.
   @MainActor
   func testTheReviewAccountsEmailStepOffersSampleData() throws {
     let app = launchRelease("reviewAccount", waitForHome: false)
@@ -117,8 +109,6 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "the sample didn't go on")
   }
 
-  /// Outlook in setup: the step says only personal Microsoft accounts work; Use Outlook ›
-  /// Choose your email › Outlook connects it, and Home opens.
   @MainActor
   func testSetupConnectsOutlook() throws {
     var app = launchRelease("setupEmail", waitForHome: false, screen: "mail.connectOutlook")

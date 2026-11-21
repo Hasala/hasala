@@ -1,6 +1,3 @@
-// CorePrimitives against published vectors and the TypeScript seam's contract
-// tables (the ledgerd TypeScript client's src/platform.test.ts), ported case for case
-// where the case is a property of the primitive rather than of Node or Bun.
 import CryptoKit
 import Foundation
 import Testing
@@ -120,7 +117,6 @@ struct AESGCMTests {
 
 @Suite("ed25519 and p-256")
 struct SignatureTests {
-  // RFC 8032 §7.1 TEST 1 and TEST 2: published seeds, public keys and signatures.
   let rfc8032Test1Seed = hex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
   let rfc8032Test1Public = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
   let rfc8032Test1Signature = hex(
@@ -145,8 +141,6 @@ struct SignatureTests {
     #expect(!Ed25519.verify(publicKey: hex(rfc8032Test2Public), signature: rfc8032Test2Signature, message: hex("73")))
   }
 
-  // CryptoKit signs with randomness: never compare signature bytes (spec 01
-  // §1). What is pinned is that every signature verifies, under the RFC key.
   @Test("CryptoKit's signatures verify, and are not compared byte for byte")
   func signThenVerify() throws {
     let msg = utf8("hasala-writer-registration")
@@ -179,7 +173,6 @@ struct SignatureTests {
 
   @Test("P-256 verify-only: a fresh CryptoKit signature verifies; a wrong message does not")
   func p256() throws {
-    // Key generation here stands in for the Secure Enclave / CoreSoftAuth signer.
     let signer = P256Testing.newSigner()
     let msg = utf8("hasala/v1/reset-approve")
     let sig = try signer.sign(msg)
@@ -296,8 +289,6 @@ struct UTF8Tests {
   func replacement() {
     #expect(UTF8Text.decode([0x61, 0xff, 0x62]) == "a\u{FFFD}b")
     #expect(UTF8Text.decode([0xc3]) == "\u{FFFD}")
-    // A truncated 4-byte sequence is ONE maximal subpart (WHATWG), a surrogate
-    // encoded in UTF-8 is three.
     #expect(UTF8Text.decode([0xf0, 0x9f, 0x98, 0x61]) == "\u{FFFD}a")
     #expect(UTF8Text.decode([0xed, 0xa0, 0x80]) == "\u{FFFD}\u{FFFD}\u{FFFD}")
     #expect(UTF8Text.decode([0xc0, 0xaf]) == "\u{FFFD}\u{FFFD}")
@@ -318,8 +309,8 @@ struct GzipTests {
     let plain = utf8(String(repeating: "the quick brown fox", count: 50))
     let z = try Gzip.compress(plain)
     #expect(z[0] == 0x1f && z[1] == 0x8b && z[2] == 0x08)
-    #expect(z[4..<8].allSatisfy { $0 == 0 })  // mtime 0: deterministic
-    #expect(z[8] == 0x02)  // XFL 2: maximum compression
+    #expect(z[4..<8].allSatisfy { $0 == 0 })
+    #expect(z[8] == 0x02)
     #expect(try Gzip.decompress(z, maxOutputBytes: 1 << 20) == plain)
     #expect(try Gzip.decompress(try Gzip.compress(Data()), maxOutputBytes: 1024) == Data())
     let all = Data(0...255)
@@ -334,10 +325,6 @@ struct GzipTests {
     #expect(throws: GzipError.overCap(1024)) { try Gzip.decompress(bomb, maxOutputBytes: 1024) }
   }
 
-  // The bomb test proves the cap throws; this proves it throws DURING
-  // inflation. Same approach as platform.test.ts: the capped path against the
-  // same implementation inflating the same bomb uncapped, so machine speed
-  // cancels out. Inflate-then-measure would be no cheaper at all.
   @Test("the cap is enforced during inflation, not after it")
   func capIsEarly() throws {
     let n = 32 << 20
@@ -370,7 +357,7 @@ struct GzipTests {
     #expect(throws: GzipError.truncated) { try Gzip.decompress(z.prefix(10), maxOutputBytes: 1 << 20) }
     #expect(throws: GzipError.truncated) { try Gzip.decompress(Data(), maxOutputBytes: 1024) }
     var crc = z
-    crc[crc.count - 6] ^= 0xff  // inside the CRC-32 trailer
+    crc[crc.count - 6] ^= 0xff
     #expect(throws: GzipError.corrupt) { try Gzip.decompress(crc, maxOutputBytes: 1 << 20) }
     #expect(throws: GzipError.trailingData) { try Gzip.decompress(z + Data([0x00]), maxOutputBytes: 1 << 20) }
     #expect(throws: GzipError.trailingData) { try Gzip.decompress(z + z, maxOutputBytes: 1 << 20) }
@@ -390,8 +377,8 @@ struct MiscTests {
     let parts = u.split(separator: "-").map(\.count)
     #expect(parts == [8, 4, 4, 4, 12])
     #expect(u.utf8.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x61 && $0 <= 0x66) || $0 == 0x2d })
-    #expect(Array(u.utf8)[14] == 0x34)  // version 4
-    #expect([0x38, 0x39, 0x61, 0x62].contains(Array(u.utf8)[19]))  // variant 10xx
+    #expect(Array(u.utf8)[14] == 0x34)
+    #expect([0x38, 0x39, 0x61, 0x62].contains(Array(u.utf8)[19]))
     #expect(try r.uuidV4() != u)
   }
 
@@ -414,7 +401,6 @@ struct MiscTests {
   }
 }
 
-/// A software P-256 signer standing in for the Secure Enclave key (tests only).
 enum P256Testing {
   struct Signer {
     let key = P256.Signing.PrivateKey()

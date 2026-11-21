@@ -1,10 +1,3 @@
-/**
- * The legal Markdown carries notes for the owner, written [[OWNER: ...]],
- * and placeholders like [OPERATOR LEGAL NAME]. While a page is a draft they
- * are shown as marked notes so reviewers can find them; this plugin turns
- * them into <mark> elements. (Pages with notes left must not be published:
- * the legal pages stay noindex while their status is "draft".)
- */
 const NOTE = /\[\[OWNER:\s*([\s\S]*?)\]\]/g;
 const PLACEHOLDER = /\[([A-Z][A-Z0-9 ,.'’&/()-]{3,})\]/g;
 
@@ -20,12 +13,6 @@ function transformText(value) {
   return { type: 'html', value: html };
 }
 
-/**
- * A note can span several inline nodes: GFM turns an email address or URL
- * inside it into a link, which splits the text. Fold each such run (from the
- * text that opens "[[OWNER:" to the text that closes "]]") into one text node
- * first, so the whole note is marked. Links inside a note become plain text.
- */
 function mergeSplitNotes(node) {
   const kids = node.children;
   for (let i = 0; i < kids.length; i++) {
@@ -63,7 +50,6 @@ const slugify = (s) =>
     .replace(/\s+/g, '-');
 const textOf = (node) => (node.value ?? '') + (node.children ?? []).map(textOf).join('');
 
-/** plainWords may also be a map of section slug -> summary: each one becomes an "In plain words" callout under its heading. */
 function sectionCallouts(tree, plainWords) {
   if (!plainWords || typeof plainWords !== 'object') return;
   for (let i = tree.children.length - 1; i >= 0; i--) {

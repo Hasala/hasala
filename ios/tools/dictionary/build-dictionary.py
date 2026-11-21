@@ -30,7 +30,6 @@ def main():
             m, p, c, d = r["match"], r["pattern"], r["category"], r["display"]
             assert m in ORDER, f"match {m!r}"
             assert c in CATEGORIES, f"category {c!r}"
-            # Canonical already: no upper-case, no leading, trailing or double spaces.
             assert p == " ".join(p.split()), f"spaces {p!r}"
             assert p == p.lower(), f"case {p!r}"
             n = len(p)

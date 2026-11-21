@@ -3,16 +3,6 @@ import HasalaModels
 import HasalaWidgetData
 import SwiftUI
 
-/// The tab shell (Paper "13 · Navigation · Tab bar and search"): Home, Plan, Review with
-/// its to-sort badge and Activity, and the round add button beside the bar (the system's
-/// search-role tab, which opens Add a transaction and is never selected), with the app's
-/// sheets and the review cover over them. Search is in the header, a sheet on every tab: it
-/// finds transactions, categories and rules in this iPhone's own ledger, with no server call.
-/// Its direct answers (spec 04 §13.1) are not built.
-///
-/// Routing is `app.router`'s: the tab bar, the sheet and the cover bind to it, and each
-/// sheet's view model lives in a small holder view with `@State`, so a body pass here can't
-/// build it again.
 struct MainView: View {
   @State private var app: AppModel
   @State private var home: HomeViewModel
@@ -27,7 +17,6 @@ struct MainView: View {
     _activity = State(initialValue: ActivityViewModel(app: app))
   }
 
-  /// Tapping the selected tab again goes back to its root.
   private var selection: Binding<AppTab> {
     Binding(
       get: { app.router.tab },
@@ -44,9 +33,6 @@ struct MainView: View {
 
   var body: some View {
     TabView(selection: selection) {
-      // The tab glyphs are Paper's (spec 01 appendix B), as template images: the house with
-      // its door cut out, the two-piece pie, the stacked cards (0.45 / 0.7 / 1) and the
-      // history clock. The bar is the system's, so selection does not animate here.
       Tab("Home", image: "TabHome", value: AppTab.home) {
         HomeView(app: app, model: home)
       }
@@ -62,7 +48,6 @@ struct MainView: View {
       Tab("Review", image: "TabReview", value: AppTab.review) {
         ReviewTabView(app: app)
       }
-      // Transactions to sort, whatever the period; hidden at zero.
       .badge(app.reviewCount > 99 ? Text("99+") : app.reviewCount > 0 ? Text("\(app.reviewCount)") : nil)
       Tab("Activity", image: "TabActivity", value: AppTab.activity) {
         ActivityView(app: app, model: activity)
@@ -73,9 +58,6 @@ struct MainView: View {
     }
     .tabBarMinimizeBehavior(.never)
     .tabViewSearchActivation(.searchTabSelection)
-    // A main view that appears (again, after signing out and back in) starts with no
-    // sheet or cover from the last time it was on screen; a Debug launch's screen then
-    // opens over it.
     .onAppear {
       app.router.clearPresentation()
       applyPendingLaunch()
@@ -131,7 +113,6 @@ struct MainView: View {
         AddTransactionHost(app: app)
       case .addFromEmail(let id):
         AddTransactionHost(app: app, resolving: id)
-      // TODO(spec 04 §13.1): direct answers; the results as you type are the ledger's own.
       case .search:
         SearchView(app: app)
       }
@@ -174,7 +155,6 @@ struct MainView: View {
   }
 }
 
-/// The transaction sheet keeps one view model while it is up.
 struct TransactionHost: View {
   let app: AppModel
   @State private var model: TransactionViewModel
@@ -195,7 +175,6 @@ extension View {
   }
 }
 
-/// Change a budget keeps one view model while it is up.
 struct BudgetHost: View {
   @State private var model: BudgetSheetViewModel
 
@@ -206,7 +185,6 @@ struct BudgetHost: View {
   var body: some View { BudgetEditSheet(model: model) }
 }
 
-/// Move money keeps one view model while it is up.
 struct MoveMoneyHost: View {
   @State private var model: BudgetSheetViewModel
 
@@ -217,7 +195,6 @@ struct MoveMoneyHost: View {
   var body: some View { MoveMoneySheet(model: model) }
 }
 
-/// The review cover keeps one session's view model while it is up.
 private struct ReviewCover: View {
   @Bindable var app: AppModel
   @State private var model: ReviewViewModel

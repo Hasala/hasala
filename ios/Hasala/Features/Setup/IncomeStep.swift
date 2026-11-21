@@ -2,13 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Set your monthly plan · Monthly income (Paper 56S-0): the salary on the app's own keypad
-/// (page 11, docked: no system keyboard, never sliding in or out), the payday day strip,
-/// and Skip. What was typed and chosen stays for the life of
-/// the process: Back and Forward show it again.
-///
-/// Nothing on the keypad animates beyond a key's highlight and a light tick; a hardware
-/// keyboard types into the figure.
 struct IncomeStep: View {
   @Bindable var model: MonthlyPlanModel
   @FocusState private var figureFocused: Bool
@@ -37,7 +30,6 @@ struct IncomeStep: View {
       amountArea
     } dock: {
       VStack(spacing: 0) {
-        // Paper "Action": the button right under the amount area, 16 above the keypad.
         BusyButton(title: "Continue", busy: false, enabled: model.incomeMinor != nil,
                    identifier: "income.continue", action: model.continueWithIncome)
           .padding(.horizontal, HSpacing.insetPage)
@@ -48,8 +40,6 @@ struct IncomeStep: View {
     .onAppear { figureFocused = true }
   }
 
-  /// The figure and the payday strip, centred in the space between the question and the
-  /// dock (Paper "Amount entry": gap 16, 28 under).
   private var amountArea: some View {
     VStack(spacing: 16) {
       AmountFigure(entry: model.incomeEntry, layout: .docked)
@@ -70,8 +60,6 @@ struct IncomeStep: View {
     .padding(.bottom, 28)
   }
 
-  /// A hardware keyboard: digits and Delete type into the figure, as the keys do (the
-  /// decimal point is ignored here: whole dirhams). Return continues.
   private func typed(_ press: KeyPress) -> KeyPress.Result {
     var entry = model.incomeEntry
     switch press.key {

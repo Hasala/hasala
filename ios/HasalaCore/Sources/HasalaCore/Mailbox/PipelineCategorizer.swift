@@ -1,12 +1,3 @@
-// The at-ingest categorization of the Gmail lane (03c §8.2-§8.3, spec 04 §8.1):
-// CoreCategorize's `Categorizer` over the projection's rules and category table
-// and the bundled merchant dictionary. Rules first, then the dictionary; a
-// spending category on a credit is only a suggestion and files nothing. The
-// model tier (Foundation Models) is a later sweep, never at ingest.
-//
-// The prepared categorizer is cached and rebuilt after every projection (the
-// projection's `generation`), so a rule made in Review applies to the very next
-// message.
 import CoreCategorize
 import CoreDomain
 import CoreProjection
@@ -30,7 +21,6 @@ public final class PipelineCategorizer: IngestCategorizer {
     return IngestDecision(category: category, source: OpAuthor.sourceJSON(OpAuthor.categorySource(d.source)))
   }
 
-  /// Drops the cached rules (the next decision reads the projection again).
   public func invalidate() { cache.withLock { $0 = nil } }
 
   func current() -> Categorizer? {

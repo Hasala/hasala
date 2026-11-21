@@ -1,7 +1,3 @@
-// Activity · Overview and Activity · Filtered: the register.
-// To review first, then what is coming up, then history by local day.
-
-/// What Activity lists (spec 04 §13.2 `.activityFiltered(TxnFilter)`).
 public struct TxnFilter: Sendable, Hashable, Codable {
   public enum Kind: String, Sendable, Hashable, Codable, CaseIterable {
     case all, toReview, bills, transfers, income, archived
@@ -37,11 +33,9 @@ public struct ActivityChip: Sendable, Hashable, Identifiable {
   public var id: TxnFilter.Kind { kind }
   public var kind: TxnFilter.Kind
   public var count: Int?
-  /// The To review badge is the accent; other counts are secondary text.
   public var accentCount: Bool
 }
 
-/// A bill or income line (Activity's Coming up, Bills' Upcoming and Recently paid).
 public struct BillRowModel: Sendable, Hashable, Identifiable {
   public var id: String
   public var name: String
@@ -51,7 +45,6 @@ public struct BillRowModel: Sendable, Hashable, Identifiable {
   public var amount: Money
   public var approximate: Bool
   public var isIncome: Bool
-  /// Under the amount: "in 4 days", "● 3 days past usual".
   public var trailingNote: PlanDetailPart?
 
   public init(
@@ -73,7 +66,6 @@ public struct BillRowModel: Sendable, Hashable, Identifiable {
 public struct DayGroup: Sendable, Hashable, Identifiable {
   public var id: Int { date.ordinal }
   public var date: LocalDate
-  /// "Today", "Yesterday, Fri 9 Oct", "Thu 8 Oct" (drawn uppercase).
   public var title: String
   public var total: Money
   public var rows: [MiniTxnRow]
@@ -94,26 +86,21 @@ public struct DayGroup: Sendable, Hashable, Identifiable {
   }
 }
 
-/// The summary card on a category filter ("Activity · Filtered").
 public struct FilterSummary: Sendable, Hashable {
   public var title: String
-  /// The category's bucket hue, for its chip's dot.
   public var hue: Hue
   public var count: Int
   public var total: Money
   public var progress: Permille
   public var today: Permille
   public var verdict: Verdict
-  /// "40% of Dining's 1,600".
   public var caption: MoneyPhrase
   public var budgeted = true
 }
 
 public struct ReviewSummary: Sendable, Hashable {
   public var count: Int
-  /// Spending waiting in review: "AED 827.28 still to check".
   public var unplanned: Money
-  /// Sorted today, in review, posted today ("2 new today").
   public var newToday: Int
   public var mark: TotalMark? = nil
 }
@@ -122,16 +109,12 @@ public struct ActivitySnapshot: Sendable, Hashable {
   public var period: Period
   public var isThisMonth: Bool
   public var allTime: Bool
-  /// "26 transactions this month", or "105 transactions · Aug – Oct 2026".
   public var countLine: String
   public var chips: [ActivityChip]
   public var filter: TxnFilter
   public var review: ReviewSummary?
   public var comingUp: [BillRowModel]
   public var days: [DayGroup]
-  /// A category filter lists its rows in one card, newest first, without day overlines;
-  /// each row says its day ("Sat 10 Oct · 13:20", Paper "Activity · Filtered"). Empty
-  /// otherwise.
   public var rows: [MiniTxnRow]
   public var summary: FilterSummary?
 
@@ -214,7 +197,6 @@ public enum ActivityEngine {
     case .toReview: return t.inReview
     case .bills: return !t.archived && !t.inReview && isBill(t, s)
     case .transfers: return !t.archived && t.isTransfer
-    // Money that came in and stays in: not a transfer between accounts, not a refund.
     case .income: return !t.archived && !t.inReview && t.direction == .in && !t.isTransfer && !t.isRefund
     case .archived: return t.archived
     }
@@ -255,7 +237,6 @@ public enum ActivityEngine {
     }
   }
 
-  /// One list row: "Dining · 13:20"; to-review rows read "To review · 18:42".
   public static func row(_ t: Txn, _ s: LedgerState) -> MiniTxnRow {
     let c = t.modelGuessRejected ? nil : s.category(t.categoryID)
     let detail: String
@@ -287,7 +268,6 @@ public enum ActivityEngine {
     return r
   }
 
-  /// A row of a category's list: the day takes the category's place ("Sat 10 Oct · 13:20").
   public static func dated(_ t: Txn, _ s: LedgerState) -> MiniTxnRow {
     var r = row(t, s)
     if !t.inReview && t.splits.isEmpty {
@@ -297,7 +277,6 @@ public enum ActivityEngine {
     return r
   }
 
-  /// Bills and income due within `days` of today, and late ones (`within` 7 on Activity).
   public static func comingUp(_ s: LedgerState, today: LocalDate, within days: Int) -> [BillRowModel] {
     let horizon = today.adding(days: days)
     let bills = s.bills.filter { $0.state == .tracked && !$0.isIncome && $0.nextDue <= horizon }
@@ -318,8 +297,6 @@ public enum ActivityEngine {
         id: b.id, name: b.name, glyph: glyph(b, s), hue: hue(b, s),
         detail: [.text(MoneyPhrase(stringLiteral: "Usually the \(PlanEngine.ordinal(b.usualDay))"))],
         amount: b.amount, approximate: b.approximate, isIncome: false,
-        // Paper's words for a bill that hasn't come yet: past its usual day, never "late"
-        // (spec 01 §07: Hasala can't know for sure).
         trailingNote: .status(BillsEngine.pastUsual(n), .error)
       )
     }

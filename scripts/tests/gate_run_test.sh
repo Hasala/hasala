@@ -24,6 +24,11 @@ cat >"$work/bin/govulncheck" <<'STUB'
 #!/bin/sh
 exit 0
 STUB
+cat >"$work/bin/oxlint" <<'STUB'
+#!/bin/sh
+printf 'oxlint %s\n' "$*" >>"$STUB_LOG"
+exit "${STUB_OXLINT_RC:-0}"
+STUB
 cat >"$work/bin/go" <<'STUB'
 #!/bin/sh
 case "$PWD" in
@@ -69,7 +74,7 @@ case " $* " in
 esac
 exit 0
 STUB
-chmod +x "$work/bin/bun" "$work/bin/govulncheck" "$work/bin/go"
+chmod +x "$work/bin/bun" "$work/bin/govulncheck" "$work/bin/oxlint" "$work/bin/go"
 
 sed -nE 's/^[[:space:]]*"[^|]*\|[^|]*\|[^|]*\|(.*)"$/\1/p' "$ROOT/scripts/check.sh" >"$work/recorded"
 
@@ -134,7 +139,7 @@ lacks() {
 fresh
 g update-ref refs/remotes/origin/main HEAD
 gate "a local run with a merge base" 0
-says "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, assist worker, conformance)"
+says "check: OK (real-mail fence, toolchain, fence, oxlint, govulncheck, go vet, go test, assist worker, conformance)"
 lacks "NOT RUN"
 
 fresh
@@ -144,7 +149,7 @@ says "NOT RUN: the golden-fixture rule"
 fresh
 commit second
 gate "a CI run" 0 GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$work/summary"
-says "check: OK (real-mail fence, toolchain, fence, go vet, go test, assist worker, conformance)"
+says "check: OK (real-mail fence, toolchain, fence, oxlint, go vet, go test, assist worker, conformance)"
 says "NOT RUN: govulncheck"
 lacks "golden-fixture rule ("
 if grep -qF "govulncheck" "$work/summary"; then echo "ok   ...and the job summary names it"; else
@@ -195,6 +200,18 @@ logged "install --frozen-lockfile"
 fresh
 gate "an assist worker with no node_modules" 0
 logged "install --frozen-lockfile"
+
+fresh
+gate "a run that lints the gate's own TypeScript" 0
+if grep -qxF "oxlint infra/assist scripts ios/scripts" "$work/log"; then echo "ok   ...ran oxlint on infra/assist, scripts and ios/scripts"; else
+	echo "FAIL oxlint did not run on infra/assist, scripts and ios/scripts; the log has:"
+	sed 's/^/     /' "$work/log"
+	failures=$((failures + 1))
+fi
+
+fresh
+gate "a lint finding" 1 STUB_OXLINT_RC=1
+lacks "check: OK"
 
 fresh
 gate "a known failure that now fails for another reason" 1 STUB_KNOWN_TEXT="panic: something else broke"

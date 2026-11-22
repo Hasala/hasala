@@ -435,6 +435,9 @@ jobs:
           nix shell --inputs-from . nixpkgs#gitleaks --command
           gitleaks git --config .gitleaks.toml --log-opts=HEAD --redact --verbose --no-banner .
 
+      - name: oxlint the iOS scripts
+        run: nix shell --inputs-from . nixpkgs#oxlint --command oxlint ios/scripts
+
   # The iOS checks that need neither the app build nor a simulator: the
   # HasalaKit package tests (macOS, the newest Xcode), token generator
   # freshness, the project against ios/project.yml, the release-script tests
@@ -628,6 +631,9 @@ jobs:
         run: >-
           nix develop --command bash -c
           'cd web && bun install --frozen-lockfile && cd lighthouse && bun install --frozen-lockfile'
+
+      - name: oxlint
+        run: nix develop --command oxlint web
 
       - name: astro check
         run: nix develop --command bash -c 'cd web && bun run check'

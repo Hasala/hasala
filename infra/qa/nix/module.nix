@@ -585,7 +585,12 @@ let
           for p in "''${on[@]}"; do
             if [ -e "$STATE_DIRECTORY/recovered.$p" ]; then recovered="$recovered $p"; fi
           done
-          if [ -n "$recovered" ] && curl -sf --max-time 10 -d "hasala: recovered$recovered" ${lib.escapeShellArg cfg.monitoring.ntfyUrl} >/dev/null; then
+          # The host's alert format: "[host] LEVEL source: subject", level ok
+          # (ntfy priority low). Failures alert through monitoring.onFailure.
+          if [ -n "$recovered" ] && curl -sf --max-time 10 \
+            -H ${lib.escapeShellArg "Title: [${config.networking.hostName}] OK hasala-health: probes recovered"} \
+            -H "Priority: low" -H "Tags: white_check_mark" \
+            -d "Probes recovered:$recovered" ${lib.escapeShellArg cfg.monitoring.ntfyUrl} >/dev/null; then
             for p in $recovered; do rm -f "$STATE_DIRECTORY/recovered.$p"; done
           fi
         ''
@@ -1071,7 +1076,7 @@ in
         default = [ ];
         description = "OnFailure= units for every Hasala unit, e.g. [ \"notify-failure@%n.service\" ].";
       };
-      ntfyUrl = nullStr "Where hasala-health posts its recovery notice, and hasalad its early-access notice.";
+      ntfyUrl = nullStr "Where hasala-health posts its recovery notice, and hasalad its early-access notice. Both use the title format \"[<hostname>] LEVEL source: subject\" (OK for a recovery, INFO for a notice).";
       earlyAccessNotice = mkEnableOption "an ntfy notice to monitoring.ntfyUrl for each new early-access request (a waitlist entry that confirmed its address, now waiting in the console). It names nobody; it opens the console when that is enabled";
       healthCheck.enable = mkEnableOption "the hasala-health probes (every 2 minutes)";
       healthCheck.aasaUrl = mkOption {

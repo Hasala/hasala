@@ -44,6 +44,29 @@ entries that were used least recently.
   store path, with a random suffix, also in the scopes of pull requests. On
   2026-10-20 it had 5300 entries (9.5 GB) for 974 different paths (1.5 GB).
 
+## Time budgets
+
+`scripts/ci-budget.sh` has one budget for each job, in seconds, and one for
+the path to the result (the start of the run to the end of the jobs that
+`ci-ok` needs). The time of a job is its start to its end: the setup and the
+steps, not the wait for a runner.
+
+- The budgets of 2026-11-22 are about 1.3 times the slowest run of each job in
+  that day's runs, with empty caches and with full caches. A run with empty
+  caches must stay in the budget, or each pull request that changes the flake
+  fails.
+- `ci-ok` reads the jobs of the run from the GitHub API and compares the jobs
+  that it needs. The job `budget` compares all jobs. A job that failed or was
+  cancelled is not a budget failure. A job of the run with no budget is one.
+- In a second attempt that runs only some jobs, each other job keeps its
+  first time, thus a new attempt of `ci-ok` cannot clear a slow job. The path
+  to the result is measured only in an attempt that runs all the jobs.
+- When `ci.yml` is called from another workflow (`ci-weekly.yml`), the names
+  of its jobs start with the name of the calling job. The script reads the
+  part after ` / ` and does not measure the jobs of the caller.
+- `scripts/tests/ci_budget_test.sh` tests the script with job lists in a
+  file (`--jobs FILE`). `scripts/check.sh` runs it.
+
 ## Weekly runs
 
 `.github/workflows/vuln-weekly.yml` runs the same govulncheck on `main` each

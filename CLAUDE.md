@@ -112,9 +112,9 @@ reachable.
   alone, and it must still fail with that text.
 
 The gate also runs its own self-tests: `scripts/tests/gate_run_test.sh`,
-`gotest_ran_test.sh`, `git_env_test.sh` and `ci_mac_devshell_test.sh`. The last one proves that the
-self-tests leave the surrounding repository alone when git's variables are
-exported. The closing lines name only the steps that ran, and a step that did
+`gotest_ran_test.sh`, `git_env_test.sh`, `ci_mac_devshell_test.sh` and
+`ci_budget_test.sh`. `git_env_test.sh` proves that the self-tests leave the
+surrounding repository alone when git's variables are exported. The closing lines name only the steps that ran, and a step that did
 not run adds `check: NOT RUN: ...`.
 
 ### One test
@@ -180,6 +180,25 @@ thus they do not stop a merge: `swift` (HasalaCore on a Mac), `ios-tools`
 (the iOS checks on a Mac, refer to "The iOS app" below), `web`
 (the website, refer to "Website") and `nixos-vm` (it builds
 `checks.x86_64-linux.qa-vm` with KVM).
+
+### Time budgets
+
+Each job has a time budget, in seconds, in `scripts/ci-budget.sh`.
+
+- `ci-ok` fails when a job that it needs ran longer than its budget. It also
+  fails when the time from the start of the run to the end of these jobs is
+  longer than the path budget in that script.
+- The last job, `budget`, does the same check for all jobs when they are
+  complete. It is not required.
+- A new job must get a budget in that script. Without one, `budget` fails.
+- The `timeout-minutes` of a job is a hard stop at about two times its
+  budget.
+- A wait for a runner above 10 s gives a warning and not a failure, because
+  no change in this repository can make it shorter.
+- Make a budget smaller when a change makes its job faster. Make a budget
+  larger only with the times of real runs in the pull request. Do not start a
+  job again to get below a budget: a second attempt keeps the time of each
+  job that it does not run again.
 
 ### Path rules in CI
 

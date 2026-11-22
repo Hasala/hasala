@@ -195,7 +195,7 @@ Values in angle brackets are placeholders. Nothing real belongs in this file.
    again.
 
    ```sh
-   sudo systemctl start hasala.target
+   sudo systemctl start hasalad
    systemctl show -P Result hasala-purge-replay
    journalctl -u hasala-purge-replay -o cat | tail -2
    ```

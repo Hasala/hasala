@@ -27,6 +27,7 @@ import (
 // the anchor user id (the frames' AAD names it): writer W with the anchor DWK,
 // bound to the session, and the anchor frame A09 already stored at counter 1.
 func TestTamperUploadsGetTheirVerdict(t *testing.T) {
+	t.Parallel()
 	raw, err := os.ReadFile("../../../conformance/crypto-v3/tamper.json")
 	if err != nil {
 		t.Fatal(err)
@@ -46,9 +47,7 @@ func TestTamperUploadsGetTheirVerdict(t *testing.T) {
 		SyncPerUser:     NewLimiter(0, 1e6, 16, time.Now),
 		SyncUploadBytes: NewLimiter(0, 1e12, 16, time.Now),
 	}
-	h := &harness{t: t, pool: pool, srv: srv, h: srv.Handler()}
-	signHeads = false
-	defer func() { signHeads = true }()
+	h := &harness{t: t, pool: pool, srv: srv, h: srv.Handler(), rawHeads: true}
 
 	dwk := ed25519.NewKeyFromSeed(file.DWKSeed)
 	ran := 0

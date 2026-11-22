@@ -42,6 +42,7 @@ func (h *harness) resume(u uuid.UUID) {
 // code, so the client can render "account paused" rather than something that
 // looks like data loss.
 func TestASuspendedAccountIsRefusedOnEveryWriteMethod(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("suspended-writes")
 	tok := h.session(u)
@@ -74,6 +75,7 @@ func TestASuspendedAccountIsRefusedOnEveryWriteMethod(t *testing.T) {
 // own data. A suspension that also blanked the app would be indistinguishable,
 // to the user, from the operator having deleted them.
 func TestASuspendedAccountCanStillRead(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("suspended-reads")
 	tok := h.session(u)
@@ -101,6 +103,7 @@ func TestASuspendedAccountCanStillRead(t *testing.T) {
 // devices are the whole point of allowing pull, and a device needs a session to
 // do it.
 func TestASuspendedAccountCanStillSignIn(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	a, registered := h.register(h.invite(""))
 	u := uuid.MustParse(registered.UserID)
@@ -132,6 +135,7 @@ func TestASuspendedAccountCanStillSignIn(t *testing.T) {
 // Signing out is allowed while suspended (spec 02 §9.3): an operator's pause
 // must never be what keeps a session alive on a lost phone.
 func TestASuspendedAccountCanStillSignOut(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("suspended-signout")
 	tok := h.session(u)
@@ -143,6 +147,7 @@ func TestASuspendedAccountCanStillSignOut(t *testing.T) {
 // Resuming restores write access. Without this the lever is a one-way door and
 // is no better than the purge it exists to avoid.
 func TestResumingRestoresWriteAccess(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("resume-restores")
 	tok := h.session(u)
@@ -163,6 +168,7 @@ func TestResumingRestoresWriteAccess(t *testing.T) {
 // whole file needs: every assertion above is only meaningful if the default
 // answer is "allowed".
 func TestAnActiveAccountWrites(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("active-writes")
 	tok := h.session(u)
@@ -186,6 +192,7 @@ func (f *fakeFuse) Tripped() bool { return f.tripped }
 // ones with no session, which is the reason the gate wraps the whole mux rather
 // than sitting inside requireSession.
 func TestTheHeadroomFuseRefusesWritesAndPermitsReads(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	fuse := &fakeFuse{}
 	h.srv.Headroom = fuse
@@ -250,6 +257,7 @@ func TestTheHeadroomFuseRefusesWritesAndPermitsReads(t *testing.T) {
 // wiring lands in a separate task, and the window in which the field is nil in
 // production is exactly the window this pins.
 func TestNoFuseMeansNoGate(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	if h.srv.Headroom != nil {
 		t.Fatal("the default server has a fuse; it must be opt-in")
@@ -269,6 +277,7 @@ func TestNoFuseMeansNoGate(t *testing.T) {
 // upload durably stores up to 8 MiB, so no request rate separates a bulk import
 // from an abuser, because the two differ by blob size.
 func TestTheUploadLimiterChargesBytesNotRequests(t *testing.T) {
+	t.Parallel()
 	// A byte budget of ~40 KiB with no refill, and a request budget far larger
 	// than either run needs, so the ONLY thing that can refuse a request here is
 	// its size.
@@ -339,6 +348,7 @@ func TestTheUploadLimiterChargesBytesNotRequests(t *testing.T) {
 // The request limiter is a SEPARATE budget, spent per call regardless of size.
 // It exists for pool fairness; the byte budget above is the storage control.
 func TestTheUploadRequestLimiterIsSeparateFromTheByteBudget(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	// Two requests, ever, and a byte budget nothing here can exhaust.
 	h.srv.SyncPerUser = NewLimiter(0, 2, 16, h.srv.now)
@@ -379,6 +389,7 @@ func TestTheUploadRequestLimiterIsSeparateFromTheByteBudget(t *testing.T) {
 // So the junk is enough to drain the budget more than once, and the upload that
 // follows is large enough that only an UNTOUCHED budget can pay for it.
 func TestARejectedUploadCostsNoByteBudget(t *testing.T) {
+	t.Parallel()
 	const budget = 128 << 10
 	h := newHarness(t)
 	h.srv.SyncPerUser = NewLimiter(0, 1000, 16, h.srv.now)
@@ -419,6 +430,7 @@ func TestARejectedUploadCostsNoByteBudget(t *testing.T) {
 // single upload, or a conforming request would be permanently unpayable at any
 // refill rate, and the sustained rate must be the stated 256 MiB a day.
 func TestTheUploadByteBudgetIsSizedAgainstTheLargestUpload(t *testing.T) {
+	t.Parallel()
 	const maxDurablePerUpload = maxUploadBlobs * (1 << 20) // oplog's per-blob cap
 	if syncByteBurst <= maxDurablePerUpload {
 		t.Fatalf("the byte burst (%d) is not larger than one maximal upload (%d): "+

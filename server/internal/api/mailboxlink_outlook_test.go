@@ -125,6 +125,7 @@ func (c *capturedLogs) String() string {
 // rules, a clientState returned once and kept only as its hash, and the
 // address only as an HMAC under the Outlook domain.
 func TestOutlookMailboxLink(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	logs := &capturedLogs{}
 	h.srv.Logf = logs.logf
@@ -250,6 +251,7 @@ func TestOutlookMailboxLink(t *testing.T) {
 // The provider is settled first: an unknown one, or one this server does not
 // link, is a 400 before any step-up or token work.
 func TestMailboxLinkProviderIsCheckedFirst(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	withGmail(h, nil)
 	k := h.onboard(true)
@@ -284,6 +286,7 @@ func TestMailboxLinkProviderIsCheckedFirst(t *testing.T) {
 // One mailbox per account: Gmail replaces Outlook and Outlook replaces Gmail,
 // leaving one row; each provider's watch rule follows the row.
 func TestLinkingOneProviderReplacesTheOther(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, g := withGmail(h, &GmailPush{Topic: testTopic, Hook: fakeVerifier{testAudience}, Subscription: testSub,
 		ServiceAccount: testSA})
@@ -351,6 +354,7 @@ func TestLinkingOneProviderReplacesTheOther(t *testing.T) {
 // The schema holds the rules on its own: one link per account, and a
 // clientState hash exactly on Outlook links.
 func TestMailboxLinksSchemaRules(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	withGmail(h, nil)
 	k := h.onboard(true)
@@ -381,6 +385,7 @@ func TestMailboxLinksSchemaRules(t *testing.T) {
 }
 
 func TestOutlookMailboxIsKeyedOnTheSubject(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, o, _ := withOutlook(h, nil)
 	a, b, c := h.onboard(true), h.onboard(true), h.onboard(true)

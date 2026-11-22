@@ -203,7 +203,16 @@ func TestAnEmailWaitingOnALockPastTheTimeoutIsRetried(t *testing.T) {
 			}
 			id := r.enqueue(t, e)
 			r.hold(t, c.lock)
-			if did, err := r.q.ProcessOne(context.Background()); err != nil || !did {
+			cfg := r.pool.Config()
+			cfg.ConnConfig.RuntimeParams["lock_timeout"] = "100ms"
+			impatient, err := pgxpool.NewWithConfig(context.Background(), cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(impatient.Close)
+			q := mailq.New(impatient, r.fake, retryTagger{})
+			New(impatient, retryTagger{}, "https://hasala.example").Register(q)
+			if did, err := q.ProcessOne(context.Background()); err != nil || !did {
 				t.Fatalf("process: %v %v", did, err)
 			}
 			if status, due := r.status(t, id); status != "queued" || !due {

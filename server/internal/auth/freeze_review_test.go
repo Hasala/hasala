@@ -13,6 +13,7 @@ import (
 )
 
 func TestADeviceFreezeFindsTheWriterThatSigned(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	other := f.passwordMember("Pat")
@@ -60,6 +61,7 @@ func TestADeviceFreezeFindsTheWriterThatSigned(t *testing.T) {
 }
 
 func TestTheLiftAnswerAgreesWithTheLiftItself(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	older := m.device
@@ -122,6 +124,7 @@ func (m *member) deviceFreezeTrigger() time.Time {
 }
 
 func TestADeviceFreezeIsNotDatedToTheDevicesOwnSignOut(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -136,6 +139,7 @@ func TestADeviceFreezeIsNotDatedToTheDevicesOwnSignOut(t *testing.T) {
 }
 
 func TestADeviceFreezeIsNotDatedToTheDevicesOwnEarlierFreeze(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -162,6 +166,7 @@ func TestADeviceFreezeIsNotDatedToTheDevicesOwnEarlierFreeze(t *testing.T) {
 }
 
 func TestADeviceFreezeIsDatedToASignOutAnotherDeviceAskedFor(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	victim := m.device
@@ -189,6 +194,7 @@ func TestADeviceFreezeIsDatedToASignOutAnotherDeviceAskedFor(t *testing.T) {
 }
 
 func TestADeviceFreezeStaysDatedToASignOutAPasskeyProvedOnAnotherDevice(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	p := m.withPasskey(f.enrolPasskey(m.user.UserID))
@@ -206,6 +212,7 @@ func TestADeviceFreezeStaysDatedToASignOutAPasskeyProvedOnAnotherDevice(t *testi
 }
 
 func TestADeviceFreezeStaysDatedToASignOutAPasskeyProvedWithNoDevice(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m, p := f.passkeyOnlyMember("Maya")
 	f.clock.advance(time.Hour)
@@ -262,6 +269,7 @@ func (m *member) changePasswordWithThisDevice() {
 }
 
 func TestADeviceFreezeIsNotDatedToTheDevicesOwnPasswordChange(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -273,6 +281,7 @@ func TestADeviceFreezeIsNotDatedToTheDevicesOwnPasswordChange(t *testing.T) {
 }
 
 func TestADeviceFreezeIsNotDatedToTheDevicesOwnPasswordReset(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -297,6 +306,7 @@ func TestADeviceFreezeIsNotDatedToTheDevicesOwnPasswordReset(t *testing.T) {
 }
 
 func TestADeviceFreezeIsNotDatedToTheDevicesOwnUnfreeze(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -321,6 +331,7 @@ func TestADeviceFreezeIsNotDatedToTheDevicesOwnUnfreeze(t *testing.T) {
 }
 
 func TestADeviceFreezeIsNotDatedToTheDevicesOwnPasskeyRemoval(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	a := f.enrolPasskey(m.user.UserID)
@@ -346,6 +357,7 @@ func TestADeviceFreezeIsNotDatedToTheDevicesOwnPasskeyRemoval(t *testing.T) {
 }
 
 func TestADeviceFreezeIsDatedToAPasswordChangeAnotherDeviceAskedFor(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	victim := m.device
@@ -371,6 +383,7 @@ func TestADeviceFreezeIsDatedToAPasswordChangeAnotherDeviceAskedFor(t *testing.T
 }
 
 func TestADeviceFreezeStaysDatedToAPasswordChangeAPasskeyProvedOnAnotherDevice(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	p := m.withPasskey(f.enrolPasskey(m.user.UserID))
@@ -481,6 +494,7 @@ func (f *acctFixture) passkeyOnlyMember(name string) (*member, *passkeyProver) {
 }
 
 func TestADeviceFreezeOnAPasskeyOnlyAccountIsNotDatedToItsOwnSignOut(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m, old := f.passkeyOnlyMember("Maya")
 	f.clock.advance(time.Hour)
@@ -499,6 +513,7 @@ func TestADeviceFreezeOnAPasskeyOnlyAccountIsNotDatedToItsOwnSignOut(t *testing.
 }
 
 func TestADeviceFreezeIsNotDatedToAChangeThisDeviceProvedWithAPasskey(t *testing.T) {
+	t.Parallel()
 	next := func(f *acctFixture, m *member) []byte { return f.stretch(m.addr, "an entirely new password") }
 	cases := []struct {
 		name        string

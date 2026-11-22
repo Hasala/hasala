@@ -33,6 +33,7 @@ func outlookWatch(t *testing.T, h *harness, u uuid.UUID) *time.Time {
 }
 
 func TestOutlookSubscriptionRemovedEndsTheWatch(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, o, _ := withOutlook(h, outlookPushOn())
 	holder := "ios-91111111-1111-4111-8111-111111111111"
@@ -71,6 +72,7 @@ func TestOutlookSubscriptionRemovedEndsTheWatch(t *testing.T) {
 }
 
 func TestOutlookSubscriptionRemovedOnTheChangePathIsIgnored(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	_, o, _ := withOutlook(h, outlookPushOn())
 	u := watchedOutlookLink(t, h, o, "main-path", "ios-93333333-3333-4333-8333-333333333333", testClientState)
@@ -82,6 +84,7 @@ func TestOutlookSubscriptionRemovedOnTheChangePathIsIgnored(t *testing.T) {
 }
 
 func TestOutlookSubscriptionRemovedOverTheLinkBudgetStillEndsTheWatch(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, o, _ := withOutlook(h, outlookPushOn())
 	u := watchedOutlookLink(t, h, o, "budget", "ios-94444444-4444-4444-8444-444444444444", testClientState)
@@ -100,6 +103,7 @@ func TestOutlookSubscriptionRemovedOverTheLinkBudgetStillEndsTheWatch(t *testing
 }
 
 func TestOutlookSubscriptionRemovedWritesNothingThroughATrippedFuse(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.srv.Headroom = &fakeFuse{tripped: true}
 	wk, o, _ := withOutlook(h, outlookPushOn())
@@ -115,6 +119,7 @@ func TestOutlookSubscriptionRemovedWritesNothingThroughATrippedFuse(t *testing.T
 }
 
 func TestOutlookSubscriptionRemovedThatCannotBeRecordedIsRetried(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	logs := &capturedLogs{}
 	h.srv.Logf = logs.logf
@@ -147,6 +152,7 @@ func TestOutlookSubscriptionRemovedThatCannotBeRecordedIsRetried(t *testing.T) {
 }
 
 func TestOutlookReauthorizationRequiredBringsTheWatchDue(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, o, _ := withOutlook(h, outlookPushOn())
 	holder := "ios-97777777-7777-4777-8777-777777777777"
@@ -178,6 +184,7 @@ func TestOutlookReauthorizationRequiredBringsTheWatchDue(t *testing.T) {
 }
 
 func TestOutlookReauthorizationRequiredOnlyMovesAWatchEarlier(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	_, o, _ := withOutlook(h, outlookPushOn())
 	none := outlookLinkRow(h, o, "reauth-none", "ios-99999999-9999-4999-8999-999999999999", testClientState)
@@ -198,6 +205,7 @@ func TestOutlookReauthorizationRequiredOnlyMovesAWatchEarlier(t *testing.T) {
 }
 
 func TestOutlookRemovalWinsOverReauthorizationInOneBatch(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	_, o, _ := withOutlook(h, outlookPushOn())
 	u := watchedOutlookLink(t, h, o, "both", "ios-9bbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", testClientState)
@@ -210,6 +218,7 @@ func TestOutlookRemovalWinsOverReauthorizationInOneBatch(t *testing.T) {
 }
 
 func TestOutlookReauthorizationOnTheChangePathIsIgnored(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	_, o, _ := withOutlook(h, outlookPushOn())
 	u := watchedOutlookLink(t, h, o, "reauth-main", "ios-9ccccccc-cccc-4ccc-8ccc-cccccccccccc", testClientState)
@@ -221,6 +230,7 @@ func TestOutlookReauthorizationOnTheChangePathIsIgnored(t *testing.T) {
 }
 
 func TestOutlookReauthorizationOverTheLinkBudgetStillBringsTheWatchDue(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, o, _ := withOutlook(h, outlookPushOn())
 	u := watchedOutlookLink(t, h, o, "reauth-budget", "ios-9ddddddd-dddd-4ddd-8ddd-dddddddddddd", testClientState)
@@ -239,6 +249,7 @@ func TestOutlookReauthorizationOverTheLinkBudgetStillBringsTheWatchDue(t *testin
 }
 
 func TestOutlookReauthorizationWritesNothingThroughATrippedFuse(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.srv.Headroom = &fakeFuse{tripped: true}
 	wk, o, _ := withOutlook(h, outlookPushOn())
@@ -254,6 +265,7 @@ func TestOutlookReauthorizationWritesNothingThroughATrippedFuse(t *testing.T) {
 }
 
 func TestOutlookReauthorizationThatCannotBeRecordedIsRetried(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.srv.Logf = (&capturedLogs{}).logf
 	wk, o, _ := withOutlook(h, outlookPushOn())

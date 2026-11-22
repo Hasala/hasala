@@ -10,9 +10,10 @@ import (
 )
 
 func TestFiveWrongResetCodesPauseEveryAddressAlike(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
-	for name, addr := range map[string]string{"an account's address": m.addr, "a free address": newAddr()} {
+	for name, addr := range map[string]string{"an account's address": m.addr, "a free address": f.newAddr()} {
 		id, err := f.acct.ResetBegin(bgctx, addr)
 		if err != nil {
 			t.Fatalf("%s: begin: %v", name, err)
@@ -40,6 +41,7 @@ func wrongCodeFor(code string) string {
 }
 
 func TestAResetCodeWithNoAttemptLeftCountsNothing(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	id, err := f.acct.ResetBegin(bgctx, m.addr)
@@ -69,6 +71,7 @@ func TestAResetCodeWithNoAttemptLeftCountsNothing(t *testing.T) {
 }
 
 func TestTheResetBudgetIsNotSharedWithStepUpOrRecovery(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	for n := 0; n < codeSendsPerHour; n++ {
@@ -113,6 +116,7 @@ func TestTheResetBudgetIsNotSharedWithStepUpOrRecovery(t *testing.T) {
 }
 
 func TestACheckOverTheBudgetKeepsTheAttempt(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(14 * time.Minute)

@@ -18,7 +18,7 @@ type begunChange struct {
 
 func (f *acctFixture) begunChange(m *member) begunChange {
 	f.t.Helper()
-	next := newAddr()
+	next := f.newAddr()
 	sNew := f.stretch(next, m.pw)
 	su := m.deviceStepUp(keyproto.ActionEmailChange, m.s, sha([]byte(next)), sumBytes(sNew))
 	begun, err := f.acct.EmailChangeBegin(bgctx, m.info(), next, sNew, su)
@@ -38,6 +38,7 @@ func (f *acctFixture) addressOf(m *member) string {
 }
 
 func TestFinishingAnEmailChangeEndsTheOtherChanges(t *testing.T) {
+	t.Parallel()
 	for name, proof := range map[string]func(*member, begunChange) (*string, []byte){
 		"the old address's code": func(_ *member, c begunChange) (*string, []byte) { return &c.oldCode, nil },
 		"the recovery key": func(m *member, c begunChange) (*string, []byte) {
@@ -68,6 +69,7 @@ func TestFinishingAnEmailChangeEndsTheOtherChanges(t *testing.T) {
 }
 
 func TestOnlyOneOfTwoEmailChangesFinishingTogetherWins(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	changes := []begunChange{f.begunChange(m), f.begunChange(m)}
@@ -129,6 +131,7 @@ func (f *acctFixture) finishChange(m *member) []byte {
 }
 
 func TestAnEmailChangeEndsAnApprovedResetMadeUnderTheOldAddress(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	r := f.approvedReset(m, "a password stretched for the old address")
@@ -145,6 +148,7 @@ func TestAnEmailChangeEndsAnApprovedResetMadeUnderTheOldAddress(t *testing.T) {
 }
 
 func TestAnEmailChangeEndsTheRecoveriesInFlight(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	id, v := f.verifiedRecovery(m, "password")
@@ -167,6 +171,7 @@ func TestAnEmailChangeEndsTheRecoveriesInFlight(t *testing.T) {
 }
 
 func TestAnEmailChangeRefusedAtTheLastStepLeavesAResetRunning(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	c := f.begunChange(m)

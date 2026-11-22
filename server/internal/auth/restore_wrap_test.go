@@ -16,6 +16,7 @@ func (f *keyFixture) deleteWrapOf(cred []byte) error {
 }
 
 func TestAWrapDeletionIsRecordedAndSurvivesARestore(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	path, rec := ledgerRecorder(t)
 	f.keys.Record = rec
@@ -58,6 +59,7 @@ func TestAWrapDeletionIsRecordedAndSurvivesARestore(t *testing.T) {
 }
 
 func TestAReplayLeavesAWrapPutAgainAfterItsDeletion(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	path, rec := ledgerRecorder(t)
 	f.keys.Record = rec
@@ -91,6 +93,7 @@ func TestAReplayLeavesAWrapPutAgainAfterItsDeletion(t *testing.T) {
 }
 
 func TestAReplayNeverTakesTheLastWrapOfAnAccountWhoseWordsAreUnseen(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixtureUnbootstrapped(t)
 	b := f.bootstrap(f.device, keyproto.AuthKindPasskey, f.attestation(), true)
 	b.PhraseUnseen = true
@@ -107,6 +110,7 @@ func TestAReplayNeverTakesTheLastWrapOfAnAccountWhoseWordsAreUnseen(t *testing.T
 }
 
 func TestAWrapDeletionThatChangesNothingRecordsNothing(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	path, rec := ledgerRecorder(t)
 	f.keys.Record = rec
@@ -139,6 +143,7 @@ func (f *keyFixture) bootstrapWordsUnseen() {
 }
 
 func TestAReplayKeepsThePasskeyTheUnseenWordsDependOn(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixtureUnbootstrapped(t)
 	f.bootstrapWordsUnseen()
 	entries := []purgeledger.Entry{{ID: f.user, At: f.clock.now().Add(time.Hour), Kind: purgeledger.KindPasskey, Credential: f.credID}}
@@ -160,6 +165,7 @@ func TestAReplayKeepsThePasskeyTheUnseenWordsDependOn(t *testing.T) {
 }
 
 func TestAReplayStillRemovesAPasskeyWhenAnotherCanShowTheUnseenWords(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixtureUnbootstrapped(t).guarded()
 	f.bootstrapWordsUnseen()
 	second, _, err := f.addOver(f.token, f.device, true)
@@ -184,6 +190,7 @@ func TestAReplayStillRemovesAPasskeyWhenAnotherCanShowTheUnseenWords(t *testing.
 }
 
 func TestAReplayCountsWordsTheLedgerSawAfterTheRemoval(t *testing.T) {
+	t.Parallel()
 	for name, kind := range map[string]purgeledger.Kind{"a passkey": purgeledger.KindPasskey, "a wrap": purgeledger.KindWrap} {
 		t.Run(name, func(t *testing.T) {
 			f := newKeyFixtureUnbootstrapped(t)
@@ -225,6 +232,7 @@ func (f *keyFixture) assertKeptBackStaysPut() {
 }
 
 func TestARemovalKeptBackStaysKeptAfterTheWordsAreSeen(t *testing.T) {
+	t.Parallel()
 	for name, kind := range map[string]purgeledger.Kind{"a passkey": purgeledger.KindPasskey, "a wrap": purgeledger.KindWrap} {
 		t.Run(name, func(t *testing.T) {
 			f := newKeyFixtureUnbootstrapped(t)
@@ -250,6 +258,7 @@ func TestARemovalKeptBackStaysKeptAfterTheWordsAreSeen(t *testing.T) {
 }
 
 func TestARemovalKeptBackStaysKeptOnceAnotherPasskeyHoldsAWrap(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixtureUnbootstrapped(t).guarded()
 	f.bootstrapWordsUnseen()
 	removal := removalOf(f, purgeledger.KindPasskey, f.clock.now().Add(time.Hour))
@@ -266,6 +275,7 @@ func TestARemovalKeptBackStaysKeptOnceAnotherPasskeyHoldsAWrap(t *testing.T) {
 }
 
 func TestAWrapLineDatedBeforeAKeptBackPasskeyLineIsSkippedToo(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixtureUnbootstrapped(t)
 	f.bootstrapWordsUnseen()
 	at := f.clock.now().Add(time.Hour)
@@ -284,6 +294,7 @@ func TestAWrapLineDatedBeforeAKeptBackPasskeyLineIsSkippedToo(t *testing.T) {
 }
 
 func TestAPasskeyRemovedAfterItWasKeptBackIsRemovedAgainByAReplay(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixtureUnbootstrapped(t)
 	f.bootstrapWordsUnseen()
 	at := f.clock.now().Add(time.Hour)

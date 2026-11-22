@@ -25,6 +25,7 @@ func (f *fakeTurnstile) Verify(_ context.Context, token, action string) error {
 }
 
 func TestTurnstileGuardsTheWebRoutes(t *testing.T) {
+	t.Parallel()
 	r := newWebRig(t)
 	f := &fakeTurnstile{}
 	r.h.srv.Web.Turnstile = f
@@ -90,6 +91,7 @@ func TestTurnstileGuardsTheWebRoutes(t *testing.T) {
 }
 
 func TestTurnstileRequiredWithoutAVerifierRefuses(t *testing.T) {
+	t.Parallel()
 	r := newWebRig(t)
 	r.h.srv.Web.TurnstileRequired = true
 	wantStatus(t, r.post("/api/v1/waitlist", `{"email":"nov@example.com","bank":"enbd","source":"web","turnstileToken":"x"}`, nil),
@@ -142,6 +144,7 @@ func publicFormCases() []publicForm {
 }
 
 func TestPublicGlobalBudgetIsSpentOnlyAfterTurnstile(t *testing.T) {
+	t.Parallel()
 	for _, c := range publicFormCases() {
 		t.Run(c.name, func(t *testing.T) {
 			r := newWebRig(t)
@@ -166,6 +169,7 @@ func TestPublicGlobalBudgetIsSpentOnlyAfterTurnstile(t *testing.T) {
 }
 
 func TestARateLimitedFormPostLandsOnTheDonePage(t *testing.T) {
+	t.Parallel()
 	for _, c := range publicFormCases() {
 		for tier, limiter := range map[string]func(*WebOptions) **Limiter{"client": c.ip, "global": c.global} {
 			t.Run(c.name+"/"+tier, func(t *testing.T) {
@@ -195,6 +199,7 @@ func TestARateLimitedFormPostLandsOnTheDonePage(t *testing.T) {
 }
 
 func TestPublicFormsHaveAPrefixTierBeforeTurnstile(t *testing.T) {
+	t.Parallel()
 	for _, c := range publicFormCases() {
 		t.Run(c.name, func(t *testing.T) {
 			r := newWebRig(t)

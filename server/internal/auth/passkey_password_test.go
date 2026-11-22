@@ -13,6 +13,7 @@ import (
 )
 
 func TestAPasswordAccountAddsAPasskeyWithItsPasswordAndApprovalKey(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 
@@ -62,6 +63,7 @@ func TestAPasswordAccountAddsAPasskeyWithItsPasswordAndApprovalKey(t *testing.T)
 }
 
 func TestAPasswordAccountsWrongPasswordAddsNoPasskey(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 

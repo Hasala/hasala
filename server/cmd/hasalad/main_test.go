@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"log"
 	"log/slog"
 	"os"
 	"regexp"
@@ -17,7 +19,28 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
+func TestMain(m *testing.M) {
+	out, flags := log.Writer(), log.Flags()
+	code := pgtest.Main(m)
+	if code == 0 && (log.Writer() != out || log.Flags() != flags) {
+		fmt.Fprintln(os.Stderr, "cmd/hasalad: a test left the standard logger redirected; use captureLog, which restores log.Writer, log.Flags and slog.Default")
+		code = 1
+	}
+	os.Exit(code)
+}
+
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	out, flags, logger := log.Writer(), log.Flags(), slog.Default()
+	t.Cleanup(func() {
+		slog.SetDefault(logger)
+		log.SetOutput(out)
+		log.SetFlags(flags)
+	})
+	buf := &bytes.Buffer{}
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, nil)))
+	return buf
+}
 
 // hasalad runs one invocation in-process with exactly the given environment
 // and returns its exit code and output.
@@ -274,10 +297,7 @@ func TestMigrateThenOperateAsTheRuntimeRole(t *testing.T) {
 // trusted_proxy = cloudflare is honoured (api/clientip.go, spec 02 §16.1), so
 // serve no longer warns that per-IP limits are global behind the tunnel.
 func TestServeNoLongerWarnsAboutTheCloudflareProxy(t *testing.T) {
-	var buf bytes.Buffer
-	prev := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
-	defer slog.SetDefault(prev)
+	buf := captureLog(t)
 
 	var cfg config.Config
 	cfg.Server.TrustedProxy = config.ProxyCloudflare

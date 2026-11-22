@@ -50,11 +50,19 @@ test) ;;
 	exit 64
 	;;
 esac
+shuffle=""
+for a in "$@"; do
+	case "$a" in
+	-shuffle=on) shuffle=42 ;;
+	-shuffle=*) shuffle="${a#-shuffle=}" ;;
+	esac
+done
 case " $* " in
 *" -list "*)
 	printf '{"Action":"output","Package":"%s","Output":"%s\\n"}\n{"Action":"pass","Package":"%s"}\n' "$pkg" "$tst" "$pkg"
 	;;
 *" -skip "*)
+	[ -n "$shuffle" ] && printf '{"Action":"output","Package":"%s","Output":"-test.shuffle %s\\n"}\n' "$pkg" "$shuffle"
 	if [ "$side" = oracle ] && [ -n "${STUB_ORACLE_TEST_FAILS:-}" ]; then
 		printf '{"Action":"fail","Package":"%s","Test":"%s"}\n{"Action":"fail","Package":"%s"}\n' "$pkg" "$tst" "$pkg"
 		exit 1
@@ -105,7 +113,7 @@ fresh() {
 gate() {
 	local name="$1" want="$2" rc=0
 	shift 2
-	env -u GITHUB_ACTIONS -u GITHUB_STEP_SUMMARY -u HASALA_PRIVATE_FIXTURES -u HASALA_TEST_POSTGRES_URL \
+	env -u GITHUB_ACTIONS -u GITHUB_STEP_SUMMARY -u HASALA_PRIVATE_FIXTURES -u HASALA_TEST_POSTGRES_URL -u CHECK_SHUFFLE \
 		TMPDIR="$work/tmp" STUB_LOG="$work/log" STUB_RECORDED="$work/recorded" PATH="$work/bin:$PATH" "$@" \
 		"$work/t/scripts/check.sh" >"$work/out" 2>&1 || rc=$?
 	if [[ "$rc" == "$want" ]]; then echo "ok   $name (exit $rc)"; else
@@ -169,7 +177,18 @@ leftovers() {
 
 fresh
 gate "a failing oracle go test" 1 STUB_ORACLE_TEST_FAILS=1
+says "go test -count=1 -shuffle=42 stub/oracle"
 leftovers
+
+fresh
+gate "a failing oracle go test in a given order" 1 STUB_ORACLE_TEST_FAILS=1 CHECK_SHUFFLE=7
+says "-shuffle=7; known failures"
+says "go test -count=1 -shuffle=7 stub/oracle"
+
+fresh
+gate "a run that asks for no random order" 2 CHECK_SHUFFLE=off
+says "CHECK_SHUFFLE=off must be"
+lacks "check: OK"
 
 fresh
 gate "a failing oracle go vet" 1 STUB_ORACLE_VET_RC=1

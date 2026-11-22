@@ -60,8 +60,10 @@
 # CHECK_JOBS (default 8) caps go's package parallelism: the QA host is shared with
 # other services, so the gate keeps to about half the machine.
 #
-# CI: under GitHub Actions (GITHUB_ACTIONS=true) every step but govulncheck runs
-# exactly as it does anywhere else, with the same verdicts; govulncheck is left
+# CI: under GitHub Actions (GITHUB_ACTIONS=true) every step but the self-tests
+# and govulncheck runs exactly as it does anywhere else, with the same verdicts.
+# The self-tests are left to the required `selftest` job, which runs
+# `scripts/check.sh --self-tests` beside this one; govulncheck is left
 # to the required `vuln` job, which scans both modules whole. The reporting
 # adapts to a runner whose temp directory dies with the job. On failure the postgres log is
 # printed instead of named, and the closing real-corpus count is also raised as
@@ -87,11 +89,13 @@ fi
 step() { printf '\n== check: %s\n' "$*"; }
 
 FENCE_ONLY=""
+SELF_TESTS_ONLY=""
 case "$*" in
 "") ;;
 --fence-only) FENCE_ONLY=1 ;;
+--self-tests) SELF_TESTS_ONLY=1 ;;
 *)
-	echo "usage: scripts/check.sh [--fence-only]" >&2
+	echo "usage: scripts/check.sh [--fence-only | --self-tests]" >&2
 	exit 2
 	;;
 esac
@@ -174,23 +178,35 @@ if [[ -n "$FENCE_ONLY" ]]; then
 	exit 0
 fi
 
-step "real-mail fence self-test"
-"$ROOT/scripts/tests/fence_test.sh"
+NOT_RUN=()
+if [[ -n "$CI_RUN" && -z "$SELF_TESTS_ONLY" ]]; then
+	step "self-tests"
+	echo "skipped in CI: the selftest job runs scripts/check.sh --self-tests"
+	NOT_RUN+=("the self-tests (the selftest job runs them)")
+else
+	step "real-mail fence self-test"
+	"$ROOT/scripts/tests/fence_test.sh"
 
-step "gate run self-test"
-"$ROOT/scripts/tests/gate_run_test.sh"
-"$ROOT/scripts/tests/gotest_ran_test.sh"
-"$ROOT/scripts/tests/git_env_test.sh"
-"$ROOT/scripts/tests/ci_changes_test.sh"
+	step "gate run self-test"
+	"$ROOT/scripts/tests/gate_run_test.sh"
+	"$ROOT/scripts/tests/gotest_ran_test.sh"
+	"$ROOT/scripts/tests/git_env_test.sh"
+	"$ROOT/scripts/tests/ci_changes_test.sh"
 
-step "Mac devShell cache check self-test"
-"$ROOT/scripts/tests/ci_mac_devshell_test.sh"
+	step "Mac devShell cache check self-test"
+	"$ROOT/scripts/tests/ci_mac_devshell_test.sh"
 
-step "CI time budget self-test"
-"$ROOT/scripts/tests/ci_budget_test.sh"
+	step "CI time budget self-test"
+	"$ROOT/scripts/tests/ci_budget_test.sh"
+fi
+
+if [[ -n "$SELF_TESTS_ONLY" ]]; then
+	echo
+	echo "check: OK (real-mail fence, self-tests)"
+	exit 0
+fi
 
 GATE_STEPS="real-mail fence, toolchain, fence"
-NOT_RUN=()
 
 # --- 0b. HasalaCore source lints ------------------------------------------------
 # The import allowlist per directory (spec 04 §2.3, R1, R6), 01 AT-C11's source

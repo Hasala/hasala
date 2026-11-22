@@ -321,6 +321,27 @@ jobs:
   # rule and header refusals, encrypted backups). Informational: it is not a
   # required check, so a slow or flaky runner never blocks a merge. Skipped,
   # like the jobs above, only when `changes` succeeded and said "false".
+  selftest:
+    needs: [changes, nix-cache]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.gate != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+      - name: Devshell Nix store cache
+        uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
+        with:
+          primary-key: nix-${{ runner.os }}-devshell-${{ hashFiles('flake.lock', 'flake.nix') }}
+          save: false
+
+      - name: scripts/check.sh --self-tests
+        run: nix develop --command scripts/check.sh --self-tests
+
   nixos-vm:
     needs: [changes, nix-cache]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.nixos_vm != 'false') }}
@@ -699,7 +720,7 @@ jobs:
           retention-days: 14
 
   ci-ok:
-    needs: [changes, gate, nix-eval, nix-build, vuln, secrets]
+    needs: [changes, gate, selftest, nix-eval, nix-build, vuln, secrets]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
@@ -727,10 +748,10 @@ jobs:
       - name: Every needed job stayed in its time budget
         env:
           GH_TOKEN: ${{ github.token }}
-        run: scripts/ci-budget.sh changes gate nix-eval nix-build vuln secrets
+        run: scripts/ci-budget.sh changes gate selftest nix-eval nix-build vuln secrets
 
   budget:
-    needs: [changes, nix-cache, nix-cache-mac, nix-eval, nix-build, gate, nixos-vm, vuln, secrets, ios-tools, swift, web, web-lighthouse]
+    needs: [changes, nix-cache, nix-cache-mac, nix-eval, nix-build, gate, selftest, nixos-vm, vuln, secrets, ios-tools, swift, web, web-lighthouse]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:

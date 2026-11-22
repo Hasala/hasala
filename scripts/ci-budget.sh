@@ -10,6 +10,7 @@ budget() {
 	nix-eval) echo 150 ;;
 	nix-build) echo 180 ;;
 	gate) echo 300 ;;
+	selftest) echo 120 ;;
 	vuln) echo 100 ;;
 	nixos-vm) echo 240 ;;
 	web) echo 120 ;;

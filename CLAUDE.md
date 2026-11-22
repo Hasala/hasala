@@ -120,8 +120,9 @@ The gate also runs its own self-tests: `scripts/tests/gate_run_test.sh`,
 `ci_changes_test.sh` and `ci_budget_test.sh`. `git_env_test.sh` proves that
 the self-tests leave the surrounding repository alone when git's variables are
 exported. `ci_changes_test.sh` tests the path rules of CI (refer to "Path rules
-in CI"). The closing lines name only the steps that ran, and a step that did
-not run adds `check: NOT RUN: ...`.
+in CI"). `scripts/check.sh --self-tests` runs the real-mail fence and the
+self-tests alone. The closing lines name only the steps that ran, and a step
+that did not run adds `check: NOT RUN: ...`.
 
 ### Go test order and cleanup
 
@@ -277,14 +278,15 @@ A pull request merges only through the merge queue. On a merge group, the Mac
 jobs skip, and the queue merges when `ci-ok` passes (`docs/ci.md`).
 
 The last job, `ci-ok`, needs only the fast jobs: `changes`, `gate`,
-`nix-eval`, `nix-build`, `vuln` and `secrets`. It always runs. It fails if
+`selftest`, `nix-eval`, `nix-build`, `vuln` and `secrets`. It always runs. It fails if
 one of these jobs failed or was cancelled. It passes when each one succeeded or
 was skipped. `ci-ok` is the one required check that the ruleset names. These
 jobs run at the same time:
 
 - `gate`: `scripts/check.sh` in the devShell. In CI, `scripts/check.sh`
   skips its `govulncheck ./cmd/hasalad/...` step, because `vuln` scans all
-  packages.
+  packages, and its self-tests, because `selftest` runs them.
+- `selftest`: `scripts/check.sh --self-tests` in the devShell.
 - `nix-eval`: `nix flake check --no-build`, then
   `scripts/ci-mac-devshell-cached.sh`. This script plans the Mac devShell and
   builds nothing. It fails when the public cache has no Mac build of a

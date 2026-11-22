@@ -124,7 +124,7 @@ There is no paid bug bounty during the beta.
 - The Hasala iPhone app (TestFlight beta builds).
 - Our API at api.hasala.app.
 - The website at hasala.app, including the invite links and the files that let the app sign in with passkeys.
-- Hasala's source code at [github.com/salehtl/hasala](https://github.com/salehtl/hasala).
+- Hasala's source code at [github.com/Hasala/hasala](https://github.com/Hasala/hasala).
 - Design problems, such as a way for our server, Cloudflare or another party to read or change sealed data, or to sign in without your passkey, password or recovery phrase.
 
 ### Out of scope

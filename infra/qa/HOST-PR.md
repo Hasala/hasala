@@ -55,7 +55,7 @@ stops. The owner merges.
     # commit of hasala main is released to QA, so the weekly lock bump never
     # deploys unreleased work. Deliberately NO `follows`: the host runs exactly
     # the closure hasala's CI built and tested (its own nixos-26.05 lock).
-    hasala.url = "github:salehtl/hasala/<release branch, e.g. qa>";
+    hasala.url = "github:Hasala/hasala/<release branch, e.g. qa>";
 ```
 
 ### `modules/services/hasala.nix`
@@ -244,9 +244,9 @@ every password fail.
 ### The tunnel (out of band, once, on the owner's Mac)
 
 ```sh
-nix run github:salehtl/hasala#cloudflared -- tunnel login        # pick the hasala.app zone
-nix run github:salehtl/hasala#cloudflared -- tunnel create hasala-qa
-nix run github:salehtl/hasala#cloudflared -- tunnel route dns hasala-qa api.hasala.app
+nix run github:Hasala/hasala#cloudflared -- tunnel login        # pick the hasala.app zone
+nix run github:Hasala/hasala#cloudflared -- tunnel create hasala-qa
+nix run github:Hasala/hasala#cloudflared -- tunnel route dns hasala-qa api.hasala.app
 # put ~/.cloudflared/<UUID>.json into secrets/hasala.yaml as hasala/tunnel_credentials, then
 rm ~/.cloudflared/<UUID>.json ~/.cloudflared/cert.pem
 ```

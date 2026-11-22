@@ -16,7 +16,7 @@ At this time, Hasala goes to a small TestFlight beta. All deployments are
 
 | Path | Contents |
 | --- | --- |
-| `server/` | The Go server `hasalad` (module `github.com/salehtl/hasala/server`). It uses Postgres. It is a fork of ledgerd at commit `4b01e36`. |
+| `server/` | The Go server `hasalad` (module `github.com/salehtl/hasala/server`; the path keeps the name of the first owner, and the move to the organization did not change it). It uses Postgres. It is a fork of ledgerd at commit `4b01e36`. |
 | `server/oracle/` | A different Go module. It contains the frozen ledgerd v1 reference packages (`v1ref`), the corpus reader and the corpus gates. Use it only as a test oracle. The server build graph cannot get access to it. |
 | `ios/` | The native SwiftUI app and its Swift packages. `HasalaCore` is the client core (the port from TypeScript). `HasalaKit` is the design system, the read models, the widget data and the Maya mock. `Hasala/` is the app (`App/`, `Features/`, and `Live/`, which connects the screens to the core). `HasalaWidgets/` is the widget extension, with its own `PrivacyInfo.xcprivacy`. Refer to "How the code fits together" below. |
 | `conformance/` | Shared fixtures. Go and Swift must give output that is the same, byte for byte. Nine sets are golden files that the Swift tests own (`conformance/README.md`). The ledgerd TypeScript client core and PWA that wrote some of them were removed after commit `9b4aae2`. |

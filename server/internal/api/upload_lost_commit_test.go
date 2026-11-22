@@ -123,6 +123,7 @@ func newLostCommitFixture(t *testing.T) *lostCommitFixture {
 }
 
 func TestAnUploadWhoseCommitAnswerIsLostStaysCharged(t *testing.T) {
+	t.Parallel()
 	f := newLostCommitFixture(t)
 
 	f.lost.loseNext("commit")
@@ -152,6 +153,7 @@ func TestAnUploadWhoseCommitAnswerIsLostStaysCharged(t *testing.T) {
 }
 
 func TestAnUploadLostBeforeItsCommitCostsNoByteBudget(t *testing.T) {
+	t.Parallel()
 	f := newLostCommitFixture(t)
 
 	f.lost.loseNext("begin isolation level read committed")

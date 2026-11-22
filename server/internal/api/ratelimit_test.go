@@ -8,6 +8,7 @@ import (
 )
 
 func TestLimiterSpendsTheBurstThenRefillsOnTheClock(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	l := NewLimiter(1, 3, 16, func() time.Time { return now })
 	for i := 0; i < 3; i++ {
@@ -30,6 +31,7 @@ func TestLimiterSpendsTheBurstThenRefillsOnTheClock(t *testing.T) {
 }
 
 func TestLimiterKeysAreIndependent(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	l := NewLimiter(0, 1, 16, func() time.Time { return now })
 	if !l.Allow("a") || l.Allow("a") {
@@ -41,6 +43,7 @@ func TestLimiterKeysAreIndependent(t *testing.T) {
 }
 
 func TestLimiterUnderKeyPressureSharesABucketRatherThanDenying(t *testing.T) {
+	t.Parallel()
 	// The key space is attacker-chosen on the sign-in path. Refusing new keys
 	// once the map is full would let anyone with many source addresses lock
 	// every legitimate caller out — an amplification nuisance traded for an
@@ -72,6 +75,7 @@ func TestLimiterUnderKeyPressureSharesABucketRatherThanDenying(t *testing.T) {
 }
 
 func TestLimiterSweepOnlyEvictsFullyRefilledKeys(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	l := NewLimiter(1, 2, 2, func() time.Time { return now })
 	l.Allow("idle") // 1 token left
@@ -99,6 +103,7 @@ func TestLimiterSweepOnlyEvictsFullyRefilledKeys(t *testing.T) {
 }
 
 func TestNilLimiterAllows(t *testing.T) {
+	t.Parallel()
 	var l *Limiter
 	if !l.Allow("anything") {
 		t.Fatal("a nil limiter must be an absent limit, not a closed door")
@@ -106,6 +111,7 @@ func TestNilLimiterAllows(t *testing.T) {
 }
 
 func TestRefundNGivesBackUpToTheBurst(t *testing.T) {
+	t.Parallel()
 	l := NewLimiter(0, 10, 1, time.Now)
 	if !l.AllowN("a", 10) {
 		t.Fatal("a full bucket refused its burst")
@@ -130,6 +136,7 @@ func TestRefundNGivesBackUpToTheBurst(t *testing.T) {
 }
 
 func TestClientLimiterKeepsOnePrefixFromFillingTheTable(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	l := NewClientLimiter(3.0/3600, 3, 640, func() time.Time { return now })
 	for i := range 640 {
@@ -158,6 +165,7 @@ func TestClientLimiterKeepsOnePrefixFromFillingTheTable(t *testing.T) {
 }
 
 func TestClientLimiterFreesAQuotaSlotOnlyAfterARefill(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	l := NewClientLimiter(1, 2, 64, func() time.Time { return now })
 	a, b, p := "6:20010db800010001", "6:20010db800010002", "6p:20010db80001"
@@ -183,6 +191,7 @@ func TestClientLimiterFreesAQuotaSlotOnlyAfterARefill(t *testing.T) {
 }
 
 func TestClientLimiterSweepsAtMostOncePerRefill(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	l := NewClientLimiter(1, 2, 64, func() time.Time { return now })
 	a, b, p := "6:20010db800010001", "6:20010db800010002", "6p:20010db80001"
@@ -203,6 +212,7 @@ func TestClientLimiterSweepsAtMostOncePerRefill(t *testing.T) {
 }
 
 func TestClientLimiterForgetsSweptPrefixes(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	l := NewClientLimiter(1, 1, 2, func() time.Time { return now })
 	l.Allow("6:20010db800010001")
@@ -220,6 +230,7 @@ func TestClientLimiterForgetsSweptPrefixes(t *testing.T) {
 }
 
 func TestLimiterWithoutAQuotaTreatsEveryKeyAlike(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	l := NewLimiter(0, 1, 64, func() time.Time { return now })
 	for i := range 64 {

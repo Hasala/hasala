@@ -19,6 +19,7 @@ func (f *keyFixture) phraseSeenAt() *time.Time {
 }
 
 func TestTheFirstViewMarksTheWordsSeenAndSurvivesARestore(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixtureUnbootstrapped(t)
 	path, rec := ledgerRecorder(t)
 	acct := &Accounts{Pool: f.pool, Sessions: f.sessions, Passkeys: f.passkeys, StepUp: f.stepUp, Mail: &Mailer{},
@@ -68,6 +69,7 @@ func TestTheFirstViewMarksTheWordsSeenAndSurvivesARestore(t *testing.T) {
 }
 
 func TestAFailedViewLeavesTheWordsUnseen(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixtureUnbootstrapped(t)
 	path, rec := ledgerRecorder(t)
 	acct := &Accounts{Pool: f.pool, Sessions: f.sessions, Passkeys: f.passkeys, StepUp: f.stepUp, Mail: &Mailer{},
@@ -92,6 +94,7 @@ func TestAFailedViewLeavesTheWordsUnseen(t *testing.T) {
 }
 
 func TestTheSyncedCheckIsABadRequestWhenTheCredentialIsMissing(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixtureUnbootstrapped(t)
 	if err := checkSyncedPasskey(bgctx, f.pool, f.user, []byte("not-a-credential")); !errors.Is(err, ErrKeysMalformed) {
 		t.Fatalf("a credential that is not there: %v", err)

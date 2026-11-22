@@ -15,6 +15,7 @@ import (
 // checked "session resolved but the user row is missing", it is passing over a
 // state that cannot occur: sessions.user_id cascades from users.
 func TestASessionOfADeletedAccountIsDistinguishableFromAnExpiredOne(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -56,6 +57,7 @@ func TestASessionOfADeletedAccountIsDistinguishableFromAnExpiredOne(t *testing.T
 // An ordinary expiry must stay an ordinary expiry: this is the case the client
 // must NOT wipe local data on, and it is the common one.
 func TestAnExpiredSessionIsNotReportedAsADeletedAccount(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -74,6 +76,7 @@ func TestAnExpiredSessionIsNotReportedAsADeletedAccount(t *testing.T) {
 // A token that was never issued must not be answered as a deleted account: it
 // would tell an unauthenticated caller that a guessed token once existed.
 func TestAnUnknownTokenIsNotReportedAsADeletedAccount(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
@@ -85,6 +88,7 @@ func TestAnUnknownTokenIsNotReportedAsADeletedAccount(t *testing.T) {
 // The tombstone stops answering once the session it names would have died
 // anyway. Past that point "expired" is true and sufficient.
 func TestTheTombstoneStopsAnsweringOnceTheSessionWouldHaveExpired(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -124,6 +128,7 @@ func TestTheTombstoneStopsAnsweringOnceTheSessionWouldHaveExpired(t *testing.T) 
 // otherwise. Two hours of skew is the same disagreement on every day this suite
 // will ever run.
 func TestTombstoneExpiryIsDecidedByTheSessionsClock(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	// Two hours behind wall time with a one-hour TTL: live by the clock that
@@ -189,6 +194,7 @@ func newSkewedClock(skew time.Duration) *clock {
 // an accident of deployment, not a property of the system. A relay, a second
 // host, a VM resume or an NTP correction ends it.
 func TestATombstoneOutlivesADisagreementBetweenTheGoAndPostgresClocks(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		skew time.Duration
@@ -234,6 +240,7 @@ func TestATombstoneOutlivesADisagreementBetweenTheGoAndPostgresClocks(t *testing
 // tombstone with it, and that device — signed in, its account deleted — sees a
 // 401 for ever.
 func TestDeletingOneAccountDoesNotReapAnotherAccountsTombstone(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	c := newSkewedClock(-90 * 24 * time.Hour)
 	s := newSessions(pool, time.Hour, c)
@@ -270,6 +277,7 @@ func TestDeletingOneAccountDoesNotReapAnotherAccountsTombstone(t *testing.T) {
 // The tombstone must carry nothing attributable to the person: no user id, no
 // subject hash, no address.
 func TestTheTombstoneCarriesNoIdentity(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -336,6 +344,7 @@ func TestTheTombstoneCarriesNoIdentity(t *testing.T) {
 // below records that a Postgres-clock sweep would reap NOTHING here. The only
 // way to reap exactly A is to judge on the clock that issued the sessions.
 func TestReapingTombstonesUsesTheSessionsClockAndSparesRowsInsideTheGrace(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	c := newSkewedClock(90 * 24 * time.Hour)
 	s := newSessions(pool, time.Hour, c)
@@ -430,6 +439,7 @@ func TestReapingTombstonesUsesTheSessionsClockAndSparesRowsInsideTheGrace(t *tes
 // instant deletedOrUnknown stops answering, which is defensible — and is not
 // what the table, the migration or the runbook say.
 func TestTheTombstoneGraceIsAFiniteWindowPastExpiry(t *testing.T) {
+	t.Parallel()
 	if tombstoneGrace <= 0 {
 		t.Fatalf("tombstoneGrace = %v: the sweep would reap rows the moment they expire", tombstoneGrace)
 	}

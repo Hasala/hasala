@@ -27,6 +27,7 @@ func linkCount(t *testing.T, h *harness, k *keyed) int {
 }
 
 func TestAMailboxBelongsToOneAccount(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, g := withGmail(h, nil)
 	a, b := h.onboard(true), h.onboard(true)
@@ -78,6 +79,7 @@ func TestAMailboxBelongsToOneAccount(t *testing.T) {
 }
 
 func TestTheMailboxIndexRefusesASecondAccount(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, g := withGmail(h, nil)
 	a, b := h.onboard(true), h.onboard(true)
@@ -97,6 +99,7 @@ func TestTheMailboxIndexRefusesASecondAccount(t *testing.T) {
 }
 
 func TestOneAddressOnTwoProvidersIsTwoMailboxes(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	withGmail(h, nil)
 	withOutlook(h, nil)

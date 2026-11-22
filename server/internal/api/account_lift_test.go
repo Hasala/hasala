@@ -27,6 +27,7 @@ func (h *harness) holderCanLift(t *testing.T, token string) *bool {
 }
 
 func TestHolderCanLiftFollowsTheFactorsOlderThanTheFreeze(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	if got := h.holderCanLift(t, k.token); got != nil {
@@ -50,6 +51,7 @@ func TestHolderCanLiftFollowsTheFactorsOlderThanTheFreeze(t *testing.T) {
 }
 
 func TestHolderCanLiftWithAnOlderDeviceAndPassword(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	keys, fake, _ := h.accounts()
 	a := h.passwordSignup(keys, fake, "maya@example.com")
@@ -76,6 +78,7 @@ func TestHolderCanLiftWithAnOlderDeviceAndPassword(t *testing.T) {
 }
 
 func TestHolderCanLiftAsksAboutThisSessionsOwnDevice(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	keys, fake, _ := h.accounts()
 	a := h.passwordSignup(keys, fake, "maya@example.com")
@@ -120,6 +123,7 @@ func (h *harness) sessionWriter(t *testing.T, token string) string {
 }
 
 func TestHolderCanLiftAnswersForTheCallingDevice(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	keys, fake, _ := h.accounts()
 	a := h.passwordSignup(keys, fake, "maya@example.com")

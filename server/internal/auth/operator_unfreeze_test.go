@@ -13,6 +13,7 @@ import (
 )
 
 func TestOnlyTheOperatorLiftsAFreezeDatedToAPhraseRecovery(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	path, rec := ledgerRecorder(t)
 	m := f.passwordMember("Maya")

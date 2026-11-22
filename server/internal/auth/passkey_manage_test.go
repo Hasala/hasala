@@ -79,6 +79,7 @@ func countWraps(t *testing.T, pool *pgxpool.Pool, userID uuid.UUID) int {
 // including that plain Issue records NOTHING rather than a placeholder — the
 // ID-token exchange authenticates no credential and must not appear to have.
 func TestIssueRecordsTheCredentialThatAuthenticated(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	sessions := &Sessions{Pool: pool, TTL: time.Hour}
@@ -135,6 +136,7 @@ func TestIssueRecordsTheCredentialThatAuthenticated(t *testing.T) {
 // of the listing's "this device" marker. Three states, one answer each, and the
 // two ignorant ones must be indistinguishable from each other.
 func TestCredentialForSessionAnswersOnlyWhatItKnows(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	sessions := &Sessions{Pool: pool, TTL: time.Hour}
@@ -169,6 +171,7 @@ func TestCredentialForSessionAnswersOnlyWhatItKnows(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestListCredentialsReturnsTheAccountsOwnCredentialsOldestFirst(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, first := enroll(t, p, mustMint(t, pool, "two devices"))
@@ -216,6 +219,7 @@ func TestListCredentialsReturnsTheAccountsOwnCredentialsOldestFirst(t *testing.T
 }
 
 func TestListCredentialsNeverShowsAnotherAccountsCredentials(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	mine, myCred := enroll(t, p, mustMint(t, pool, "mine"))
@@ -242,6 +246,7 @@ func TestListCredentialsNeverShowsAnotherAccountsCredentials(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDeleteCredentialRefusesTheAccountsLastPasskey(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, only := enroll(t, p, mustMint(t, pool, "one device"))
@@ -264,6 +269,7 @@ func TestDeleteCredentialRefusesTheAccountsLastPasskey(t *testing.T) {
 }
 
 func TestDeleteCredentialRefusesTheLastOneEvenAfterOthersWereRemoved(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, first := enroll(t, p, mustMint(t, pool, "down to one"))
@@ -288,6 +294,7 @@ func TestDeleteCredentialRefusesTheLastOneEvenAfterOthersWereRemoved(t *testing.
 // It MEASURES rather than asserts a mechanism: whatever the locking does, the
 // account must end with a credential and exactly one caller must be refused.
 func TestConcurrentDeletesCannotEmptyAnAccount(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, first := enroll(t, p, mustMint(t, pool, "a race"))
@@ -335,6 +342,7 @@ func TestConcurrentDeletesCannotEmptyAnAccount(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDeleteCredentialCannotTouchAnotherAccountsPasskey(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	attacker, _ := enroll(t, p, mustMint(t, pool, "attacker"))
@@ -363,6 +371,7 @@ func TestDeleteCredentialCannotTouchAnotherAccountsPasskey(t *testing.T) {
 // nothing can ever open, left behind by the operation the user believed removed
 // that authenticator.
 func TestDeletingACredentialTakesItsKeyWrapWithIt(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, first := enroll(t, p, mustMint(t, pool, "prf"))
@@ -396,6 +405,7 @@ func TestDeletingACredentialTakesItsKeyWrapWithIt(t *testing.T) {
 //
 // Four sessions, one of each population the file header enumerates.
 func TestDeletingACredentialEndsOnlyThatCredentialsSessions(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	sessions := &Sessions{Pool: pool, TTL: time.Hour}
@@ -459,6 +469,7 @@ func TestDeletingACredentialEndsOnlyThatCredentialsSessions(t *testing.T) {
 // unattributed sweep, never from the credential's own: they removed the thing
 // that let them in, so they sign in again with a passkey they still hold.
 func TestRemovingTheCredentialYourOwnSessionUsesSignsYouOut(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	sessions := &Sessions{Pool: pool, TTL: time.Hour}
@@ -495,6 +506,7 @@ func TestRemovingTheCredentialYourOwnSessionUsesSignsYouOut(t *testing.T) {
 // 00021's BEFORE DELETE trigger on users would find no row to tombstone, so
 // that device could never be told 410 and would never wipe its local ledger.
 func TestRemovingACredentialDoesNotDeleteItsSessionRows(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	sessions := &Sessions{Pool: pool, TTL: time.Hour}
@@ -532,6 +544,7 @@ func TestRemovingACredentialDoesNotDeleteItsSessionRows(t *testing.T) {
 }
 
 func TestDeletingAPasskeySparesPasswordSessions(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	sessions := &Sessions{Pool: pool, TTL: time.Hour}

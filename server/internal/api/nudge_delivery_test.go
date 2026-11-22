@@ -99,6 +99,17 @@ func (r *nudgeRig) waitForSend() {
 	}
 }
 
+func (r *nudgeRig) waitForCooldown() {
+	r.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for r.d.Stats.Cooled.Load() == 0 {
+		if time.Now().After(deadline) {
+			r.t.Fatal("the dispatcher never rested the token")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func (r *nudgeRig) markAgeMinutes() float64 {
 	r.t.Helper()
 	var age float64
@@ -130,6 +141,7 @@ func (r *nudgeRig) waitForMarkYoungerThanAMinute() {
 }
 
 func TestNudgeThatAPNsDidNotTakeIsTriedAgainOnTheNextRun(t *testing.T) {
+	t.Parallel()
 	for name, result := range map[string]pushv2.Result{
 		"transient": pushv2.ResultTransient,
 		"cooldown":  pushv2.ResultCooldown,
@@ -142,6 +154,9 @@ func TestNudgeThatAPNsDidNotTakeIsTriedAgainOnTheNextRun(t *testing.T) {
 				t.Fatal("the first run nudged nobody")
 			}
 			r.waitForSend()
+			if result == pushv2.ResultCooldown {
+				r.waitForCooldown()
+			}
 			if msg := r.sweep(); msg != "" {
 				t.Fatalf("the same run's mark did not hold off an immediate second sweep: %q", msg)
 			}
@@ -164,6 +179,7 @@ func TestNudgeThatAPNsDidNotTakeIsTriedAgainOnTheNextRun(t *testing.T) {
 }
 
 func TestNudgeForAHolderWithNoTokenIsTriedAgainOnTheNextRun(t *testing.T) {
+	t.Parallel()
 	r := newNudgeRig(t, "no-token", "ios-72222222-2222-4222-8222-222222222222", false)
 	r.start()
 	if r.sweep() == "" {
@@ -176,6 +192,7 @@ func TestNudgeForAHolderWithNoTokenIsTriedAgainOnTheNextRun(t *testing.T) {
 }
 
 func TestNudgeLeftInTheQueueAtAStopIsTriedAgainAfterARestart(t *testing.T) {
+	t.Parallel()
 	r := newNudgeRig(t, "stopped", "ios-73333333-3333-4333-8333-333333333333", true)
 	if r.sweep() == "" {
 		t.Fatal("the first run nudged nobody")

@@ -6,6 +6,7 @@ import (
 )
 
 func TestAFreezeLinkWaitsForAnAppendAlreadyInFlight(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)

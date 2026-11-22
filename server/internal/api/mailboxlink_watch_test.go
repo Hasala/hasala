@@ -9,6 +9,7 @@ import (
 )
 
 func TestLinkingAgainForgetsTheLastWake(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	withPushAndGmail(h)
 	k := h.onboard(true)
@@ -76,6 +77,7 @@ func wantNoLinkAnswer(t *testing.T, w *httptest.ResponseRecorder) {
 }
 
 func TestAWatchReportCaughtByAnUnlinkIsNotAcknowledged(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	withPushAndGmail(h)
 	k := h.onboard(true)
@@ -84,6 +86,7 @@ func TestAWatchReportCaughtByAnUnlinkIsNotAcknowledged(t *testing.T) {
 }
 
 func TestAWatchReportDoesNotReachTheLinkThatReplacedItsOwn(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	withPushAndGmail(h)
 	k := h.onboard(true)
@@ -97,6 +100,7 @@ func TestAWatchReportDoesNotReachTheLinkThatReplacedItsOwn(t *testing.T) {
 }
 
 func TestAWatchReportNeverMovesTheExpiryBack(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	withPushAndGmail(h)
 	k := h.onboard(true)

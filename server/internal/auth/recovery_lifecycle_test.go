@@ -14,6 +14,7 @@ import (
 )
 
 func TestAFinishedRecoveryEndsEveryOtherRecoveryCeremony(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	firstID, firstV := f.verifiedRecovery(m, "passkey")
@@ -45,6 +46,7 @@ func TestAFinishedRecoveryEndsEveryOtherRecoveryCeremony(t *testing.T) {
 }
 
 func TestARecoveryEndedWhileItWaitedForTheAccountIsRefused(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	id, v := f.verifiedRecovery(m, "password")
@@ -84,6 +86,7 @@ func TestARecoveryEndedWhileItWaitedForTheAccountIsRefused(t *testing.T) {
 const injectFailure = `CREATE FUNCTION injected_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END $$;`
 
 func TestAServerFaultAfterTheClaimHandsTheRecoveryBack(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name, kind, breakIt, fixIt string
 	}{
@@ -137,6 +140,7 @@ func TestAServerFaultAfterTheClaimHandsTheRecoveryBack(t *testing.T) {
 }
 
 func TestALockTimeoutOnTheAccountHandsTheRecoveryBack(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	id, v := f.verifiedRecovery(m, "password")
@@ -172,6 +176,7 @@ func TestALockTimeoutOnTheAccountHandsTheRecoveryBack(t *testing.T) {
 }
 
 func TestACancelledRequestHandsTheRecoveryBack(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	id, v := f.verifiedRecovery(m, "password")
@@ -212,6 +217,7 @@ func TestACancelledRequestHandsTheRecoveryBack(t *testing.T) {
 }
 
 func TestARecoveryRefusedForItsOwnDeviceStaysSpent(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	id, v := f.verifiedRecovery(m, "password")

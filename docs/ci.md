@@ -38,6 +38,8 @@ entries that were used least recently.
   zero, with GC roots). `checks` and `vm` keep all that their build got.
 - On `main`, a seed job deletes the older entries with the same prefix
   (`purge`). For this, only the seed jobs have `actions: write`.
+- A pull request that saved entries keeps them in its own scope. When it
+  closes, `.github/workflows/cache-cleanup.yml` deletes them.
 - Do not use `magic-nix-cache-action` again. It saved one entry for each
   store path, with a random suffix, also in the scopes of pull requests. On
   2026-10-20 it had 5300 entries (9.5 GB) for 974 different paths (1.5 GB).

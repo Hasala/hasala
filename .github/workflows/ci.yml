@@ -209,6 +209,7 @@ jobs:
           skip_unless nixos_vm "$none|^(docs|web|ios|conformance|scripts|infra/assist)/|^\.gitleaks\.toml$"
 
   nix-cache:
+    name: nix-cache (${{ matrix.name }})
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || (needs.changes.outputs.nix_linux != 'true' && (needs.changes.outputs.gate != 'false' || needs.changes.outputs.web != 'false' || needs.changes.outputs.nixos_vm != 'false'))) }}
     runs-on: ubuntu-latest

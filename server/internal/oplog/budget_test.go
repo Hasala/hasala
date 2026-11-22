@@ -224,11 +224,19 @@ func TestOneAccountsHeldUsageRowDoesNotBlockAnother(t *testing.T) {
 	}
 
 	// The same account waits, which is what proves the lock is real.
-	sameCtx, cancelSame := context.WithTimeout(bg, 2*time.Second)
+	sameCtx, cancelSame := context.WithCancel(bg)
 	defer cancelSame()
-	err = appendOne(sameCtx, t, a, busy, "ios-00000000-0000-4000-8000-00000000000a")
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("an append for the account whose usage row is held = %v, want it to block until the deadline", err)
+	blocked := make(chan error, 1)
+	go func() { blocked <- appendOne(sameCtx, t, a, busy, "ios-00000000-0000-4000-8000-00000000000a") }()
+	waitForLockWaiter(t, pool)
+	select {
+	case err := <-blocked:
+		t.Fatalf("an append for the account whose usage row is held returned %v while the row was held", err)
+	default:
+	}
+	cancelSame()
+	if err := <-blocked; !errors.Is(err, context.Canceled) {
+		t.Fatalf("an append for the account whose usage row is held = %v, want it to block until it is cancelled", err)
 	}
 }
 

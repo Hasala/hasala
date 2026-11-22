@@ -88,6 +88,7 @@ func passkeyPath(credID []byte) string {
 // ---------------------------------------------------------------------------
 
 func TestPasskeyManagementRoutesAreNotMountedWithoutARelyingParty(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	for method, path := range map[string]string{
 		"GET":    "/api/v1/auth/passkeys",
@@ -102,6 +103,7 @@ func TestPasskeyManagementRoutesAreNotMountedWithoutARelyingParty(t *testing.T) 
 }
 
 func TestPasskeyManagementRequiresASession(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	for method, path := range map[string]string{
 		"GET":    "/api/v1/auth/passkeys",
@@ -125,6 +127,7 @@ func TestPasskeyManagementRequiresASession(t *testing.T) {
 // in every encoding this API uses anywhere, so a future SELECT that widened by
 // one column would fail here rather than in production.
 func TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	second := k.addPasskey(k.token)
@@ -225,6 +228,7 @@ func TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial(t *testing.T) {
 // a session with no recorded credential marks NOTHING, rather than marking the
 // most recently used credential and being wrong.
 func TestTheCurrentMarkerFollowsTheCredentialTheSessionWasMintedWith(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	second := k.addPasskey(k.token)
@@ -263,6 +267,7 @@ func TestTheCurrentMarkerFollowsTheCredentialTheSessionWasMintedWith(t *testing.
 }
 
 func TestListPasskeysOnlyEverShowsTheCallersOwnCredentials(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, mine := h.register(h.invite("mine"))
 	_, theirs := h.register(h.invite("theirs"))
@@ -285,6 +290,7 @@ func TestListPasskeysOnlyEverShowsTheCallersOwnCredentials(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDeletingTheLastPasskeyIsRefusedByTheServer(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 
@@ -305,6 +311,7 @@ func TestDeletingTheLastPasskeyIsRefusedByTheServer(t *testing.T) {
 }
 
 func TestDeletingAPasskeyRemovesItAndThenRefusesTheRemainingOne(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	first := k.authn
@@ -341,6 +348,7 @@ func TestDeletingAPasskeyRemovesItAndThenRefusesTheRemainingOne(t *testing.T) {
 // (account_key_wraps → webauthn_credentials), which is why it is measured over
 // HTTP as well as in auth: nothing in the handler would notice if it were lost.
 func TestDeletingAPasskeyTakesItsKeyWrapWithIt(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true) // the bootstrap stores the first credential's wrap
 	first := k.authn
@@ -372,6 +380,7 @@ func TestDeletingAPasskeyTakesItsKeyWrapWithIt(t *testing.T) {
 // The caller here is signed in on the credential that survives, which is the
 // ordinary shape of "remove my lost phone".
 func TestDeletingAPasskeyEndsOnlyThatPasskeysSessions(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	// Three ceremonies plus five plain requests is past the shipped per-IP burst
 	// of 12. The limit itself has its own test; this one is about revocation.
@@ -410,6 +419,7 @@ func TestDeletingAPasskeyEndsOnlyThatPasskeysSessions(t *testing.T) {
 // this whole change exists to prevent: before 00034 the DELETE revoked every
 // session but the caller's, so retiring a phone signed the laptop out.
 func TestDeletingAPasskeyLeavesTheAccountsOtherDevicesSignedIn(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	first, session := k.authn, k.token
@@ -436,6 +446,7 @@ func TestDeletingAPasskeyLeavesTheAccountsOtherDevicesSignedIn(t *testing.T) {
 }
 
 func TestDeletingAnotherAccountsPasskeyIsRefusedAndLeavesItAlone(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	attacker := h.onboard(true)
 	attacker.addPasskey(attacker.token) // so the last-passkey rule is not what stops them
@@ -460,6 +471,7 @@ func TestDeletingAnotherAccountsPasskeyIsRefusedAndLeavesItAlone(t *testing.T) {
 // base64 is bad at: '+', '/' and '=' in a URL path. The client percent-encodes
 // the id; this asserts the route still matches and the right row goes.
 func TestDeletingAPasskeyWhoseIdNeedsEscapingWorks(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	u, token := k.user, k.token
@@ -477,6 +489,7 @@ func TestDeletingAPasskeyWhoseIdNeedsEscapingWorks(t *testing.T) {
 }
 
 func TestDeletingAPasskeyWithAMalformedIdIsABadRequest(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, session := h.register(h.invite("malformed"))
 	w := h.req("DELETE", "/api/v1/auth/passkeys/not!base64", session.SessionToken, nil)
@@ -487,6 +500,7 @@ func TestDeletingAPasskeyWithAMalformedIdIsABadRequest(t *testing.T) {
 // every other passkey route is on: they are session-authenticated, and the
 // limiter runs before the session is resolved.
 func TestPasskeyManagementIsRateLimited(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, session := h.register(h.invite("limits"))
 	for _, route := range []struct{ method, path string }{

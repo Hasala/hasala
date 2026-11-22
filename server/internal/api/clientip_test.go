@@ -8,6 +8,7 @@ import (
 
 // Spec 02 §16.1's cases (the shape of conformance's client-ip.json).
 func TestClientKeyFor(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name, peer, header string
 		cloudflare         bool
@@ -44,6 +45,7 @@ func TestClientKeyFor(t *testing.T) {
 
 // AT-RL-1, AT-RL-2 and AT-RL-3 through the handler, on meta-ip (no database).
 func TestPerIPLimitsFollowCfConnectingIP(t *testing.T) {
+	t.Parallel()
 	srv := &Server{TrustCloudflare: true, Logf: func(string, ...any) {}}
 	srv.MetaPerIP = NewLimiter(0, 1, metaMaxKeys, nil)
 	h := srv.Handler()

@@ -7,6 +7,7 @@ import (
 )
 
 func TestAnUnsentCodeStopsCountingWhenItsSendWindowEnds(t *testing.T) {
+	t.Parallel()
 	for name, stopIt := range map[string]func(f *acctFixture){
 		"the provider refused the email":   func(f *acctFixture) { f.fake.Err = errors.New("synthetic provider outage") },
 		"the server ended before the send": func(f *acctFixture) { f.mailer.Async = func(func()) {} },
@@ -14,7 +15,7 @@ func TestAnUnsentCodeStopsCountingWhenItsSendWindowEnds(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			f := newAcctFixture(t)
 			stopIt(f)
-			addr := newAddr()
+			addr := f.newAddr()
 			invite := f.printedInvite(false)
 			begin := func() error {
 				_, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: invite, Email: addr, DisplayName: "Maya"})
@@ -42,8 +43,9 @@ func TestAnUnsentCodeStopsCountingWhenItsSendWindowEnds(t *testing.T) {
 }
 
 func TestACodeThatWentOutCountsForTheWholeHour(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	invite := f.printedInvite(false)
 	begin := func() error {
 		_, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: invite, Email: addr, DisplayName: "Maya"})
@@ -65,10 +67,11 @@ func TestACodeThatWentOutCountsForTheWholeHour(t *testing.T) {
 }
 
 func TestAFailedResetEmailSpendsItsSlotLikeAnAddressWithNoAccount(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.fake.Err = errors.New("synthetic provider outage")
-	for _, addr := range []string{m.addr, newAddr()} {
+	for _, addr := range []string{m.addr, f.newAddr()} {
 		for i := 0; i < codeSendsPerHour; i++ {
 			if _, err := f.acct.ResetBegin(bgctx, addr); err != nil {
 				t.Fatalf("%s, request %d: %v", addr, i, err)
@@ -82,6 +85,7 @@ func TestAFailedResetEmailSpendsItsSlotLikeAnAddressWithNoAccount(t *testing.T) 
 }
 
 func TestOnlyACodeThatAlwaysMailsSomethingWaitsForItsSend(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		purpose, kind string
 		waits         bool
@@ -101,7 +105,7 @@ func TestOnlyACodeThatAlwaysMailsSomethingWaitsForItsSend(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer tx.Rollback(bgctx)
-			ic, err := issueCodeTx(bgctx, tx, f.keys, f.clock.now(), c.purpose, newAddr(), nil, c.kind, "ceremony", true)
+			ic, err := issueCodeTx(bgctx, tx, f.keys, f.clock.now(), c.purpose, f.newAddr(), nil, c.kind, "ceremony", true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -117,6 +121,7 @@ func TestOnlyACodeThatAlwaysMailsSomethingWaitsForItsSend(t *testing.T) {
 }
 
 func TestASignupAnswersAlikeForAnAddressWithAnAccountAndOneWithout(t *testing.T) {
+	t.Parallel()
 	for name, c := range map[string]struct {
 		outage error
 		want   error
@@ -129,7 +134,7 @@ func TestASignupAnswersAlikeForAnAddressWithAnAccountAndOneWithout(t *testing.T)
 			m := f.passwordMember("Maya")
 			invite := f.printedInvite(false)
 			f.fake.Err = c.outage
-			for _, addr := range []string{m.addr, newAddr()} {
+			for _, addr := range []string{m.addr, f.newAddr()} {
 				begin := func() error {
 					_, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: invite, Email: addr, DisplayName: "Maya"})
 					return err

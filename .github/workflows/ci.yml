@@ -266,6 +266,9 @@ jobs:
           done
           exit "$failed"
 
+      - name: The Mac devShell needs no build of a nixpkgs package
+        run: scripts/ci-mac-devshell-cached.sh
+
       - name: Build the devShell
         run: nix develop --command true
 

@@ -182,6 +182,9 @@ step "gate run self-test"
 "$ROOT/scripts/tests/gotest_ran_test.sh"
 "$ROOT/scripts/tests/git_env_test.sh"
 
+step "Mac devShell cache check self-test"
+"$ROOT/scripts/tests/ci_mac_devshell_test.sh"
+
 GATE_STEPS="real-mail fence, toolchain, fence"
 NOT_RUN=()
 

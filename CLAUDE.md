@@ -112,7 +112,7 @@ reachable.
   alone, and it must still fail with that text.
 
 The gate also runs its own self-tests: `scripts/tests/gate_run_test.sh`,
-`gotest_ran_test.sh` and `git_env_test.sh`. The last one proves that the
+`gotest_ran_test.sh`, `git_env_test.sh` and `ci_mac_devshell_test.sh`. The last one proves that the
 self-tests leave the surrounding repository alone when git's variables are
 exported. The closing lines name only the steps that ran, and a step that did
 not run adds `check: NOT RUN: ...`.
@@ -155,7 +155,12 @@ required check that the ruleset must name. Until the owner changes the
 ruleset, the ruleset names these three jobs:
 
 - `gate`: first `nix flake check --no-build`, then a build of each check
-  except `qa-vm`, then `scripts/check.sh` in the devShell. In CI,
+  except `qa-vm`, then `scripts/ci-mac-devshell-cached.sh`, then
+  `scripts/check.sh` in the devShell. `ci-mac-devshell-cached.sh` plans the
+  Mac devShell and builds nothing. It fails when the public cache has no Mac
+  build of a nixpkgs package in the devShell, because a Mac then builds that
+  package from source and `ios-tools` cannot end in its time limit. Move the
+  nixpkgs pin when it fails. In CI,
   `scripts/check.sh` skips its `govulncheck ./cmd/hasalad/...` step, because
   `vuln` scans all packages.
 - `vuln`: `govulncheck ./...` in `server/` and in `server/oracle/`. The job

@@ -177,6 +177,9 @@ step "gate run self-test"
 "$ROOT/scripts/tests/gotest_ran_test.sh"
 "$ROOT/scripts/tests/git_env_test.sh"
 
+step "pre-push hook self-test"
+"$ROOT/scripts/tests/pre_push_hook_test.sh"
+
 GATE_STEPS="real-mail fence, toolchain, fence"
 NOT_RUN=()
 

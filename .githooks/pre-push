@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BUDGET_SECONDS=9
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec "$ROOT/scripts/pre-push.sh" --hook "$BUDGET_SECONDS" "$@"

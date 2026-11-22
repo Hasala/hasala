@@ -206,6 +206,9 @@
               pkgs.gh
               pkgs.nixfmt
               (treefmtFor system pkgs)
+              pkgs.gitleaks
+              pkgs.shellcheck
+              pkgs.jq
             ]
             ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
               (xcodegenFor pkgs)
@@ -222,6 +225,9 @@
             // lib.optionalAttrs (system == "x86_64-linux") {
               LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ];
             };
+            shellHook = ''
+              bash ${./scripts/install-hooks.sh}
+            '';
           };
         }
       );

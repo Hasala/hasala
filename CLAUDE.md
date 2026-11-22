@@ -208,7 +208,9 @@ it is not sure, it runs the job.
 - `ios-tools` reads only `ios/`, `design/` and the
   flake. The devShell step of `ios-tools` reads only `ios/scripts/` and the
   flake (output `ios_scripts`).
-- `web` reads only `web/`, `docs/legal/` and the flake.
+- `web` and `web-lighthouse` read only `web/`, `docs/legal/` and the flake.
+  `web` does the typecheck, the tests and the build. `web-lighthouse` builds
+  the site again and runs Lighthouse, mobile and desktop in two jobs.
 - `nixos-vm` reads only `infra/` (except `infra/assist/`), `server/` and the
   flake.
 - A change in `.github/` starts all jobs. `secrets` always runs.
@@ -584,7 +586,8 @@ If you add a page with a code or a token in its address, do these steps:
   127.0.0.1:4321. It uses the `_headers`, the `_redirects`, the
   trailing-slash rules of production and gzip.
 - `web/lighthouse/run.sh` runs Lighthouse CI on `/` (mobile and desktop) on
-  that server. It must have Node and Chrome, thus it runs in CI (job `web`).
+  that server. It must have Node and Chrome, thus it runs in CI (job
+  `web-lighthouse`, one job for each preset).
   CI keeps the reports as a workflow artifact. The minimum scores are 0.9
   for performance, and 0.95 for accessibility, best practices and SEO.
 

@@ -99,7 +99,8 @@ reachable.
 - The toolchain floor.
 - The hasalad fences (`server/cmd/hasalad/fence_test.go`).
 - `go vet` and `go test` in `server/`, then in `server/oracle/`. Both use one
-  temporary Postgres (unix socket only).
+  temporary Postgres (unix socket only). The tests run in random order (refer
+  to "Go test order and cleanup").
 - The typecheck and `bun test` of the assist worker (`infra/assist`). Its
   dependencies are always installed from the lockfile.
 - The conformance suites. The `CONFORMANCE` table in `scripts/check.sh` names
@@ -117,11 +118,54 @@ self-tests leave the surrounding repository alone when git's variables are
 exported. The closing lines name only the steps that ran, and a step that did
 not run adds `check: NOT RUN: ...`.
 
+### Go test order and cleanup
+
+The gate runs the Go tests of the two modules in random order
+(`-shuffle=on`). A package that fails shows its seed:
+`FAIL <package> (<time>s) -shuffle=<seed>`. The gate then prints the command
+that runs this package again in the same order.
+`CHECK_SHUFFLE=<seed> scripts/check.sh` gives that order to the full gate. Do
+not set the order to make a test pass.
+
+In the gate, all packages use one Postgres cluster at the same time. Thus a
+test must pass alone, in each order and while the tests of other packages
+run. A test that fails only in some orders, or only on a busy machine, has a
+bug. Find the cause. Do not add a retry and do not make a timeout longer.
+
+- Do not keep state that changes in a package-level variable. Put it in the
+  fixture of the test.
+- Set an environment variable only with `t.Setenv`. Change the directory only
+  with `t.Chdir`. Write files only below `t.TempDir()`.
+- Use `t.Cleanup` to put back each thing that the test changes, at the line
+  that changes it: a server, a goroutine, a process, a held transaction.
+- The standard logger is process state. `slog.SetDefault` also changes the
+  writer and the flags of the `log` package, and `slog.SetDefault(previous)`
+  does not put them back. Put back `log.Writer()`, `log.Flags()` and
+  `slog.Default()` (refer to `captureLog` in `server/cmd/hasalad/main_test.go`).
+- Use a database of your own. `pgtest.New(t)` gives each test a new migrated
+  database and drops it. Do not rely on a row or a sequence value of another
+  test.
+- Each test sees the sessions and the locks of all databases in the cluster.
+  Limit a query on `pg_stat_activity` with `datname = current_database()`, and
+  a query on `pg_locks` with the `database` of the test.
+- To wait for a lock, wait until `pg_stat_activity` shows the session in a
+  lock wait. Do not sleep.
+- A row lock does not keep its queue. When the holder ends, a new session can
+  get the row before a session that waited. If a test needs one sequence, use
+  `LOCK TABLE`, which keeps its queue.
+- Do not move a test clock while a goroutine of the code under test still
+  handles an event. Wait for a sign that it finished (a counter, a row, a
+  channel). A callback that the code calls in the middle of its work is not
+  that sign.
+- Other gate runs can use the same host at the same time. Do not rely on the
+  process table or on a fixed path outside `t.TempDir()`.
+
 ### One test
 
 - Go (in `server/` or `server/oracle/`):
   `go test -count=1 -run '^TestName$' ./internal/oplog`. Tests that use
-  Postgres start their own temporary cluster.
+  Postgres start their own temporary cluster. Add `-shuffle=<seed>` to get the
+  order of a failed gate run.
 - HasalaCore: `swift test --package-path ios/HasalaCore --filter <Target>.<Class>/<test>`.
   CI (job `swift`) runs `swift test --disable-automatic-resolution --explicit-target-dependency-import-check error`
   in `ios/HasalaCore`.

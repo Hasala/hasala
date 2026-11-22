@@ -377,10 +377,10 @@ func (d *Dispatcher) send(ctx context.Context, t Target) Result {
 			}
 		}
 	case ResultCooldown:
-		d.Stats.Cooled.Add(1)
 		d.mu.Lock()
 		d.th.cool(t, d.now())
 		d.mu.Unlock()
+		d.Stats.Cooled.Add(1)
 	case ResultConfig:
 		d.Stats.ConfigErrors.Add(1)
 		d.mu.Lock()

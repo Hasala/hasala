@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,10 +77,7 @@ func TestAFlushThatFailsDuringAnOutageTellsTheTruthAboutItsLine(t *testing.T) {
 	}
 	down.Close()
 
-	var buf bytes.Buffer
-	prev := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
-	defer slog.SetDefault(prev)
+	buf := captureLog(t)
 
 	outage := true
 	w := &ledgerWriter{write: func(purgeledger.Entry) error {

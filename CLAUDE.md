@@ -258,6 +258,9 @@ typechecks. Each one takes less than one second.
 | `web/tsconfig.test.json` | `tsgo --noEmit -p tsconfig.test.json` | The tests of the site, with the Bun types. |
 
 - In `infra/assist` and in `web/`, `bun run typecheck` runs the two projects.
+  In `web/` it first runs `astro sync`, which writes `web/.astro/types.d.ts`
+  (the types of `astro:content` and `import.meta.env`). That file is not in the
+  repository, and `tsgo` alone fails in a new checkout.
 - `tsgo` does not read `.astro` files. `bun run check` (`astro check`, with
   TypeScript 6 from `web/node_modules`) is the only typecheck of the
   frontmatter, the markup and the `<script>` elements. Do not remove it. It

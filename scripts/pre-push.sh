@@ -267,6 +267,16 @@ else
 	skip "oxlint" "no TypeScript, JavaScript, Astro or lint configuration changes"
 fi
 
+if changed '\.(ts|mjs)$|^\.oxfmtrc\.json$|^flake\.(nix|lock)$'; then
+	if have oxfmt; then
+		run "oxfmt --check" oxfmt --check
+	else
+		skip "oxfmt" "not on PATH"
+	fi
+else
+	skip "oxfmt" "no TypeScript, JavaScript or format configuration changes"
+fi
+
 if changed '^(web/|docs/legal/)'; then
 	if [[ -d web/node_modules ]] && have bun; then
 		run "web: astro check" bash -c 'cd web && bun run check'

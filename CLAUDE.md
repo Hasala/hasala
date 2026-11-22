@@ -90,7 +90,8 @@ reachable.
   `server/internal/tmpl/seed`. `scripts/check-templates-manifest.sh` also
   compares the SHA-256 of each seed with `TemplatesManifest.swift`. After you
   change a seed template, run `swift ios/tools/templates/sync.swift`.
-- `oxlint` on `infra/assist`, `scripts` and `ios/scripts` (refer to "Lint" below).
+- `oxlint` and `oxfmt --check` on `infra/assist`, `scripts` and `ios/scripts`
+  (refer to "Lint and format" below).
 - The golden fixtures check. The sets `authres`, `categorize`, `extract`, `fx`,
   `merchant-group`, `norm-dates`, `outlook-sender`, `replay` and `sms-extract` are golden files: the Swift tests own their
   expected output, and `HASALA_UPDATE_GOLDEN=1` rewrites it
@@ -201,8 +202,8 @@ time is Postgres work for each test database, and password hashing.
 
 `scripts/pre-push.sh` runs the fast CI checks on the paths that you changed
 since `origin/main`: the fence, the HasalaCore lints, gitleaks on the new
-commits, gofmt and go vet, nixfmt, oxlint, the tokens, the project, the
-templates, the CI path rules, shellcheck and the web check. It takes seconds. `--all` runs all the checks.
+commits, gofmt and go vet, nixfmt, oxlint, oxfmt, the tokens, the project,
+the templates, the CI path rules, shellcheck and the web check. It takes seconds. `--all` runs all the checks.
 It shows PASS, FAIL or SKIP for each check and fails on a FAIL. A check skips
 when its tool is not on PATH, thus run it in the devShell.
 
@@ -211,7 +212,7 @@ The script is not a hook. The owner can link it in their own clone:
 clone then use it. Agents do not set `core.hooksPath` and do not install
 hooks.
 
-### Lint
+### Lint and format
 
 `oxlint` (from the flake) lints all TypeScript, JavaScript and Astro files. The
 configuration is `.oxlintrc.json` in the repository root. Run `oxlint` in the
@@ -227,9 +228,20 @@ repository root. It takes less than one second.
 - Three jobs run it: `web` lints `web/`, `gate` (through `scripts/check.sh`)
   lints `infra/assist`, `scripts` and `ios/scripts`, and `secrets` lints
   `ios/scripts`, because `gate` does not start for a change only in `ios/`.
+  The same three jobs run `oxfmt --check` on the same paths.
 - The home page has a JavaScript budget of 15 KB (gzip) and little free space.
   For this reason, some rules are off for `web/src/scripts/`. Run
   `bun run build` in `web/` after each change to a page script.
+
+`oxfmt` (from the flake) formats the TypeScript and JavaScript files (`.ts`,
+`.mjs`). The configuration is `.oxfmtrc.json` in the repository root. Run
+`oxfmt` to format and `oxfmt --check` to examine. `nix fmt` also runs it.
+
+- `oxfmt` does not format `.astro` files, and no check examines their format.
+  Write the frontmatter and the `<script>` elements in the same style.
+- `.oxfmtrc.json` keeps `oxfmt` away from JSON, CSS, Markdown, YAML, HTML and
+  TOML files. The JSON fixtures and templates must stay the same byte for
+  byte.
 
 ### CI
 
@@ -258,7 +270,8 @@ ruleset, the ruleset names these three jobs:
   fails if it finds a reachable advisory.
 - `secrets`: the real-mail fence, the HasalaCore lints
   (`ios/scripts/check-imports.sh --no-manifest` and `check-forbidden.sh`),
-  then gitleaks on the full history, then `oxlint ios/scripts`.
+  then gitleaks on the full history, then `oxlint` and `oxfmt --check` on
+  `ios/scripts`.
 
 Do not change these job names or the name `ci-ok`. The required status
 checks find the jobs by their names. Add a new job to the `needs` of `ci-ok`
@@ -493,7 +506,8 @@ CI for iOS:
 
 - `nix build .#hasalad` builds `cmd/hasalad`.
 - `nix flake check` builds it and examines the format.
-- `nix fmt` formats Nix and Go. It does not format `server/oracle/v1ref`.
+- `nix fmt` formats Nix, Go, TypeScript and JavaScript. It does not format
+  `server/oracle/v1ref`.
   Do not change the bytes of `server/oracle/v1ref`.
 - The infra checks:
   - `ingress-lint` (on the two systems). It compares the tunnel configuration

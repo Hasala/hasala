@@ -53,6 +53,7 @@ func wakeHour(t *testing.T, h *harness, u uuid.UUID) *time.Time {
 }
 
 func TestGmailHookRouteFailureKeepsTheLinkBudget(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, g := withPushAndGmail(h)
 	holder := "ios-81111111-1111-4111-8111-111111111111"
@@ -75,6 +76,7 @@ func TestGmailHookRouteFailureKeepsTheLinkBudget(t *testing.T) {
 }
 
 func TestGmailHookAsksForARetryUntilTheWakeIsQueued(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	_, g := withPushAndGmail(h)
 	wk := &refusingWaker{}
@@ -103,6 +105,7 @@ func TestGmailHookAsksForARetryUntilTheWakeIsQueued(t *testing.T) {
 }
 
 func TestGmailHookAsksForARetryWhenTheDispatcherQueueIsFull(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	_, g := withPushAndGmail(h)
 	d := pushv2.NewDispatcher(h.pool, nil)
@@ -138,6 +141,7 @@ func (w *oneWriterRefusingWaker) TryWakeWriter(ctx context.Context, u uuid.UUID,
 }
 
 func TestOutlookHookAsksForARetryUntilEveryWakeIsQueued(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{outlookHookPath, outlookLifecyclePath} {
 		t.Run(path, func(t *testing.T) {
 			h := newHarness(t)

@@ -37,6 +37,7 @@ func wantSecurityWake(t *testing.T, k *keyed, ws []wakeRec, except string, revok
 // ends the caller's own session without waking it (review: no device signed
 // out by an authenticator change was ever told).
 func TestAuthenticatorChangesWakeTheSignedOutDevices(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	wk, _ := withPushAndGmail(h)
 	h.accounts()
@@ -99,6 +100,7 @@ func TestAuthenticatorChangesWakeTheSignedOutDevices(t *testing.T) {
 }
 
 func TestALogoutAllWakesATokenRegisteredAfterTheRequestBegan(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	wk, _ := withPushAndGmail(h)
 	k := h.onboard(true)
@@ -169,6 +171,7 @@ func logoutAllInBackground(h *harness, k *keyed) <-chan *httptest.ResponseRecord
 }
 
 func TestALogoutAllWakesATokenRegisteredWhileItsDeletesRun(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	wk, _ := withPushAndGmail(h)
 	k := h.onboard(true)
@@ -194,6 +197,7 @@ func TestALogoutAllWakesATokenRegisteredWhileItsDeletesRun(t *testing.T) {
 }
 
 func TestALogoutAllNeverWakesItsOwnDeviceRegisteringWhileItRuns(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	wk, _ := withPushAndGmail(h)
 	k := h.onboard(true)
@@ -219,6 +223,7 @@ func TestALogoutAllNeverWakesItsOwnDeviceRegisteringWhileItRuns(t *testing.T) {
 }
 
 func TestRevokingADeviceWakesATokenRegisteredAfterTheRequestBegan(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	wk, _ := withPushAndGmail(h)
 	k := h.onboard(true)
@@ -251,6 +256,7 @@ func TestRevokingADeviceWakesATokenRegisteredAfterTheRequestBegan(t *testing.T) 
 }
 
 func TestRemovingThisDeviceDoesNotWakeItsOwnToken(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	wk, _ := withPushAndGmail(h)
 	k := h.onboard(true)

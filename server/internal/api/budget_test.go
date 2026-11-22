@@ -40,6 +40,7 @@ func refusalCount(t *testing.T, h *harness, u uuid.UUID, resource string) int64 
 // The whole defect, end to end: a full account is answered 413 account_full
 // with its own numbers, not 500 internal.
 func TestAnUploadOverTheAccountCeilingIs413AndNot500(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("full")
 	tok := h.session(u)
@@ -90,6 +91,7 @@ func TestAnUploadOverTheAccountCeilingIs413AndNot500(t *testing.T) {
 // the same batch never succeeds until something is deleted or the ceiling is
 // raised, and a client that retried it on a timer would retry forever.
 func TestTheCeilingAndTheUploadLimiterAreDifferentAnswers(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("shaped")
 	tok := h.session(u)
@@ -118,6 +120,7 @@ func TestTheCeilingAndTheUploadLimiterAreDifferentAnswers(t *testing.T) {
 // presence. A budget object on a chain break would be meaningless noise in the
 // one error the spec makes a non-dismissable hard stop.
 func TestOnlyTheCeilingRefusalCarriesBudgetNumbers(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("chained")
 	tok := h.session(u)
@@ -138,6 +141,7 @@ func TestOnlyTheCeilingRefusalCarriesBudgetNumbers(t *testing.T) {
 }
 
 func TestTheUploadByteBudgetIsRefundedWhenNothingIsStored(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("refund")
 	tok := h.session(u)
@@ -191,6 +195,7 @@ func TestTheUploadByteBudgetIsRefundedWhenNothingIsStored(t *testing.T) {
 }
 
 func TestAnUploadWhoseCommitAnswerIsLostKeepsItsByteCharge(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("lost-commit")
 	tok := h.session(u)

@@ -14,6 +14,7 @@ import (
 )
 
 func TestASessionIsNotMintedForAWriterAlreadyRevoked(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	if _, err := f.pool.Exec(bgctx, `UPDATE writers SET revoked_at = $3 WHERE user_id = $1 AND writer_id = $2`,
@@ -30,6 +31,7 @@ func TestASessionIsNotMintedForAWriterAlreadyRevoked(t *testing.T) {
 }
 
 func TestASignInThatRacesARevocationEndsWithNoLiveSession(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 
@@ -88,6 +90,7 @@ func TestASignInThatRacesARevocationEndsWithNoLiveSession(t *testing.T) {
 }
 
 func TestARevocationWaitsForASignInThatGotThereFirst(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	target := authtest.NewDevice(t)
 	f.enrol(target)
@@ -128,6 +131,7 @@ func TestARevocationWaitsForASignInThatGotThereFirst(t *testing.T) {
 }
 
 func TestARevocationAndAPasskeyAddOnThatDeviceBothFinish(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	target := authtest.NewDevice(t)
 	tok := f.enrol(target)
@@ -183,6 +187,7 @@ func TestARevocationAndAPasskeyAddOnThatDeviceBothFinish(t *testing.T) {
 }
 
 func TestARevocationWaitsForAMailboxUnlinkThatHoldsTheLink(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	target := authtest.NewDevice(t)
 	f.enrol(target)
@@ -220,6 +225,7 @@ func TestARevocationWaitsForAMailboxUnlinkThatHoldsTheLink(t *testing.T) {
 }
 
 func TestAResetFinishWaitsForTheAccountBeforeItTakesTheCeremony(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.fake.Reset()

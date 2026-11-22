@@ -68,6 +68,7 @@ func plantWriter(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) string {
 // phone's access. 00010's own comment claimed this case was "recoverable by the
 // user"; it was not, and this is what makes it true.
 func TestRevokingASessionStopsThatDevicesNotifications(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	c := newClock()
 	sessions := newSessions(pool, time.Hour, c)
@@ -111,6 +112,7 @@ func TestRevokingASessionStopsThatDevicesNotifications(t *testing.T) {
 // think they have been compromised leaves the compromised device with a live
 // feed of their spending.
 func TestSignOutEverywhereStopsEveryDevicesNotifications(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	c := newClock()
 	sessions := newSessions(pool, time.Hour, c)
@@ -143,6 +145,7 @@ func TestSignOutEverywhereStopsEveryDevicesNotifications(t *testing.T) {
 // without being usable as one — and Revoke can only find the row it should if
 // both sides derive the same bytes.
 func TestSessionHashIsTheStoredForm(t *testing.T) {
+	t.Parallel()
 	const tok = "a-session-token"
 	if got, want := SessionHash(tok), tokenHash(tok); string(got) != string(want) {
 		t.Fatalf("SessionHash disagrees with the form Sessions persists")

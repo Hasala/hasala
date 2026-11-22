@@ -160,6 +160,28 @@ bug. Find the cause. Do not add a retry and do not make a timeout longer.
 - Other gate runs can use the same host at the same time. Do not rely on the
   process table or on a fixed path outside `t.TempDir()`.
 
+### Fast Go tests
+
+The Go tests of `server/` must stay below 60 seconds on 4 cores. Most of the
+time is Postgres work for each test database, and password hashing.
+
+- The tests of `internal/auth` and `internal/api` run in parallel. Start a new
+  test there with `t.Parallel()`. A test that changes process state (the
+  logger, the environment) does not call it. Such a test then runs alone,
+  before the parallel tests.
+- A parallel test uses only its own database, its own fixture and its own
+  clock.
+- Each test database is a file copy of one migrated template
+  (`internal/pgtest`). Its pools open a connection only at the first query. Do
+  not migrate a database in a test, unless the migration is the subject.
+- For the password stretch of the client (600,000 rounds), use
+  `authtest.Stretch`. It keeps each result. In `internal/auth`, get addresses
+  from `f.newAddr()`, so that the same inputs occur again.
+- Do not make the password hash of the server cheaper in a test.
+- To test a lock timeout or a statement timeout, set it on a pool of the test
+  (`RuntimeParams`). Do not wait for the 5 seconds of the runtime role.
+- Do not build a binary more than one time in a package.
+
 ### One test
 
 - Go (in `server/` or `server/oracle/`):

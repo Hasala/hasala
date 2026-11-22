@@ -11,6 +11,7 @@ import (
 )
 
 func TestAFreezeOverHTTPIsInTheLedgerWhenTheRequestEnds(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.accounts()
 	h.srv.PurgeLedger = filepath.Join(t.TempDir(), "purged")
@@ -27,6 +28,7 @@ func TestAFreezeOverHTTPIsInTheLedgerWhenTheRequestEnds(t *testing.T) {
 }
 
 func TestAFreezeIsKeptForTheLedgerWhileTheLedgerRefusesWrites(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.accounts()
 	dir := filepath.Join(t.TempDir(), "missing")
@@ -53,6 +55,7 @@ func TestAFreezeIsKeptForTheLedgerWhileTheLedgerRefusesWrites(t *testing.T) {
 }
 
 func TestNoLedgerPathHoldsNothing(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.accounts()
 	k := h.onboard(true)

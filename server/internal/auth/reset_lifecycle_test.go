@@ -56,6 +56,7 @@ func (f *acctFixture) assertResetDidNotFinish(m *member, r approvedReset) {
 }
 
 func TestAResetCannotFinishOnceTheApprovingSessionSignedOut(t *testing.T) {
+	t.Parallel()
 	for name, signOut := range map[string]func(*acctFixture, *member){
 		"a sign-out": func(f *acctFixture, m *member) {
 			if err := f.sessions.Revoke(bgctx, m.token); err != nil {
@@ -82,6 +83,7 @@ func TestAResetCannotFinishOnceTheApprovingSessionSignedOut(t *testing.T) {
 }
 
 func TestAResetFinishWaitsForASignOutOfTheApprovingSession(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	r := f.approvedReset(m, "a brand new password")
@@ -110,6 +112,7 @@ func TestAResetFinishWaitsForASignOutOfTheApprovingSession(t *testing.T) {
 }
 
 func TestFinishingAResetEndsTheOtherResets(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	first := f.approvedReset(m, "the first new password")
@@ -132,6 +135,7 @@ func TestFinishingAResetEndsTheOtherResets(t *testing.T) {
 }
 
 func TestChangingThePasswordEndsAPendingReset(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	r := f.approvedReset(m, "a brand new password")
@@ -149,6 +153,7 @@ func TestChangingThePasswordEndsAPendingReset(t *testing.T) {
 }
 
 func TestTwoResetsFinishingTogetherLeaveOnePassword(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	first := f.approvedReset(m, "the first new password")
@@ -195,6 +200,7 @@ func TestTwoResetsFinishingTogetherLeaveOnePassword(t *testing.T) {
 }
 
 func TestAResetThatExpiresWhileItWaitsIsRefused(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	r := f.approvedReset(m, "a brand new password")
@@ -222,6 +228,7 @@ func TestAResetThatExpiresWhileItWaitsIsRefused(t *testing.T) {
 }
 
 func TestAnApprovedResetCannotFinishAfterAReplayPutsTheAddressInDoubt(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	r := f.approvedReset(m, "a brand new password")

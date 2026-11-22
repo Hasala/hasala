@@ -26,8 +26,9 @@ func (f *acctFixture) registerPasskey(signupID string) (Registered, *authtest.Au
 }
 
 func TestAProvenSignupSendsNoCodeAndCreatesTheAccount(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	// A waitlist entry for the address, as 07's approval leaves it.
 	if _, err := f.pool.Exec(bgctx,
 		`INSERT INTO waitlist_entries (email_tag, email_norm, state, source, created_at, updated_at, confirmed_at, invited_at)
@@ -83,8 +84,9 @@ func TestAProvenSignupSendsNoCodeAndCreatesTheAccount(t *testing.T) {
 }
 
 func TestACodeSignupVerifiesTheAddressWithAnEmailedCode(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: f.printedInvite(false), Email: addr, DisplayName: "Maya"})
 	if err != nil {
 		t.Fatal(err)
@@ -127,8 +129,9 @@ func TestACodeSignupVerifiesTheAddressWithAnEmailedCode(t *testing.T) {
 }
 
 func TestFiveWrongCodesBurnTheCodeAndPauseTheAddress(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	code := f.printedInvite(false)
 	s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: addr, DisplayName: "Maya"})
 	if err != nil {
@@ -157,8 +160,9 @@ func TestFiveWrongCodesBurnTheCodeAndPauseTheAddress(t *testing.T) {
 }
 
 func TestConcurrentWrongCodesGetAtMostFiveGuesses(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: f.printedInvite(false), Email: addr, DisplayName: "Maya"})
 	if err != nil {
 		t.Fatal(err)
@@ -180,7 +184,7 @@ func TestConcurrentWrongCodesGetAtMostFiveGuesses(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() { errs <- f.acct.SignupVerify(bgctx, s.SignupID, wrong) }()
 	}
-	time.Sleep(300 * time.Millisecond)
+	waitForLockWaiters(t, f.count, n)
 	if err := hold.Rollback(bgctx); err != nil {
 		t.Fatal(err)
 	}
@@ -203,8 +207,9 @@ func TestConcurrentWrongCodesGetAtMostFiveGuesses(t *testing.T) {
 }
 
 func TestACodeWithEveryAttemptTakenRefusesTheRightGuess(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: f.printedInvite(false), Email: addr, DisplayName: "Maya"})
 	if err != nil {
 		t.Fatal(err)
@@ -219,8 +224,9 @@ func TestACodeWithEveryAttemptTakenRefusesTheRightGuess(t *testing.T) {
 }
 
 func TestCodeSendsAreCountedPerAddressAndHour(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	code := f.printedInvite(false)
 	for i := 0; i < codeSendsPerHour; i++ {
 		if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: addr, DisplayName: "Maya"}); err != nil {
@@ -231,7 +237,7 @@ func TestCodeSendsAreCountedPerAddressAndHour(t *testing.T) {
 		t.Fatalf("the sixth code in an hour: %v", err)
 	}
 	// Another address is unaffected.
-	if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: newAddr(), DisplayName: "Maya"}); err != nil {
+	if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: f.newAddr(), DisplayName: "Maya"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -240,10 +246,11 @@ func TestCodeSendsAreCountedPerAddressAndHour(t *testing.T) {
 // unknown code (07 Q6); a wrong link key is not an error, it only leaves the
 // address unproven.
 func TestAnAddressedInviteIsBoundToItsAddress(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	code, lk := f.addressedInvite(addr)
-	if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: newAddr(), DisplayName: "Eve", InviteLinkKey: lk}); !errors.Is(err, ErrNotInvited) {
+	if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: f.newAddr(), DisplayName: "Eve", InviteLinkKey: lk}); !errors.Is(err, ErrNotInvited) {
 		t.Fatalf("another address: %v", err)
 	}
 	if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: "ABCDEFGHIJKLMNOPQRSTUVWX", Email: addr, DisplayName: "Eve"}); !errors.Is(err, ErrNotInvited) {
@@ -266,17 +273,18 @@ func TestAnAddressedInviteIsBoundToItsAddress(t *testing.T) {
 }
 
 func TestOnlyAnActiveUnexpiredInviteIsRedeemable(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	code := f.printedInvite(false)
 	if _, err := f.pool.Exec(bgctx, `UPDATE invite_codes SET state = 'revoked', closed_at = now()`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: newAddr(), DisplayName: "Maya"}); !errors.Is(err, ErrNotInvited) {
+	if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: f.newAddr(), DisplayName: "Maya"}); !errors.Is(err, ErrNotInvited) {
 		t.Fatalf("a revoked invite: %v", err)
 	}
 	code = f.printedInvite(false)
 	f.clock.advance(15 * 24 * time.Hour)
-	if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: newAddr(), DisplayName: "Maya"}); !errors.Is(err, ErrNotInvited) {
+	if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: f.newAddr(), DisplayName: "Maya"}); !errors.Is(err, ErrNotInvited) {
 		t.Fatalf("an expired invite: %v", err)
 	}
 }
@@ -284,10 +292,11 @@ func TestOnlyAnActiveUnexpiredInviteIsRedeemable(t *testing.T) {
 // Two signups begun on one invite: the redemption in the account transaction
 // is the gate, and only the first account exists.
 func TestTwoSignupsOnOneInviteYieldOneAccount(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	code := f.printedInvite(false)
 	var ids []string
-	for _, addr := range []string{newAddr(), newAddr()} {
+	for _, addr := range []string{f.newAddr(), f.newAddr()} {
 		s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: addr, DisplayName: "Maya"})
 		if err != nil {
 			t.Fatal(err)
@@ -312,6 +321,7 @@ func TestTwoSignupsOnOneInviteYieldOneAccount(t *testing.T) {
 // and emails a notice in place of a code; a proven address in use is the one
 // distinguishable case (409 email_in_use, only to the invite's holder).
 func TestAnAddressInUseGetsTheSameAnswerAndANotice(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.fake.Reset()
@@ -342,8 +352,9 @@ func TestAnAddressInUseGetsTheSameAnswerAndANotice(t *testing.T) {
 }
 
 func TestAReviewInviteMakesAReviewAccount(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: f.printedInvite(true), Email: addr, DisplayName: "App Review"})
 	if err != nil {
 		t.Fatal(err)
@@ -361,6 +372,7 @@ func TestAReviewInviteMakesAReviewAccount(t *testing.T) {
 }
 
 func TestDisplayNameRule(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[string]string{
 		"Maya":                  "Maya",
 		"  Maya \t Rahman ":     "Maya Rahman",
@@ -406,6 +418,7 @@ func TestDisplayNameRule(t *testing.T) {
 // password and a session bound to that writer; the bootstrap is bound to the
 // signup's reserved id, address, SHA256(S) and nonce.
 func TestPasswordSignupIsOneAtomicRequest(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	i := m.info()
@@ -437,7 +450,7 @@ func TestPasswordSignupIsOneAtomicRequest(t *testing.T) {
 		"another nonce":              func(b *Bootstrap, _ *[]byte) { b.Writer.Nonce = authtest.RandBytesTB(t, 32) },
 		"auth_kind 1":                func(b *Bootstrap, _ *[]byte) { b.AuthKind = 1 },
 	} {
-		addr := newAddr()
+		addr := f.newAddr()
 		s := f.provenSignup(addr, "Maya")
 		mm := &member{f: f, addr: addr, s: f.stretch(addr, "a password of some length"), acct: authtest.NewAccount(t, s.UserID),
 			device: authtest.NewDevice(t)}
@@ -462,6 +475,7 @@ func TestPasswordSignupIsOneAtomicRequest(t *testing.T) {
 // (spec 02 §10.7.3 step 1), before the PBKDF2 it would waste, and spends the
 // signup.
 func TestAPasswordSignupOnASpentInviteIsCodeRejected(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	code := f.printedInvite(false)
 	type begun struct {
@@ -469,7 +483,7 @@ func TestAPasswordSignupOnASpentInviteIsCodeRejected(t *testing.T) {
 		m *member
 	}
 	var both []begun
-	for _, addr := range []string{newAddr(), newAddr()} {
+	for _, addr := range []string{f.newAddr(), f.newAddr()} {
 		s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: addr, DisplayName: "Maya"})
 		if err != nil {
 			t.Fatal(err)

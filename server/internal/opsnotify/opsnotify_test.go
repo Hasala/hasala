@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
@@ -18,13 +19,13 @@ func TestPost(t *testing.T) {
 	defer srv.Close()
 
 	n := New(srv.URL+"/topic", "https://console.example/")
-	if err := n.Post(context.Background(), "Hasala", "New early-access request", "inbox_tray"); err != nil {
+	if err := n.Post(context.Background(), "Hasala", "New early-access request", "inbox_tray", "low"); err != nil {
 		t.Fatal(err)
 	}
 	if got.Method != http.MethodPost || got.URL.Path != "/topic" || body != "New early-access request" {
 		t.Fatalf("got %s %s %q", got.Method, got.URL.Path, body)
 	}
-	for h, want := range map[string]string{"Title": "Hasala", "Tags": "inbox_tray", "Click": "https://console.example/"} {
+	for h, want := range map[string]string{"Title": "Hasala", "Tags": "inbox_tray", "Priority": "low", "Click": "https://console.example/"} {
 		if v := got.Header.Get(h); v != want {
 			t.Errorf("%s = %q, want %q", h, v, want)
 		}
@@ -38,7 +39,7 @@ func TestPostNoClick(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	if err := New(srv.URL, "").Post(context.Background(), "t", "m", ""); err != nil {
+	if err := New(srv.URL, "").Post(context.Background(), "t", "m", "", ""); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -48,7 +49,18 @@ func TestPostRefused(t *testing.T) {
 		w.WriteHeader(http.StatusForbidden)
 	}))
 	defer srv.Close()
-	if err := New(srv.URL, "").Post(context.Background(), "t", "m", ""); err == nil {
+	if err := New(srv.URL, "").Post(context.Background(), "t", "m", "", ""); err == nil {
 		t.Fatal("a 403 was reported as delivered")
+	}
+}
+
+func TestTitle(t *testing.T) {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		host = "hasala"
+	}
+	want := "[" + host + "] INFO hasala: new early-access request"
+	if got := Title("info", "hasala", "new early-access request"); got != want {
+		t.Fatalf("Title = %q, want %q", got, want)
 	}
 }

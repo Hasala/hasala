@@ -117,6 +117,7 @@ let
         -D) headers="$2"; shift 2 ;;
         -w | --max-time) shift 2 ;;
         -d) post="$2"; shift 2 ;;
+        -H) [ -n "''${POST_HEADERS:-}" ] && echo "$2" >> "$POST_HEADERS"; shift 2 ;;
         -sf | -f | --fail) fail=1; shift ;;
         -*) shift ;;
         *) url="$1"; shift ;;
@@ -467,7 +468,7 @@ pkgs.runCommand "hasala-ops-scripts"
     quiet=${lib.getExe healthQuiet}
     health() { rc=0; "$1" > out.log 2>&1 || rc=$?; cat out.log; }
     posted() { wc -l < "$POSTS" | tr -d ' '; }
-    health_scenario() { scenario "$1"; export POSTS="$PWD/posts"; : > "$POSTS"; }
+    health_scenario() { scenario "$1"; export POSTS="$PWD/posts" POST_HEADERS="$PWD/post-headers"; : > "$POSTS"; : > "$POST_HEADERS"; }
 
     health_scenario "a healthy run alerts and posts nothing"
     health "$all"
@@ -483,7 +484,9 @@ pkgs.runCommand "hasala-ops-scripts"
     [ "$rc" = 0 ] || no "the third failing run alerted again"
     health "$api"
     [ "$rc" = 0 ] || no "the recovering run exited $rc"
-    [ "$(cat "$POSTS")" = "hasala: recovered P1" ] || no "the recovery notice was: $(cat "$POSTS")"
+    [ "$(cat "$POSTS")" = "Probes recovered: P1" ] || no "the recovery notice was: $(cat "$POSTS")"
+    grep -qx 'Title: \[[^]]*\] OK hasala-health: probes recovered' "$POST_HEADERS" || no "the recovery title was: $(cat "$POST_HEADERS")"
+    grep -qx 'Priority: low' "$POST_HEADERS" || no "the recovery priority was: $(cat "$POST_HEADERS")"
     health "$api"
     [ "$(posted)" = 1 ] || no "the recovery was posted $(posted) times"
 
@@ -495,7 +498,7 @@ pkgs.runCommand "hasala-ops-scripts"
     [ "$(posted)" = 1 ] || no "the first attempt posted $(posted) times"
     health "$api"
     [ "$(posted)" = 2 ] || no "the notice was not sent again after it was lost"
-    [ "$(tail -n 1 "$POSTS")" = "hasala: recovered P1" ] || no "the second attempt posted: $(tail -n 1 "$POSTS")"
+    [ "$(tail -n 1 "$POSTS")" = "Probes recovered: P1" ] || no "the second attempt posted: $(tail -n 1 "$POSTS")"
     health "$api"
     [ "$(posted)" = 2 ] || no "a delivered notice was sent again"
 

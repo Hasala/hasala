@@ -30,7 +30,7 @@ import { API_BASE, TURNSTILE_SITEKEY, WAITLIST_MODE } from '../lib/env';
 
 const byEmail = WAITLIST_MODE === 'email';
 /** Field names are sent only to the API; in "email" mode a no-JS submit must carry nothing. */
-const named = (name: string) => (byEmail ? undefined : name);
+const named = (name: string): string | undefined => (byEmail ? undefined : name);
 ---
 
 <div class="waitlist" data-waitlist data-state="default" data-api={byEmail ? undefined : API_BASE} data-mail={byEmail ? SITE.supportEmail : undefined}>

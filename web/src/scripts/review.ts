@@ -12,7 +12,7 @@
  * plays on its own and a choice crossfades to the next card.
  */
 import { reducedMotion } from './motion';
-import { onPage, observe } from './page';
+import { observe, onPage } from './page';
 
 type Dir = 'need' | 'want' | 'save' | 'transfer';
 const DIRS: Dir[] = ['need', 'want', 'save', 'transfer'];
@@ -26,11 +26,28 @@ const OUT: Record<Dir, [number, number, number]> = {
 };
 const EASE_OUT = 'cubic-bezier(.22,1,.36,1)';
 const enum Phase {
-  Idle,
-  Dragging,
-  Leaving,
+  Idle = 0,
+  Dragging = 1,
+  Leaving = 2,
 }
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const wait = (ms: number): Promise<unknown> => 
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const tint = (card: HTMLElement, dir: Dir, amount: number): void => {
+  const layer = card.querySelector<HTMLElement>(`.rcard__tint--${dir}`);
+  if (layer) {layer.style.opacity = String(amount);}
+};
+
+const appear = (el: HTMLElement): void => {
+  if (!reducedMotion()) {el.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: 'ease-out' });}
+};
+
+const band = (delta: number): number => {
+  const over = Math.abs(delta) - 140;
+  return over <= 0 ? delta : Math.sign(delta) * (140 + (over * 0.55 * 300) / (300 + 0.55 * over));
+};
 
 export function initReview(): void {
   onPage(setup);
@@ -38,26 +55,26 @@ export function initReview(): void {
 
 function setup(signal: AbortSignal): void {
   const stage = document.querySelector<HTMLElement>('[data-review]');
-  if (!stage) return;
-  const $ = <T extends HTMLElement>(s: string) => stage.querySelector<T>(s);
+  if (!stage) {return;}
+  const find = <T extends HTMLElement>(selector: string): T | null => stage.querySelector<T>(selector);
   const cards = [...stage.querySelectorAll<HTMLElement>('.rcard')];
-  const n = cards.length;
-  const total = Number(stage.dataset.total) || n + 1;
-  const deck = $('.deck')!;
-  const done = $('[data-review-done]')!;
-  const toast = $('.toast')!;
-  const toastText = $('[data-toast-text]')!;
-  const counter = $('[data-review-count]');
-  const progress = $('[data-review-progress]');
-  const live = $('[data-review-live]');
+  const count = cards.length;
+  const total = Number(stage.dataset.total) || count + 1;
+  const deck = find('.deck')!;
+  const done = find('[data-review-done]')!;
+  const toast = find('.toast')!;
+  const toastText = find('[data-toast-text]')!;
+  const counter = find('[data-review-count]');
+  const progress = find('[data-review-progress]');
+  const live = find('[data-review-live]');
   const pills = new Map<Dir, HTMLElement>();
-  stage.querySelectorAll<HTMLElement>('[data-sort]').forEach((b) => pills.set(b.dataset.sort as Dir, b));
+  stage.querySelectorAll<HTMLElement>('[data-sort]').forEach((button) => pills.set(button.dataset.sort as Dir, button));
   // The legend beside the stage: lights up with the swipe and sorts on tap.
   const section = stage.closest('section') ?? document;
   const legends = new Map<Dir, HTMLElement>();
-  DIRS.forEach((d) => {
-    const l = section.querySelector<HTMLElement>(`.dir--${d}`);
-    if (l) legends.set(d, l);
+  DIRS.forEach((dir) => {
+    const legend = section.querySelector<HTMLElement>(`.dir--${dir}`);
+    if (legend) {legends.set(dir, legend);}
   });
 
   let top = 0;
@@ -70,53 +87,50 @@ function setup(signal: AbortSignal): void {
   // The demo's lean, while it runs: a touch on the card cancels it.
   let autoLean: (() => void) | null = null;
 
-  const say = (s: string) => live && (live.textContent = s);
-  const lit = (dir: Dir | null) => DIRS.forEach((d) => legends.get(d)?.toggleAttribute('data-active', d === dir));
+  const say = (text: string): string | null => live && (live.textContent = text);
+  const lit = (dir: Dir | null): void => DIRS.forEach((each) => legends.get(each)?.toggleAttribute('data-active', each === dir));
 
-  const layout = () => {
-    cards.forEach((c, i) => {
-      const pos = i === top ? '0' : i === top + 1 ? '1' : 'x';
-      c.dataset.pos = pos;
-      c.style.transform = '';
-      c.style.opacity = '';
-      if (pos === '0') c.removeAttribute('aria-hidden');
-      else c.setAttribute('aria-hidden', 'true');
-      c.querySelectorAll<HTMLElement>('.rcard__tint').forEach((t) => (t.style.opacity = ''));
+  const layout = (): void => {
+    cards.forEach((card, index) => {
+      let pos = 'x';
+      if (index === top) {pos = '0';}
+      else if (index === top + 1) {pos = '1';}
+      card.dataset.pos = pos;
+      card.style.transform = '';
+      card.style.opacity = '';
+      if (pos === '0') {card.removeAttribute('aria-hidden');}
+      else {card.setAttribute('aria-hidden', 'true');}
+      card.querySelectorAll<HTMLElement>('.rcard__tint').forEach((layer) => (layer.style.opacity = ''));
     });
-    const end = top >= n;
-    deck.dataset.left = String(n - top);
+    const end = top >= count;
+    deck.dataset.left = String(count - top);
     done.hidden = !end;
     stage.toggleAttribute('data-done', end);
-    legends.forEach((l) => l.toggleAttribute('aria-disabled', end));
+    legends.forEach((legend) => legend.toggleAttribute('aria-disabled', end));
     const at = Math.min(top + 2, total); // "2 of 6" for the first card, as in the app
-    if (counter) counter.textContent = String(at);
+    if (counter) {counter.textContent = String(at);}
     // The first card's 2/6 is the stylesheet's, so nothing moves on load.
-    if (progress) progress.style.clipPath = top ? `inset(0 ${((1 - (end ? 1 : at / total)) * 100).toFixed(3)}% 0 0 round 3px)` : '';
+    if (progress) {progress.style.clipPath = top ? `inset(0 ${((1 - (end ? 1 : at / total)) * 100).toFixed(3)}% 0 0 round 3px)` : '';}
   };
 
-  const showToast = (dir: Dir, announce: boolean) => {
+  const showToast = (dir: Dir, announce: boolean): void => {
     toastText.textContent = `Sorted as ${LABEL[dir]}`;
-    if (announce) say(`Sorted as ${LABEL[dir]}. ${top + 1 >= n ? 'All caught up. ' : ''}Undo is available.`);
+    if (announce) {say(`Sorted as ${LABEL[dir]}. ${top + 1 >= count ? 'All caught up. ' : ''}Undo is available.`);}
     toast.toggleAttribute('data-show', true);
     window.clearTimeout(Number(toast.dataset.t));
     toast.dataset.t = String(window.setTimeout(() => toast.removeAttribute('data-show'), 2200));
   };
 
-  const tint = (card: HTMLElement, dir: Dir, amount: number) => {
-    const t = card.querySelector<HTMLElement>(`.rcard__tint--${dir}`);
-    if (t) t.style.opacity = String(amount);
-  };
-
   // The next card, or the "All caught up" panel, settles into place.
-  const advance = () => {
-    top++;
+  const advance = (): void => {
+    top += 1;
     lit(null);
     layout();
-    if (top >= n) done.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE_OUT });
+    if (top >= count) {done.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE_OUT });}
   };
 
-  async function swipe(dir: Dir, opts: { drag?: boolean; auto?: boolean; v?: number } = {}) {
-    if (phase !== Phase.Idle || top >= n) return;
+  async function swipe(dir: Dir, opts: { drag?: boolean; auto?: boolean; speed?: number } = {}): Promise<void> {
+    if (phase !== Phase.Idle || top >= count) {return;}
     phase = Phase.Leaving;
     undoAsked = false;
     const card = cards[top];
@@ -132,7 +146,7 @@ function setup(signal: AbortSignal): void {
       settle();
       return;
     }
-    const w = stage!.clientWidth;
+    const width = stage!.clientWidth;
     const [ox, oy, rot] = OUT[dir];
     if (!opts.drag) {
       // 700 → 1220 ms: the drag. The card leans, the tint grows, the pill swells.
@@ -144,33 +158,33 @@ function setup(signal: AbortSignal): void {
       );
       card.querySelector<HTMLElement>(`.rcard__tint--${dir}`)?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 520, fill: 'forwards' });
       if (opts.auto)
-        autoLean = () => {
+        {autoLean = () => {
           autoLean = null;
-          card.getAnimations({ subtree: true }).forEach((a) => a.cancel());
+          card.getAnimations({ subtree: true }).forEach((animation) => animation.cancel());
           pill?.removeAttribute('data-active');
           lit(null);
           phase = Phase.Idle;
-        };
+        };}
       const leaned = await lean.finished.then(
         () => true,
         () => false,
       );
       autoLean = null;
-      if (!leaned) return; // grabbed mid-lean: the card is the visitor's now
+      if (!leaned) {return;} // grabbed mid-lean: the card is the visitor's now
     }
     // 1220 → 1500 ms: commit. Out it goes; the toast rises with Undo. A
     // drag leaves from where the finger let go at the finger's speed: this
     // curve starts at 2× its average speed, so 2·distance / release speed
     // (clamped to 180–320 ms) carries the flick on without a lurch. The
     // demo, starting from rest, accelerates away.
-    const from = card.getAnimations().length ? getComputedStyle(card).transform : card.style.transform || 'none';
-    const tx = ox * w;
+    const from = card.getAnimations().length > 0 ? getComputedStyle(card).transform : card.style.transform || 'none';
+    const tx = ox * width;
     const ty = oy * 600;
     let duration = 280;
     if (opts.drag) {
-      const m = new DOMMatrixReadOnly(from === 'none' ? undefined : from);
-      const dist = Math.hypot(tx - m.e, ty - m.f);
-      duration = Math.min(320, Math.max(180, (2 * dist) / Math.max(opts.v ?? 0, 1)));
+      const matrix = new DOMMatrixReadOnly(from === 'none' ? undefined : from);
+      const dist = Math.hypot(tx - matrix.e, ty - matrix.f);
+      duration = Math.min(320, Math.max(180, (2 * dist) / Math.max(opts.speed ?? 0, 1)));
     }
     const fly = card.animate(
       [
@@ -190,32 +204,28 @@ function setup(signal: AbortSignal): void {
     await fly.finished;
     await wait(240);
     pill?.removeAttribute('data-active');
-    card.getAnimations({ subtree: true }).forEach((a) => a.cancel());
-    next?.getAnimations().forEach((a) => a.cancel());
+    card.getAnimations({ subtree: true }).forEach((animation) => animation.cancel());
+    next?.getAnimations().forEach((animation) => animation.cancel());
     advance();
     settle();
   }
 
-  const appear = (el: HTMLElement) => {
-    if (!reducedMotion()) el.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: 'ease-out' });
-  };
-
-  const settle = () => {
+  const settle = (): void => {
     phase = Phase.Idle;
-    if (undoAsked) undo();
+    if (undoAsked) {undo();}
   };
 
-  const undo = () => {
+  const undo = (): void => {
     undoAsked = phase === Phase.Leaving;
-    if (phase !== Phase.Idle || !top) return;
-    top--;
+    if (phase !== Phase.Idle || !top) {return;}
+    top -= 1;
     layout();
     toast.removeAttribute('data-show');
     say('Undone.');
     appear(cards[top]);
   };
 
-  const restart = () => {
+  const restart = (): void => {
     top = 0;
     layout();
     toast.removeAttribute('data-show');
@@ -226,41 +236,41 @@ function setup(signal: AbortSignal): void {
   };
 
   // Autoplay, once: the first three cards, each to its own direction.
-  const PLAN = cards.slice(0, 3).map((c) => c.dataset.to as Dir);
+  const PLAN = cards.slice(0, 3).map((card) => card.dataset.to as Dir);
   let running = false;
-  async function play() {
-    if (played || running) return;
+  async function play(): Promise<void> {
+    if (played || running) {return;}
     running = true;
     for (const dir of PLAN) {
       await wait(500);
-      if (!canPlay()) break;
+      if (!canPlay()) {break;}
       played = true; // once a card has moved, the demo never starts again
       await swipe(dir, { auto: true });
     }
     running = false;
   }
-  const canPlay = () => !signal.aborted && inView && !paused && !document.hidden && !reducedMotion();
+  const canPlay = (): boolean => !signal.aborted && inView && !paused && !document.hidden && !reducedMotion();
   signal.addEventListener('abort', () => {
     window.clearTimeout(timer);
     window.clearTimeout(Number(toast.dataset.t));
   });
-  const schedule = () => {
+  const schedule = (): void => {
     window.clearTimeout(timer);
-    if (!played && canPlay()) timer = window.setTimeout(play, 300);
+    if (!played && canPlay()) {timer = window.setTimeout(play, 300);}
   };
 
   // Hover, focus or a touch stops the demo for good: the visitor is in charge.
-  const stop = () => (paused = true);
-  stage.addEventListener('pointerenter', (e) => {
-    if (e.pointerType === 'mouse') stop();
+  const stop = (): boolean => (paused = true);
+  stage.addEventListener('pointerenter', (event) => {
+    if (event.pointerType === 'mouse') {stop();}
   });
   stage.addEventListener('focusin', stop);
   document.addEventListener('visibilitychange', schedule, { signal });
 
   observe(
     signal,
-    ([e]) => {
-      inView = e.isIntersecting;
+    ([entry]) => {
+      inView = entry.isIntersecting;
       schedule();
     },
     { threshold: 0.4 },
@@ -273,17 +283,17 @@ function setup(signal: AbortSignal): void {
       void swipe(btn.dataset.sort as Dir);
     }),
   );
-  $('[data-undo]')?.addEventListener('click', undo);
-  $('[data-review-restart]')?.addEventListener('click', restart);
+  find('[data-undo]')?.addEventListener('click', undo);
+  find('[data-review-restart]')?.addEventListener('click', restart);
   // Use takes Hasala's guess: the card goes where it belongs.
-  stage.addEventListener('click', (e) => {
-    const card = (e.target as Element).closest('[data-use]')?.closest<HTMLElement>('.rcard[data-pos="0"]');
-    if (card) void swipe(card.dataset.to as Dir);
+  stage.addEventListener('click', (event) => {
+    const card = (event.target as Element).closest('[data-use]')?.closest<HTMLElement>('.rcard[data-pos="0"]');
+    if (card) {void swipe(card.dataset.to as Dir);}
   });
-  deck.addEventListener('keydown', (e) => {
-    const dir = KEYS[e.key];
-    if (!dir || e.target !== deck) return;
-    e.preventDefault();
+  deck.addEventListener('keydown', (event) => {
+    const dir = KEYS[event.key];
+    if (!dir || event.target !== deck) {return;}
+    event.preventDefault();
     stop();
     void swipe(dir);
   });
@@ -297,59 +307,56 @@ function setup(signal: AbortSignal): void {
   let dy = 0;
   let id = 0;
   let samples: [number, number, number][] = [];
-  const band = (d: number) => {
-    const a = Math.abs(d) - 140;
-    return a <= 0 ? d : Math.sign(d) * (140 + (a * 0.55 * 300) / (300 + 0.55 * a));
-  };
-  stage.addEventListener('pointerdown', (e) => {
+  stage.addEventListener('pointerdown', (event) => {
     // Use is a tap, not a drag: no capture, so its click lands on it.
     stop();
-    if ((e.target as Element).closest('[data-use]')) return;
-    const card = (e.target as Element).closest<HTMLElement>('.rcard[data-pos="0"]');
-    if (!card) return;
+    if ((event.target as Element).closest('[data-use]')) {return;}
+    const card = (event.target as Element).closest<HTMLElement>('.rcard[data-pos="0"]');
+    if (!card) {return;}
     autoLean?.();
-    if (phase !== Phase.Idle) return;
+    if (phase !== Phase.Idle) {return;}
     phase = Phase.Dragging;
-    id = e.pointerId;
-    startX = e.clientX;
-    startY = e.clientY;
-    dx = dy = 0;
-    samples = [[0, 0, e.timeStamp]];
-    card.setPointerCapture(e.pointerId);
+    id = event.pointerId;
+    startX = event.clientX;
+    startY = event.clientY;
+    dx = 0;
+    dy = 0;
+    samples = [[0, 0, event.timeStamp]];
+    card.setPointerCapture(event.pointerId);
   });
-  stage.addEventListener('pointermove', (e) => {
-    if (phase !== Phase.Dragging || e.pointerId !== id) return;
-    dx = e.clientX - startX;
-    dy = e.clientY - startY;
-    samples = [...samples.slice(-2), [dx, dy, e.timeStamp]];
+  stage.addEventListener('pointermove', (event) => {
+    if (phase !== Phase.Dragging || event.pointerId !== id) {return;}
+    dx = event.clientX - startX;
+    dy = event.clientY - startY;
+    samples = [...samples.slice(-2), [dx, dy, event.timeStamp]];
     const card = cards[top];
     const x = band(dx);
     card.style.transform = `translate(${x}px, ${band(dy)}px) rotate(${x / 14}deg)`;
     const dir = dirFor(dx, dy);
-    const d = Math.hypot(dx, dy);
-    DIRS.forEach((k) => tint(card, k, k === dir ? Math.min(1, d / 120) : 0));
+    const dist = Math.hypot(dx, dy);
+    DIRS.forEach((each) => tint(card, each, each === dir ? Math.min(1, dist / 120) : 0));
     // The legend beside the stage answers the drag, as it does the pills.
-    lit(d > 24 ? dir : null);
+    lit(dist > 24 ? dir : null);
   });
-  const end = (e: PointerEvent) => {
-    if (phase !== Phase.Dragging || e.pointerId !== id) return;
+  const end = (event: PointerEvent): void => {
+    if (phase !== Phase.Dragging || event.pointerId !== id) {return;}
     phase = Phase.Idle;
     const card = cards[top];
-    const [sx, sy, st] = samples[0];
-    const v = Math.hypot(dx - sx, dy - sy) / Math.max(1, e.timeStamp - st);
+    const [[sx, sy, st]] = samples;
+    const speed = Math.hypot(dx - sx, dy - sy) / Math.max(1, event.timeStamp - st);
     // A flick needs some travel too, so a tap that jitters never commits, and
     // a cancel (the page took over to scroll) is never a flick.
-    const flick = e.type === 'pointerup' && v > 0.11 && Math.hypot(dx, dy) > 24;
+    const flick = event.type === 'pointerup' && speed > 0.11 && Math.hypot(dx, dy) > 24;
     const dir = dirFor(dx, dy);
     const commit = Math.hypot(dx, dy) > 90 || flick;
     // The chosen direction's legend stays lit until the card has gone.
     lit(commit ? dir : null);
     if (commit) {
-      void swipe(dir, { drag: true, v });
+      void swipe(dir, { drag: true, speed });
     } else if (dx || dy) {
       card.animate([{ transform: card.style.transform }, { transform: 'none' }], { duration: 240, easing: 'cubic-bezier(.34,1.56,.64,1)' });
       card.style.transform = '';
-      DIRS.forEach((k) => tint(card, k, 0));
+      DIRS.forEach((each) => tint(card, each, 0));
     }
   };
   stage.addEventListener('pointerup', end);
@@ -359,6 +366,6 @@ function setup(signal: AbortSignal): void {
 }
 
 function dirFor(dx: number, dy: number): Dir {
-  if (Math.abs(dx) >= Math.abs(dy)) return dx > 0 ? 'need' : 'want';
+  if (Math.abs(dx) >= Math.abs(dy)) {return dx > 0 ? 'need' : 'want';}
   return dy > 0 ? 'save' : 'transfer';
 }

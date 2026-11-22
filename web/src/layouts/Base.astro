@@ -38,7 +38,7 @@ const fullTitle = `Hasala · ${title}`;
 // https://hasala.app/ for the home page, https://hasala.app/privacy (no slash) elsewhere.
 const canonical = new URL(path ?? Astro.url.pathname, SITE.url).href;
 const ogImage = new URL(SITE.ogImage, SITE.url).href;
-const ld = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
+const ld = [jsonLd ?? []].flat();
 ---
 
 <!doctype html>

@@ -18,7 +18,7 @@ import uqrLicense from '../../node_modules/uqr/LICENSE?raw';
 const title = 'Third-party licences';
 const description = 'The third-party software the hasala.app website sends to your browser, with the full text of each licence, and how Hasala’s own code is licensed.';
 const VERBATIM: Record<string, string> = { Inter: interOfl, Astro: astroLicense, uqr: uqrLicense };
-const textFor = (p: (typeof THIRD_PARTY)[number]) => (VERBATIM[p.name] ?? mitLicense(p.copyright)).trim();
+const textFor = (pkg: (typeof THIRD_PARTY)[number]): string => (VERBATIM[pkg.name] ?? mitLicense(pkg.copyright)).trim();
 
 const jsonLd = {
   '@context': 'https://schema.org',

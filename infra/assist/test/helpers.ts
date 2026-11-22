@@ -1,4 +1,5 @@
-import worker, { type Env } from "../src/index";
+import worker from "../src/index";
+import type { Env } from "../src/index";
 
 export const OK_ANSWER = {
   model: "clef",
@@ -41,22 +42,22 @@ export function fakes(
   const limitCalls: Fakes["limitCalls"] = [];
   const env: Env = {
     AI: {
-      async run(model, input, options) {
+      run(model, input, options) {
         aiCalls.push({ model, input, options });
-        if (opts.aiThrows) throw new Error("model down");
-        return opts.answer === undefined ? OK_ANSWER : opts.answer;
+        if (opts.aiThrows) {return Promise.reject(new Error("model down"));}
+        return Promise.resolve(opts.answer === undefined ? OK_ANSWER : opts.answer);
       },
     },
     PER_IP: {
-      async limit({ key }) {
+      limit({ key }) {
         limitCalls.push({ binding: "PER_IP", key });
-        return { success: opts.perIp ?? true };
+        return Promise.resolve({ success: opts.perIp ?? true });
       },
     },
     GLOBAL: {
-      async limit({ key }) {
+      limit({ key }) {
         limitCalls.push({ binding: "GLOBAL", key });
-        return { success: opts.global ?? true };
+        return Promise.resolve({ success: opts.global ?? true });
       },
     },
     REFUSED_CLIENTS: opts.refused ?? "",
@@ -69,23 +70,41 @@ export function request(
   body: unknown,
   opts: { headers?: Record<string, string | null>; method?: string; path?: string; raw?: string } = {},
 ): Request {
-  const headers: Record<string, string> = {
+  const headers = new Headers({
     "hasala-client": "ios/1.4.0",
     "content-type": "application/json",
     "cf-connecting-ip": "192.0.2.10",
-  };
-  for (const [k, v] of Object.entries(opts.headers ?? {})) {
-    if (v === null) delete headers[k];
-    else headers[k] = v;
+  });
+  for (const [name, value] of Object.entries(opts.headers ?? {})) {
+    if (value === null) {headers.delete(name);}
+    else {headers.set(name, value);}
   }
   const method = opts.method ?? "POST";
   const init: RequestInit = { method, headers };
-  if (method !== "GET" && method !== "HEAD") init.body = opts.raw ?? JSON.stringify(body);
+  if (method !== "GET" && method !== "HEAD") {init.body = opts.raw ?? JSON.stringify(body);}
   return new Request(`https://assist.hasala.app${opts.path ?? "/v1/category"}`, init);
 }
 
-export async function call(f: Fakes, req: Request): Promise<{ status: number; body: any; res: Response }> {
-  const res = await worker.fetch(req, f.env);
+export function need<T>(value: T | undefined): T {
+  if (value === undefined) {throw new Error("the value is missing");}
+  return value;
+}
+
+export interface ReplyBody {
+  error?: string;
+  tag?: string;
+  choice?: string;
+  probabilities?: Record<string, number>;
+}
+
+export interface Reply {
+  status: number;
+  body: ReplyBody;
+  res: Response;
+}
+
+export async function call(fake: Fakes, req: Request): Promise<Reply> {
+  const res = await worker.fetch(req, fake.env);
   const text = await res.text();
-  return { status: res.status, body: JSON.parse(text), res };
+  return { status: res.status, body: JSON.parse(text) as ReplyBody, res };
 }

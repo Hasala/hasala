@@ -1,4 +1,5 @@
-import { getCollection, type CollectionEntry } from 'astro:content';
+import { getCollection } from 'astro:content';
+import type { CollectionEntry } from 'astro:content';
 
 /** The four pages rendered from docs/legal/*.md, in footer order. */
 export const LEGAL_PAGES = [
@@ -11,15 +12,21 @@ export type LegalSlug = (typeof LEGAL_PAGES)[number]['slug'];
 
 export async function legalEntry(slug: LegalSlug): Promise<CollectionEntry<'legal'> | undefined> {
   const all = await getCollection('legal');
-  return all.find((e) => e.id === slug || e.id.replace(/\.md$/, '') === slug || e.id.endsWith(`/${slug}`));
+  return all.find((entry) => entry.id === slug || entry.id.replace(/\.md$/u, '') === slug || entry.id.endsWith(`/${slug}`));
 }
 
-export async function legalForLlms() {
-  const out: { title: string; url: string; body: string }[] = [];
-  for (const p of LEGAL_PAGES) {
-    const e = await legalEntry(p.slug);
+export interface LlmsDoc {
+  title: string;
+  url: string;
+  body: string;
+}
+
+export async function legalForLlms(): Promise<LlmsDoc[]> {
+  const out: LlmsDoc[] = [];
+  const entries = await Promise.all(LEGAL_PAGES.map(async (page) => ({ page, entry: await legalEntry(page.slug) })));
+  for (const { page, entry } of entries) {
     // Drafts (with notes for the owner still in them) stay out until published.
-    if (e?.body && e.data.status !== 'draft') out.push({ title: e.data.title, url: `https://hasala.app/${p.slug}`, body: e.body });
+    if (entry?.body && entry.data.status !== 'draft') {out.push({ title: entry.data.title, url: `https://hasala.app/${page.slug}`, body: entry.body });}
   }
   return out;
 }

@@ -130,18 +130,18 @@ const ASK_FOR_INVITE =
     ? 'Request an invite on the home page. For now, the form opens an email to support@hasala.app in your email app; send it, and we add the address you sent it from to the list.'
     : 'Request an invite on the home page, then tap Confirm my email in the email we send.';
 
-export type FaqItem = {
+export interface FaqItem {
   id: string;
-  q: string;
+  question: string;
   /** The one-line reply the answer opens with. */
   short: string;
   /** The detail, if any; `steps` (a numbered list) and `after` follow it. */
-  a?: string;
+  answer?: string;
   steps?: readonly string[];
   after?: string;
   /** The page that explains more. */
   more: { href: string; label: string };
-};
+}
 
 /**
  * /faq. Each answer opens with a one-line reply (`short`), then the detail,
@@ -151,57 +151,57 @@ export type FaqItem = {
 export const FAQ: readonly FaqItem[] = [
   {
     id: 'bank-login',
-    q: 'Do you need my bank login?',
+    question: 'Do you need my bank login?',
     short: 'No. Hasala reads the alerts your bank already sends you.',
-    a: "It will never ask for a banking password or card number, and it can't move money.",
+    answer: "It will never ask for a banking password or card number, and it can't move money.",
     more: { href: '/how-privacy-works', label: 'How privacy works' },
   },
   {
     id: 'email',
-    q: 'What exactly can Hasala read in my email?',
+    question: 'What exactly can Hasala read in my email?',
     short: "Only your bank's alert emails, read-only.",
-    a: `Your iPhone asks your mailbox only for messages from your bank's alert senders and reads those on the phone. The rest of your inbox is never downloaded. Before it uses an email, your iPhone checks it, and one it can't be sure came from your bank waits for you to review. Hasala can't send, change or delete mail, and no email is sent to an AI service. ${MAIL_NOTE}`,
+    answer: `Your iPhone asks your mailbox only for messages from your bank's alert senders and reads those on the phone. The rest of your inbox is never downloaded. Before it uses an email, your iPhone checks it, and one it can't be sure came from your bank waits for you to review. Hasala can't send, change or delete mail, and no email is sent to an AI service. ${MAIL_NOTE}`,
     more: { href: '/how-it-works#email', label: 'Connecting your email' },
   },
   {
     id: 'texts',
-    q: "Can Hasala use my bank's texts instead of my email?",
+    question: "Can Hasala use my bank's texts instead of my email?",
     short: 'Yes. Bank texts work with no mailbox access.',
-    a: "Set up one automation in Apple's Shortcuts, and your iPhone hands Hasala the texts it receives. It keeps only payment texts and drops the rest at once. No text leaves your iPhone. It works from your next payment on, with any bank. An account uses bank email or bank texts, not both.",
+    answer: "Set up one automation in Apple's Shortcuts, and your iPhone hands Hasala the texts it receives. It keeps only payment texts and drops the rest at once. No text leaves your iPhone. It works from your next payment on, with any bank. An account uses bank email or bank texts, not both.",
     more: { href: '/how-it-works#texts', label: 'Using bank texts instead' },
   },
   {
     id: 'lost-phone',
-    q: 'What if I lose my phone?',
+    question: 'What if I lose my phone?',
     short: 'Your passkey or your 12‑word recovery phrase unlocks your data on a new iPhone.',
-    a: "Your transactions and budget are encrypted with a key only your devices hold. Your passkey syncs in iCloud Keychain. A password signs you in but never unlocks your data. Keep the 12 words somewhere safe: we can't reset them for you.",
+    answer: "Your transactions and budget are encrypted with a key only your devices hold. Your passkey syncs in iCloud Keychain. A password signs you in but never unlocks your data. Keep the 12 words somewhere safe: we can't reset them for you.",
     more: { href: '/how-privacy-works#new-phone', label: 'A new or lost phone' },
   },
   {
     id: 'free',
-    q: 'Is it free?',
+    question: 'Is it free?',
     short: 'Yes. Hasala is free during the beta.',
     more: { href: '/#invite', label: 'Request an invite' },
   },
   {
     id: 'iphone-english',
-    q: 'Why only iPhone, and only English?',
+    question: 'Why only iPhone, and only English?',
     short: 'Hasala does its work on the iPhone itself.',
-    a: "Starting with one platform and one language lets us get every bank alert right before we promise more. The app is in light mode only for now, too.",
+    answer: "Starting with one platform and one language lets us get every bank alert right before we promise more. The app is in light mode only for now, too.",
     more: { href: '/how-it-works#iphone', label: 'iPhone and English only, for now' },
   },
   {
     id: 'delete',
-    q: 'How do I delete my account and data?',
+    question: 'How do I delete my account and data?',
     short: 'In Hasala, open Profile, then Delete your account.',
-    a: 'That removes your account and the encrypted data our server keeps. To leave the waitlist instead, use the link in any email we sent you, or write to support@hasala.app.',
+    answer: 'That removes your account and the encrypted data our server keeps. To leave the waitlist instead, use the link in any email we sent you, or write to support@hasala.app.',
     more: { href: '/support', label: 'Support' },
   },
   {
     id: 'testflight',
-    q: 'How does the TestFlight beta work?',
+    question: 'How does the TestFlight beta work?',
     short: "We email you an invite, and you install Hasala with Apple's TestFlight app.",
-    a: `TestFlight is Apple's free app for trying beta apps. ${ASK_FOR_INVITE} When there's room, we email your invite from no-reply@hasala.app. Then:`,
+    answer: `TestFlight is Apple's free app for trying beta apps. ${ASK_FOR_INVITE} When there's room, we email your invite from no-reply@hasala.app. Then:`,
     steps: [
       'Get TestFlight.',
       "Accept Apple's invitation and install Hasala. It comes by email, or use the link in your invite.",
@@ -213,8 +213,8 @@ export const FAQ: readonly FaqItem[] = [
   },
 ];
 
-export const curly = (s: string) => s.replace(/'/g, '’');
+export const curly = (text: string): string => text.replaceAll('\'', '’');
 
 /** One FAQ answer as plain text: the one-line reply, then the detail. */
-export const faqText = (f: FaqItem): string =>
-  [f.short, f.a, f.steps?.map((step, i) => `${i + 1}. ${step}`).join(' '), f.after].filter(Boolean).join(' ');
+export const faqText = (item: FaqItem): string =>
+  [item.short, item.answer, item.steps?.map((step, index) => `${index + 1}. ${step}`).join(' '), item.after].filter(Boolean).join(' ');

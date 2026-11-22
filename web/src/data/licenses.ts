@@ -33,7 +33,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.`;
 
 /** The full MIT License text for one set of copyright lines. */
-export const mitLicense = (copyright: readonly string[]) => `MIT License\n\n${copyright.join('\n')}\n\n${MIT_TERMS}\n`;
+export const mitLicense = (copyright: readonly string[]): string => `MIT License\n\n${copyright.join('\n')}\n\n${MIT_TERMS}\n`;
 
 export interface ThirdParty {
   name: string;

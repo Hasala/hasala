@@ -98,20 +98,23 @@ import { API_BASE } from '../lib/env';
 
   onPage((signal) => {
     const root = document.querySelector<HTMLElement>('[data-freeze]');
-    if (!root) return;
-    window.addEventListener('hashchange', () => /^#[A-Za-z0-9_-]{43}$/.test(location.hash) && location.reload(), { signal });
-    const button = root.querySelector<HTMLButtonElement>('[data-freeze-button]')!;
-    const status = root.querySelector<HTMLElement>('.freeze__status')!;
-    const label = button.querySelector<HTMLElement>('[data-label]')!;
-    const spinner = button.querySelector<HTMLElement>('.spinner')!;
-    const say = (text: string) => {
+    if (!root) {return;}
+    window.addEventListener('hashchange', () => /^#[A-Za-z0-9_-]{43}$/u.test(location.hash) && location.reload(), { signal });
+    const button = root.querySelector<HTMLButtonElement>('[data-freeze-button]');
+    const status = root.querySelector<HTMLElement>('.freeze__status');
+    const label = button?.querySelector<HTMLElement>('[data-label]');
+    const spinner = button?.querySelector<HTMLElement>('.spinner');
+    const confirm = root.querySelector<HTMLElement>('[data-freeze-confirm]');
+    const done = root.querySelector<HTMLElement>('[data-freeze-done]');
+    const { api } = root.dataset;
+    if (!button || !status || !label || !spinner || !confirm || !done || api === undefined) {return;}
+    const say = (text: string): void => {
       status.dataset.tone = 'error';
       status.textContent = text;
     };
 
-    const finish = () => {
-      root.querySelector<HTMLElement>('[data-freeze-confirm]')!.hidden = true;
-      const done = root.querySelector<HTMLElement>('[data-freeze-done]')!;
+    const finish = (): void => {
+      confirm.hidden = true;
       done.hidden = false;
       done.querySelector<HTMLElement>('[data-frozen-title]')?.focus();
     };
@@ -136,7 +139,7 @@ import { API_BASE } from '../lib/env';
         spinner.hidden = false;
         label.textContent = 'Freezing…';
         status.textContent = '';
-        const result = await postFreeze(root.dataset.api!, token);
+        const result = await postFreeze(api, token);
         if (result === 'done') {
           markLinkDone('freeze');
           finish();

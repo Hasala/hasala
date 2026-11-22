@@ -443,7 +443,10 @@ Release scripts:
   password of the owner. Until the owner gives it, `simctl` and the UI
   tests stop with no error.
 - `ios/scripts/tests/run.sh` runs the release-script tests offline (stub
-  xcodebuild and altool, fake keys, synthetic .ipa files).
+  xcodebuild and altool, fake keys, synthetic .ipa files). It starts all test
+  files at the same time and prints their output in the sequence of their
+  names. `RELEASE_TEST_JOBS=1` runs them one at a time. Each test file must
+  use only its own temporary directory.
   `ios/scripts/tests/devshell_test.sh` runs them again in the devShell, where
   GNU coreutils are first on PATH.
 

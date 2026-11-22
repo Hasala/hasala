@@ -277,14 +277,26 @@ else
 	skip "oxfmt" "no TypeScript, JavaScript or format configuration changes"
 fi
 
-if changed '^(web/|docs/legal/)'; then
-	if [[ -d web/node_modules ]] && have bun; then
-		run "web: astro check" bash -c 'cd web && bun run check'
+if changed '^(infra/assist/|scripts/.*\.(ts|json)$|ios/scripts/.*\.ts$|flake\.(nix|lock)$)'; then
+	if [[ -d infra/assist/node_modules/@types/bun ]] && have tsgo; then
+		run "typecheck: assist worker and its tests" bash -c 'cd infra/assist && tsgo --noEmit && tsgo --noEmit -p tsconfig.test.json'
+		run "typecheck: scripts" tsgo --noEmit -p scripts
 	else
-		skip "web: astro check" "web/node_modules missing or bun not on PATH (cd web && bun install --frozen-lockfile)"
+		skip "typecheck: assist worker, scripts" "infra/assist/node_modules missing or tsgo not on PATH (cd infra/assist && bun install --frozen-lockfile)"
 	fi
 else
-	skip "web: astro check" "no web or legal changes"
+	skip "typecheck: assist worker, scripts" "no worker or script changes"
+fi
+
+if changed '^(web/|docs/legal/|flake\.(nix|lock)$)'; then
+	if [[ -d web/node_modules/@types/bun ]] && have bun && have tsgo; then
+		run "web: typecheck (tsgo)" bash -c 'cd web && bun run typecheck'
+		run "web: astro check" bash -c 'cd web && bun run check'
+	else
+		skip "web: typecheck, astro check" "web/node_modules missing, or bun or tsgo not on PATH (cd web && bun install --frozen-lockfile)"
+	fi
+else
+	skip "web: typecheck, astro check" "no web or legal changes"
 fi
 
 echo "pre-push: $PASSED passed, $FAILED failed, $SKIPPED skipped in $((SECONDS - T0))s"

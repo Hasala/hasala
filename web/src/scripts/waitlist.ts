@@ -89,7 +89,7 @@ function openMail(card: HTMLElement, url: string): void {
   if (again) {
     again.href = url;
   }
-  window.location.href = url;
+  location.href = url;
 }
 
 export function initWaitlist(): void {

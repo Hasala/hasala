@@ -11,10 +11,12 @@ export async function postFreeze(
 ): Promise<FreezeResult> {
   const stop = new AbortController();
   let waitedOut = false;
-  const timer = setTimeout(() => {
+  const giveUp = (): void => {
     waitedOut = true;
     stop.abort();
-  }, waitMs);
+  };
+  const deadline = AbortSignal.timeout?.(waitMs);
+  deadline?.addEventListener('abort', giveUp);
   try {
     const answer = await send(`${api}/v1/account/freeze`, {
       method: 'POST',
@@ -30,6 +32,6 @@ export async function postFreeze(
   } catch {
     return waitedOut ? 'retry' : 'unreachable';
   } finally {
-    clearTimeout(timer);
+    deadline?.removeEventListener('abort', giveUp);
   }
 }

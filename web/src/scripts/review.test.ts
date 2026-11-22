@@ -1,29 +1,26 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
+import { fakeRoot, keepGlobals, settled } from './test-fakes';
 
 type Fn = (event: Record<string, unknown>) => void;
 
 const globals = globalThis as unknown as Record<string, unknown>;
-const saved = Object.fromEntries(
-  [
-    'document',
-    'window',
-    'matchMedia',
-    'getComputedStyle',
-    'DOMMatrixReadOnly',
-    'IntersectionObserver',
-  ].map((key) => [key, globals[key]]),
-);
+const restoreGlobals = keepGlobals([
+  'document',
+  'window',
+  'matchMedia',
+  'getComputedStyle',
+  'DOMMatrixReadOnly',
+  'IntersectionObserver',
+]);
 const reduce = { matches: false };
-const page: { initReview: () => void; loads: Fn[] } = { initReview: () => {}, loads: [] };
+const page: { initReview: () => void; loads: Fn[]; root: ReturnType<typeof fakeRoot> } = {
+  initReview: () => {},
+  loads: [],
+  root: fakeRoot(),
+};
 function DOMMatrixReadOnly(): object {
   return { e: 0, f: 0 };
 }
-const demoTimer = (task: () => void, ms: number): number => {
-  if (ms === 300) {
-    task();
-  }
-  return 1;
-};
 
 class FakeAnimation {
   done = false;
@@ -175,7 +172,9 @@ function mount(count = 3) {
   ]);
   const legends = DIRS.map((dir) => el(`dir dir--${dir}`, { sort: dir }));
   const section = new FakeElement('section', [], {}, [stage, ...legends]);
+  page.root = fakeRoot();
   globals.document = {
+    documentElement: page.root,
     hidden: false,
     querySelector: (selector: string) => (selector === '[data-review]' ? stage : null),
     addEventListener: (type: string, fn: Fn) => type === 'astro:page-load' && page.loads.push(fn),
@@ -220,16 +219,11 @@ function mount(count = 3) {
   };
 }
 
-const tick = () => Bun.sleep(1);
-async function until(ok: () => boolean) {
-  const deadline = Date.now() + 1000;
-  while (!ok()) {
-    if (Date.now() > deadline) {
-      throw new Error('the deck did not settle');
-    }
-    await Bun.sleep(2);
-  }
-}
+const tick = () => settled();
+const settleDeck = async () => {
+  page.root.finish(240);
+  await tick();
+};
 const finishCard = async (card: FakeElement) => {
   card.getAnimations().forEach((animation) => animation.finish());
   await tick();
@@ -244,16 +238,12 @@ beforeEach(() => {
   reduce.matches = false;
   globals.matchMedia = () => reduce;
   page.loads = [];
-  globals.window = { setTimeout: () => 1, clearTimeout: () => {} };
+  globals.window = {};
   globals.getComputedStyle = () => ({ transform: 'none' });
   globals.DOMMatrixReadOnly = DOMMatrixReadOnly;
 });
 
-afterEach(() => {
-  for (const [key, value] of Object.entries(saved)) {
-    globals[key] = value;
-  }
-});
+afterEach(restoreGlobals);
 
 describe('the legend chip', () => {
   test('stays lit until a dragged card has gone', async () => {
@@ -263,7 +253,8 @@ describe('the legend chip', () => {
     deck.release();
     expect(deck.legend('need').hasAttribute('data-active')).toBe(true);
     await finishCard(deck.cards[0]);
-    await until(() => deck.left() === '2');
+    await settleDeck();
+    expect(deck.left()).toBe('2');
     expect(deck.legend('need').hasAttribute('data-active')).toBe(false);
   });
 
@@ -275,18 +266,18 @@ describe('the legend chip', () => {
     deck.release();
     expect(deck.legend('need').hasAttribute('data-active')).toBe(true);
     await finishCard(deck.cards[0]);
-    await until(() => deck.left() === '2');
+    await settleDeck();
+    expect(deck.left()).toBe('2');
     expect(deck.legend('need').hasAttribute('data-active')).toBe(false);
   });
 });
 
 type Deck = ReturnType<typeof mount>;
-const SETTLE_MS = 300;
 const sortByKey = async (deck: Deck, card: FakeElement, key = 'ArrowRight') => {
   deck.key(key);
   await finishCard(card);
   await finishCard(card);
-  await Bun.sleep(SETTLE_MS);
+  await settleDeck();
 };
 
 describe('while a card is held', () => {
@@ -360,7 +351,8 @@ describe('while a card is held', () => {
     deck.release();
     expect(deck.cards[0].getAnimations().length).toBe(1);
     await finishCard(deck.cards[0]);
-    await until(() => deck.left() === '2');
+    await settleDeck();
+    expect(deck.left()).toBe('2');
     expect(deck.cards[0].style.transform).toBe('');
   });
 
@@ -370,7 +362,7 @@ describe('while a card is held', () => {
     deck.move(30);
     deck.move(30);
     deck.release();
-    await Bun.sleep(1);
+    await tick();
     deck.cards[0].getAnimations().forEach((animation) => animation.cancel());
     await sortByKey(deck, deck.cards[0]);
     expect(deck.left()).toBe('2');
@@ -400,7 +392,7 @@ describe('while a card is leaving', () => {
     deck.pill('save').fire('click');
     await finishCard(deck.cards[0]);
     await finishCard(deck.cards[0]);
-    await Bun.sleep(SETTLE_MS);
+    await settleDeck();
     expect(deck.left()).toBe('2');
   });
 
@@ -420,7 +412,7 @@ describe('while a card is leaving', () => {
     expect(deck.toast.hasAttribute('data-show')).toBe(true);
     deck.undo.fire('click');
     await finishCard(deck.cards[0]);
-    await Bun.sleep(SETTLE_MS);
+    await settleDeck();
     expect(deck.left()).toBe('3');
     expect(deck.cards[0].dataset.pos).toBe('0');
     expect(deck.toast.hasAttribute('data-show')).toBe(false);
@@ -434,7 +426,7 @@ describe('while a card is leaving', () => {
     expect(deck.toast.hasAttribute('data-show')).toBe(true);
     deck.undo.fire('click');
     await finishCard(deck.cards[0]);
-    await Bun.sleep(SETTLE_MS);
+    await settleDeck();
     expect(deck.left()).toBe('3');
     expect(deck.cards[0].dataset.pos).toBe('0');
   });
@@ -457,7 +449,7 @@ describe('while a card is leaving', () => {
     deck.undo.fire('click');
     deck.undo.fire('click');
     await finishCard(deck.cards[0]);
-    await Bun.sleep(SETTLE_MS);
+    await settleDeck();
     expect(deck.left()).toBe('3');
     await sortByKey(deck, deck.cards[0], 'ArrowLeft');
     expect(deck.left()).toBe('2');
@@ -504,12 +496,14 @@ describe('the demo', () => {
     globals.IntersectionObserver = Observer;
     globals.window = {
       IntersectionObserver: Observer,
-      setTimeout: demoTimer,
-      clearTimeout: () => {},
     };
     const deck = mount();
     watching.seen([{ isIntersecting: true }]);
-    await until(() => deck.cards[0].getAnimations().length > 0);
+    page.root.finish(300);
+    await tick();
+    page.root.finish(500);
+    await tick();
+    expect(deck.cards[0].getAnimations().length).toBeGreaterThan(0);
     deck.grab(deck.cards[0]);
     await tick();
     expect(deck.cards[0].getAnimations()).toEqual([]);

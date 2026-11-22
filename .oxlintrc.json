@@ -37,7 +37,6 @@
     "unicorn/no-null": "off",
     "unicorn/number-literal-case": "off",
     "unicorn/prefer-dom-node-dataset": "off",
-    "unicorn/prefer-global-this": "off",
 
     "func-style": ["error", "declaration", { "allowArrowFunctions": true }],
     "id-length": ["error", { "min": 2, "properties": "never", "exceptions": ["_", "T", "x", "y"] }],
@@ -58,6 +57,27 @@
       }
     ],
     "no-use-before-define": ["error", { "functions": false, "classes": true, "variables": false }],
+    "no-restricted-globals": [
+      "error",
+      {"name": "setTimeout", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."},
+      {"name": "setInterval", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."},
+      {"name": "setImmediate", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."}
+    ],
+    "no-restricted-imports": ["error", {"paths": [{"name": "node:timers", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."}, {"name": "timers", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."}, {"name": "node:timers/promises", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."}, {"name": "timers/promises", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."}]}],
+    "no-restricted-properties": [
+      "error",
+      {"object": "window", "property": "setTimeout", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."},
+      {"object": "window", "property": "setInterval", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."},
+      {"object": "window", "property": "setImmediate", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."},
+      {"object": "globalThis", "property": "setTimeout", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."},
+      {"object": "globalThis", "property": "setInterval", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."},
+      {"object": "globalThis", "property": "setImmediate", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."},
+      {"object": "self", "property": "setTimeout", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."},
+      {"object": "self", "property": "setInterval", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."},
+      {"object": "self", "property": "setImmediate", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."},
+      {"object": "Bun", "property": "sleep", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."},
+      {"object": "Bun", "property": "sleepSync", "message": "Wait on the event (a promise, an animation's finish, AbortSignal.timeout for a deadline). In a test use fake timers or the fakes in web/src/scripts/test-fakes.ts."}
+    ],
     "no-void": ["error", { "allowAsStatement": true }],
     "sort-imports": ["error", { "ignoreDeclarationSort": true }],
     "typescript/explicit-function-return-type": ["error", { "allowExpressions": true }],

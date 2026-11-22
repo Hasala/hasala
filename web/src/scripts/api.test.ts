@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { postJson, postWithTurnstile, renderTurnstile } from './api';
+import { PENDING, fakeRoot, keepGlobals, settled, stillPending } from './test-fakes';
 
 interface Api {
   postJson: typeof postJson;
@@ -20,12 +21,7 @@ interface Callbacks {
 }
 
 const globals = globalThis as unknown as Record<string, unknown>;
-const saved = { window: globals.window, document: globals.document, fetch: globals.fetch };
-afterEach(() => {
-  globals.window = saved.window;
-  globals.document = saved.document;
-  globals.fetch = saved.fetch;
-});
+afterEach(keepGlobals(['document', 'fetch', 'turnstile', 'hasalaTurnstileReady']));
 
 const loads = { count: 0 };
 const loadApi = async (): Promise<Api> => {
@@ -54,9 +50,10 @@ function fakeTurnstile() {
 
 function page(turnstile?: ReturnType<typeof fakeTurnstile>) {
   const scripts: FakeScript[] = [];
-  const win: Record<string, unknown> = { turnstile };
-  globals.window = win;
+  globals.turnstile = turnstile;
+  const root = fakeRoot();
   globals.document = {
+    documentElement: root,
     createElement: () => {
       const script: FakeScript = {
         dataset: {},
@@ -75,19 +72,10 @@ function page(turnstile?: ReturnType<typeof fakeTurnstile>) {
   const form = {
     querySelector: () => ({ dataset: { sitekey: 'synthetic-site-key' }, childElementCount: 0 }),
   } as unknown as HTMLFormElement;
-  return { scripts, win, form };
+  return { scripts, form, root };
 }
 
-const PENDING = 'pending';
-const state = <T>(promise: Promise<T>) =>
-  Promise.race([
-    promise,
-    new Promise<typeof PENDING>((resolve) => {
-      setTimeout(() => {
-        resolve(PENDING);
-      }, 5);
-    }),
-  ]);
+const state = <T>(promise: Promise<T>) => Promise.race([promise, stillPending()]);
 
 describe('renderTurnstile', () => {
   test('a form with no widget needs no token', async () => {
@@ -102,11 +90,14 @@ describe('renderTurnstile', () => {
   test('a submit before the token waits for it', async () => {
     const { renderTurnstile } = await loadApi();
     const turnstile = fakeTurnstile();
-    const gate = renderTurnstile(page(turnstile).form, 'waitlist', new AbortController().signal);
+    const view = page(turnstile);
+    const gate = renderTurnstile(view.form, 'waitlist', new AbortController().signal);
     const check = gate.check();
     expect(await state(check)).toBe(PENDING);
+    expect(view.root.waiting()).toEqual([15_000]);
     turnstile.opts.callback('token-1');
     expect(await check).toEqual({ state: 'ready', token: 'token-1' });
+    expect(view.root.waiting()).toEqual([]);
   });
 
   test('a retry right after a reset waits for a new token', async () => {
@@ -134,18 +125,28 @@ describe('renderTurnstile', () => {
 
   test('no token in time is reported as missing', async () => {
     const { renderTurnstile } = await loadApi();
-    const gate = renderTurnstile(
-      page(fakeTurnstile()).form,
-      'waitlist',
-      new AbortController().signal,
-      1,
-    );
-    expect(await gate.check()).toEqual({ state: 'missing' });
+    const view = page(fakeTurnstile());
+    const gate = renderTurnstile(view.form, 'waitlist', new AbortController().signal);
+    const check = gate.check();
+    expect(await state(check)).toBe(PENDING);
+    expect(view.root.waiting()).toEqual([15_000]);
+    view.root.finish();
+    expect(await check).toEqual({ state: 'missing' });
+  });
+
+  test('the wait for a token can be shorter', async () => {
+    const { renderTurnstile } = await loadApi();
+    const view = page(fakeTurnstile());
+    const gate = renderTurnstile(view.form, 'waitlist', new AbortController().signal, 40);
+    const check = gate.check();
+    expect(view.root.waiting()).toEqual([40]);
+    view.root.finish(40);
+    expect(await check).toEqual({ state: 'missing' });
   });
 
   test('a script that cannot load is missing at once, and the next check loads it again', async () => {
     const { renderTurnstile } = await loadApi();
-    const { scripts, win, form } = page();
+    const { scripts, form } = page();
     const gate = renderTurnstile(form, 'waitlist', new AbortController().signal);
     expect(scripts.length).toBe(1);
     const first = gate.check();
@@ -157,8 +158,8 @@ describe('renderTurnstile', () => {
     const second = gate.check();
     expect(scripts.length).toBe(2);
     const turnstile = fakeTurnstile();
-    win.turnstile = turnstile;
-    (win.hasalaTurnstileReady as () => void)();
+    globals.turnstile = turnstile;
+    (globals.hasalaTurnstileReady as () => void)();
     expect(turnstile.renders).toBe(1);
     turnstile.opts.callback('token-1');
     expect(await second).toEqual({ state: 'ready', token: 'token-1' });
@@ -239,7 +240,7 @@ describe('postJson', () => {
         json: () => noAnswer(init.signal),
       })) as unknown as typeof fetch;
     const answer = postJson(URL, { token: 't' });
-    await Bun.sleep(1);
+    await settled();
     wait.expire();
     expect(await state(answer)).toEqual({ status: 200, error: '', data: {}, retryAfter: 0 });
   });

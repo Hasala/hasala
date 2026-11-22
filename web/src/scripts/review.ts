@@ -12,7 +12,7 @@
  * plays on its own and a choice crossfades to the next card.
  */
 import { reducedMotion } from './motion';
-import { observe, onPage } from './page';
+import { observe, onPage, pageTimer, pause } from './page';
 
 type Dir = 'need' | 'want' | 'save' | 'transfer';
 const DIRS: Dir[] = ['need', 'want', 'save', 'transfer'];
@@ -40,11 +40,6 @@ const enum Phase {
   Dragging = 1,
   Leaving = 2,
 }
-const wait = (ms: number): Promise<unknown> =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
 const tint = (card: HTMLElement, dir: Dir, amount: number): void => {
   const layer = card.querySelector<HTMLElement>(`.rcard__tint--${dir}`);
   if (layer) {
@@ -107,7 +102,8 @@ function setup(signal: AbortSignal): void {
   let top = 0;
   let phase: Phase = Phase.Idle;
   let undoAsked = false;
-  let timer = 0;
+  const start = pageTimer(signal);
+  const toastTimer = pageTimer(signal);
   let inView = false;
   let paused = false;
   let played = false;
@@ -163,8 +159,7 @@ function setup(signal: AbortSignal): void {
       );
     }
     toast.toggleAttribute('data-show', true);
-    window.clearTimeout(Number(toast.dataset.t));
-    toast.dataset.t = String(window.setTimeout(() => toast.removeAttribute('data-show'), 2200));
+    toastTimer.set(() => toast.removeAttribute('data-show'), 2200);
   };
 
   // The next card, or the "All caught up" panel, settles into place.
@@ -279,7 +274,7 @@ function setup(signal: AbortSignal): void {
       fill: 'forwards',
     });
     await fly.finished;
-    await wait(240);
+    await pause(240);
     pill?.removeAttribute('data-active');
     card.getAnimations({ subtree: true }).forEach((animation) => animation.cancel());
     next?.getAnimations().forEach((animation) => animation.cancel());
@@ -325,7 +320,7 @@ function setup(signal: AbortSignal): void {
     }
     running = true;
     for (const dir of PLAN) {
-      await wait(500);
+      await pause(500);
       if (!canPlay()) {
         break;
       }
@@ -336,14 +331,10 @@ function setup(signal: AbortSignal): void {
   }
   const canPlay = (): boolean =>
     !signal.aborted && inView && !paused && !document.hidden && !reducedMotion();
-  signal.addEventListener('abort', () => {
-    window.clearTimeout(timer);
-    window.clearTimeout(Number(toast.dataset.t));
-  });
   const schedule = (): void => {
-    window.clearTimeout(timer);
+    start.clear();
     if (!played && canPlay()) {
-      timer = window.setTimeout(play, 300);
+      start.set(play, 300);
     }
   };
 

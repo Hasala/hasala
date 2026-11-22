@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { keepGlobals } from './test-fakes';
 
-const realDocument = globalThis.document;
+const restoreGlobals = keepGlobals(['document']);
 const handlers = new Map<string, ((event: unknown) => void)[]>();
 const root = new Set<string>(['js']);
 const classList = (set: Set<string>) => ({
@@ -18,9 +19,7 @@ beforeAll(async () => {
   await import('./router');
 });
 
-afterAll(() => {
-  (globalThis as { document?: unknown }).document = realDocument;
-});
+afterAll(restoreGlobals);
 
 function swap(): Set<string> {
   const next = new Set<string>();

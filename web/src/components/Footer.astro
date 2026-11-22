@@ -9,7 +9,8 @@ interface Props {
 const { tone = 'white' } = Astro.props;
 
 const onHome = Astro.url.pathname === '/';
-const href = (target: string): string => (onHome && target.startsWith('/#') ? target.slice(1) : target);
+const href = (target: string): string =>
+  onHome && target.startsWith('/#') ? target.slice(1) : target;
 ---
 
 <footer class:list={['site-footer', tone === 'navy' && 'site-footer--navy']} id="site-footer">

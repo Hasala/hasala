@@ -84,6 +84,6 @@ describe('the invite page', () => {
 
   test('stops offering to copy once the copy is by hand', async () => {
     const source = await read('../pages/i.astro');
-    expect(source).toContain('if (go) {go.textContent = goLabel;}');
+    expect(source).toContain('go.textContent = goLabel;');
   });
 });

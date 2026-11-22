@@ -175,12 +175,20 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     const go = document.querySelector<HTMLAnchorElement>('.invite__cta:not(.invite__cta--second)');
     const goLabel = go?.textContent ?? '';
     const showManual = (focus: boolean): void => {
-      if (!field) {return;}
+      if (!field) {
+        return;
+      }
       field.value = copied;
       field.hidden = false;
-      if (hint) {hint.hidden = true;}
-      if (manual) {manual.hidden = false;}
-      if (go) {go.textContent = goLabel;}
+      if (hint) {
+        hint.hidden = true;
+      }
+      if (manual) {
+        manual.hidden = false;
+      }
+      if (go) {
+        go.textContent = goLabel;
+      }
       if (focus) {
         field.scrollIntoView({ block: 'center' });
         field.focus();
@@ -210,9 +218,15 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
         },
         { signal },
       );
-      if (go) {go.textContent = 'Copy invite and open TestFlight';}
+      if (go) {
+        go.textContent = 'Copy invite and open TestFlight';
+      }
       for (const anchor of document.querySelectorAll<HTMLAnchorElement>('[data-copy-go]')) {
-        anchor.addEventListener('click', (event) => void clipboard.leave(event, () => (location.href = anchor.href)), { signal });
+        anchor.addEventListener(
+          'click',
+          (event) => void clipboard.leave(event, () => (location.href = anchor.href)),
+          { signal },
+        );
       }
     } else {
       showManual(false);
@@ -222,7 +236,9 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
   const drawQr = async (link: string, signal: AbortSignal): Promise<void> => {
     const { encode } = await import('uqr');
     const box = document.querySelector('[data-qr]');
-    if (signal.aborted || !box) {return;}
+    if (signal.aborted || !box) {
+      return;
+    }
     const { data, size } = encode(link, { ecc: 'M', border: 0 });
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns, 'svg');
@@ -231,7 +247,9 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     let dots = '';
     for (const [y, row] of data.entries()) {
       for (const [x, on] of row.entries()) {
-        if (on) {dots += `M${x} ${y}h1v1h-1z`;}
+        if (on) {
+          dots += `M${x} ${y}h1v1h-1z`;
+        }
       }
     }
     const path = document.createElementNS(ns, 'path');
@@ -240,17 +258,23 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     svg.append(path);
     box.replaceChildren(svg);
     const wrap = document.querySelector<HTMLElement>('[data-qr-wrap]');
-    if (wrap) {wrap.hidden = false;}
+    if (wrap) {
+      wrap.hidden = false;
+    }
   };
 
   // Through onPage, like every page script, though the router always loads this page in full.
   onPage((signal) => {
-    if (!document.querySelector('[data-code]')) {return;}
+    if (!document.querySelector('[data-code]')) {
+      return;
+    }
     window.addEventListener(
       'hashchange',
       () => {
         const hash = location.hash.slice(1);
-        if (isCode(norm(hash)) || LINK_KEY.test(hash)) {location.reload();}
+        if (isCode(norm(hash)) || LINK_KEY.test(hash)) {
+          location.reload();
+        }
       },
       { signal },
     );
@@ -258,12 +282,16 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     const fromPath = pathCode();
     // The code and the link key leave the address bar and the history entry
     // (the router's state stays, so Back and Forward still work).
-    if (location.pathname !== '/i' || location.search || location.hash) {history.replaceState(history.state, '', '/i');}
+    if (location.pathname !== '/i' || location.search || location.hash) {
+      history.replaceState(history.state, '', '/i');
+    }
     let code = fromPath;
     let linkKey = '';
     if (isCode(code)) {
       // The link key proves the address; only the email carries it.
-      if (LINK_KEY.test(fragment)) {linkKey = fragment;}
+      if (LINK_KEY.test(fragment)) {
+        linkKey = fragment;
+      }
     } else {
       code = isCode(norm(fragment)) ? norm(fragment) : '';
     }

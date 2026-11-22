@@ -148,21 +148,22 @@ CI is `.github/workflows/ci.yml`. It runs on each pull request and on each
 push to `main`. You can also start it manually (`workflow_dispatch`). CI does
 not have the private fixtures.
 
-The last job, `ci-ok`, needs only the fast jobs: `changes`, `gate`, `vuln`
-and `secrets`. It always runs. It fails if one of these jobs failed or was
-cancelled. It passes when each one succeeded or was skipped. `ci-ok` is the
-required check that the ruleset must name. Until the owner changes the
-ruleset, the ruleset names these three jobs:
+The last job, `ci-ok`, needs only the fast jobs: `changes`, `gate`,
+`nix-eval`, `nix-build`, `vuln` and `secrets`. It always runs. It fails if
+one of these jobs failed or was cancelled. It passes when each one succeeded or
+was skipped. `ci-ok` is the one required check that the ruleset names. These
+jobs run at the same time:
 
-- `gate`: first `nix flake check --no-build`, then a build of each check
-  except `qa-vm`, then `scripts/ci-mac-devshell-cached.sh`, then
-  `scripts/check.sh` in the devShell. `ci-mac-devshell-cached.sh` plans the
-  Mac devShell and builds nothing. It fails when the public cache has no Mac
-  build of a nixpkgs package in the devShell, because a Mac then builds that
-  package from source and `ios-tools` cannot end in its time limit. Move the
-  nixpkgs pin when it fails. In CI,
-  `scripts/check.sh` skips its `govulncheck ./cmd/hasalad/...` step, because
-  `vuln` scans all packages.
+- `gate`: `scripts/check.sh` in the devShell. In CI, `scripts/check.sh`
+  skips its `govulncheck ./cmd/hasalad/...` step, because `vuln` scans all
+  packages.
+- `nix-eval`: `nix flake check --no-build`, then
+  `scripts/ci-mac-devshell-cached.sh`. This script plans the Mac devShell and
+  builds nothing. It fails when the public cache has no Mac build of a
+  nixpkgs package in the devShell, because a Mac then builds that package
+  from source and `ios-tools` cannot end in its time limit. Move the nixpkgs
+  pin when it fails.
+- `nix-build`: a build of each check except `qa-vm`.
 - `vuln`: `govulncheck ./...` in `server/` and in `server/oracle/`. The job
   fails if it finds a reachable advisory.
 - `secrets`: the real-mail fence, the HasalaCore lints
@@ -188,6 +189,7 @@ it is not sure, it runs the job.
 - The first job, `changes`, makes a list of the changed paths in the pull
   request (`git diff -z`, thus each file name agrees exactly as it is
   written).
+- `nix-eval` and `nix-build` use the path rule of `gate`.
 - CI skips `gate`/`vuln`, `swift`, `ios-tools`, `web` or `nixos-vm` only
   when all changed paths are on the list of paths that the job does not read.
   All other paths start the job. This includes paths that nobody expected

@@ -7,7 +7,7 @@ budget() {
 	secrets) echo 75 ;;
 	nix-cache) echo 240 ;;
 	nix-cache-mac) echo 480 ;;
-	nix-eval) echo 150 ;;
+	nix-eval) echo 30 ;;
 	nix-build) echo 180 ;;
 	gate) echo 300 ;;
 	vuln) echo 100 ;;

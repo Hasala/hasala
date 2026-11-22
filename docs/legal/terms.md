@@ -134,11 +134,11 @@ We may end your access if you seriously or repeatedly break these terms. We may 
 
 ## Source-available code
 
-Hasala's source code is source-available, at [github.com/salehtl/hasala](https://github.com/salehtl/hasala), under the Functional Source License, Version 1.1, ALv2 Future License (FSL-1.1-ALv2). The licence text is in [LICENSE.md](https://github.com/salehtl/hasala/blob/main/LICENSE.md).
+Hasala's source code is source-available, at [github.com/Hasala/hasala](https://github.com/Hasala/hasala), under the Functional Source License, Version 1.1, ALv2 Future License (FSL-1.1-ALv2). The licence text is in [LICENSE.md](https://github.com/Hasala/hasala/blob/main/LICENSE.md).
 
 That licence covers your use of the code. These terms cover your use of the Hasala service that we run. Each version of the code becomes available under the Apache License 2.0 two years after it is released. Until then, it may not be used in a commercial product or service that competes with Hasala. Read the licence itself for the exact terms.
 
-The name Hasala (حصّالة) and the Slot mark, Hasala's logo, are trademarks and are not covered by the licence. See [TRADEMARKS.md](https://github.com/salehtl/hasala/blob/main/TRADEMARKS.md) for how you may refer to them.
+The name Hasala (حصّالة) and the Slot mark, Hasala's logo, are trademarks and are not covered by the licence. See [TRADEMARKS.md](https://github.com/Hasala/hasala/blob/main/TRADEMARKS.md) for how you may refer to them.
 
 ## Our responsibility to you
 

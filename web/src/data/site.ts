@@ -36,9 +36,9 @@ export const SITE = {
   ogImageAlt: 'Hasala: a private budgeting app that shows where your money goes. For iPhone, in the UAE.',
   testFlightAppStore: 'https://apps.apple.com/app/testflight/id899247664',
   /** The source: source-available under FSL-1.1-ALv2 (never call it open source). */
-  repoUrl: 'https://github.com/salehtl/hasala',
-  licenseUrl: 'https://github.com/salehtl/hasala/blob/main/LICENSE.md',
-  trademarksUrl: 'https://github.com/salehtl/hasala/blob/main/TRADEMARKS.md',
+  repoUrl: 'https://github.com/Hasala/hasala',
+  licenseUrl: 'https://github.com/Hasala/hasala/blob/main/LICENSE.md',
+  trademarksUrl: 'https://github.com/Hasala/hasala/blob/main/TRADEMARKS.md',
   requirements: `You’ll need an iPhone with iOS 26 or later, and your bank’s alerts by text or in a ${MAIL_PERSONAL} address. The app is in English only for now.`,
 } as const;
 

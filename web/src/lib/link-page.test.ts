@@ -12,15 +12,21 @@ function tab(hash: string, state: Record<string, unknown> | null = router) {
     url: `/freeze${hash}`,
     replaceState(next: unknown, _title: string, url?: string | URL | null) {
       hist.state = next as Record<string, unknown> | null;
-      if (url) {hist.url = String(url);}
-      if (url) {place.hash = '';}
+      if (url) {
+        hist.url = String(url);
+      }
+      if (url) {
+        place.hash = '';
+      }
     },
   };
   return { place, hist };
 }
 
-const arrive = (page: 'freeze' | 'confirm' | 'leave', view: ReturnType<typeof tab>) => arriveAtLink(page, '/freeze', view.place, view.hist as unknown as History);
-const reload = (view: ReturnType<typeof tab>, page: 'freeze' | 'confirm' | 'leave' = 'freeze') => arrive(page, view);
+const arrive = (page: 'freeze' | 'confirm' | 'leave', view: ReturnType<typeof tab>) =>
+  arriveAtLink(page, '/freeze', view.place, view.hist as unknown as History);
+const reload = (view: ReturnType<typeof tab>, page: 'freeze' | 'confirm' | 'leave' = 'freeze') =>
+  arrive(page, view);
 
 describe('arriving at a link page', () => {
   test('a whole token asks, and leaves the address bar', () => {
@@ -30,12 +36,18 @@ describe('arriving at a link page', () => {
     expect(view.hist.state).toEqual(router);
   });
 
-  const incomplete = ['', '#', '#short', `#${token}A`, `#${'!'.repeat(43)}`].map((hash) => [JSON.stringify(hash.slice(0, 8)), hash]);
-  test.each(incomplete)('the address %s is incomplete and leaves the address bar', (_shown, hash) => {
-    const view = tab(hash);
-    expect(arrive('freeze', view)).toEqual({ step: 'incomplete' });
-    expect(view.hist.url).toBe('/freeze');
-  });
+  const incomplete = ['', '#', '#short', `#${token}A`, `#${'!'.repeat(43)}`].map((hash) => [
+    JSON.stringify(hash.slice(0, 8)),
+    hash,
+  ]);
+  test.each(incomplete)(
+    'the address %s is incomplete and leaves the address bar',
+    (_shown, hash) => {
+      const view = tab(hash);
+      expect(arrive('freeze', view)).toEqual({ step: 'incomplete' });
+      expect(view.hist.url).toBe('/freeze');
+    },
+  );
 
   test('a history entry with no state keeps none', () => {
     const view = tab('', null);

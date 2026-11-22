@@ -20,16 +20,23 @@ onPage((signal) => {
   menu?.addEventListener(
     'click',
     (event) => {
-      if ((event.target as Element).closest('a')) {menu.hidePopover?.();}
+      if ((event.target as Element).closest('a')) {
+        menu.hidePopover?.();
+      }
     },
     { signal },
   );
   // Back and forward don't click a menu link: shut it before the page changes.
-  signal.addEventListener('abort', () => menu?.matches(':popover-open') && menu.hidePopover(), { once: true });
+  signal.addEventListener('abort', () => menu?.matches(':popover-open') && menu.hidePopover(), {
+    once: true,
+  });
 
   const here = location.pathname.replace(/\/$/u, '') || '/';
   for (const link of document.querySelectorAll<HTMLAnchorElement>('[data-nav-link]')) {
-    if (new URL(link.href).pathname === here) {link.setAttribute('aria-current', 'page');}
-    else {link.removeAttribute('aria-current');}
+    if (new URL(link.href).pathname === here) {
+      link.setAttribute('aria-current', 'page');
+    } else {
+      link.removeAttribute('aria-current');
+    }
   }
 });

@@ -3,7 +3,12 @@
  * envelope out ({ "error": "<code>", "detail"?: "..." } on failure). No
  * cookies, no referrer. A network failure resolves to status 0.
  */
-export interface ApiAnswer { status: number; error: string; data: Record<string, unknown>; retryAfter: number }
+export interface ApiAnswer {
+  status: number;
+  error: string;
+  data: Record<string, unknown>;
+  retryAfter: number;
+}
 
 const API_WAIT_MS = 20_000;
 
@@ -26,7 +31,12 @@ export async function postJson(url: string, body: unknown): Promise<ApiAnswer> {
       /* an empty body is fine */
     }
     const retryAfter = Number.parseInt(res.headers.get('Retry-After') ?? '', 10);
-    return { status: res.status, error: typeof data.error === 'string' ? data.error : '', data, retryAfter: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 0 };
+    return {
+      status: res.status,
+      error: typeof data.error === 'string' ? data.error : '',
+      data,
+      retryAfter: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 0,
+    };
   } catch {
     return { status: 0, error: 'network', data: {}, retryAfter: 0 };
   }
@@ -34,10 +44,16 @@ export async function postJson(url: string, body: unknown): Promise<ApiAnswer> {
 
 /** "a minute", "3 minutes", "an hour": for a Retry-After in seconds. */
 export function waitText(seconds: number): string {
-  if (!(seconds > 0)) {return 'a few minutes';}
-  if (seconds <= 90) {return 'a minute';}
+  if (!(seconds > 0)) {
+    return 'a few minutes';
+  }
+  if (seconds <= 90) {
+    return 'a minute';
+  }
   const min = Math.ceil(seconds / 60);
-  if (min < 60) {return `${min} minutes`;}
+  if (min < 60) {
+    return `${min} minutes`;
+  }
   const hours = Math.ceil(min / 60);
   return hours === 1 ? 'an hour' : `${hours} hours`;
 }
@@ -45,7 +61,9 @@ export function waitText(seconds: number): string {
 /** A bank name the server accepts (its bank_text rules), or null. */
 export function bankText(value: string): string | null {
   const text = value.trim().replaceAll(/\s+/gu, ' ');
-  if (!text) {return '';}
+  if (!text) {
+    return '';
+  }
   return [...text].length <= 64 && /^[\p{L}\p{M}\p{Nd} &.'()/-]+$/u.test(text) ? text : null;
 }
 
@@ -73,11 +91,14 @@ const settleLoad = (loaded: boolean): void => waiting.splice(0).forEach((waiter)
  * router the tag has run, so it never re-inserts (and re-runs) it.
  */
 function loadTurnstile(): void {
-  if (requested) {return;}
+  if (requested) {
+    return;
+  }
   requested = true;
   window.hasalaTurnstileReady = () => settleLoad(true);
   const script = document.createElement('script');
-  script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=hasalaTurnstileReady';
+  script.src =
+    'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=hasalaTurnstileReady';
   script.async = true;
   script.dataset.astroTransitionPersist = 'turnstile';
   script.dataset.astroExec = '';
@@ -87,7 +108,9 @@ function loadTurnstile(): void {
     settleLoad(false);
   });
   document.head.append(script);
-  if (keepsTag) {return;}
+  if (keepsTag) {
+    return;
+  }
   keepsTag = true;
   document.addEventListener('astro:before-swap', (event) => {
     const keep = event.newDocument.createElement('meta');
@@ -96,8 +119,14 @@ function loadTurnstile(): void {
   });
 }
 
-export type TurnstileCheck = { state: 'off' } | { state: 'ready'; token: string } | { state: 'missing' };
-export interface TurnstileGate { check: () => Promise<TurnstileCheck>; reset: () => void }
+export type TurnstileCheck =
+  | { state: 'off' }
+  | { state: 'ready'; token: string }
+  | { state: 'missing' };
+export interface TurnstileGate {
+  check: () => Promise<TurnstileCheck>;
+  reset: () => void;
+}
 const MISSING: TurnstileCheck = { state: 'missing' };
 
 /**
@@ -107,19 +136,30 @@ const MISSING: TurnstileCheck = { state: 'missing' };
  * call reset after every attempt. With no widget (no site key at build time)
  * check answers "off" and reset does nothing.
  */
-export function renderTurnstile(form: HTMLFormElement, action: 'waitlist' | 'bank_request', signal: AbortSignal, waitMs = 15_000): TurnstileGate {
+export function renderTurnstile(
+  form: HTMLFormElement,
+  action: 'waitlist' | 'bank_request',
+  signal: AbortSignal,
+  waitMs = 15_000,
+): TurnstileGate {
   const box = form.querySelector<HTMLElement>('.cf-turnstile');
-  if (!box?.dataset.sitekey) {return { check: () => Promise.resolve({ state: 'off' }), reset: () => {} };}
+  if (!box?.dataset.sitekey) {
+    return { check: () => Promise.resolve({ state: 'off' }), reset: () => {} };
+  }
   let id = '';
   let token = '';
   const waiters = new Set<(check: TurnstileCheck) => void>();
   const settle = (check: TurnstileCheck): void => waiters.forEach((waiter) => waiter(check));
   const give = (fresh: string): void => {
     token = fresh;
-    if (fresh) {settle({ state: 'ready', token: fresh });}
+    if (fresh) {
+      settle({ state: 'ready', token: fresh });
+    }
   };
   const draw = (): void => {
-    if (signal.aborted || id || !window.turnstile || box.childElementCount) {return;}
+    if (signal.aborted || id || !window.turnstile || box.childElementCount) {
+      return;
+    }
     id = window.turnstile.render(box, {
       sitekey: box.dataset.sitekey,
       action,
@@ -131,8 +171,9 @@ export function renderTurnstile(form: HTMLFormElement, action: 'waitlist' | 'ban
     });
   };
   const load = (): void => {
-    if (window.turnstile) {draw();}
-    else {
+    if (window.turnstile) {
+      draw();
+    } else {
       waiting.push((loaded) => (loaded ? draw() : settle(MISSING)));
       loadTurnstile();
     }
@@ -140,7 +181,9 @@ export function renderTurnstile(form: HTMLFormElement, action: 'waitlist' | 'ban
   signal.addEventListener(
     'abort',
     () => {
-      if (id) {window.turnstile?.remove(id);}
+      if (id) {
+        window.turnstile?.remove(id);
+      }
       id = '';
       token = '';
       settle(MISSING);
@@ -166,17 +209,27 @@ export function renderTurnstile(form: HTMLFormElement, action: 'waitlist' | 'ban
           resolve(check);
         }
         waiters.add(finish);
-        if (!id) {load();}
+        if (!id) {
+          load();
+        }
       }),
     reset: () => {
       token = '';
-      if (id) {window.turnstile?.reset(id);}
+      if (id) {
+        window.turnstile?.reset(id);
+      }
     },
   };
 }
 
-export async function postWithTurnstile(url: string, body: Record<string, string>, turnstile: TurnstileGate): Promise<ApiAnswer> {
+export async function postWithTurnstile(
+  url: string,
+  body: Record<string, string>,
+  turnstile: TurnstileGate,
+): Promise<ApiAnswer> {
   const check = await turnstile.check();
-  if (check.state === 'missing') {return { status: 403, error: 'turnstile_failed', data: {}, retryAfter: 0 };}
+  if (check.state === 'missing') {
+    return { status: 403, error: 'turnstile_failed', data: {}, retryAfter: 0 };
+  }
   return postJson(url, check.state === 'ready' ? { ...body, turnstileToken: check.token } : body);
 }

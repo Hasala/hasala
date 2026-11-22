@@ -31,8 +31,11 @@ function at(y: number): string {
 }
 
 const set = (el: HTMLElement | null, name: string, color: string): void => {
-  if (color) {el?.style.setProperty(name, color);}
-  else {el?.style.removeProperty(name);}
+  if (color) {
+    el?.style.setProperty(name, color);
+  } else {
+    el?.style.removeProperty(name);
+  }
 };
 
 onPage((signal) => {
@@ -44,13 +47,17 @@ onPage((signal) => {
     frame = 0;
     const top = at(0);
     const bottom = at(innerHeight - 1);
-    if (top + bottom === last) {return;}
+    if (top + bottom === last) {
+      return;
+    }
     last = top + bottom;
     set(root, 'background-color', top);
     set(stripTop, '--edge-top', top);
     set(stripBottom, '--edge-bottom', bottom);
     // html's background, resolved to a plain colour.
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(root).backgroundColor);
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', getComputedStyle(root).backgroundColor);
   };
   const queue = (): number => (frame ||= requestAnimationFrame(update));
   const opts = { passive: true, signal };

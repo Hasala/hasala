@@ -33,27 +33,38 @@ const FULL_LOAD = /^\/(?:i|freeze)(?:\/|$)|^\/waitlist\//u;
 
 document.addEventListener('astro:before-preparation', (event) => {
   // The router then sets location.href instead of swapping.
-  if (FULL_LOAD.test(event.to.pathname)) {return event.preventDefault();}
+  if (FULL_LOAD.test(event.to.pathname)) {
+    return event.preventDefault();
+  }
   const load = event.loader;
   event.loader = async () => {
     await load();
-    if (event.newDocument === document) {return;}
-    const csp = (doc: Document): string | null | undefined => doc.querySelector(CSP)?.getAttribute('content');
-    if (csp(event.newDocument) !== csp(document)) {event.preventDefault();}
+    if (event.newDocument === document) {
+      return;
+    }
+    const csp = (doc: Document): string | null | undefined =>
+      doc.querySelector(CSP)?.getAttribute('content');
+    if (csp(event.newDocument) !== csp(document)) {
+      event.preventDefault();
+    }
   };
 });
 
 document.addEventListener('astro:before-swap', (event) => {
   const next = event.newDocument.documentElement.classList;
   next.add('vt-swap', 'routed');
-  if (root.classList.contains('js')) {next.add('js');}
+  if (root.classList.contains('js')) {
+    next.add('js');
+  }
   let seen = root.classList.contains('hero-seen');
   try {
     seen ||= Boolean(sessionStorage.getItem('hasala:hero'));
   } catch {
     /* no storage: the entrance plays, as on a full load */
   }
-  if (seen) {next.add('hero-seen');}
+  if (seen) {
+    next.add('hero-seen');
+  }
 });
 
 // Once the new page's scripts have run.

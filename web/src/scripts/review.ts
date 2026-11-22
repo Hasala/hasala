@@ -16,8 +16,18 @@ import { observe, onPage } from './page';
 
 type Dir = 'need' | 'want' | 'save' | 'transfer';
 const DIRS: Dir[] = ['need', 'want', 'save', 'transfer'];
-const LABEL: Record<Dir, string> = { need: 'Need', want: 'Want', save: 'Save', transfer: 'Transfer' };
-const KEYS: Record<string, Dir> = { ArrowRight: 'need', ArrowLeft: 'want', ArrowDown: 'save', ArrowUp: 'transfer' };
+const LABEL: Record<Dir, string> = {
+  need: 'Need',
+  want: 'Want',
+  save: 'Save',
+  transfer: 'Transfer',
+};
+const KEYS: Record<string, Dir> = {
+  ArrowRight: 'need',
+  ArrowLeft: 'want',
+  ArrowDown: 'save',
+  ArrowUp: 'transfer',
+};
 const OUT: Record<Dir, [number, number, number]> = {
   need: [1.4, 0, 16],
   want: [-1.4, 0, -16],
@@ -30,18 +40,28 @@ const enum Phase {
   Dragging = 1,
   Leaving = 2,
 }
-const wait = (ms: number): Promise<unknown> => 
+const wait = (ms: number): Promise<unknown> =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
 
 const tint = (card: HTMLElement, dir: Dir, amount: number): void => {
   const layer = card.querySelector<HTMLElement>(`.rcard__tint--${dir}`);
-  if (layer) {layer.style.opacity = String(amount);}
+  if (layer) {
+    layer.style.opacity = String(amount);
+  }
 };
 
 const appear = (el: HTMLElement): void => {
-  if (!reducedMotion()) {el.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: 'ease-out' });}
+  if (!reducedMotion()) {
+    el.animate(
+      [
+        { opacity: 0, transform: 'scale(.96)' },
+        { opacity: 1, transform: 'none' },
+      ],
+      { duration: 240, easing: 'ease-out' },
+    );
+  }
 };
 
 const band = (delta: number): number => {
@@ -55,8 +75,11 @@ export function initReview(): void {
 
 function setup(signal: AbortSignal): void {
   const stage = document.querySelector<HTMLElement>('[data-review]');
-  if (!stage) {return;}
-  const find = <T extends HTMLElement>(selector: string): T | null => stage.querySelector<T>(selector);
+  if (!stage) {
+    return;
+  }
+  const find = <T extends HTMLElement>(selector: string): T | null =>
+    stage.querySelector<T>(selector);
   const cards = [...stage.querySelectorAll<HTMLElement>('.rcard')];
   const count = cards.length;
   const total = Number(stage.dataset.total) || count + 1;
@@ -68,13 +91,17 @@ function setup(signal: AbortSignal): void {
   const progress = find('[data-review-progress]');
   const live = find('[data-review-live]');
   const pills = new Map<Dir, HTMLElement>();
-  stage.querySelectorAll<HTMLElement>('[data-sort]').forEach((button) => pills.set(button.dataset.sort as Dir, button));
+  stage
+    .querySelectorAll<HTMLElement>('[data-sort]')
+    .forEach((button) => pills.set(button.dataset.sort as Dir, button));
   // The legend beside the stage: lights up with the swipe and sorts on tap.
   const section = stage.closest('section') ?? document;
   const legends = new Map<Dir, HTMLElement>();
   DIRS.forEach((dir) => {
     const legend = section.querySelector<HTMLElement>(`.dir--${dir}`);
-    if (legend) {legends.set(dir, legend);}
+    if (legend) {
+      legends.set(dir, legend);
+    }
   });
 
   let top = 0;
@@ -88,19 +115,28 @@ function setup(signal: AbortSignal): void {
   let autoLean: (() => void) | null = null;
 
   const say = (text: string): string | null => live && (live.textContent = text);
-  const lit = (dir: Dir | null): void => DIRS.forEach((each) => legends.get(each)?.toggleAttribute('data-active', each === dir));
+  const lit = (dir: Dir | null): void =>
+    DIRS.forEach((each) => legends.get(each)?.toggleAttribute('data-active', each === dir));
 
   const layout = (): void => {
     cards.forEach((card, index) => {
       let pos = 'x';
-      if (index === top) {pos = '0';}
-      else if (index === top + 1) {pos = '1';}
+      if (index === top) {
+        pos = '0';
+      } else if (index === top + 1) {
+        pos = '1';
+      }
       card.dataset.pos = pos;
       card.style.transform = '';
       card.style.opacity = '';
-      if (pos === '0') {card.removeAttribute('aria-hidden');}
-      else {card.setAttribute('aria-hidden', 'true');}
-      card.querySelectorAll<HTMLElement>('.rcard__tint').forEach((layer) => (layer.style.opacity = ''));
+      if (pos === '0') {
+        card.removeAttribute('aria-hidden');
+      } else {
+        card.setAttribute('aria-hidden', 'true');
+      }
+      card
+        .querySelectorAll<HTMLElement>('.rcard__tint')
+        .forEach((layer) => (layer.style.opacity = ''));
     });
     const end = top >= count;
     deck.dataset.left = String(count - top);
@@ -108,14 +144,24 @@ function setup(signal: AbortSignal): void {
     stage.toggleAttribute('data-done', end);
     legends.forEach((legend) => legend.toggleAttribute('aria-disabled', end));
     const at = Math.min(top + 2, total); // "2 of 6" for the first card, as in the app
-    if (counter) {counter.textContent = String(at);}
+    if (counter) {
+      counter.textContent = String(at);
+    }
     // The first card's 2/6 is the stylesheet's, so nothing moves on load.
-    if (progress) {progress.style.clipPath = top ? `inset(0 ${((1 - (end ? 1 : at / total)) * 100).toFixed(3)}% 0 0 round 3px)` : '';}
+    if (progress) {
+      progress.style.clipPath = top
+        ? `inset(0 ${((1 - (end ? 1 : at / total)) * 100).toFixed(3)}% 0 0 round 3px)`
+        : '';
+    }
   };
 
   const showToast = (dir: Dir, announce: boolean): void => {
     toastText.textContent = `Sorted as ${LABEL[dir]}`;
-    if (announce) {say(`Sorted as ${LABEL[dir]}. ${top + 1 >= count ? 'All caught up. ' : ''}Undo is available.`);}
+    if (announce) {
+      say(
+        `Sorted as ${LABEL[dir]}. ${top + 1 >= count ? 'All caught up. ' : ''}Undo is available.`,
+      );
+    }
     toast.toggleAttribute('data-show', true);
     window.clearTimeout(Number(toast.dataset.t));
     toast.dataset.t = String(window.setTimeout(() => toast.removeAttribute('data-show'), 2200));
@@ -126,18 +172,34 @@ function setup(signal: AbortSignal): void {
     top += 1;
     lit(null);
     layout();
-    if (top >= count) {done.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE_OUT });}
+    if (top >= count) {
+      done.animate(
+        [
+          { opacity: 0, transform: 'scale(.96)' },
+          { opacity: 1, transform: 'none' },
+        ],
+        { duration: 240, easing: EASE_OUT },
+      );
+    }
   };
 
-  async function swipe(dir: Dir, opts: { drag?: boolean; auto?: boolean; speed?: number } = {}): Promise<void> {
-    if (phase !== Phase.Idle || top >= count) {return;}
+  async function swipe(
+    dir: Dir,
+    opts: { drag?: boolean; auto?: boolean; speed?: number } = {},
+  ): Promise<void> {
+    if (phase !== Phase.Idle || top >= count) {
+      return;
+    }
     phase = Phase.Leaving;
     undoAsked = false;
     const card = cards[top];
     const next = cards[top + 1];
     const pill = pills.get(dir);
     if (reducedMotion()) {
-      const fade = card.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' });
+      const fade = card.animate([{ opacity: 1 }, { opacity: 0 }], {
+        duration: 200,
+        fill: 'forwards',
+      });
       await fade.finished;
       showToast(dir, !opts.auto);
       advance();
@@ -153,31 +215,42 @@ function setup(signal: AbortSignal): void {
       pill?.toggleAttribute('data-active', true);
       lit(dir);
       const lean = card.animate(
-        [{ transform: 'none' }, { transform: `translate(${ox * 40}px, ${oy * 40}px) rotate(${rot * 0.38}deg)` }],
+        [
+          { transform: 'none' },
+          { transform: `translate(${ox * 40}px, ${oy * 40}px) rotate(${rot * 0.38}deg)` },
+        ],
         { duration: 520, easing: EASE_OUT, fill: 'forwards' },
       );
-      card.querySelector<HTMLElement>(`.rcard__tint--${dir}`)?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 520, fill: 'forwards' });
-      if (opts.auto)
-        {autoLean = () => {
+      card
+        .querySelector<HTMLElement>(`.rcard__tint--${dir}`)
+        ?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 520, fill: 'forwards' });
+      if (opts.auto) {
+        autoLean = () => {
           autoLean = null;
           card.getAnimations({ subtree: true }).forEach((animation) => animation.cancel());
           pill?.removeAttribute('data-active');
           lit(null);
           phase = Phase.Idle;
-        };}
+        };
+      }
       const leaned = await lean.finished.then(
         () => true,
         () => false,
       );
       autoLean = null;
-      if (!leaned) {return;} // grabbed mid-lean: the card is the visitor's now
+      if (!leaned) {
+        return;
+      } // grabbed mid-lean: the card is the visitor's now
     }
     // 1220 → 1500 ms: commit. Out it goes; the toast rises with Undo. A
     // drag leaves from where the finger let go at the finger's speed: this
     // curve starts at 2× its average speed, so 2·distance / release speed
     // (clamped to 180–320 ms) carries the flick on without a lurch. The
     // demo, starting from rest, accelerates away.
-    const from = card.getAnimations().length > 0 ? getComputedStyle(card).transform : card.style.transform || 'none';
+    const from =
+      card.getAnimations().length > 0
+        ? getComputedStyle(card).transform
+        : card.style.transform || 'none';
     const tx = ox * width;
     const ty = oy * 600;
     let duration = 280;
@@ -191,7 +264,11 @@ function setup(signal: AbortSignal): void {
         { transform: from, opacity: 1 },
         { transform: `translate(${tx}px, ${ty}px) rotate(${rot}deg)`, opacity: 0 },
       ],
-      { duration, easing: opts.drag ? 'cubic-bezier(.3,.6,.4,1)' : 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' },
+      {
+        duration,
+        easing: opts.drag ? 'cubic-bezier(.3,.6,.4,1)' : 'cubic-bezier(.5,0,.75,0)',
+        fill: 'forwards',
+      },
     );
     showToast(dir, !opts.auto);
     // 1500 → 1740 ms: the peek card scales up and lifts into place.
@@ -212,12 +289,16 @@ function setup(signal: AbortSignal): void {
 
   const settle = (): void => {
     phase = Phase.Idle;
-    if (undoAsked) {undo();}
+    if (undoAsked) {
+      undo();
+    }
   };
 
   const undo = (): void => {
     undoAsked = phase === Phase.Leaving;
-    if (phase !== Phase.Idle || !top) {return;}
+    if (phase !== Phase.Idle || !top) {
+      return;
+    }
     top -= 1;
     layout();
     toast.removeAttribute('data-show');
@@ -239,30 +320,39 @@ function setup(signal: AbortSignal): void {
   const PLAN = cards.slice(0, 3).map((card) => card.dataset.to as Dir);
   let running = false;
   async function play(): Promise<void> {
-    if (played || running) {return;}
+    if (played || running) {
+      return;
+    }
     running = true;
     for (const dir of PLAN) {
       await wait(500);
-      if (!canPlay()) {break;}
+      if (!canPlay()) {
+        break;
+      }
       played = true; // once a card has moved, the demo never starts again
       await swipe(dir, { auto: true });
     }
     running = false;
   }
-  const canPlay = (): boolean => !signal.aborted && inView && !paused && !document.hidden && !reducedMotion();
+  const canPlay = (): boolean =>
+    !signal.aborted && inView && !paused && !document.hidden && !reducedMotion();
   signal.addEventListener('abort', () => {
     window.clearTimeout(timer);
     window.clearTimeout(Number(toast.dataset.t));
   });
   const schedule = (): void => {
     window.clearTimeout(timer);
-    if (!played && canPlay()) {timer = window.setTimeout(play, 300);}
+    if (!played && canPlay()) {
+      timer = window.setTimeout(play, 300);
+    }
   };
 
   // Hover, focus or a touch stops the demo for good: the visitor is in charge.
   const stop = (): boolean => (paused = true);
   stage.addEventListener('pointerenter', (event) => {
-    if (event.pointerType === 'mouse') {stop();}
+    if (event.pointerType === 'mouse') {
+      stop();
+    }
   });
   stage.addEventListener('focusin', stop);
   document.addEventListener('visibilitychange', schedule, { signal });
@@ -287,12 +377,18 @@ function setup(signal: AbortSignal): void {
   find('[data-review-restart]')?.addEventListener('click', restart);
   // Use takes Hasala's guess: the card goes where it belongs.
   stage.addEventListener('click', (event) => {
-    const card = (event.target as Element).closest('[data-use]')?.closest<HTMLElement>('.rcard[data-pos="0"]');
-    if (card) {void swipe(card.dataset.to as Dir);}
+    const card = (event.target as Element)
+      .closest('[data-use]')
+      ?.closest<HTMLElement>('.rcard[data-pos="0"]');
+    if (card) {
+      void swipe(card.dataset.to as Dir);
+    }
   });
   deck.addEventListener('keydown', (event) => {
     const dir = KEYS[event.key];
-    if (!dir || event.target !== deck) {return;}
+    if (!dir || event.target !== deck) {
+      return;
+    }
     event.preventDefault();
     stop();
     void swipe(dir);
@@ -310,11 +406,17 @@ function setup(signal: AbortSignal): void {
   stage.addEventListener('pointerdown', (event) => {
     // Use is a tap, not a drag: no capture, so its click lands on it.
     stop();
-    if ((event.target as Element).closest('[data-use]')) {return;}
+    if ((event.target as Element).closest('[data-use]')) {
+      return;
+    }
     const card = (event.target as Element).closest<HTMLElement>('.rcard[data-pos="0"]');
-    if (!card) {return;}
+    if (!card) {
+      return;
+    }
     autoLean?.();
-    if (phase !== Phase.Idle) {return;}
+    if (phase !== Phase.Idle) {
+      return;
+    }
     phase = Phase.Dragging;
     id = event.pointerId;
     startX = event.clientX;
@@ -325,7 +427,9 @@ function setup(signal: AbortSignal): void {
     card.setPointerCapture(event.pointerId);
   });
   stage.addEventListener('pointermove', (event) => {
-    if (phase !== Phase.Dragging || event.pointerId !== id) {return;}
+    if (phase !== Phase.Dragging || event.pointerId !== id) {
+      return;
+    }
     dx = event.clientX - startX;
     dy = event.clientY - startY;
     samples = [...samples.slice(-2), [dx, dy, event.timeStamp]];
@@ -339,7 +443,9 @@ function setup(signal: AbortSignal): void {
     lit(dist > 24 ? dir : null);
   });
   const end = (event: PointerEvent): void => {
-    if (phase !== Phase.Dragging || event.pointerId !== id) {return;}
+    if (phase !== Phase.Dragging || event.pointerId !== id) {
+      return;
+    }
     phase = Phase.Idle;
     const card = cards[top];
     const [[sx, sy, st]] = samples;
@@ -354,7 +460,10 @@ function setup(signal: AbortSignal): void {
     if (commit) {
       void swipe(dir, { drag: true, speed });
     } else if (dx || dy) {
-      card.animate([{ transform: card.style.transform }, { transform: 'none' }], { duration: 240, easing: 'cubic-bezier(.34,1.56,.64,1)' });
+      card.animate([{ transform: card.style.transform }, { transform: 'none' }], {
+        duration: 240,
+        easing: 'cubic-bezier(.34,1.56,.64,1)',
+      });
       card.style.transform = '';
       DIRS.forEach((each) => tint(card, each, 0));
     }
@@ -366,6 +475,8 @@ function setup(signal: AbortSignal): void {
 }
 
 function dirFor(dx: number, dy: number): Dir {
-  if (Math.abs(dx) >= Math.abs(dy)) {return dx > 0 ? 'need' : 'want';}
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx > 0 ? 'need' : 'want';
+  }
   return dy > 0 ? 'save' : 'transfer';
 }

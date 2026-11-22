@@ -21,7 +21,12 @@ import { bankText, postWithTurnstile, renderTurnstile, waitText } from './api';
 import type { ApiAnswer } from './api';
 
 type State = 'default' | 'focus' | 'error' | 'success';
-const BANK_NAMES: Record<string, string> = { dib: 'Dubai Islamic Bank', enbd: 'Emirates NBD', adib: 'Abu Dhabi Islamic Bank', other: 'Another bank' };
+const BANK_NAMES: Record<string, string> = {
+  dib: 'Dubai Islamic Bank',
+  enbd: 'Emirates NBD',
+  adib: 'Abu Dhabi Islamic Bank',
+  other: 'Another bank',
+};
 
 const MSG = {
   emailEmpty: 'Enter your email so we can send the invite.',
@@ -36,17 +41,40 @@ const MSG = {
 };
 
 function breakableEmail(el: Element, addr: string): void {
-  el.replaceChildren(...addr.replaceAll('@', '@ ').split(/ |(?=\.)/u).flatMap((part, index) => (index ? [document.createElement('wbr'), part] : [part])));
+  el.replaceChildren(
+    ...addr
+      .replaceAll('@', '@ ')
+      .split(/ |(?=\.)/u)
+      .flatMap((part, index) => (index ? [document.createElement('wbr'), part] : [part])),
+  );
 }
 
 /** The status line for answers that are not about one field. */
 function answerText(answer: ApiAnswer): { text: string; retry: boolean } {
-  if (answer.status === 0) {return { text: 'We couldn’t reach Hasala. Check your connection.', retry: true };}
-  if (answer.error === 'turnstile_failed') {return { text: 'We couldn’t check that you’re not a bot. Try again.', retry: true };}
-  if (answer.error === 'waitlist_full') {return { text: 'The waitlist is full for now. Please try again in a few days.', retry: false };}
-  if (answer.error === 'bank_list_full') {return { text: 'We can’t take new bank names right now. Pick one from the list, or try again later.', retry: false };}
-  if (answer.status === 429) {return { text: `Too many tries from here. Try again in ${waitText(answer.retryAfter)}.`, retry: false };}
-  if (answer.status === 503) {return { text: 'Hasala is busy right now. Try again in a minute.', retry: true };}
+  if (answer.status === 0) {
+    return { text: 'We couldn’t reach Hasala. Check your connection.', retry: true };
+  }
+  if (answer.error === 'turnstile_failed') {
+    return { text: 'We couldn’t check that you’re not a bot. Try again.', retry: true };
+  }
+  if (answer.error === 'waitlist_full') {
+    return { text: 'The waitlist is full for now. Please try again in a few days.', retry: false };
+  }
+  if (answer.error === 'bank_list_full') {
+    return {
+      text: 'We can’t take new bank names right now. Pick one from the list, or try again later.',
+      retry: false,
+    };
+  }
+  if (answer.status === 429) {
+    return {
+      text: `Too many tries from here. Try again in ${waitText(answer.retryAfter)}.`,
+      retry: false,
+    };
+  }
+  if (answer.status === 503) {
+    return { text: 'Hasala is busy right now. Try again in a minute.', retry: true };
+  }
   return { text: 'Something went wrong on our side.', retry: true };
 }
 
@@ -58,7 +86,9 @@ function mailto(to: string, subject: string, lines: string[]): string {
 /** Points the "Try again" link at the email and opens it in the visitor's email app. */
 function openMail(card: HTMLElement, url: string): void {
   const again = card.querySelector<HTMLAnchorElement>('[data-mailto]');
-  if (again) {again.href = url;}
+  if (again) {
+    again.href = url;
+  }
   window.location.href = url;
 }
 
@@ -69,7 +99,9 @@ export function initWaitlist(): void {
 function setup(signal: AbortSignal): void {
   const root = document.querySelector<HTMLElement>('[data-waitlist]');
   const form = root?.querySelector<HTMLFormElement>('[data-waitlist-form]');
-  if (!root || !form) {return;}
+  if (!root || !form) {
+    return;
+  }
   // The script validates; without it, the browser's own checks run.
   form.noValidate = true;
   const done = root.querySelector<HTMLElement>('.wl-done')!;
@@ -84,8 +116,8 @@ function setup(signal: AbortSignal): void {
   const label = submit.querySelector<HTMLElement>('.wl-submit__label')!;
   const spinner = submit.querySelector<HTMLElement>('.spinner')!;
   const status = form.querySelector<HTMLElement>('.wl-status')!;
-  const {api} = root.dataset;
-  const {mail} = root.dataset;
+  const { api } = root.dataset;
+  const { mail } = root.dataset;
   const turnstile = renderTurnstile(form, 'waitlist', signal);
   let touched = false;
   let sending = false;
@@ -93,14 +125,20 @@ function setup(signal: AbortSignal): void {
   const focusEmail = pageTimer(signal);
 
   const setState = (next: State): void => {
-    if (root.dataset.state === next) {return;}
+    if (root.dataset.state === next) {
+      return;
+    }
     root.dataset.state = next;
-    if (reducedMotion() && coin) {coin.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 });}
+    if (reducedMotion() && coin) {
+      coin.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 });
+    }
   };
 
   const showOther = (): void => {
     otherField.hidden = bank.value !== 'other';
-    if (otherField.hidden) {setError('other', null);}
+    if (otherField.hidden) {
+      setError('other', null);
+    }
   };
   bank.addEventListener('change', showOther, { signal });
 
@@ -113,26 +151,45 @@ function setup(signal: AbortSignal): void {
     const control = controls[name];
     const err = field.querySelector<HTMLElement>('.field__error')!;
     field.toggleAttribute('data-invalid', Boolean(message));
-    if (message) {control.setAttribute('aria-invalid', 'true');}
-    else {control.removeAttribute('aria-invalid');}
+    if (message) {
+      control.setAttribute('aria-invalid', 'true');
+    } else {
+      control.removeAttribute('aria-invalid');
+    }
     err.hidden = !message;
     err.querySelector('span')!.textContent = message ?? '';
   };
   showOther();
   const emailProblem = (typed: string): string | null => {
     const value = typed.trim();
-    if (!value) {return MSG.emailEmpty;}
-    if (!value.includes('@') || /\s/u.test(value)) {return 'That doesn’t look like an email address. Check for an @.';}
-    if (/[^!-~]/u.test(value)) {return MSG.emailLatin;}
-    if (value.indexOf('@') !== value.lastIndexOf('@')) {return MSG.emailOneAt;}
+    if (!value) {
+      return MSG.emailEmpty;
+    }
+    if (!value.includes('@') || /\s/u.test(value)) {
+      return 'That doesn’t look like an email address. Check for an @.';
+    }
+    if (/[^!-~]/u.test(value)) {
+      return MSG.emailLatin;
+    }
+    if (value.indexOf('@') !== value.lastIndexOf('@')) {
+      return MSG.emailOneAt;
+    }
     const [local, domain = ''] = value.split(/@(?=[^@]*$)/u);
-    if (!local) {return 'Add the part before the @.';}
-    if (local.length > 64) {return MSG.emailLocalLong;}
-    if (!/^[^.\s]+(\.[^.\s]+)+$/u.test(domain) || domain.endsWith('.')) {return 'That email looks unfinished. Check the part after the @.';}
+    if (!local) {
+      return 'Add the part before the @.';
+    }
+    if (local.length > 64) {
+      return MSG.emailLocalLong;
+    }
+    if (!/^[^.\s]+(\.[^.\s]+)+$/u.test(domain) || domain.endsWith('.')) {
+      return 'That email looks unfinished. Check the part after the @.';
+    }
     return null;
   };
   const otherProblem = (): string | null => {
-    if (bank.value !== 'other' || bankText(other.value) !== null) {return null;}
+    if (bank.value !== 'other' || bankText(other.value) !== null) {
+      return null;
+    }
     const count = [...other.value.trim().replaceAll(/\s+/gu, ' ')].length;
     return count > 64 ? MSG.otherLong(count) : MSG.otherBad;
   };
@@ -147,22 +204,38 @@ function setup(signal: AbortSignal): void {
   };
   const focusFirstError = (): void => {
     const first = fields.find((name) => controls[name].getAttribute('aria-invalid'));
-    if (first) {controls[first].focus();}
+    if (first) {
+      controls[first].focus();
+    }
   };
   // Once every field is fixed, the coin stops sulking.
   const settle = (): void => {
     const anyInvalid = fields.some((name) => controls[name].getAttribute('aria-invalid'));
-    if (!anyInvalid && root.dataset.state === 'error') {setState(form.contains(document.activeElement) ? 'focus' : 'default');}
+    if (!anyInvalid && root.dataset.state === 'error') {
+      setState(form.contains(document.activeElement) ? 'focus' : 'default');
+    }
   };
-  email.addEventListener('input', () => touched && (setError('email', emailProblem(email.value)), settle()), { signal });
-  bank.addEventListener('change', () => touched && (setError('bank', bank.value ? null : MSG.bankEmpty), settle()), { signal });
-  other.addEventListener('input', () => touched && (setError('other', otherProblem()), settle()), { signal });
+  email.addEventListener(
+    'input',
+    () => touched && (setError('email', emailProblem(email.value)), settle()),
+    { signal },
+  );
+  bank.addEventListener(
+    'change',
+    () => touched && (setError('bank', bank.value ? null : MSG.bankEmpty), settle()),
+    { signal },
+  );
+  other.addEventListener('input', () => touched && (setError('other', otherProblem()), settle()), {
+    signal,
+  });
 
   // The coin follows focus
   form.addEventListener(
     'focusin',
     () => {
-      if (root.dataset.state !== 'error') {setState('focus');}
+      if (root.dataset.state !== 'error') {
+        setState('focus');
+      }
     },
     { signal },
   );
@@ -170,7 +243,9 @@ function setup(signal: AbortSignal): void {
     'focusout',
     () => {
       requestAnimationFrame(() => {
-        if (!form.contains(document.activeElement) && root.dataset.state === 'focus') {setState('default');}
+        if (!form.contains(document.activeElement) && root.dataset.state === 'focus') {
+          setState('default');
+        }
       });
     },
     { signal },
@@ -215,7 +290,9 @@ function setup(signal: AbortSignal): void {
     'submit',
     async (ev) => {
       ev.preventDefault();
-      if (sending) {return;}
+      if (sending) {
+        return;
+      }
       touched = true;
       setStatus('');
       if (!validate()) {
@@ -246,13 +323,22 @@ function setup(signal: AbortSignal): void {
         );
         return;
       }
-      const body: Record<string, string> = { email: email.value.trim(), bank: bank.value, source: 'web', website: '' };
-      if (typed) {body.otherBank = typed;}
+      const body: Record<string, string> = {
+        email: email.value.trim(),
+        bank: bank.value,
+        source: 'web',
+        website: '',
+      };
+      if (typed) {
+        body.otherBank = typed;
+      }
 
       lock(true);
       stillTrying.set(() => setStatus('Still trying. Check your connection.'), 8000);
       const answer = await postWithTurnstile(`${api!}/v1/waitlist`, body, turnstile);
-      if (signal.aborted) {return;}
+      if (signal.aborted) {
+        return;
+      }
       stillTrying.clear();
       lock(false);
       turnstile.reset();
@@ -262,9 +348,13 @@ function setup(signal: AbortSignal): void {
         return;
       }
       if (answer.error === 'bad_email' || answer.error === 'bad_bank') {
-        if (answer.error === 'bad_email') {setError('email', MSG.emailBad);}
-        else if (bank.value === 'other' && typed) {setError('other', MSG.otherBad);}
-        else {setError('bank', MSG.bankBad);}
+        if (answer.error === 'bad_email') {
+          setError('email', MSG.emailBad);
+        } else if (bank.value === 'other' && typed) {
+          setError('other', MSG.otherBad);
+        } else {
+          setError('bank', MSG.bankBad);
+        }
         setState('error');
         focusFirstError();
         return;
@@ -303,17 +393,23 @@ function setup(signal: AbortSignal): void {
     target?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
     focusEmail.set(() => email.focus({ preventScroll: true }), reducedMotion() ? 0 : 600);
   };
-  document.querySelectorAll<HTMLAnchorElement>('a[href="#invite"], a[href="/#invite"]').forEach((link) =>
-    link.addEventListener(
-      'click',
-      (event) => {
-        if (form.hidden) {return;}
-        event.preventDefault();
-        goToForm();
-      },
-      { signal },
-    ),
-  );
+  document
+    .querySelectorAll<HTMLAnchorElement>('a[href="#invite"], a[href="/#invite"]')
+    .forEach((link) =>
+      link.addEventListener(
+        'click',
+        (event) => {
+          if (form.hidden) {
+            return;
+          }
+          event.preventDefault();
+          goToForm();
+        },
+        { signal },
+      ),
+    );
 
-  if (location.hash === '#invite') {focusEmail.set(() => email.focus({ preventScroll: true }), 300);}
+  if (location.hash === '#invite') {
+    focusEmail.set(() => email.focus({ preventScroll: true }), 300);
+  }
 }

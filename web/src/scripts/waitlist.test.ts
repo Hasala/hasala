@@ -4,9 +4,15 @@ import { initWaitlist } from './waitlist';
 type Handler = (event: Record<string, unknown>) => unknown;
 
 const globals = globalThis as unknown as Record<string, unknown>;
-const saved = Object.fromEntries(['window', 'document', 'history', 'location', 'fetch', 'requestAnimationFrame', 'navigator'].map((key) => [key, globals[key]]));
+const saved = Object.fromEntries(
+  ['window', 'document', 'history', 'location', 'fetch', 'requestAnimationFrame', 'navigator'].map(
+    (key) => [key, globals[key]],
+  ),
+);
 afterEach(() => {
-  for (const [key, value] of Object.entries(saved)) {globals[key] = value;}
+  for (const [key, value] of Object.entries(saved)) {
+    globals[key] = value;
+  }
 });
 
 class El {
@@ -64,8 +70,11 @@ class El {
     return this.attrs.get(name) ?? null;
   }
   toggleAttribute(name: string, on: boolean) {
-    if (on) {this.attrs.set(name, '');}
-    else {this.attrs.delete(name);}
+    if (on) {
+      this.attrs.set(name, '');
+    } else {
+      this.attrs.delete(name);
+    }
   }
   focus() {
     this.focused += 1;
@@ -87,7 +96,12 @@ const allowCopy = () => {
 };
 
 const refuseCopy = () => {
-  globals.navigator = { clipboard: { writeText: () => Promise.reject(new DOMException('Write permission denied', 'NotAllowedError')) } };
+  globals.navigator = {
+    clipboard: {
+      writeText: () =>
+        Promise.reject(new DOMException('Write permission denied', 'NotAllowedError')),
+    },
+  };
 };
 
 function start(arrival: { hash?: string; bank?: string } = {}) {
@@ -102,7 +116,12 @@ function start(arrival: { hash?: string; bank?: string } = {}) {
   const status = new El();
   const label = new El();
   const submit = new El().with('.wl-submit__label', label).with('.spinner', new El());
-  const named: Record<string, El> = { 'wl-email': email, 'wl-bank': bank, 'wl-other': other, 'wl-website': honeypot };
+  const named: Record<string, El> = {
+    'wl-email': email,
+    'wl-bank': bank,
+    'wl-other': other,
+    'wl-website': honeypot,
+  };
   const form = new El()
     .with('[data-field="email"]', field())
     .with('[data-field="bank"]', field())
@@ -153,7 +172,26 @@ function start(arrival: { hash?: string; bank?: string } = {}) {
     bank.value = 'dib';
     return form.fire('submit');
   };
-  return { document, root, form, done, email, bank, other, otherField, status, submit, cta, copy, copyText, timers, runTimers, replaced, location, send };
+  return {
+    document,
+    root,
+    form,
+    done,
+    email,
+    bank,
+    other,
+    otherField,
+    status,
+    submit,
+    cta,
+    copy,
+    copyText,
+    timers,
+    runTimers,
+    replaced,
+    location,
+    send,
+  };
 }
 
 function holdFetch() {

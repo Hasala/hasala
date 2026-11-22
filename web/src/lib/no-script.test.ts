@@ -19,6 +19,8 @@ describe('the message for a page whose script never ran', () => {
   });
 
   test('a running script hides it', async () => {
-    expect(await read('../styles/global.css')).toMatch(/\.js \[data-no-script\]\s*\{\s*display: none;/u);
+    expect(await read('../styles/global.css')).toMatch(
+      /\.js \[data-no-script\]\s*\{\s*display: none;/u,
+    );
   });
 });

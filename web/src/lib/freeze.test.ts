@@ -2,26 +2,33 @@ import { describe, expect, test } from 'bun:test';
 import { postFreeze } from './freeze';
 
 const token = 'A'.repeat(43);
-const answering = (status: number) => (() => Promise.resolve(new Response(null, { status }))) as unknown as typeof fetch;
+const answering = (status: number) =>
+  (() => Promise.resolve(new Response(null, { status }))) as unknown as typeof fetch;
 
 describe('postFreeze', () => {
   test('only a 204 is done', async () => {
     expect(await postFreeze('https://api.example/api', token, answering(204))).toBe('done');
   });
 
-  test.each([200, 202, 400, 403, 404, 426, 429, 500, 502, 503, 530])('a %i asks for a retry', async (status) => {
-    expect(await postFreeze('https://api.example/api', token, answering(status))).toBe('retry');
-  });
+  test.each([200, 202, 400, 403, 404, 426, 429, 500, 502, 503, 530])(
+    'a %i asks for a retry',
+    async (status) => {
+      expect(await postFreeze('https://api.example/api', token, answering(status))).toBe('retry');
+    },
+  );
 
   test('a failed request is unreachable', async () => {
-    const failing = (() => Promise.reject(new TypeError('failed to fetch'))) as unknown as typeof fetch;
+    const failing = (() =>
+      Promise.reject(new TypeError('failed to fetch'))) as unknown as typeof fetch;
     expect(await postFreeze('https://api.example/api', token, failing)).toBe('unreachable');
   });
 
   test('a request that gets no answer stops waiting and asks for a retry', async () => {
     const hanging = ((_u: string, init: RequestInit) =>
       new Promise((_resolve, reject) => {
-        init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+        init.signal?.addEventListener('abort', () =>
+          reject(new DOMException('Aborted', 'AbortError')),
+        );
       })) as unknown as typeof fetch;
     expect(await postFreeze('https://api.example/api', token, hanging, 5)).toBe('retry');
   }, 500);
@@ -38,7 +45,8 @@ describe('postFreeze', () => {
   });
 
   test('a network failure inside the wait stays unreachable', async () => {
-    const failing = (() => Promise.reject(new TypeError('failed to fetch'))) as unknown as typeof fetch;
+    const failing = (() =>
+      Promise.reject(new TypeError('failed to fetch'))) as unknown as typeof fetch;
     expect(await postFreeze('https://api.example/api', token, failing, 1000)).toBe('unreachable');
   });
 

@@ -3,14 +3,25 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:te
 type Fn = (event: Record<string, unknown>) => void;
 
 const globals = globalThis as unknown as Record<string, unknown>;
-const saved = Object.fromEntries(['document', 'window', 'matchMedia', 'getComputedStyle', 'DOMMatrixReadOnly', 'IntersectionObserver'].map((key) => [key, globals[key]]));
+const saved = Object.fromEntries(
+  [
+    'document',
+    'window',
+    'matchMedia',
+    'getComputedStyle',
+    'DOMMatrixReadOnly',
+    'IntersectionObserver',
+  ].map((key) => [key, globals[key]]),
+);
 const reduce = { matches: false };
 const page: { initReview: () => void; loads: Fn[] } = { initReview: () => {}, loads: [] };
 function DOMMatrixReadOnly(): object {
   return { e: 0, f: 0 };
 }
 const demoTimer = (task: () => void, ms: number): number => {
-  if (ms === 300) {task();}
+  if (ms === 300) {
+    task();
+  }
   return 1;
 };
 
@@ -29,13 +40,17 @@ class FakeAnimation {
     void Promise.allSettled([this.finished]);
   }
   finish() {
-    if (this.done) {return;}
+    if (this.done) {
+      return;
+    }
     this.done = true;
     this.owner.running = this.owner.running.filter((other) => other !== this);
     this.resolve();
   }
   cancel() {
-    if (this.done) {return;}
+    if (this.done) {
+      return;
+    }
     this.done = true;
     this.owner.running = this.owner.running.filter((other) => other !== this);
     this.reject(new DOMException('Aborted', 'AbortError'));
@@ -55,7 +70,12 @@ class FakeElement {
   children: FakeElement[];
   private tag: string;
   private classes: string[];
-  constructor(tag: string, classes: string[], dataset: Record<string, string>, children: FakeElement[] = []) {
+  constructor(
+    tag: string,
+    classes: string[],
+    dataset: Record<string, string>,
+    children: FakeElement[] = [],
+  ) {
     this.tag = tag;
     this.classes = classes;
     this.dataset = dataset;
@@ -64,15 +84,22 @@ class FakeElement {
   }
   private matches(selector: string): boolean {
     return (selector.match(/^[a-z]+|\.[\w-]+|\[[^\]]+\]/gu) ?? []).every((part) => {
-      if (part[0] === '.') {return this.classes.includes(part.slice(1));}
-      if (part[0] !== '[') {return this.tag === part;}
+      if (part[0] === '.') {
+        return this.classes.includes(part.slice(1));
+      }
+      if (part[0] !== '[') {
+        return this.tag === part;
+      }
       const [, name = '', value] = /^\[data-([\w-]+)(?:="(.*)")?\]$/u.exec(part) ?? [];
       const key = name.replaceAll(/-(\w)/gu, (_, letter: string) => letter.toUpperCase());
       return value === undefined ? key in this.dataset : this.dataset[key] === value;
     });
   }
   querySelectorAll(selector: string): FakeElement[] {
-    return this.children.flatMap((child) => [...(child.matches(selector) ? [child] : []), ...child.querySelectorAll(selector)]);
+    return this.children.flatMap((child) => [
+      ...(child.matches(selector) ? [child] : []),
+      ...child.querySelectorAll(selector),
+    ]);
   }
   querySelector(selector: string): FakeElement | null {
     return this.querySelectorAll(selector)[0] ?? null;
@@ -100,8 +127,11 @@ class FakeElement {
     this.attrs.delete(name);
   }
   toggleAttribute(name: string, on: boolean) {
-    if (on) {this.attrs.add(name);}
-    else {this.attrs.delete(name);}
+    if (on) {
+      this.attrs.add(name);
+    } else {
+      this.attrs.delete(name);
+    }
     return on;
   }
   animate() {
@@ -116,13 +146,18 @@ class FakeElement {
   focus() {}
 }
 
-const el = (classes: string, dataset: Record<string, string> = {}, children: FakeElement[] = []) => new FakeElement('div', classes.split(' ').filter(Boolean), dataset, children);
+const el = (classes: string, dataset: Record<string, string> = {}, children: FakeElement[] = []) =>
+  new FakeElement('div', classes.split(' ').filter(Boolean), dataset, children);
 
 const DIRS = ['need', 'want', 'save', 'transfer'];
 
 function mount(count = 3) {
   const cards = Array.from({ length: count }, (_, index) =>
-    el('rcard', { to: DIRS[index % 4] }, [...DIRS.map((dir) => el(`rcard__tint rcard__tint--${dir}`)), el('rcard__merchant'), el('rcard__use', { use: '' })]),
+    el('rcard', { to: DIRS[index % 4] }, [
+      ...DIRS.map((dir) => el(`rcard__tint rcard__tint--${dir}`)),
+      el('rcard__merchant'),
+      el('rcard__use', { use: '' }),
+    ]),
   );
   const done = el('deck__done', { reviewDone: '' });
   const deck = el('deck', {}, [...cards, done]);
@@ -131,7 +166,13 @@ function mount(count = 3) {
   const live = el('', { reviewLive: '' });
   const restart = el('', { reviewRestart: '' });
   const pills = DIRS.map((dir) => el(`rpill rpill--${dir}`, { sort: dir }));
-  const stage = el('', { review: '', total: String(count + 1) }, [deck, toast, live, restart, ...pills]);
+  const stage = el('', { review: '', total: String(count + 1) }, [
+    deck,
+    toast,
+    live,
+    restart,
+    ...pills,
+  ]);
   const legends = DIRS.map((dir) => el(`dir dir--${dir}`, { sort: dir }));
   const section = new FakeElement('section', [], {}, [stage, ...legends]);
   globals.document = {
@@ -142,7 +183,13 @@ function mount(count = 3) {
   page.initReview();
 
   const position = { x: 0, y: 0 };
-  const point = (id: number, time: number) => ({ pointerId: id, clientX: position.x, clientY: position.y, timeStamp: time, pointerType: 'mouse' });
+  const point = (id: number, time: number) => ({
+    pointerId: id,
+    clientX: position.x,
+    clientY: position.y,
+    timeStamp: time,
+    pointerType: 'mouse',
+  });
   const held = { card: cards[0], time: 0 };
   return {
     section,
@@ -177,7 +224,9 @@ const tick = () => Bun.sleep(1);
 async function until(ok: () => boolean) {
   const deadline = Date.now() + 1000;
   while (!ok()) {
-    if (Date.now() > deadline) {throw new Error('the deck did not settle');}
+    if (Date.now() > deadline) {
+      throw new Error('the deck did not settle');
+    }
     await Bun.sleep(2);
   }
 }
@@ -201,7 +250,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const [key, value] of Object.entries(saved)) {globals[key] = value;}
+  for (const [key, value] of Object.entries(saved)) {
+    globals[key] = value;
+  }
 });
 
 describe('the legend chip', () => {
@@ -361,7 +412,7 @@ describe('while a card is leaving', () => {
     expect(['', undefined]).toContain(deck.cards[0].style.transform);
   });
 
-  test('Undo during a dragged card\'s flight puts it back once it has gone', async () => {
+  test("Undo during a dragged card's flight puts it back once it has gone", async () => {
     const deck = mount();
     deck.grab(deck.cards[0]);
     deck.move(200);
@@ -376,7 +427,7 @@ describe('while a card is leaving', () => {
     expect(deck.live.textContent).toBe('Undone.');
   });
 
-  test('Undo during a pressed card\'s flight puts it back once it has gone', async () => {
+  test("Undo during a pressed card's flight puts it back once it has gone", async () => {
     const deck = mount();
     deck.key('ArrowRight');
     await finishCard(deck.cards[0]);

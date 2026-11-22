@@ -19,21 +19,39 @@ const portAt = args.indexOf('--port');
 const port = portAt === -1 ? 4321 : Number(args.splice(portAt, 2)[1]);
 const root = args[0] ?? fileURLToPath(new URL('../dist', import.meta.url));
 
-const glob = (pattern: string): RegExp => new RegExp(`^${pattern.replaceAll(/[.+?^${}()|[\]\\]/gu, String.raw`\$&`).replaceAll('*', '.*')}$`, 'u');
+const glob = (pattern: string): RegExp =>
+  new RegExp(
+    `^${pattern.replaceAll(/[.+?^${}()|[\]\\]/gu, String.raw`\$&`).replaceAll('*', '.*')}$`,
+    'u',
+  );
 
-interface Rule { match: RegExp; detach: string[]; set: [string, string][] }
+interface Rule {
+  match: RegExp;
+  detach: string[];
+  set: [string, string][];
+}
 const rules: Rule[] = [];
 for (const line of readFileSync(join(root, '_headers'), 'utf8').split('\n')) {
-  if (!line.trim() || line.trim().startsWith('#')) {continue;}
+  if (!line.trim() || line.trim().startsWith('#')) {
+    continue;
+  }
   if (!/^\s/u.test(line)) {
     rules.push({ match: glob(line.trim()), detach: [], set: [] });
     continue;
   }
   const rule = rules.at(-1);
-  if (!rule) {throw new Error('_headers: a header line comes before the first path');}
+  if (!rule) {
+    throw new Error('_headers: a header line comes before the first path');
+  }
   const trimmed = line.trim();
-  if (trimmed.startsWith('!')) {rule.detach.push(trimmed.slice(1).trim());}
-  else {rule.set.push([trimmed.slice(0, trimmed.indexOf(':')).trim(), trimmed.slice(trimmed.indexOf(':') + 1).trim()]);}
+  if (trimmed.startsWith('!')) {
+    rule.detach.push(trimmed.slice(1).trim());
+  } else {
+    rule.set.push([
+      trimmed.slice(0, trimmed.indexOf(':')).trim(),
+      trimmed.slice(trimmed.indexOf(':') + 1).trim(),
+    ]);
+  }
 }
 
 const rewrites = readFileSync(join(root, '_redirects'), 'utf8')
@@ -47,9 +65,17 @@ const isFile = (path: string): boolean => existsSync(path) && statSync(path).isF
 function resolve(path: string): string | null {
   const target = normalize(join(root, path));
   const base = normalize(join(root, sep));
-  if (target !== base.slice(0, -1) && !target.startsWith(base)) {return null;}
-  if (path === '/') {return join(root, 'index.html');}
-  for (const candidate of [target, `${target}.html`, join(target, 'index.html')]) {if (isFile(candidate)) {return candidate;}}
+  if (target !== base.slice(0, -1) && !target.startsWith(base)) {
+    return null;
+  }
+  if (path === '/') {
+    return join(root, 'index.html');
+  }
+  for (const candidate of [target, `${target}.html`, join(target, 'index.html')]) {
+    if (isFile(candidate)) {
+      return candidate;
+    }
+  }
   return null;
 }
 
@@ -90,22 +116,37 @@ createServer((req, res) => {
     res.writeHead(307, { location: `${path.slice(0, -1)}${url.search}` }).end();
     return;
   }
-  for (const [from, to] of rewrites) {if (from.test(path)) {path = to;}}
+  for (const [from, to] of rewrites) {
+    if (from.test(path)) {
+      path = to;
+    }
+  }
   let file = resolve(path);
   let status = 200;
   if (!file) {
     file = join(root, '404.html');
     status = 404;
   }
-  const headers = new Headers({ 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' });
+  const headers = new Headers({
+    'content-type': TYPES[extname(file)] ?? 'application/octet-stream',
+  });
   for (const rule of rules) {
-    if (!rule.match.test(url.pathname)) {continue;}
-    for (const name of rule.detach) {headers.delete(name);}
+    if (!rule.match.test(url.pathname)) {
+      continue;
+    }
+    for (const name of rule.detach) {
+      headers.delete(name);
+    }
     // Repeated names are joined, as Cloudflare does; Content-Type replaces the inferred one.
-    for (const [name, value] of rule.set) {headers[/^content-type$/iu.test(name) ? 'set' : 'append'](name, value);}
+    for (const [name, value] of rule.set) {
+      headers[/^content-type$/iu.test(name) ? 'set' : 'append'](name, value);
+    }
   }
   let body = readFileSync(file);
-  if (TEXT.test(headers.get('content-type') ?? '') && /\bgzip\b/u.test(req.headers['accept-encoding'] ?? '')) {
+  if (
+    TEXT.test(headers.get('content-type') ?? '') &&
+    /\bgzip\b/u.test(req.headers['accept-encoding'] ?? '')
+  ) {
     body = gzipSync(body);
     headers.set('content-encoding', 'gzip');
     headers.set('vary', 'accept-encoding');

@@ -206,6 +206,9 @@ if [[ -n "$SELF_TESTS_ONLY" ]]; then
 	exit 0
 fi
 
+step "pre-push hook self-test"
+"$ROOT/scripts/tests/pre_push_hook_test.sh"
+
 GATE_STEPS="real-mail fence, toolchain, fence"
 
 # --- 0b. HasalaCore source lints ------------------------------------------------

@@ -117,8 +117,9 @@ reachable.
 
 The gate also runs its own self-tests: `scripts/tests/gate_run_test.sh`,
 `gotest_ran_test.sh`, `git_env_test.sh`, `ci_mac_devshell_test.sh`,
-`ci_changes_test.sh` and `ci_budget_test.sh`. `git_env_test.sh` proves that
-the self-tests leave the surrounding repository alone when git's variables are
+`ci_changes_test.sh`, `ci_budget_test.sh` and `pre_push_hook_test.sh` (the
+pre-push hook, refer to "Before a push"). `git_env_test.sh` proves that the
+self-tests leave the surrounding repository alone when git's variables are
 exported. `ci_changes_test.sh` tests the path rules of CI (refer to "Path rules
 in CI"). `scripts/check.sh --self-tests` runs the real-mail fence and the
 self-tests alone. The closing lines name only the steps that ran, and a step
@@ -202,17 +203,70 @@ time is Postgres work for each test database, and password hashing.
 
 ### Before a push
 
-`scripts/pre-push.sh` runs the fast CI checks on the paths that you changed
-since `origin/main`: the fence, the HasalaCore lints, gitleaks on the new
-commits, gofmt and go vet, nixfmt, oxlint, oxfmt, the typechecks, the
-tokens, the project, the templates, the CI path rules, shellcheck and the web check. It takes seconds. `--all` runs all the checks.
-It shows PASS, FAIL or SKIP for each check and fails on a FAIL. A check skips
-when its tool is not on PATH, thus run it in the devShell.
+Git runs `.githooks/pre-push` before each push. The hook calls
+`scripts/pre-push.sh --hook`. It runs format, lint and typecheck on the files
+that the push adds: the commits that the remote branch does not have. For a
+new branch, these are the commits after the merge base with `origin/main`. A
+branch deletion and a tag push run no checks.
 
-The script is not a hook. The owner can link it in their own clone:
-`ln -s ../../scripts/pre-push.sh .git/hooks/pre-push`. All worktrees of that
-clone then use it. Agents do not set `core.hooksPath` and do not install
-hooks.
+The hook runs these checks:
+
+- The real-mail fence, and gitleaks on the new commits.
+- gofmt on the changed Go files, and `go vet` on each Go module that has a
+  change. `go vet` is also the Go typecheck.
+- `nixfmt --check` on the changed Nix files.
+- shellcheck on the changed scripts and hooks.
+- A typecheck of each TypeScript project that has a change, and of its
+  `tsconfig.test.json` (`tsgo` when it is on PATH, else the `tsc` of the
+  project).
+- oxfmt and oxlint on the changed TypeScript, JavaScript and Astro files, when
+  the tree has their configuration (`.oxfmtrc.json`, `.oxlintrc.json`).
+- The HasalaCore lints, the tool pins, the templates, the CI path rules and
+  the fast self-tests, when their paths changed. On a Mac, also the design
+  tokens and the Xcode project.
+
+Each check shows one state:
+
+| State | Meaning |
+| --- | --- |
+| `PASS`, `FAIL` | The check ran. A `FAIL` refuses the push. |
+| `MISSING` | The check could not run (a tool or `node_modules` is missing). This is not a pass: the push is refused. |
+| `NOT RUN` | The hook leaves the check to CI and names the job. The check is too slow for the hook, or it runs only on a Mac. |
+| `SKIP` | No changed path needs the check. |
+
+The rules of the hook:
+
+- The budget is 9 seconds (`BUDGET_SECONDS` in `.githooks/pre-push`). The
+  hook prints its elapsed time. It refuses a push that took longer, also when
+  each check passed. Push again: the caches are warm then. If the hook is slow
+  on a quiet machine, make the slowest check faster or move it to CI. Do not
+  raise the budget.
+- The checks read the working tree. The hook refuses a push when a file that
+  the push changes is different in the working tree. Commit or restore the
+  file, or push from a checkout of that commit.
+- The tools come from the devShell. When a tool is not on PATH, the hook
+  starts the devShell itself: first `direnv exec`, then `nix develop`.
+  `nix develop` evaluates the flake again for each new commit, which takes
+  seconds. Thus run `direnv allow .` one time in each worktree.
+- At most 8 jobs run at the same time, and the checks that run together need
+  at most 1280 MiB by their measured peaks (`JOBS` and `MEM_CAP_MB` in
+  `scripts/pre-push.sh`). When the memory group of the process has less than
+  2048 MiB left, the checks run one at a time.
+
+The devShell installs the hook. There is no manual step. The `shellHook` in
+`flake.nix` runs `scripts/install-hooks.sh`. This script sets
+`core.hooksPath` to `.githooks` when the clone has no `core.hooksPath`. The
+path is relative, thus each worktree runs the hook of its own checkout. In a
+worktree whose branch has no `.githooks/`, git runs no hook and the push
+continues. The script does nothing in CI and outside a checkout. If
+`core.hooksPath` has a different value, the script does not change it and
+prints one line.
+
+`scripts/pre-push.sh` with no option runs the same checks on the working tree,
+against the merge base of `HEAD` and `origin/main`. It also runs the checks
+that the hook leaves to CI: `astro check`, the gate self-tests and the hook
+self-test (`scripts/tests/pre_push_hook_test.sh`). `--all` runs the checks on
+all files.
 
 ### Lint and format
 
@@ -745,6 +799,10 @@ restore must not undo. `hasala-purge-replay` applies them again before
 - Do not change the branch of the main checkout. Other agents use it. Do
   your work in your own worktree in `.claude/worktrees/`. Do not use
   `git stash`, because all worktrees share it.
+- Do not use `git push --no-verify`. The pre-push hook must run on each push
+  (refer to "Before a push"). If the hook refuses a push, correct the cause.
+  Do not change or unset `core.hooksPath`, and do not install other hooks.
+  The devShell installs the hook.
 - Search only in specific paths. Do not search all of the home folder. A
   search in `~/Music` or the iCloud folder causes a macOS permission prompt.
 - Start at most four agents that use a simulator at the same time. Each

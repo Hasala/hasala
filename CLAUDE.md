@@ -188,9 +188,11 @@ hooks.
 
 ### CI
 
-CI is `.github/workflows/ci.yml`. It runs on each pull request and on each
-push to `main`. You can also start it manually (`workflow_dispatch`). CI does
-not have the private fixtures.
+CI is `.github/workflows/ci.yml`. It runs on each pull request, on each
+merge group of the merge queue and on each push to `main`. You can also start
+it manually (`workflow_dispatch`). CI does not have the private fixtures.
+A pull request merges only through the merge queue. On a merge group, the Mac
+jobs skip, and the queue merges when `ci-ok` passes (`docs/ci.md`).
 
 The last job, `ci-ok`, needs only the fast jobs: `changes`, `gate`, `vuln`
 and `secrets`. It always runs. It fails if one of these jobs failed or was

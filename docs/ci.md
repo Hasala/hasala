@@ -53,13 +53,6 @@ does not record checks on the head of `main` with the required names.
 
 ## Merge queue
 
-`.github/workflows/merge-queue.yml` runs all jobs of `ci.yml` on a merge group
-(`merge_group`). The path rules do not apply to this event, thus each job
-runs. Its last job has the check name `ci-ok` and passes only when each job of
-the full suite succeeded, the Mac jobs, `web` and `nixos-vm` included. On a
-pull request, the path rules still select the jobs, and `ci-ok` needs only the
-fast jobs.
-
 The ruleset of `main` has the rule "Require merge queue" since 2026-11-22,
 when the repository moved to the `Hasala` organization (GitHub gives merge
 queues only to repositories that an organization owns). A pull request
@@ -67,5 +60,9 @@ merges only through the queue, with the squash method. It does not have to
 be up to date with `main`: the queue tests it on top of `main` and of the
 entries before it.
 
-A pull request that changes `merge-queue.yml` runs the workflow as a test. Its
-last job then has the name `full-suite-ok`, not `ci-ok`.
+`ci.yml` runs on the merge group (`merge_group`). The path rules do not apply
+to this event, thus each Linux job runs. The Mac jobs (`swift` and
+`ios-tools`) skip on a merge group, by the owner's choice (2026-11-23): the
+free plan has five Mac runners, and they made each queue entry wait. The
+queue merges when `ci-ok` passes, as on a pull request. The push to `main`
+then runs the Mac jobs on the merged commit, with the usual path rules.

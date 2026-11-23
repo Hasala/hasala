@@ -141,6 +141,7 @@ func (r *nudgeRig) waitForMarkYoungerThanAMinute() {
 }
 
 func TestNudgeThatAPNsDidNotTakeIsTriedAgainOnTheNextRun(t *testing.T) {
+	t.Parallel()
 	for name, result := range map[string]pushv2.Result{
 		"transient": pushv2.ResultTransient,
 		"cooldown":  pushv2.ResultCooldown,
@@ -178,6 +179,7 @@ func TestNudgeThatAPNsDidNotTakeIsTriedAgainOnTheNextRun(t *testing.T) {
 }
 
 func TestNudgeForAHolderWithNoTokenIsTriedAgainOnTheNextRun(t *testing.T) {
+	t.Parallel()
 	r := newNudgeRig(t, "no-token", "ios-72222222-2222-4222-8222-222222222222", false)
 	r.start()
 	if r.sweep() == "" {
@@ -190,6 +192,7 @@ func TestNudgeForAHolderWithNoTokenIsTriedAgainOnTheNextRun(t *testing.T) {
 }
 
 func TestNudgeLeftInTheQueueAtAStopIsTriedAgainAfterARestart(t *testing.T) {
+	t.Parallel()
 	r := newNudgeRig(t, "stopped", "ios-73333333-3333-4333-8333-333333333333", true)
 	if r.sweep() == "" {
 		t.Fatal("the first run nudged nobody")

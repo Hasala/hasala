@@ -120,6 +120,7 @@ func (f *keyFixture) addOver(token string, signer *authtest.Device, wrap bool) (
 }
 
 func TestAddingAPasskeyNeedsTheStepUpAndTheSessionWritersSignature(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 
 	a, cred, err := f.addOver(f.token, f.device, true)
@@ -138,6 +139,7 @@ func TestAddingAPasskeyNeedsTheStepUpAndTheSessionWritersSignature(t *testing.T)
 }
 
 func TestAddBeginWithoutAStepUpIsRefusedAndMintsNoCeremony(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	if _, _, err := f.passkeys.AddBegin(bgctx, f.info(f.token), nil); !errors.Is(err, ErrStepUpRequired) {
 		t.Fatalf("add/begin with no step-up: %v, want ErrStepUpRequired", err)
@@ -157,6 +159,7 @@ func TestAddBeginWithoutAStepUpIsRefusedAndMintsNoCeremony(t *testing.T) {
 // no writer, so a session alone used to be enough to enrol a passkey and then
 // prove keys.bootstrap with it. An unbound session cannot begin an add.
 func TestAStolenSessionCannotEnrolAPasskeyBeforeBootstrap(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixtureUnbootstrapped(t).guarded()
 	su := f.stepUpPasskey(f.token, keyproto.ActionPasskeyAdd)
 	if _, _, err := f.passkeys.AddBegin(bgctx, f.info(f.token), su); !errors.Is(err, ErrWriterUnbound) {
@@ -170,6 +173,7 @@ func TestAStolenSessionCannotEnrolAPasskeyBeforeBootstrap(t *testing.T) {
 }
 
 func TestAddFinishRefusesASignatureFromAnyKeyButTheSessionWriters(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	stranger := authtest.NewDevice(t)
 	_, _, err := f.addOver(f.token, stranger, true)
@@ -187,6 +191,7 @@ func TestAddFinishRefusesASignatureFromAnyKeyButTheSessionWriters(t *testing.T) 
 // TestAddFinishRefusesASwappedWrapOrCredential: R-01 and N-11. A terminator
 // that substitutes the wrap (or the credential) changes a hash the DWK signed.
 func TestAddFinishRefusesASwappedWrapOrCredential(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	su := f.stepUpPasskey(f.token, keyproto.ActionPasskeyAdd)
 	id, opts, err := f.passkeys.AddBegin(bgctx, f.info(f.token), su)
@@ -220,6 +225,7 @@ func TestAddFinishRefusesASwappedWrapOrCredential(t *testing.T) {
 }
 
 func TestAddFinishRefusesAWrapForAnotherCredential(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	su := f.stepUpPasskey(f.token, keyproto.ActionPasskeyAdd)
 	id, opts, err := f.passkeys.AddBegin(bgctx, f.info(f.token), su)
@@ -237,6 +243,7 @@ func TestAddFinishRefusesAWrapForAnotherCredential(t *testing.T) {
 }
 
 func TestAddFinishOnARevokedWriterIsRefused(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	su := f.stepUpPasskey(f.token, keyproto.ActionPasskeyAdd)
 	id, opts, err := f.passkeys.AddBegin(bgctx, f.info(f.token), su)
@@ -255,6 +262,7 @@ func TestAddFinishOnARevokedWriterIsRefused(t *testing.T) {
 }
 
 func TestDeletingAPasskeyNeedsAStepUpForThatCredential(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	second, _, err := f.addOver(f.token, f.device, false)
 	if err != nil {
@@ -284,6 +292,7 @@ func TestDeletingAPasskeyNeedsAStepUpForThatCredential(t *testing.T) {
 // TestRefusingTheLastPasskeyLeavesTheNonceUsable is spec 02 §8.1 5.5 (AT-SU-8):
 // an action refused after a good proof does not burn the step-up.
 func TestRefusingTheLastPasskeyLeavesTheNonceUsable(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	su := f.stepUpPasskey(f.token, keyproto.ActionPasskeyDelete, f.credID)
 	if _, err := f.passkeys.DeletePasskey(bgctx, f.info(f.token), f.credID, su); !errors.Is(err, ErrLastPasskey) {

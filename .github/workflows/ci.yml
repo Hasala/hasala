@@ -56,6 +56,7 @@ name: CI
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
   workflow_dispatch:
@@ -82,19 +83,6 @@ defaults:
     shell: bash
 
 jobs:
-  # Which jobs the pull request needs, as outputs `gate` (read by gate and
-  # vuln), `swift`, `ios` (read by ios-tools),
-  # `ios_scripts` (the devShell step of ios-tools), `web` and `nixos_vm`, each
-  # "true" or "false". A push to main computes them the same way, from the
-  # push's `before` commit to its head; any other event, or a push whose
-  # `before` cannot be fetched (a new branch, a force push), sets all of them to
-  # "true". The checkout of a pull request is its merge
-  # commit (refs/pull/N/merge) and depth 2 fetches both parents, so
-  # `git diff HEAD^1 HEAD` is exactly what merging would change on the base as
-  # it is now. --no-renames lists both ends of a move, so moving a file out of
-  # an area still counts for that area. -z prints every path verbatim,
-  # NUL-terminated: without it git C-quotes non-ASCII and special characters
-  # ("server/caf\303\251.go") and no anchored pattern matches the line.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -117,75 +105,25 @@ jobs:
           EVENT: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
         run: |
-          all_true() { printf '%s=true\n' "$@" | tee -a "$GITHUB_OUTPUT"; }
-          changed="$RUNNER_TEMP/changed-paths"
+          base=""
           case "$EVENT" in
             pull_request)
               base=HEAD^1
               ;;
             push)
-              # A `before` that is all zeros (a new branch) or that this clone
-              # cannot fetch (a force push dropped it) runs every job.
-              if [[ ! "$BEFORE" =~ ^[0-9a-f]{40}$ || "$BEFORE" =~ ^0+$ ]] ||
-                ! git fetch --no-tags --depth=1 origin "$BEFORE"; then
-                all_true gate swift ios ios_scripts web nixos_vm
-                exit 0
+              if [[ "$BEFORE" =~ ^[0-9a-f]{40}$ && ! "$BEFORE" =~ ^0+$ ]] &&
+                git fetch --no-tags --depth=1 origin "$BEFORE"; then
+                base="$BEFORE"
               fi
-              base="$BEFORE"
-              ;;
-            *)
-              all_true gate swift ios ios_scripts web nixos_vm
-              exit 0
               ;;
           esac
+          if [[ -z "$base" ]]; then
+            scripts/ci-changes.sh --all | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed="$RUNNER_TEMP/changed-paths"
           git diff -z --no-renames --name-only "$base" HEAD >"$changed"
-          echo "::group::$(tr -cd '\0' <"$changed" | wc -c) changed path(s)"
-          # The paths come from the pull request: between these two lines, a
-          # line that starts with "::" is printed, not run as a command.
-          token="$(cat /proc/sys/kernel/random/uuid)"
-          echo "::stop-commands::$token"
-          tr '\0' '\n' <"$changed"
-          echo "::$token::"
-          echo "::endgroup::"
-          # skip_unless NAME INERT [READS]: NAME=false only when every changed
-          # path matches INERT (paths NAME does not read) and none matches
-          # READS (paths under INERT that NAME does read); otherwise true. An
-          # empty diff is false. grep -z matches each NUL-terminated path.
-          # grep exits 2 on an error (a malformed pattern): fail the step, so
-          # `changes` is not 'success' and every job runs.
-          match() { local rc=0; grep -zEq "$@" "$changed" || rc=$?; ((rc < 2)) || exit "$rc"; return "$rc"; }
-          skip_unless() {
-            local v=false
-            if match -v -- "$2" || { [[ -n "${3:-}" ]] && match -- "$3"; }; then
-              v=true
-            fi
-            echo "$1=$v" | tee -a "$GITHUB_OUTPUT"
-          }
-          # Read by no job: the licence texts, NOTICE, root Markdown, design
-          # assets and the private-fixtures pin (read only when
-          # HASALA_PRIVATE_FIXTURES is set, which CI never does).
-          none='^(LICENSES|design)/|^[^/]+\.md$|^(NOTICE|private-fixtures\.lock)$'
-          # gate and vuln: docs/, web/ and ios/ are not read, except any *.go
-          # or *.nix (the flake's formatting check covers them wherever they
-          # are) and any go.mod, go.sum, go.work or go.work.sum. check.sh also
-          # runs the HasalaCore lints over ios/, but `secrets` runs them too.
-          # check.sh compares the bundled templates with the server seed, so
-          # gate reads them. infra/ is read (nix flake check evaluates and
-          # builds its checks), and module-eval reads the restore runbook.
-          skip_unless gate "$none|^(docs|web|ios)/" '\.(go|nix)$|(^|/)go\.(mod|sum|work|work\.sum)$|^ios/HasalaCore/Sources/HasalaCore/Resources/(templates/|TemplatesManifest\.swift$)|^docs/runbooks/restore\.md$'
-          # swift reads ios/ and conformance/, plus the server seed templates.
-          skip_unless swift "$none|^(docs|web|server|scripts|infra)/|^(flake\.nix|flake\.lock|\.gitleaks\.toml)$" '^server/internal/tmpl/seed/'
-          # ios-tools reads ios/, design/ (the Paper tokens the app is
-          # generated from) and the flake (which pins its XcodeGen).
-          skip_unless ios '^LICENSES/|^[^/]+\.md$|^(NOTICE|private-fixtures\.lock)$|^(docs|web|server|conformance|scripts|infra)/|^\.gitleaks\.toml$'
-          # ios-tools' devShell step reads ios/scripts/ and the flake only.
-          skip_unless ios_scripts "$none|^(docs|web|ios|server|conformance|scripts|infra)/|^\.gitleaks\.toml$" '^ios/scripts/'
-          # web reads web/ and docs/legal/, and its Bun comes from the flake.
-          skip_unless web "$none|^(docs|ios|server|conformance|scripts|infra)/|^\.gitleaks\.toml$" '^docs/legal/'
-          # nixos-vm reads infra/qa/ (the module and the VM test), server/ (the
-          # hasalad it boots) and the flake (cloudflared, PostgreSQL and the
-          # nixpkgs it builds them from).
-          skip_unless nixos_vm "$none|^(docs|web|ios|conformance|scripts|infra/assist)/|^\.gitleaks\.toml$"
+          scripts/ci-changes.sh --log "$changed" | tee -a "$GITHUB_OUTPUT"
 
   # A skipped required job reports "skipped", which passes. Each job below is
   # skipped only when `changes` succeeded and said "false".
@@ -452,7 +390,7 @@ jobs:
   # ios/scripts/upload.sh). Not a required check.
   ios-tools:
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
     concurrency:
       group: ci-mac-ios-tools-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || github.run_id }}
       cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
@@ -540,7 +478,7 @@ jobs:
   # manifest that disagrees with it fails instead of resolving afresh.
   swift:
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.swift != 'false') }}
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.swift != 'false') }}
     concurrency:
       group: ci-mac-swift-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || github.run_id }}
       cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}

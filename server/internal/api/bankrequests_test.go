@@ -6,6 +6,7 @@ import (
 )
 
 func TestBankRequestsListAndSenderDomain(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	keys, fake, _ := h.accounts()
 	a := h.passwordSignup(keys, fake, "maya@example.com")

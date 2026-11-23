@@ -37,7 +37,7 @@ func TestASecondPurgeOfOneAccountQueuesNoSecondGoodbye(t *testing.T) {
 		rep, err := PurgeWith(bg, pool, u, Options{Goodbye: true})
 		second <- result{rep, err}
 	}()
-	time.Sleep(300 * time.Millisecond)
+	waitForLockWaiter(t, pool)
 	if _, err := first.Exec(bg, `DELETE FROM users WHERE id = $1`, u); err != nil {
 		t.Fatal(err)
 	}

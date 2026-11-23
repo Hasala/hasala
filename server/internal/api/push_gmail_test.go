@@ -139,6 +139,7 @@ func withGmail(h *harness, push *GmailPush) (*recWaker, *GmailOptions) {
 func tokenHexFor(b byte) string { return strings.Repeat(string("0123456789abcdef"[b%16]), 64) }
 
 func TestAPNsTokenRoutes(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	withPushAndGmail(h)
 	u := h.user("apns")
@@ -214,6 +215,7 @@ func TestAPNsTokenRoutes(t *testing.T) {
 }
 
 func TestAPNsTokenMovesFromADeadRowOfAnotherAccount(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	withPushAndGmail(h)
 	put := func(tok string) *httptest.ResponseRecorder {
@@ -256,6 +258,7 @@ func TestAPNsTokenMovesFromADeadRowOfAnotherAccount(t *testing.T) {
 }
 
 func TestAnUploadWakesTheOtherDevices(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	w, _ := withPushAndGmail(h)
 	u := h.user("upload-wake")
@@ -293,6 +296,7 @@ func link(k *keyed, tok, idToken string) *httptest.ResponseRecorder {
 // AT-GM-1, -2, -6, -9: the link proves the nonce, the step-up and the claims;
 // only the HMAC is stored; the holder and the watch.
 func TestMailboxLink(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	wk, g := withPushAndGmail(h)
 	k := h.onboard(true)
@@ -409,6 +413,7 @@ func wantNotFound(t *testing.T, w *httptest.ResponseRecorder, what string) {
 
 // Without [gmail] nothing of #34–#39 is mounted and /meta offers no topic.
 func TestNoGmailMountsNothing(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	for _, rt := range mailboxRoutes {
 		wantNotFound(t, h.req(rt.method, rt.path, "", map[string]any{}), rt.method+" "+rt.path)
@@ -425,6 +430,7 @@ func TestNoGmailMountsNothing(t *testing.T) {
 // no_watch_topic), #37 reports none, /meta offers no topic, and the hook (#39)
 // is not mounted, so nothing is ever woken.
 func TestMailboxLinkWithoutPush(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	wk, g := withGmail(h, nil)
 	k := h.onboard(true)
@@ -557,6 +563,7 @@ func (h *harness) hook(authz string, body []byte) *httptest.ResponseRecorder {
 
 // AT-GM-3, -4, -5, -10: the hook's answers and who it wakes.
 func TestGmailHook(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, g := withPushAndGmail(h)
 	u := h.user("hook")
@@ -626,6 +633,7 @@ func TestGmailHook(t *testing.T) {
 }
 
 func TestGmailHookUnverifiedRequestsSpendNoGlobalBudget(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, g := withGmail(h, &GmailPush{Topic: testTopic, Hook: fakeVerifier{testAudience}, Subscription: testSub,
 		ServiceAccount: testSA, HookPerIP: NewLimiter(1e6, 1e6, 10, time.Now), HookGlobal: NewLimiter(0, 1, 1, time.Now)})
@@ -656,6 +664,7 @@ func TestGmailHookUnverifiedRequestsSpendNoGlobalBudget(t *testing.T) {
 
 // AT-GM-7: the nudge sweep.
 func TestNudgeSweep(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	_, g := withPushAndGmail(h)
 	u := h.user("nudge")
@@ -699,6 +708,7 @@ func (w *refusingWaker) TryWakeWriter(ctx context.Context, u uuid.UUID, writer s
 }
 
 func TestNudgeNotQueuedIsRetriedOnTheNextRun(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	_, g := withPushAndGmail(h)
 	u := h.user("nudge-dropped")
@@ -740,6 +750,7 @@ func putToken(h *harness, tok string, b byte) string {
 // Spec 02 §12.5: a revoked writer and the devices a logout-all signs out are
 // woken through tokens collected before their rows went away.
 func TestRevokeAndLogoutAllWakeCollectedTokens(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	wk, _ := withPushAndGmail(h)
 	k := h.onboard(true)
@@ -788,6 +799,7 @@ func TestRevokeAndLogoutAllWakeCollectedTokens(t *testing.T) {
 // Spec 02 §12.5: account deletion wakes every device, account-gone, through
 // tokens collected before the purge.
 func TestAccountDeletionWakesEveryDevice(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	wk, _ := withPushAndGmail(h)
 	acc := h.deletable(t, "wake")

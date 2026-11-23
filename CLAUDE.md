@@ -114,9 +114,11 @@ reachable.
   alone, and it must still fail with that text.
 
 The gate also runs its own self-tests: `scripts/tests/gate_run_test.sh`,
-`gotest_ran_test.sh`, `git_env_test.sh` and `ci_mac_devshell_test.sh`. The last one proves that the
-self-tests leave the surrounding repository alone when git's variables are
-exported. The closing lines name only the steps that ran, and a step that did
+`gotest_ran_test.sh`, `git_env_test.sh`, `ci_mac_devshell_test.sh` and
+`ci_changes_test.sh`. `git_env_test.sh` proves that the self-tests leave the
+surrounding repository alone when git's variables are exported.
+`ci_changes_test.sh` tests the path rules of CI (refer to "Path rules in CI").
+The closing lines name only the steps that ran, and a step that did
 not run adds `check: NOT RUN: ...`.
 
 ### Go test order and cleanup
@@ -161,6 +163,28 @@ bug. Find the cause. Do not add a retry and do not make a timeout longer.
 - Other gate runs can use the same host at the same time. Do not rely on the
   process table or on a fixed path outside `t.TempDir()`.
 
+### Fast Go tests
+
+The Go tests of `server/` must stay below 60 seconds on 4 cores. Most of the
+time is Postgres work for each test database, and password hashing.
+
+- The tests of `internal/auth` and `internal/api` run in parallel. Start a new
+  test there with `t.Parallel()`. A test that changes process state (the
+  logger, the environment) does not call it. Such a test then runs alone,
+  before the parallel tests.
+- A parallel test uses only its own database, its own fixture and its own
+  clock.
+- Each test database is a file copy of one migrated template
+  (`internal/pgtest`). Its pools open a connection only at the first query. Do
+  not migrate a database in a test, unless the migration is the subject.
+- For the password stretch of the client (600,000 rounds), use
+  `authtest.Stretch`. It keeps each result. In `internal/auth`, get addresses
+  from `f.newAddr()`, so that the same inputs occur again.
+- Do not make the password hash of the server cheaper in a test.
+- To test a lock timeout or a statement timeout, set it on a pool of the test
+  (`RuntimeParams`). Do not wait for the 5 seconds of the runtime role.
+- Do not build a binary more than one time in a package.
+
 ### One test
 
 - Go (in `server/` or `server/oracle/`):
@@ -178,7 +202,7 @@ bug. Find the cause. Do not add a retry and do not make a timeout longer.
 `scripts/pre-push.sh` runs the fast CI checks on the paths that you changed
 since `origin/main`: the fence, the HasalaCore lints, gitleaks on the new
 commits, gofmt and go vet, nixfmt, oxlint, the tokens, the project, the
-templates, shellcheck and the web check. It takes seconds. `--all` runs all the checks.
+templates, the CI path rules, shellcheck and the web check. It takes seconds. `--all` runs all the checks.
 It shows PASS, FAIL or SKIP for each check and fails on a FAIL. A check skips
 when its tool is not on PATH, thus run it in the devShell.
 
@@ -209,9 +233,11 @@ repository root. It takes less than one second.
 
 ### CI
 
-CI is `.github/workflows/ci.yml`. It runs on each pull request and on each
-push to `main`. You can also start it manually (`workflow_dispatch`). CI does
-not have the private fixtures.
+CI is `.github/workflows/ci.yml`. It runs on each pull request, on each
+merge group of the merge queue and on each push to `main`. You can also start
+it manually (`workflow_dispatch`). CI does not have the private fixtures.
+A pull request merges only through the merge queue. On a merge group, the Mac
+jobs skip, and the queue merges when `ci-ok` passes (`docs/ci.md`).
 
 The last job, `ci-ok`, needs only the fast jobs: `changes`, `gate`, `vuln`
 and `secrets`. It always runs. It fails if one of these jobs failed or was
@@ -250,15 +276,24 @@ thus they do not stop a merge: `swift` (HasalaCore on a Mac), `ios-tools`
 On a pull request and on a push to `main`, CI examines the changed paths. If
 it is not sure, it runs the job.
 
-- The first job, `changes`, makes a list of the changed paths in the pull
-  request (`git diff -z`, thus each file name agrees exactly as it is
-  written).
-- CI skips `gate`/`vuln`, `swift`, `ios-tools`, `web` or `nixos-vm` only
-  when all changed paths are on the list of paths that the job does not read.
+- The first job, `changes`, makes a list of the changed paths
+  (`git diff -z --no-renames --name-only`). With `-z`, each file name agrees
+  exactly as it is written. With `--no-renames`, a file that moved is on the
+  list two times, with its old path and its new path.
+- On a pull request, the checkout is the merge commit, and the list is the
+  change from `HEAD^1` to `HEAD`. This is the change that the merge makes on
+  the base branch.
+- `scripts/ci-changes.sh` contains the rules. It reads the list and prints
+  `true` or `false` for each output: `gate` (the jobs `gate` and `vuln`),
+  `swift`, `ios` (the job `ios-tools`), `ios_scripts` (the devShell step of
+  `ios-tools`), `web` and `nixos_vm`. `scripts/tests/ci_changes_test.sh` tests
+  the rules, and the gate runs it.
+- Each output has a list of paths that its job does not read. An output is
+  `false`, and CI skips the job, only when all changed paths are on that list.
   All other paths start the job. This includes paths that nobody expected
   (for example a new top-level directory, `go.work`, `.gitattributes`).
-- No job reads `LICENSES/`, root `*.md`, `NOTICE` or
-  `private-fixtures.lock`. Only `ios-tools` reads `design/`.
+- No job reads `LICENSES/`, root `*.md` or `NOTICE`. Only `ios-tools` reads
+  `design/`. Only `swift` reads `private-fixtures.lock`.
 - `gate` and `vuln` also do not read `docs/`, `web/` and `ios/`. But they read
   all `*.go`, `*.nix`, `go.mod`, `go.sum`, `go.work` and `go.work.sum` files
   in those directories, the bundled templates
@@ -267,20 +302,36 @@ it is not sure, it runs the job.
   also reads `docs/runbooks/restore.md` (`module-eval` pins it), and `vuln`
   shares the output of `gate`, so it also runs when that file changes. A change
   in `infra/` starts them.
-- `swift` reads only `ios/` and `conformance/`, plus `server/internal/tmpl/seed/`.
-- `ios-tools` reads only `ios/`, `design/` and the
-  flake. The devShell step of `ios-tools` reads only `ios/scripts/` and the
-  flake (output `ios_scripts`).
+- `scripts/check.sh` also runs the real-mail fence and the HasalaCore lints on
+  `docs/`, `web/` and `ios/`. These directories do not start `gate`, because
+  `secrets` runs the same two checks on each push and pull request.
+- `swift` reads only `ios/` and `conformance/`, plus
+  `server/internal/tmpl/seed/` and `private-fixtures.lock`. A test of
+  `outlook-trust-check` finds the repository through that file. `swift` does
+  not use the flake.
+- `ios-tools` reads only `ios/`, `design/` and the flake. The devShell step of
+  `ios-tools` reads only `ios/` and the flake (output `ios_scripts`). The
+  release-script tests run `archive.sh` on the checkout, and its gate examines
+  the sources in `ios/`. Thus a change in `ios/` starts this step, not only a
+  change in `ios/scripts/`.
 - `web` reads only `web/`, `docs/legal/` and the flake.
 - `nixos-vm` reads only `infra/` (except `infra/assist/`), `server/` and the
   flake.
-- A change in `.github/` starts all jobs. `secrets` always runs.
-- If `changes` does not succeed, all jobs run.
+- A change in `.github/` or in `scripts/ci-changes.sh` starts all jobs.
+  `secrets` always runs.
+- If `changes` does not succeed, all jobs run. An empty list, a list that the
+  script cannot read and an incorrect pattern also start all jobs.
 - A manual run starts all jobs.
 - A push to `main` uses the same path rules for all jobs, against the commit
   that `main` was at before the push. The pull request already ran them on
   the same code, because a branch must be up to date before it merges. If CI
   cannot get that commit (a new branch, a force push), all jobs run.
+- The rules see only the path of a symbolic link, not its target. Do not add
+  a symbolic link from a path that a job reads to a path that the job does
+  not read. The self-test fails when the tree gets a new symbolic link or a
+  submodule.
+- `changes` prints the changed paths between `::stop-commands::` and a random
+  token. Thus a file name cannot give a command to the runner.
 
 ### Concurrency and caches
 
@@ -296,7 +347,8 @@ Rules for a change to the CI:
 2. Do not use a workflow-level `paths:` filter. It keeps the required checks
    in the pending state permanently.
 3. If a job starts to read a path on its list of paths that it does not read,
-   remove that path from the list in `changes`.
+   remove that path from the list in `scripts/ci-changes.sh`. Add a case for
+   the path to `scripts/tests/ci_changes_test.sh`.
 
 ### Secrets and real mail
 
@@ -433,8 +485,7 @@ CI for iOS:
 - Job `ios-tools` does the checks that do not use the app build or a simulator: the
   HasalaKit tests, the design tokens, the project against `ios/project.yml`,
   `ios/scripts/tests/run.sh` and shellcheck on `ios/scripts`. It runs
-  `ios/scripts/tests/devshell_test.sh` only when `ios/scripts/` or the flake
-  changed.
+  `ios/scripts/tests/devshell_test.sh` only when `ios/` or the flake changed.
 - `ios-tools` is not a required check, and `ci-ok` does not need it.
 
 ### Nix

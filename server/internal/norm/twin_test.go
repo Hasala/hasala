@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"testing"
@@ -809,6 +810,8 @@ func TestWriteTwinArtifacts(t *testing.T) {
 // leave the Swift executor running against a fossil and passing — the exact
 // blind spot a one-way generated artifact has.
 func TestTwinArtifactsAreFresh(t *testing.T) {
+	gcPercent := debug.SetGCPercent(400)
+	t.Cleanup(func() { debug.SetGCPercent(gcPercent) })
 	for _, a := range []struct {
 		path string
 		want []byte

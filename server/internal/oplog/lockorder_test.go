@@ -3,7 +3,6 @@ package oplog
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -39,7 +38,7 @@ func TestAnAppendRacingAccountDeletionDoesNotDeadlock(t *testing.T) {
 		_, err := pool.Exec(bg, `DELETE FROM users WHERE id = $1`, u)
 		deleted <- err
 	}()
-	time.Sleep(300 * time.Millisecond)
+	waitForLockWaiter(t, pool)
 	close(release)
 	if err := <-appended; err != nil {
 		t.Fatalf("the append: %v", err)

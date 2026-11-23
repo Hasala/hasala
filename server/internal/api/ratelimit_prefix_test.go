@@ -15,6 +15,7 @@ import (
 )
 
 func TestPrefixKey(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		key, want string
 		ok        bool
@@ -82,16 +83,19 @@ func floodPrefixTier(t *testing.T, h http.Handler, perIP, globalBurst, prefixBur
 func okHandler(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }
 
 func TestSigninGlobalHasAPrefixTier(t *testing.T) {
+	t.Parallel()
 	s := prefixTierServer()
 	floodPrefixTier(t, s.withClientKey(s.limited(okHandler, s.PasskeyPerIP, s.PasskeyGlobal)), 12, 100, 24)
 }
 
 func TestPasskeyGlobalHasAPrefixTier(t *testing.T) {
+	t.Parallel()
 	s := prefixTierServer()
 	floodPrefixTier(t, s.withClientKey(s.passkeyLimited(okHandler)), 12, 100, 24)
 }
 
 func TestDevFreezeGlobalHasAPrefixTier(t *testing.T) {
+	t.Parallel()
 	s := prefixTierServer()
 	writer := authtest.NewDevice(t).WriterID
 	h := s.withClientKey(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -139,6 +143,7 @@ func randomFreezeToken(t *testing.T) string {
 }
 
 func TestFreezeLinkJunkSpendsNoGlobalBudget(t *testing.T) {
+	t.Parallel()
 	h, a, token := freezeLinkSetup(t)
 	for i := 0; i < 101; i++ {
 		for _, body := range []string{"garbage", `{"token":"AAAA"}`, `{"token":"` + strings.Repeat("!", 43) + `"}`, `{"token":"` + randomFreezeToken(t) + `"}`} {
@@ -150,6 +155,7 @@ func TestFreezeLinkJunkSpendsNoGlobalBudget(t *testing.T) {
 }
 
 func TestFreezeLinkRefusedByGlobalIsNotASuccess(t *testing.T) {
+	t.Parallel()
 	h, a, token := freezeLinkSetup(t)
 	h.srv.FreezeGlobal.Allow("")
 	w := postFreezeLink(h, bg, `{"token":"`+token+`"}`)
@@ -166,6 +172,7 @@ func TestFreezeLinkRefusedByGlobalIsNotASuccess(t *testing.T) {
 }
 
 func TestFreezeLinkPrefixTierIsNotASuccess(t *testing.T) {
+	t.Parallel()
 	h, a, token := freezeLinkSetup(t)
 	h.srv.TrustCloudflare = true
 	h.srv.FreezePerPrefix = NewLimiter(0, 2, 16, nil)
@@ -197,6 +204,7 @@ func TestFreezeLinkPrefixTierIsNotASuccess(t *testing.T) {
 }
 
 func TestFreezeLinkStatusIsReadableByTheSite(t *testing.T) {
+	t.Parallel()
 	h, _, _ := freezeLinkSetup(t)
 	h.srv.Web = &WebOptions{Origins: []string{"https://site.example"}}
 	for _, c := range []struct{ origin, want string }{
@@ -219,6 +227,7 @@ func TestFreezeLinkStatusIsReadableByTheSite(t *testing.T) {
 }
 
 func TestFreezeLinkErrorIsNotASuccess(t *testing.T) {
+	t.Parallel()
 	h, a, token := freezeLinkSetup(t)
 	h.srv.FreezeGlobal = NewLimiter(1e6, 1e6, 1, nil)
 	h.h = h.srv.Handler()
@@ -231,6 +240,7 @@ func TestFreezeLinkErrorIsNotASuccess(t *testing.T) {
 }
 
 func TestClientAddressLimitersCarryAPrefixQuota(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.srv.Web = &WebOptions{}
 	h.h = h.srv.Handler()
@@ -250,6 +260,7 @@ func TestClientAddressLimitersCarryAPrefixQuota(t *testing.T) {
 }
 
 func TestPasswordLoginFinishHasAPrefixAndAGlobalTier(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	keys, _, _ := h.accounts()
 	h.srv.TrustCloudflare = true

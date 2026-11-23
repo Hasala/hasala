@@ -9,6 +9,7 @@ import (
 )
 
 func TestTheFirstViewOfTheWordsCountsThemSeen(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.accounts()
 	k := h.onboard(false)
@@ -50,6 +51,7 @@ func TestTheFirstViewOfTheWordsCountsThemSeen(t *testing.T) {
 }
 
 func TestAPasskeyThatAloneOpensUnseenWordsStays(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.accounts()
 	h.srv.AccountPerUser = NewLimiter(100, 100, 16, nil)
@@ -81,6 +83,7 @@ func TestAPasskeyThatAloneOpensUnseenWordsStays(t *testing.T) {
 }
 
 func TestAnOrdinaryBootstrapCountsTheWordsSeen(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.accounts()
 	k := h.onboard(true)
@@ -95,6 +98,7 @@ func TestAnOrdinaryBootstrapCountsTheWordsSeen(t *testing.T) {
 }
 
 func TestPhraseUnseenNeedsTheSyncedPRFPasskey(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.accounts()
 	k := h.onboard(false)

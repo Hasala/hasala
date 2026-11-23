@@ -10,6 +10,7 @@ import (
 )
 
 func TestAnUploadPastTheGateIsRefusedByAFreezeThatCommitsFirst(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("freeze-race")
 	tok := h.session(u)

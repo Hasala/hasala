@@ -35,6 +35,7 @@ func assertOver(t *testing.T, a *authtest.Authenticator, challenge []byte, count
 }
 
 func TestVerifyAssertionAcceptsAnEnrolledCredentialOverTheServersChallenge(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, a := enroll(t, p, mustMint(t, pool, "alice"))
@@ -67,6 +68,7 @@ func TestVerifyAssertionAcceptsAnEnrolledCredentialOverTheServersChallenge(t *te
 // The binding that makes this a re-authentication rather than a bearer check:
 // the assertion signs THIS challenge, so one over any other value is worthless.
 func TestVerifyAssertionRefusesAnAssertionOverADifferentChallenge(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, a := enroll(t, p, mustMint(t, pool, "alice"))
@@ -82,6 +84,7 @@ func TestVerifyAssertionRefusesAnAssertionOverADifferentChallenge(t *testing.T) 
 // The account binding. Without it, anybody's passkey re-authenticates
 // anybody's session.
 func TestVerifyAssertionRefusesACredentialOfADifferentAccount(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	alice, _ := enroll(t, p, mustMint(t, pool, "alice"))
@@ -96,6 +99,7 @@ func TestVerifyAssertionRefusesACredentialOfADifferentAccount(t *testing.T) {
 
 // A credential nobody enrolled is a rejection, never a first enrolment.
 func TestVerifyAssertionRefusesAnUnenrolledCredential(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, _ := enroll(t, p, mustMint(t, pool, "alice"))
@@ -114,6 +118,7 @@ func TestVerifyAssertionRefusesAnUnenrolledCredential(t *testing.T) {
 // exists in two places. The re-authentication that guards account deletion is
 // the last place to be relaxed about that.
 func TestVerifyAssertionRefusesACounterThatDidNotAdvance(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, a := enroll(t, p, mustMint(t, pool, "alice"))
@@ -133,6 +138,7 @@ func TestVerifyAssertionRefusesACounterThatDidNotAdvance(t *testing.T) {
 // REJECTION rather than an argument error: the HTTP layer must be able to
 // answer it identically to a wrong one.
 func TestVerifyAssertionRefusesAnEmptyAssertion(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, _ := enroll(t, p, mustMint(t, pool, "alice"))
@@ -148,6 +154,7 @@ func TestVerifyAssertionRefusesAnEmptyAssertion(t *testing.T) {
 // empty challenge would be authorizing an assertion over bytes of its own
 // choosing.
 func TestVerifyAssertionRefusesAChallengeTooShortToBeOneOfOurs(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, a := enroll(t, p, mustMint(t, pool, "alice"))
@@ -163,6 +170,7 @@ func TestVerifyAssertionRefusesAChallengeTooShortToBeOneOfOurs(t *testing.T) {
 }
 
 func TestVerifyAssertionRefusesAZeroUser(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	_, a := enroll(t, p, mustMint(t, pool, "alice"))

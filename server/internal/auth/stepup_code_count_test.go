@@ -8,6 +8,7 @@ import (
 )
 
 func TestADeviceCodeIsCountedInOnePlaceAndItsLastWrongGuessEndsTheStepUp(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	newS := f.stretch(m.addr, "an entirely new password")

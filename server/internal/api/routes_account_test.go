@@ -105,6 +105,7 @@ func (h *harness) accountExists(t *testing.T, u uuid.UUID) bool {
 // A stolen session token must not be able to destroy a life's financial
 // history: without a step-up the answer is step_up_required, and nothing moves.
 func TestDeleteAccountRefusesASessionTokenAlone(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
 
@@ -128,6 +129,7 @@ func TestDeleteAccountRefusesASessionTokenAlone(t *testing.T) {
 // ledgerd's form is gone (spec 02 §2.4): its challenge route answers 404, and
 // a body that still carries its fields is malformed.
 func TestLedgerdsDeletionFormIsGone(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
 	wantStatus(t, h.req("POST", "/api/v1/account/challenge", acc.tok, struct{}{}), http.StatusNotFound)
@@ -145,6 +147,7 @@ func TestLedgerdsDeletionFormIsGone(t *testing.T) {
 // Every way of getting one factor wrong is the step-up's one refusal, so a
 // caller cannot learn which factor it is missing, and the account stays.
 func TestEveryDeletionRefusalIsTheSameAnswer(t *testing.T) {
+	t.Parallel()
 	// A harness per case, because the per-user attempt limiter is real.
 	for _, tc := range []struct {
 		name  string
@@ -223,6 +226,7 @@ func TestEveryDeletionRefusalIsTheSameAnswer(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDeleteAccountWithAllThreeFactorsPurgesTheAccount(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
 	bystander := h.deletable(t, "bob")
@@ -265,6 +269,7 @@ func TestDeleteAccountWithAllThreeFactorsPurgesTheAccount(t *testing.T) {
 // The signer may be any live writer of the account (spec 02 §15.2:
 // "<signer, live>"), not only the session's own.
 func TestAnotherLiveWriterMaySignTheDeletion(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
 	other := h.writer(acc.u, "ios-22222222-2222-4222-8222-222222222222")
@@ -281,6 +286,7 @@ func TestAnotherLiveWriterMaySignTheDeletion(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDeleteAccountNeedsASession(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	wantStatus(t, h.req("DELETE", "/api/v1/account", "", DeleteAccountRequest{}), http.StatusUnauthorized)
 }
@@ -288,6 +294,7 @@ func TestDeleteAccountNeedsASession(t *testing.T) {
 // Malformed input describes the caller's own submission and reveals nothing
 // about the account, so it is a 400.
 func TestDeleteAccountAnswers400ForMalformedInput(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
 	good := acc.body(t, h)
@@ -306,6 +313,7 @@ func TestDeleteAccountAnswers400ForMalformedInput(t *testing.T) {
 }
 
 func TestDeleteAccountWritesThePurgeLedger(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.srv.PurgeLedger = filepath.Join(t.TempDir(), "purged")
 	acc := h.deletable(t, "alice")
@@ -320,6 +328,7 @@ func TestDeleteAccountWritesThePurgeLedger(t *testing.T) {
 }
 
 func TestDeleteAccountThatCannotBeRecordedDeletesNothing(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.srv.PurgeLedger = filepath.Join(t.TempDir(), "missing", "purged")
 	acc := h.deletable(t, "alice")

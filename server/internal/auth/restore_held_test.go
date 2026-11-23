@@ -36,6 +36,7 @@ func flushed(t *testing.T, pool *pgxpool.Pool) []purgeledger.Entry {
 }
 
 func TestAFreezeSurvivesAStopBetweenItsCommitAndItsLine(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	f.acct.Hold, f.acct.Record = purgeledger.HoldTx, stoppedBeforeAppend
 	m := f.passwordMember("Maya")
@@ -67,6 +68,7 @@ func TestAFreezeSurvivesAStopBetweenItsCommitAndItsLine(t *testing.T) {
 }
 
 func TestEachAccountChangeHoldsItsLineWithTheChange(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	f.acct.Hold, f.acct.Record = purgeledger.HoldTx, stoppedBeforeAppend
 	m := f.passwordMember("Maya")
@@ -120,6 +122,7 @@ func TestEachAccountChangeHoldsItsLineWithTheChange(t *testing.T) {
 }
 
 func TestAPasskeyRemovalHoldsItsLine(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	f.passkeys.Hold, f.passkeys.Record = purgeledger.HoldTx, stoppedBeforeAppend
 	second, _, err := f.addOver(f.token, f.device, true)
@@ -136,6 +139,7 @@ func TestAPasskeyRemovalHoldsItsLine(t *testing.T) {
 }
 
 func TestADeviceRemovalHoldsItsLine(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	f.writers.Hold, f.writers.Record = purgeledger.HoldTx, stoppedBeforeAppend
 	other := authtest.NewDevice(t)
@@ -150,6 +154,7 @@ func TestADeviceRemovalHoldsItsLine(t *testing.T) {
 }
 
 func TestAFailedRevocationHoldsNoLine(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	f.writers.Hold, f.writers.Record = purgeledger.HoldTx, stoppedBeforeAppend
 	other := authtest.NewDevice(t)
@@ -164,6 +169,7 @@ func TestAFailedRevocationHoldsNoLine(t *testing.T) {
 }
 
 func TestAChangeThatCannotHoldItsLineDoesNotCommit(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	refused := errors.New("the outbox refused")
 	f.acct.Hold = func(context.Context, pgx.Tx, purgeledger.Entry) error { return refused }
@@ -177,6 +183,7 @@ func TestAChangeThatCannotHoldItsLineDoesNotCommit(t *testing.T) {
 }
 
 func TestALineWrittenTwiceDoesNotChangeTheReplay(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	frozeAt := f.clock.now().Truncate(time.Second)

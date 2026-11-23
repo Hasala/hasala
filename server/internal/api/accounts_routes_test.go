@@ -14,7 +14,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/authkeys"
 	"github.com/salehtl/hasala/server/internal/authtest"
-	"github.com/salehtl/hasala/server/internal/cryptoref"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/mail"
 	"github.com/salehtl/hasala/server/internal/mailq"
@@ -88,7 +87,7 @@ func (h *harness) passwordSignupWith(keys *authkeys.Keys, fake *mail.Fake, addr,
 		Code: lastCodeTo(h.t, fake, addr)}), http.StatusNoContent)
 	salt, _ := base64.StdEncoding.DecodeString(sb.Salt)
 	nonce, _ := base64.StdEncoding.DecodeString(sb.Nonce)
-	a := pwAccount{addr: addr, s: cryptoref.Stretch("correct horse battery staple", salt, addr), device: authtest.NewDevice(h.t)}
+	a := pwAccount{addr: addr, s: authtest.Stretch("correct horse battery staple", salt, addr), device: authtest.NewDevice(h.t)}
 	a.acct = authtest.NewAccount(h.t, mustUUID(h.t, sb.UserID))
 	sh := sha256.Sum256(a.s)
 	b := a.acct.BuildBootstrap(h.t, a.device, addr, nonce, keyproto.AuthKindPassword, sh[:], nil, nil)
@@ -117,6 +116,7 @@ func (h *harness) passwordLogin(a pwAccount, s []byte) *httptest.ResponseRecorde
 }
 
 func TestAccountRoutesAreNotMountedWithoutTheKeyFiles(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	for _, p := range []string{"/api/v1/auth/signup/begin", "/api/v1/auth/password/login/begin", "/api/v1/account/freeze",
 		"/api/v1/auth/recover/begin", "/api/v1/auth/device-freeze/challenge"} {
@@ -125,6 +125,7 @@ func TestAccountRoutesAreNotMountedWithoutTheKeyFiles(t *testing.T) {
 }
 
 func TestPasswordAccountOverHTTP(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	keys, fake, q := h.accounts()
 	a := h.passwordSignup(keys, fake, "maya@example.com")
@@ -222,6 +223,7 @@ func TestPasswordAccountOverHTTP(t *testing.T) {
 }
 
 func TestSignupAnswersAreUniform(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	keys, fake, _ := h.accounts()
 	a := h.passwordSignup(keys, fake, "maya@example.com")
@@ -258,6 +260,7 @@ func TestSignupAnswersAreUniform(t *testing.T) {
 }
 
 func TestDeviceFreezeOverHTTPIsUniform(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	keys, fake, _ := h.accounts()
 	a := h.passwordSignup(keys, fake, "maya@example.com")

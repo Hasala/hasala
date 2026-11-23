@@ -7,6 +7,7 @@ import (
 )
 
 func TestClientGateRefusesOlderIOSBuilds(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.srv.Meta = Meta{RPID: "hasala.app", MinIOSBuild: 26102911530}
 

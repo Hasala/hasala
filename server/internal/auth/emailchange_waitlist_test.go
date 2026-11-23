@@ -12,11 +12,12 @@ import (
 )
 
 func TestAnAccountMovingIntoAnAddressJoinsItsWaitlistEntry(t *testing.T) {
+	t.Parallel()
 	for _, state := range []string{"pending", "confirmed", "invited"} {
 		t.Run(state, func(t *testing.T) {
 			f := newAcctFixture(t)
 			m := f.passwordMember("Maya")
-			next := newAddr()
+			next := f.newAddr()
 			tag := f.acct.Keys.EmailTag(next)
 			var entry uuid.UUID
 			if err := f.pool.QueryRow(bgctx, `INSERT INTO waitlist_entries (email_tag, email_norm, state, bank_slug, source,

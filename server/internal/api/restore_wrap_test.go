@@ -11,6 +11,7 @@ import (
 )
 
 func TestAWrapDeletionOverHTTPIsInTheLedgerWhenTheRequestEnds(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.srv.PurgeLedger = filepath.Join(t.TempDir(), "purged")
 	k := h.onboard(true)

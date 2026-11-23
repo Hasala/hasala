@@ -28,6 +28,7 @@ type oneTag struct{}
 func (oneTag) EmailTag(string) []byte { return bytes.Repeat([]byte{7}, 32) }
 
 func TestAStopWaitsForACodeEmailAlreadyHandedOver(t *testing.T) {
+	t.Parallel()
 	sender := &heldSender{started: make(chan struct{}, 2), release: make(chan struct{})}
 	m := &Mailer{Queue: mailq.New(pgtest.New(t), sender, oneTag{})}
 	code := IssuedCode{Purpose: PurposeSignup, To: "stopping@example.com", Tag: bytes.Repeat([]byte{7}, 32), Code: "123456", Send: true}
@@ -68,6 +69,7 @@ func TestAStopWaitsForACodeEmailAlreadyHandedOver(t *testing.T) {
 }
 
 func TestWaitingWithNoCodeEmailsReturnsAtOnce(t *testing.T) {
+	t.Parallel()
 	var none *Mailer
 	none.Wait(bgctx)
 	done := make(chan struct{})

@@ -12,6 +12,7 @@ import (
 )
 
 func TestANonceShownByAnotherSessionOrAccountStaysUsableByItsOwner(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	owner := f.newSession()
 	su := f.stepUpPasskey(owner, keyproto.ActionPasskeyDelete, f.credID)
@@ -58,6 +59,7 @@ func TestANonceShownByAnotherSessionOrAccountStaysUsableByItsOwner(t *testing.T)
 }
 
 func TestAWrongProofFromTheOwningSessionStillBurnsTheNonce(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	su := f.stepUpPasskey(f.token, keyproto.ActionPasskeyDelete, f.credID)
 	g, err := guardFor(f.info(f.token), keyproto.ActionPasskeyDelete, su, []byte("not the credential it was begun for"))

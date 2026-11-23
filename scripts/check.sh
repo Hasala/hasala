@@ -447,7 +447,7 @@ step "assist worker (infra/assist)"
 cd "$ROOT/infra/assist"
 bun install --frozen-lockfile
 bun run --bun typecheck
-bun test
+bun test --randomize
 
 step "typecheck the scripts (scripts, ios/scripts)"
 (cd "$ROOT" && tsgo --noEmit -p scripts)

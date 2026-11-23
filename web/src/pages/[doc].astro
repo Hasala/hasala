@@ -303,12 +303,12 @@ const jsonLd = {
     }
 
     const print = document.querySelector<HTMLButtonElement>('[data-print]');
-    if (print && typeof window.print === 'function') {
+    if (print && typeof globalThis.print === 'function') {
       print.hidden = false;
       for (const el of document.querySelectorAll<HTMLElement>('[data-print-only]')) {
         el.hidden = false;
       }
-      print.addEventListener('click', () => window.print(), { signal });
+      print.addEventListener('click', () => globalThis.print(), { signal });
     }
   });
 </script>

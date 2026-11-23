@@ -34,15 +34,20 @@ export interface PageTimer {
   set: (fn: () => void, ms: number) => void;
 }
 
+const hold = (ms: number): Animation => document.documentElement.animate(null, ms);
+
+export const pause = (ms: number): Promise<unknown> => hold(ms).finished;
+
 export function pageTimer(signal: AbortSignal): PageTimer {
-  let id = 0;
-  const clear = (): void => window.clearTimeout(id);
+  let held: Animation | null = null;
+  const clear = (): void => held?.cancel();
   signal.addEventListener('abort', clear, { once: true });
   return {
     clear,
     set: (fn: () => void, ms: number): void => {
       clear();
-      id = window.setTimeout(fn, ms);
+      held = hold(ms);
+      held.addEventListener('finish', fn);
     },
   };
 }
@@ -53,7 +58,7 @@ export function observe(
   cb: IntersectionObserverCallback,
   opts?: IntersectionObserverInit,
 ): IntersectionObserver | null {
-  if (!('IntersectionObserver' in window)) {
+  if (!('IntersectionObserver' in globalThis)) {
     return null;
   }
   const io = new IntersectionObserver(cb, opts);

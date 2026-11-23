@@ -148,7 +148,7 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
 </Base>
 
 <script>
-  import { onPage } from '../scripts/page';
+  import { onPage, pageTimer } from '../scripts/page';
   import { inviteCopy } from '../lib/invite-copy';
 
   // The code: 24 base32 characters, from /i/<code> or, in the
@@ -200,7 +200,7 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     if (copy && label && navigator.clipboard) {
       label.textContent = idle;
       copy.hidden = false;
-      let reset = 0;
+      const reset = pageTimer(signal);
       const clipboard = inviteCopy(
         () => navigator.clipboard.writeText(copied),
         () => showManual(true),
@@ -208,10 +208,10 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
       copy.addEventListener(
         'click',
         async () => {
-          clearTimeout(reset);
+          reset.clear();
           if (await clipboard.copy()) {
             label.textContent = 'Copied';
-            reset = window.setTimeout(() => (label.textContent = idle), COPIED_MS);
+            reset.set(() => (label.textContent = idle), COPIED_MS);
           } else {
             label.textContent = idle;
           }
@@ -268,7 +268,7 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     if (!document.querySelector('[data-code]')) {
       return;
     }
-    window.addEventListener(
+    addEventListener(
       'hashchange',
       () => {
         const hash = location.hash.slice(1);

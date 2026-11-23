@@ -1,9 +1,17 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
+import { PENDING, stillPending } from '../scripts/test-fakes';
 import { postFreeze } from './freeze';
 
 const token = 'A'.repeat(43);
 const answering = (status: number) =>
   (() => Promise.resolve(new Response(null, { status }))) as unknown as typeof fetch;
+
+beforeEach(() => {
+  jest.useFakeTimers();
+});
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 describe('postFreeze', () => {
   test('only a 204 is done', async () => {
@@ -30,8 +38,12 @@ describe('postFreeze', () => {
           reject(new DOMException('Aborted', 'AbortError')),
         );
       })) as unknown as typeof fetch;
-    expect(await postFreeze('https://api.example/api', token, hanging, 5)).toBe('retry');
-  }, 500);
+    const result = postFreeze('https://api.example/api', token, hanging);
+    jest.advanceTimersByTime(19_999);
+    expect(await Promise.race([result, stillPending()])).toBe(PENDING);
+    jest.advanceTimersByTime(1);
+    expect(await Promise.race([result, stillPending()])).toBe('retry');
+  });
 
   test('an answer inside the wait counts and ends the wait', async () => {
     const seen: { signal?: AbortSignal | null } = {};
@@ -39,8 +51,8 @@ describe('postFreeze', () => {
       seen.signal = init.signal;
       return Promise.resolve(new Response(null, { status: 204 }));
     }) as unknown as typeof fetch;
-    expect(await postFreeze('https://api.example/api', token, quick, 5)).toBe('done');
-    await Bun.sleep(20);
+    expect(await postFreeze('https://api.example/api', token, quick)).toBe('done');
+    jest.advanceTimersByTime(60_000);
     expect(seen.signal?.aborted).toBe(false);
   });
 

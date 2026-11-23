@@ -49,7 +49,7 @@ function reveals(signal: AbortSignal): void {
   if (els.length === 0) {
     return;
   }
-  if (reducedMotion() || !('IntersectionObserver' in window)) {
+  if (reducedMotion() || !('IntersectionObserver' in globalThis)) {
     els.forEach((el) => el.classList.add('is-in'));
     return;
   }

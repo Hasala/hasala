@@ -103,7 +103,7 @@ reachable.
 - `go vet` and `go test` in `server/`, then in `server/oracle/`. Both use one
   temporary Postgres (unix socket only). The tests run in random order (refer
   to "Go test order and cleanup").
-- The typecheck and `bun test` of the assist worker (`infra/assist`), then the
+- The typecheck and `bun test --randomize` of the assist worker (`infra/assist`), then the
   typecheck of `scripts/*.ts` and `ios/scripts` (refer to "Typecheck" below).
   The worker's dependencies are always installed from the lockfile.
 - The conformance suites. The `CONFORMANCE` table in `scripts/check.sh` names
@@ -268,6 +268,59 @@ typechecks. Each one takes less than one second.
   also fails on a hint, thus an unused import in a frontmatter stops it.
 - `gate` runs the worker and the scripts projects, `web` runs the two web
   projects and `astro check`, and `secrets` runs the scripts project.
+
+### Timers and tests (TypeScript)
+
+Do not use `setTimeout`, `setInterval`, `setImmediate` or `Bun.sleep`, in
+production code or in a test. `oxlint` stops them (`no-restricted-globals`,
+`no-restricted-properties`, `no-restricted-imports`). `oxlint` does not read
+the markup of an `.astro` file, thus `web/src/lib/no-timers.test.ts` searches
+the text of each `.astro` file.
+
+In production code, wait on the event:
+
+- A deadline for a request: `AbortSignal.timeout(ms)`.
+- A time on the screen (a note that goes away, a pause between two motions):
+  `pageTimer(signal)` or `pause(ms)` in `web/src/scripts/page.ts`. They start
+  an empty Web Animation and wait for its `finish` event. A page swap cancels
+  a `pageTimer`.
+- The end of a motion: the `finished` promise of its animation.
+
+In a test:
+
+- For `pageTimer` and `pause`, put `fakeRoot()` (`web/src/scripts/test-fakes.ts`)
+  in `document.documentElement`. `root.waiting()` gives the waits that are
+  not complete, and `root.finish(ms)` completes them.
+- For `AbortSignal.timeout`, use the fake timers of Bun (`jest.useFakeTimers()`
+  and `jest.advanceTimersByTime(ms)` from `bun:test`). Bun 1.3.13 has no async
+  variant.
+- To let promises complete, `await settled()` from `test-fakes.ts`.
+- With fake timers on, a test has no timeout. If a promise must complete after
+  a time step, examine it with `Promise.race([promise, stillPending()])`. Do
+  not `await` it alone, because a failure then stops the run and does not end.
+
+The tests run in random order (`bun test --randomize`), the files and the tests
+in each file. Bun runs all files in one process. Bun prints the seed in the
+first lines (` --seed=<n>`). To do a failed run again, run
+`bun test --randomize --seed=<n>`. Do not run a failed test again to make it
+pass. Find the test that left the state.
+
+A test file must leave no state:
+
+- **Globals.** Use `afterEach(keepGlobals([...names]))` from `test-fakes.ts` for
+  each global that the file sets (`document`, `window`, `fetch`, `location`).
+  It deletes a global that did not exist. Do not restore one with
+  `globalThis.x = undefined`, because `'x' in globalThis` stays true.
+- **Timers.** A file that calls `jest.useFakeTimers()` calls
+  `jest.useRealTimers()` in `afterEach`.
+- **Patched functions.** Put back each function that the file replaces
+  (`AbortSignal.timeout`, a `mock`) in `afterEach`.
+- **Fake DOM.** Make a new fake document and a new `fakeRoot()` for each test.
+  Do not keep elements or listeners in a variable of the module.
+- **Module state.** A module with state (`api.ts` keeps the Turnstile loader)
+  is loaded new for each test (`import('./api.ts?turnstile=<n>')`), or the
+  test does not use that state.
+- Do not make one test use the result of another test.
 
 ### CI
 
@@ -713,7 +766,8 @@ From `web/`:
 1. Run `bun install --frozen-lockfile` one time.
 2. When you edit, run `bun run dev`.
 3. Run `bun run typecheck` (TypeScript 7), `bun run check` (this is
-   `astro check`) and `bun run test`.
+   `astro check`) and `bun run test` (random order; refer to "Timers and
+   tests").
 4. Run `bun run build`. It writes `dist/` and then runs
    `scripts/check-dist.ts`. The build fails if one of these conditions
    occurs:

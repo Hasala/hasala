@@ -3,6 +3,8 @@
  * envelope out ({ "error": "<code>", "detail"?: "..." } on failure). No
  * cookies, no referrer. A network failure resolves to status 0.
  */
+import { pageTimer } from './page';
+
 export interface ApiAnswer {
   status: number;
   error: string;
@@ -73,10 +75,8 @@ interface Turnstile {
   remove: (id: string) => void;
 }
 declare global {
-  interface Window {
-    turnstile?: Turnstile;
-    hasalaTurnstileReady?: () => void;
-  }
+  var turnstile: Turnstile | undefined;
+  var hasalaTurnstileReady: (() => void) | undefined;
 }
 const waiting: ((loaded: boolean) => void)[] = [];
 let requested = false;
@@ -95,7 +95,7 @@ function loadTurnstile(): void {
     return;
   }
   requested = true;
-  window.hasalaTurnstileReady = () => settleLoad(true);
+  globalThis.hasalaTurnstileReady = () => settleLoad(true);
   const script = document.createElement('script');
   script.src =
     'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=hasalaTurnstileReady';
@@ -157,10 +157,10 @@ export function renderTurnstile(
     }
   };
   const draw = (): void => {
-    if (signal.aborted || id || !window.turnstile || box.childElementCount) {
+    if (signal.aborted || id || !globalThis.turnstile || box.childElementCount) {
       return;
     }
-    id = window.turnstile.render(box, {
+    id = globalThis.turnstile.render(box, {
       sitekey: box.dataset.sitekey,
       action,
       theme: 'light',
@@ -171,7 +171,7 @@ export function renderTurnstile(
     });
   };
   const load = (): void => {
-    if (window.turnstile) {
+    if (globalThis.turnstile) {
       draw();
     } else {
       waiting.push((loaded) => (loaded ? draw() : settle(MISSING)));
@@ -182,7 +182,7 @@ export function renderTurnstile(
     'abort',
     () => {
       if (id) {
-        window.turnstile?.remove(id);
+        globalThis.turnstile?.remove(id);
       }
       id = '';
       token = '';
@@ -202,12 +202,13 @@ export function renderTurnstile(
           resolve({ state: 'ready', token });
           return;
         }
-        const timer = setTimeout(() => finish(MISSING), waitMs);
-        function finish(check: TurnstileCheck): void {
-          clearTimeout(timer);
+        const deadline = pageTimer(signal);
+        const finish = (check: TurnstileCheck): void => {
+          deadline.clear();
           waiters.delete(finish);
           resolve(check);
-        }
+        };
+        deadline.set(() => finish(MISSING), waitMs);
         waiters.add(finish);
         if (!id) {
           load();
@@ -216,7 +217,7 @@ export function renderTurnstile(
     reset: () => {
       token = '';
       if (id) {
-        window.turnstile?.reset(id);
+        globalThis.turnstile?.reset(id);
       }
     },
   };

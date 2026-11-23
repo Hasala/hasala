@@ -60,6 +60,7 @@ func passkeyPath(credID []byte) string {
 }
 
 func TestPasskeyManagementRoutesAreNotMountedWithoutARelyingParty(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	for method, path := range map[string]string{
 		"GET":    "/api/v1/auth/passkeys",
@@ -74,6 +75,7 @@ func TestPasskeyManagementRoutesAreNotMountedWithoutARelyingParty(t *testing.T) 
 }
 
 func TestPasskeyManagementRequiresASession(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	for method, path := range map[string]string{
 		"GET":    "/api/v1/auth/passkeys",
@@ -88,6 +90,7 @@ func TestPasskeyManagementRequiresASession(t *testing.T) {
 }
 
 func TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	second := k.addPasskey(k.token)
@@ -174,6 +177,7 @@ func TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial(t *testing.T) {
 }
 
 func TestTheCurrentMarkerFollowsTheCredentialTheSessionWasMintedWith(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	second := k.addPasskey(k.token)
@@ -208,6 +212,7 @@ func TestTheCurrentMarkerFollowsTheCredentialTheSessionWasMintedWith(t *testing.
 }
 
 func TestListPasskeysOnlyEverShowsTheCallersOwnCredentials(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, mine := h.register(h.invite("mine"))
 	_, theirs := h.register(h.invite("theirs"))
@@ -226,6 +231,7 @@ func TestListPasskeysOnlyEverShowsTheCallersOwnCredentials(t *testing.T) {
 }
 
 func TestDeletingTheLastPasskeyIsRefusedByTheServer(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 
@@ -246,6 +252,7 @@ func TestDeletingTheLastPasskeyIsRefusedByTheServer(t *testing.T) {
 }
 
 func TestDeletingAPasskeyRemovesItAndThenRefusesTheRemainingOne(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	first := k.authn
@@ -274,6 +281,7 @@ func TestDeletingAPasskeyRemovesItAndThenRefusesTheRemainingOne(t *testing.T) {
 }
 
 func TestDeletingAPasskeyTakesItsKeyWrapWithIt(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	first := k.authn
@@ -296,6 +304,7 @@ func TestDeletingAPasskeyTakesItsKeyWrapWithIt(t *testing.T) {
 }
 
 func TestDeletingAPasskeyEndsOnlyThatPasskeysSessions(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.srv.PasskeyPerIP = NewLimiter(passkeyPerIPRate, 64, passkeyMaxKeys, h.srv.now)
 	k := h.onboard(true)
@@ -326,6 +335,7 @@ func TestDeletingAPasskeyEndsOnlyThatPasskeysSessions(t *testing.T) {
 }
 
 func TestDeletingAPasskeyLeavesTheAccountsOtherDevicesSignedIn(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	first, session := k.authn, k.token
@@ -349,6 +359,7 @@ func TestDeletingAPasskeyLeavesTheAccountsOtherDevicesSignedIn(t *testing.T) {
 }
 
 func TestDeletingAnotherAccountsPasskeyIsRefusedAndLeavesItAlone(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	attacker := h.onboard(true)
 	attacker.addPasskey(attacker.token)
@@ -367,6 +378,7 @@ func TestDeletingAnotherAccountsPasskeyIsRefusedAndLeavesItAlone(t *testing.T) {
 }
 
 func TestDeletingAPasskeyWhoseIdNeedsEscapingWorks(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	u, token := k.user, k.token
@@ -384,6 +396,7 @@ func TestDeletingAPasskeyWhoseIdNeedsEscapingWorks(t *testing.T) {
 }
 
 func TestDeletingAPasskeyWithAMalformedIdIsABadRequest(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, session := h.register(h.invite("malformed"))
 	w := h.req("DELETE", "/api/v1/auth/passkeys/not!base64", session.SessionToken, nil)
@@ -391,6 +404,7 @@ func TestDeletingAPasskeyWithAMalformedIdIsABadRequest(t *testing.T) {
 }
 
 func TestPasskeyManagementIsRateLimited(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, session := h.register(h.invite("limits"))
 	for _, route := range []struct{ method, path string }{

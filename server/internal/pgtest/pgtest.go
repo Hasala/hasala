@@ -148,7 +148,7 @@ func copyDatabase(t *testing.T, tmpl string) string {
 	t.Helper()
 	ctx := context.Background()
 	name := fmt.Sprintf("t%d_%d", os.Getpid(), dbSeq.Add(1))
-	if _, err := adminPool.Exec(ctx, "CREATE DATABASE "+name+" TEMPLATE "+tmpl+" OWNER hasala_migrate"); err != nil {
+	if _, err := adminPool.Exec(ctx, "CREATE DATABASE "+name+" TEMPLATE "+tmpl+" OWNER hasala_migrate STRATEGY file_copy"); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { dropDatabase(t, name) })
@@ -227,7 +227,12 @@ func databaseGrants(name string) []string {
 
 func openPool(t *testing.T, dsn string) *pgxpool.Pool {
 	t.Helper()
-	p, err := pg.Open(context.Background(), dsn)
+	cfg, err := pg.PoolConfig(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.MinConns = 0
+	p, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +339,7 @@ func bootCluster(detach bool, owner int) (dir string, srv *exec.Cmd, dsn string,
 	port := 5433
 	srv = cmd("postgres", "-D", data, "-k", dir, "-p", strconv.Itoa(port),
 		"-c", "listen_addresses=", "-c", "fsync=off", "-c", "full_page_writes=off",
-		"-c", "synchronous_commit=off")
+		"-c", "synchronous_commit=off", "-c", "max_connections=400")
 	srv.Stdout, srv.Stderr = os.Stderr, os.Stderr
 	if owner > 0 {
 		if err := os.WriteFile(filepath.Join(dir, ownerFile), []byte(strconv.Itoa(owner)), 0o644); err != nil {

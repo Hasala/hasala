@@ -7,7 +7,10 @@ interface Props {
   variant?: 'full' | 'invite' | 'minimal';
 }
 const { variant = 'full' } = Astro.props;
-const NAV = PAGES.map((item) => ({ ...item, label: item.href === '/how-privacy-works' ? 'Privacy' : item.label }));
+const NAV = PAGES.map((item) => ({
+  href: item.href,
+  label: item.href === '/how-privacy-works' ? 'Privacy' : item.label,
+}));
 const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-privacy-works') : NAV;
 ---
 

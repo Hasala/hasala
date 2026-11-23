@@ -46,6 +46,7 @@ func readLedger(t *testing.T, path string) []purgeledger.Entry {
 }
 
 func TestRevokingTheHolderDropsTheMailboxLinkAndRecordsTheRemoval(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.writers.Record = rec
@@ -79,6 +80,7 @@ func TestRevokingTheHolderDropsTheMailboxLinkAndRecordsTheRemoval(t *testing.T) 
 }
 
 func TestRevokingAnotherDeviceKeepsTheHoldersLink(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.writers.Record = rec
@@ -101,6 +103,7 @@ func TestRevokingAnotherDeviceKeepsTheHoldersLink(t *testing.T) {
 }
 
 func TestAFailedRevocationRecordsNothing(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.writers.Record = rec
@@ -120,6 +123,7 @@ func TestAFailedRevocationRecordsNothing(t *testing.T) {
 }
 
 func TestReapplyRevokesADeviceARestoreBroughtBack(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	stolen := authtest.NewDevice(t)
 	stolenTok := f.enrol(stolen)
@@ -166,6 +170,7 @@ func TestReapplyRevokesADeviceARestoreBroughtBack(t *testing.T) {
 }
 
 func TestPasswordChangesSurviveARestore(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.acct.Record = rec
@@ -230,6 +235,7 @@ func TestPasswordChangesSurviveARestore(t *testing.T) {
 }
 
 func TestARefusedPasswordChangeRecordsNothing(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.acct.Record = rec
@@ -243,6 +249,7 @@ func TestARefusedPasswordChangeRecordsNothing(t *testing.T) {
 }
 
 func TestAFreezeSurvivesARestore(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.acct.Record = rec
@@ -301,6 +308,7 @@ func TestAFreezeSurvivesARestore(t *testing.T) {
 }
 
 func TestAnUnfreezeAfterTheFreezeIsKept(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	at := f.clock.now().Truncate(time.Second)
@@ -319,6 +327,7 @@ func TestAnUnfreezeAfterTheFreezeIsKept(t *testing.T) {
 }
 
 func TestReapplyOnlySignsOutADeviceWhoseSignerTheRestoreLost(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	stolen := authtest.NewDevice(t)
 	stolenTok := f.enrol(stolen)
@@ -361,6 +370,7 @@ func TestReapplyOnlySignsOutADeviceWhoseSignerTheRestoreLost(t *testing.T) {
 }
 
 func TestARecordedUnfreezeKeepsTheFreezeLiftedAfterARestore(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.acct.Record = rec
@@ -407,6 +417,7 @@ func TestARecordedUnfreezeKeepsTheFreezeLiftedAfterARestore(t *testing.T) {
 }
 
 func TestAHolderFreezeOnAnOperatorFrozenAccountIsKeptByTheReplay(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -456,6 +467,7 @@ func restoreRow(t *testing.T, pool *pgxpool.Pool, table, row string) {
 }
 
 func TestAPasskeyRemovalIsRecordedAndSurvivesARestore(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	path, rec := ledgerRecorder(t)
 	f.passkeys.Record = rec
@@ -518,6 +530,7 @@ func TestAPasskeyRemovalIsRecordedAndSurvivesARestore(t *testing.T) {
 }
 
 func TestARefusedPasskeyRemovalRecordsNothing(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	path, rec := ledgerRecorder(t)
 	f.passkeys.Record = rec
@@ -531,6 +544,7 @@ func TestARefusedPasskeyRemovalRecordsNothing(t *testing.T) {
 }
 
 func TestRecoveryRecordsTheOldPasskeysItRemoves(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.acct.Record = rec
@@ -564,6 +578,7 @@ func TestRecoveryRecordsTheOldPasskeysItRemoves(t *testing.T) {
 }
 
 func TestAReplayNeverLeavesAPasswordOnlyAccountFrozenWithNoWayIn(t *testing.T) {
+	t.Parallel()
 	for _, freezeFirst := range []bool{true, false} {
 		name := "password then freeze"
 		if freezeFirst {
@@ -617,6 +632,7 @@ func TestAReplayNeverLeavesAPasswordOnlyAccountFrozenWithNoWayIn(t *testing.T) {
 }
 
 func TestAReplayLiftsAFreezeWhenAPasskeyRemovalLeavesNoAuthenticator(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND password_hash IS NULL`, f.user); n != 1 {
 		t.Fatal("the passkey account has a password")
@@ -647,6 +663,7 @@ func TestAReplayLiftsAFreezeWhenAPasskeyRemovalLeavesNoAuthenticator(t *testing.
 }
 
 func TestAReplayKeepsAFreezeWhenAPasskeyIsLeft(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t).guarded()
 	second, _, err := f.addOver(f.token, f.device, true)
 	if err != nil {
@@ -668,6 +685,7 @@ func TestAReplayKeepsAFreezeWhenAPasskeyIsLeft(t *testing.T) {
 }
 
 func TestARecordedUnfreezeLiftsTheFreezeARestoreBroughtBack(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.acct.Record = rec
@@ -726,6 +744,7 @@ func TestARecordedUnfreezeLiftsTheFreezeARestoreBroughtBack(t *testing.T) {
 }
 
 func TestAnUnfreezeReplayNeverLiftsTheOperatorsFreeze(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -761,6 +780,7 @@ func TestAnUnfreezeReplayNeverLiftsTheOperatorsFreeze(t *testing.T) {
 }
 
 func TestAnUnfreezeIsNotAppliedToALaterFreeze(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -790,6 +810,7 @@ func TestAnUnfreezeIsNotAppliedToALaterFreeze(t *testing.T) {
 }
 
 func TestAReplayOnTheLiveDatabaseAppliesNothing(t *testing.T) {
+	t.Parallel()
 	t.Run("password, freeze and unfreeze", func(t *testing.T) {
 		f := newAcctFixture(t)
 		path, rec := ledgerRecorder(t)
@@ -874,6 +895,7 @@ func TestAReplayOnTheLiveDatabaseAppliesNothing(t *testing.T) {
 }
 
 func TestALogoutAllIsRecordedAndSurvivesARestore(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.acct.Record = rec
@@ -935,7 +957,7 @@ func queueSignInAlert(t *testing.T, f *acctFixture, user uuid.UUID) {
 
 func changeEmail(t *testing.T, f *acctFixture, m *member) string {
 	t.Helper()
-	next := newAddr()
+	next := f.newAddr()
 	sNew := f.stretch(next, m.pw)
 	su := m.deviceStepUp(keyproto.ActionEmailChange, m.s, sha([]byte(next)), sumBytes(sNew))
 	begun, err := f.acct.EmailChangeBegin(bgctx, m.info(), next, sNew, su)
@@ -959,6 +981,7 @@ func freezeLinkTo(f *acctFixture, addr string) bool {
 }
 
 func TestAnEmailChangeEndsTheFreezeLinksOfTheOldAddress(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -993,6 +1016,7 @@ func TestAnEmailChangeEndsTheFreezeLinksOfTheOldAddress(t *testing.T) {
 }
 
 func TestAnEmailChangeIsRecordedAndARestoredOldAddressGetsNoFreezeLink(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.acct.Record = rec
@@ -1064,6 +1088,7 @@ func TestAnEmailChangeIsRecordedAndARestoredOldAddressGetsNoFreezeLink(t *testin
 }
 
 func TestALiftedFreezeRetiresTheOlderFreezeLinks(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -1111,6 +1136,7 @@ func TestALiftedFreezeRetiresTheOlderFreezeLinks(t *testing.T) {
 }
 
 func TestAnAlertQueuedBeforeALiftCarriesALinkThatDoesNotFreeze(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -1157,6 +1183,7 @@ func TestAnAlertQueuedBeforeALiftCarriesALinkThatDoesNotFreeze(t *testing.T) {
 }
 
 func TestAnOperatorsUnfreezeRetiresTheOlderFreezeLinks(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -1190,6 +1217,7 @@ func TestAnOperatorsUnfreezeRetiresTheOlderFreezeLinks(t *testing.T) {
 }
 
 func TestARestoreDoesNotBringBackTheLinksOfALiftedFreeze(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.acct.Record = rec
@@ -1255,6 +1283,7 @@ func TestARestoreDoesNotBringBackTheLinksOfALiftedFreeze(t *testing.T) {
 }
 
 func TestARestoreBeforeALiftedFreezeEndsTheSessionsTheFreezeEnded(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.acct.Record = rec
@@ -1327,6 +1356,7 @@ func TestARestoreBeforeALiftedFreezeEndsTheSessionsTheFreezeEnded(t *testing.T) 
 }
 
 func TestARestoredOldAddressCannotBeginARecoveryUntilItIsVerified(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.acct.Record = rec
@@ -1383,6 +1413,7 @@ func TestARestoredOldAddressCannotBeginARecoveryUntilItIsVerified(t *testing.T) 
 }
 
 func TestAFreezeInTheSameSecondAsARestoredUnfreezeIsApplied(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -1411,6 +1442,7 @@ func TestAFreezeInTheSameSecondAsARestoredUnfreezeIsApplied(t *testing.T) {
 }
 
 func TestAFreezeAfterAnUnfreezeOfTheSameSecondOutlivesThatUnfreezesEvent(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -1437,6 +1469,7 @@ func TestAFreezeAfterAnUnfreezeOfTheSameSecondOutlivesThatUnfreezesEvent(t *test
 }
 
 func TestAFreezeLiftedByAnEventTheLedgerDoesNotExplainStaysLifted(t *testing.T) {
+	t.Parallel()
 	for name, gap := range map[string]time.Duration{"the same second": 400 * time.Millisecond, "a later second": 2 * time.Second} {
 		t.Run(name, func(t *testing.T) {
 			f := newAcctFixture(t)
@@ -1457,6 +1490,7 @@ func TestAFreezeLiftedByAnEventTheLedgerDoesNotExplainStaysLifted(t *testing.T) 
 }
 
 func TestAFreezeAfterASameSecondUnfreezeIsStillLiftedByALaterEvent(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -1476,6 +1510,7 @@ func TestAFreezeAfterASameSecondUnfreezeIsStillLiftedByALaterEvent(t *testing.T)
 }
 
 func TestTheOperatorsClearingOfARestoredAddressHoldsAcrossAReplay(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	path, rec := ledgerRecorder(t)
 	f.acct.Record = rec

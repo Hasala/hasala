@@ -78,6 +78,7 @@ func (f *keyFixture) verifiedRoster() map[string]rosterRow {
 }
 
 func TestBootstrapUnderThePendingAuthorityPublishesKeysAndTheFirstWriter(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	k, err := f.keys.Read(bgctx, f.user)
 	if err != nil {
@@ -105,6 +106,7 @@ func TestBootstrapUnderThePendingAuthorityPublishesKeysAndTheFirstWriter(t *test
 }
 
 func TestBootstrapRefusesWhatItMustRefuse(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixtureUnbootstrapped(t)
 	info := f.info(f.token)
 	good := func() Bootstrap { return f.bootstrap(f.device, keyproto.AuthKindPasskey, f.attestation(), true) }
@@ -164,6 +166,7 @@ func TestBootstrapRefusesWhatItMustRefuse(t *testing.T) {
 }
 
 func TestBootstrapWithAnotherAuthorityKeyNeedsAStepUp(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixtureUnbootstrapped(t)
 	f.acct.AAKSeed = authtest.RandBytesTB(t, 32)
 	b := f.bootstrap(f.device, keyproto.AuthKindNone, make([]byte, 32), false)
@@ -192,6 +195,7 @@ func TestBootstrapWithAnotherAuthorityKeyNeedsAStepUp(t *testing.T) {
 }
 
 func TestASecondWriterIsRegisteredByTheAuthorityKeyAndBindsItsSession(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	d2 := authtest.NewDevice(t)
 	tok := f.enrol(d2)
@@ -205,6 +209,7 @@ func TestASecondWriterIsRegisteredByTheAuthorityKeyAndBindsItsSession(t *testing
 }
 
 func TestRegistrationRefusals(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	d := authtest.NewDevice(t)
 	hash := f.info(f.newSession()).Hash
@@ -256,6 +261,7 @@ func TestRegistrationRefusals(t *testing.T) {
 }
 
 func TestAtMostTwentyLiveWriters(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	for i := 1; i < MaxLiveWriters; i++ {
 		f.enrol(authtest.NewDevice(t))
@@ -267,6 +273,7 @@ func TestAtMostTwentyLiveWriters(t *testing.T) {
 }
 
 func TestAWriterChallengeIsSingleUseUnderConcurrency(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	const racers = 8
 	warmPool(t, f.pool, racers)
@@ -321,6 +328,7 @@ func warmPool(t *testing.T, pool *pgxpool.Pool, n int) {
 }
 
 func TestRevocationPinsTheFinalHeadAndEndsTheDevice(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	stolen := authtest.NewDevice(t)
 	stolenTok := f.enrol(stolen)
@@ -356,6 +364,7 @@ func TestRevocationPinsTheFinalHeadAndEndsTheDevice(t *testing.T) {
 }
 
 func TestAWriterMayRevokeItselfWithAnEmptyChain(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(f.device.WriterID))
 	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(f.device.WriterID, f.device, 0, make([]byte, 32), su)); err != nil {
@@ -367,6 +376,7 @@ func TestAWriterMayRevokeItselfWithAnEmptyChain(t *testing.T) {
 }
 
 func TestRevocationRefusals(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	other := authtest.NewDevice(t)
 	f.enrol(other)
@@ -400,6 +410,7 @@ func TestRevocationRefusals(t *testing.T) {
 }
 
 func TestKeyHistoryGuardBindsANonOwnerRuntimeRole(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	for _, sql := range []string{`UPDATE key_history SET pubkey = pubkey`, `DELETE FROM key_history`, `TRUNCATE key_history`} {
 		if _, err := f.pool.Exec(bgctx, sql); err == nil || !strings.Contains(err.Error(), "permission denied") {
@@ -430,6 +441,7 @@ func TestKeyHistoryGuardBindsANonOwnerRuntimeRole(t *testing.T) {
 }
 
 func TestKeyHistoryIsRemovedWithItsUser(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	if _, err := f.pool.Exec(bgctx, `DELETE FROM users WHERE id = $1`, f.user); err != nil {
 		t.Fatalf("deleting a user must cascade through key_history: %v", err)
@@ -442,6 +454,7 @@ func TestKeyHistoryIsRemovedWithItsUser(t *testing.T) {
 }
 
 func TestStepUpBeginRefusals(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	i := f.info(f.token)
 	ph := make([]byte, 32)
@@ -469,6 +482,7 @@ func TestStepUpBeginRefusals(t *testing.T) {
 }
 
 func TestStepUpDeviceProofChecksTheDAKFirst(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	target := []byte(f.device.WriterID)
 	run := func(sign func(c [32]byte) []byte) error {
@@ -508,6 +522,7 @@ func TestStepUpDeviceProofChecksTheDAKFirst(t *testing.T) {
 }
 
 func TestAStepUpIsBoundToItsSessionAndExpires(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	other := authtest.NewDevice(t)
 	f.enrol(other)

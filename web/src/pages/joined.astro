@@ -6,7 +6,7 @@ import { SITE } from '../data/site';
 import { TURNSTILE_SITEKEY, WAITLIST_MODE } from '../lib/env';
 
 const byEmail = WAITLIST_MODE === 'email';
-const refusedWithoutScript = !!TURNSTILE_SITEKEY;
+const refusedWithoutScript = Boolean(TURNSTILE_SITEKEY);
 const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Hasala invite request')}`;
 ---
 

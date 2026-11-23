@@ -9,6 +9,7 @@ import (
 )
 
 func TestADeletedAccountAnswers410AndAnExpiredSessionStill401(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("sub-doomed")
 	tok := h.session(u)
@@ -31,6 +32,7 @@ func TestADeletedAccountAnswers410AndAnExpiredSessionStill401(t *testing.T) {
 }
 
 func TestAnExpiredSessionIsStillA401(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("sub-expiring")
 	tok := h.session(u)
@@ -49,6 +51,7 @@ func TestAnExpiredSessionIsStillA401(t *testing.T) {
 }
 
 func TestAnUnknownTokenIsA401(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	w := h.req("GET", "/api/v1/writers", "not-a-token-anyone-issued", nil)
 	wantStatus(t, w, http.StatusUnauthorized)

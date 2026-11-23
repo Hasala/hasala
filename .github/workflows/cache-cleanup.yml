@@ -1,0 +1,33 @@
+name: Cache cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  cache-cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      REF: refs/pull/${{ github.event.pull_request.number }}/merge
+    steps:
+      - name: Delete the caches of the closed pull request
+        run: |
+          set -euo pipefail
+          ids="$(gh api --paginate "repos/$REPO/actions/caches?per_page=100&ref=$REF" --jq '.actions_caches[].id')"
+          count=0
+          for id in $ids; do
+            gh api -X DELETE "repos/$REPO/actions/caches/$id" >/dev/null
+            count=$((count + 1))
+          done
+          echo "deleted $count cache entries of $REF"

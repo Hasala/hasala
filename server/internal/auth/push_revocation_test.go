@@ -41,6 +41,7 @@ func plantWriter(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) string {
 }
 
 func TestRevokingASessionStopsThatDevicesNotifications(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	c := newClock()
 	sessions := newSessions(pool, time.Hour, c)
@@ -76,6 +77,7 @@ func TestRevokingASessionStopsThatDevicesNotifications(t *testing.T) {
 }
 
 func TestSignOutEverywhereStopsEveryDevicesNotifications(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	c := newClock()
 	sessions := newSessions(pool, time.Hour, c)
@@ -104,6 +106,7 @@ func TestSignOutEverywhereStopsEveryDevicesNotifications(t *testing.T) {
 }
 
 func TestSessionHashIsTheStoredForm(t *testing.T) {
+	t.Parallel()
 	const tok = "a-session-token"
 	if got, want := SessionHash(tok), tokenHash(tok); string(got) != string(want) {
 		t.Fatalf("SessionHash disagrees with the form Sessions persists")

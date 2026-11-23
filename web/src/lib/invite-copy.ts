@@ -1,6 +1,11 @@
 export type CopyMode = 'clipboard' | 'manual';
 
-export function inviteCopy(write: () => Promise<void>, onManual: () => void) {
+export interface InviteCopy {
+  copy: () => Promise<boolean>;
+  leave: (event: Pick<Event, 'preventDefault'>, go: () => void) => Promise<void>;
+}
+
+export function inviteCopy(write: () => Promise<void>, onManual: () => void): InviteCopy {
   let mode: CopyMode = 'clipboard';
   const copy = async (): Promise<boolean> => {
     try {
@@ -15,9 +20,13 @@ export function inviteCopy(write: () => Promise<void>, onManual: () => void) {
   return {
     copy,
     async leave(event: Pick<Event, 'preventDefault'>, go: () => void): Promise<void> {
-      if (mode === 'manual') return;
+      if (mode === 'manual') {
+        return;
+      }
       event.preventDefault();
-      if (await copy()) go();
+      if (await copy()) {
+        go();
+      }
     },
   };
 }

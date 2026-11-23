@@ -123,34 +123,144 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
 </Base>
 
 <script>
-  import { onPage } from '../scripts/page';
+  import { onPage, pageTimer } from '../scripts/page';
   import { inviteCopy } from '../lib/invite-copy';
 
-  const norm = (v: string) => v.toUpperCase().replace(/[\s-]/g, '');
-  const isCode = (v: string) => /^[A-Z2-7]{24}$/.test(v);
+  const norm = (value: string): string => value.toUpperCase().replaceAll(/[\s-]/gu, '');
+  const isCode = (value: string): boolean => /^[A-Z2-7]{24}$/u.test(value);
+  const LINK_KEY = /^[A-Za-z0-9_-]{43}$/u;
+  const COPIED_MS = 2000;
+
+  const pathCode = (): string => {
+    const match = /^\/i\/([^/?#]+)/u.exec(location.pathname);
+    try {
+      return match ? norm(decodeURIComponent(match[1])) : '';
+    } catch {
+      return '';
+    }
+  };
+
+  const wireCopy = (copied: string, idle: string, signal: AbortSignal): void => {
+    const copy = document.querySelector<HTMLButtonElement>('[data-copy-code]');
+    const field = document.querySelector<HTMLInputElement>('[data-copy-field]');
+    const hint = document.querySelector<HTMLElement>('[data-copy-hint]');
+    const manual = document.querySelector<HTMLElement>('[data-copy-manual]');
+    const go = document.querySelector<HTMLAnchorElement>('.invite__cta:not(.invite__cta--second)');
+    const goLabel = go?.textContent ?? '';
+    const showManual = (focus: boolean): void => {
+      if (!field) {
+        return;
+      }
+      field.value = copied;
+      field.hidden = false;
+      if (hint) {
+        hint.hidden = true;
+      }
+      if (manual) {
+        manual.hidden = false;
+      }
+      if (go) {
+        go.textContent = goLabel;
+      }
+      if (focus) {
+        field.scrollIntoView({ block: 'center' });
+        field.focus();
+        field.select();
+      }
+    };
+    field?.addEventListener('focus', () => field.select(), { signal });
+    const label = copy?.querySelector('span');
+    if (copy && label && navigator.clipboard) {
+      label.textContent = idle;
+      copy.hidden = false;
+      const reset = pageTimer(signal);
+      const clipboard = inviteCopy(
+        () => navigator.clipboard.writeText(copied),
+        () => showManual(true),
+      );
+      copy.addEventListener(
+        'click',
+        async () => {
+          reset.clear();
+          if (await clipboard.copy()) {
+            label.textContent = 'Copied';
+            reset.set(() => (label.textContent = idle), COPIED_MS);
+          } else {
+            label.textContent = idle;
+          }
+        },
+        { signal },
+      );
+      if (go) {
+        go.textContent = 'Copy invite and open TestFlight';
+      }
+      for (const anchor of document.querySelectorAll<HTMLAnchorElement>('[data-copy-go]')) {
+        anchor.addEventListener(
+          'click',
+          (event) => void clipboard.leave(event, () => (location.href = anchor.href)),
+          { signal },
+        );
+      }
+    } else {
+      showManual(false);
+    }
+  };
+
+  const drawQr = async (link: string, signal: AbortSignal): Promise<void> => {
+    const { encode } = await import('uqr');
+    const box = document.querySelector('[data-qr]');
+    if (signal.aborted || !box) {
+      return;
+    }
+    const { data, size } = encode(link, { ecc: 'M', border: 0 });
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+    svg.setAttribute('shape-rendering', 'crispEdges');
+    let dots = '';
+    for (const [y, row] of data.entries()) {
+      for (const [x, on] of row.entries()) {
+        if (on) {
+          dots += `M${x} ${y}h1v1h-1z`;
+        }
+      }
+    }
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', dots);
+    path.setAttribute('fill', '#202023');
+    svg.append(path);
+    box.replaceChildren(svg);
+    const wrap = document.querySelector<HTMLElement>('[data-qr-wrap]');
+    if (wrap) {
+      wrap.hidden = false;
+    }
+  };
 
   onPage((signal) => {
-    if (!document.querySelector('[data-code]')) return;
-    window.addEventListener(
+    if (!document.querySelector('[data-code]')) {
+      return;
+    }
+    addEventListener(
       'hashchange',
       () => {
-        const h = location.hash.slice(1);
-        if (isCode(norm(h)) || /^[A-Za-z0-9_-]{43}$/.test(h)) location.reload();
+        const hash = location.hash.slice(1);
+        if (isCode(norm(hash)) || LINK_KEY.test(hash)) {
+          location.reload();
+        }
       },
       { signal },
     );
     const fragment = location.hash.slice(1);
-    const match = /^\/i\/([^/?#]+)/.exec(location.pathname);
-    if (location.pathname !== '/i' || location.search || location.hash) history.replaceState(history.state, '', '/i');
-    let code = '';
-    let linkKey = '';
-    try {
-      code = match ? norm(decodeURIComponent(match[1])) : '';
-    } catch {
-      code = '';
+    const fromPath = pathCode();
+    if (location.pathname !== '/i' || location.search || location.hash) {
+      history.replaceState(history.state, '', '/i');
     }
+    let code = fromPath;
+    let linkKey = '';
     if (isCode(code)) {
-      if (/^[A-Za-z0-9_-]{43}$/.test(fragment)) linkKey = fragment;
+      if (LINK_KEY.test(fragment)) {
+        linkKey = fragment;
+      }
     } else {
       code = isCode(norm(fragment)) ? norm(fragment) : '';
     }
@@ -160,83 +270,19 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     }
 
     document.documentElement.classList.add('has-code');
-    const shown = code.match(/.{4}/g)!.join('-');
-    document.querySelectorAll<HTMLElement>('[data-code]').forEach((el) => {
+    const shown = (code.match(/.{4}/gu) ?? []).join('-');
+    for (const el of document.querySelectorAll<HTMLElement>('[data-code]')) {
       el.textContent = shown;
       el.hidden = false;
-    });
+    }
 
     const link = `https://hasala.app/i/${code}${linkKey ? `#${linkKey}` : ''}`;
     const copied = linkKey ? link : shown;
     const idle = linkKey ? 'Copy invite link' : 'Copy code';
-    const copy = document.querySelector<HTMLButtonElement>('[data-copy-code]');
-    const field = document.querySelector<HTMLInputElement>('[data-copy-field]');
-    const hint = document.querySelector<HTMLElement>('[data-copy-hint]');
-    const manual = document.querySelector<HTMLElement>('[data-copy-manual]');
-    const go = document.querySelector<HTMLAnchorElement>('.invite__cta:not(.invite__cta--second)');
-    const goLabel = go?.textContent ?? '';
-    const showManual = (focus: boolean) => {
-      if (!field) return;
-      field.value = copied;
-      field.hidden = false;
-      if (hint) hint.hidden = true;
-      if (manual) manual.hidden = false;
-      if (go) go.textContent = goLabel;
-      if (focus) {
-        field.scrollIntoView({ block: 'center' });
-        field.focus();
-        field.select();
-      }
-    };
-    field?.addEventListener('focus', () => field.select(), { signal });
-    if (copy && navigator.clipboard) {
-      const label = copy.querySelector('span')!;
-      label.textContent = idle;
-      copy.hidden = false;
-      let reset = 0;
-      const clipboard = inviteCopy(
-        () => navigator.clipboard.writeText(copied),
-        () => showManual(true),
-      );
-      copy.addEventListener(
-        'click',
-        async () => {
-          clearTimeout(reset);
-          if (await clipboard.copy()) {
-            label.textContent = 'Copied';
-            reset = window.setTimeout(() => (label.textContent = idle), 2000);
-          } else {
-            label.textContent = idle;
-          }
-        },
-        { signal },
-      );
-      if (go) go.textContent = 'Copy invite and open TestFlight';
-      document.querySelectorAll<HTMLAnchorElement>('[data-copy-go]').forEach((a) =>
-        a.addEventListener('click', (event) => void clipboard.leave(event, () => (location.href = a.href)), { signal }),
-      );
-    } else {
-      showManual(false);
-    }
+    wireCopy(copied, idle, signal);
 
     if (matchMedia('(min-width: 1024px) and (pointer: fine)').matches) {
-      import('uqr').then(({ encode }) => {
-        const box = document.querySelector('[data-qr]');
-        if (signal.aborted || !box) return;
-        const { data, size } = encode(link, { ecc: 'M', border: 0 });
-        const ns = 'http://www.w3.org/2000/svg';
-        const svg = document.createElementNS(ns, 'svg');
-        svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
-        svg.setAttribute('shape-rendering', 'crispEdges');
-        let d = '';
-        data.forEach((row, y) => row.forEach((on, x) => on && (d += `M${x} ${y}h1v1h-1z`)));
-        const path = document.createElementNS(ns, 'path');
-        path.setAttribute('d', d);
-        path.setAttribute('fill', '#202023');
-        svg.append(path);
-        box.replaceChildren(svg);
-        document.querySelector<HTMLElement>('[data-qr-wrap]')!.hidden = false;
-      });
+      void drawQr(link, signal);
     }
   });
 </script>

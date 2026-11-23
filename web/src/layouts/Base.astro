@@ -22,13 +22,32 @@ interface Props {
   class?: string;
 }
 
-const EDGE = { white: '#ffffff', sky: '#d3e6ff', soft: '#e6eeff', legal: '#eef1ff', navy: '#142659' } as const;
+const EDGE = {
+  white: '#ffffff',
+  sky: '#d3e6ff',
+  soft: '#e6eeff',
+  legal: '#eef1ff',
+  navy: '#142659',
+} as const;
 
-const { title, description, path, noindex = false, ogType = 'website', jsonLd, nav = 'full', footer = true, footerTone = 'white', referrer, edge = 'white', class: className } = Astro.props;
+const {
+  title,
+  description,
+  path,
+  noindex = false,
+  ogType = 'website',
+  jsonLd,
+  nav = 'full',
+  footer = true,
+  footerTone = 'white',
+  referrer,
+  edge = 'white',
+  class: className,
+} = Astro.props;
 const fullTitle = `Hasala · ${title}`;
 const canonical = new URL(path ?? Astro.url.pathname, SITE.url).href;
 const ogImage = new URL(SITE.ogImage, SITE.url).href;
-const ld = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
+const ld = [jsonLd ?? []].flat();
 ---
 
 <!doctype html>

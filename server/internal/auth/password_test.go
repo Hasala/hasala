@@ -14,6 +14,7 @@ import (
 )
 
 func TestPasswordSignInMintsASessionAndAlertsWithAFreezeLink(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya Rahman")
 	f.fake.Reset()
@@ -48,9 +49,10 @@ func TestPasswordSignInMintsASessionAndAlertsWithAFreezeLink(t *testing.T) {
 }
 
 func TestPasswordSignInFailuresAreUniformAndCostOnePBKDF2(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
-	passkeyOnly := newAddr()
+	passkeyOnly := f.newAddr()
 	s := f.provenSignup(passkeyOnly, "Pat")
 	if _, _, err := f.registerPasskey(s.SignupID); err != nil {
 		t.Fatal(err)
@@ -59,7 +61,7 @@ func TestPasswordSignInFailuresAreUniformAndCostOnePBKDF2(t *testing.T) {
 	wrong[0] ^= 1
 	for name, run := range map[string]func() error{
 		"unknown address": func() error {
-			b, _ := f.acct.PasswordLoginBegin(bgctx, newAddr())
+			b, _ := f.acct.PasswordLoginBegin(bgctx, f.newAddr())
 			_, err := f.acct.PasswordLoginFinish(bgctx, b.CeremonyID, m.s, nil)
 			return err
 		},
@@ -84,7 +86,7 @@ func TestPasswordSignInFailuresAreUniformAndCostOnePBKDF2(t *testing.T) {
 		}
 	}
 	a, _ := f.acct.PasswordLoginBegin(bgctx, m.addr)
-	b, _ := f.acct.PasswordLoginBegin(bgctx, newAddr())
+	b, _ := f.acct.PasswordLoginBegin(bgctx, f.newAddr())
 	if len(a.Salt) != len(b.Salt) || len(a.Nonce) != len(b.Nonce) || len(a.CeremonyID) != len(b.CeremonyID) {
 		t.Fatal("password/login/begin's answer depends on the account")
 	}
@@ -94,6 +96,7 @@ func TestPasswordSignInFailuresAreUniformAndCostOnePBKDF2(t *testing.T) {
 }
 
 func TestConcurrentBoundPasswordAttemptsStayWithinTheWritersBudget(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	wrong := append([]byte(nil), m.s...)
@@ -156,6 +159,7 @@ wait:
 }
 
 func TestABoundPasswordSuccessGivesItsAttemptBack(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	for i := 0; i < 2*passwordWriterFailMax; i++ {
@@ -169,6 +173,7 @@ func TestABoundPasswordSuccessGivesItsAttemptBack(t *testing.T) {
 }
 
 func TestPasswordPauseStopsUnboundGuessesButNotABoundDevice(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	wrong := append([]byte(nil), m.s...)
@@ -221,6 +226,7 @@ func failPasswordPastEachPause(t *testing.T, f *acctFixture, m *member, n int) {
 }
 
 func TestADayWithNoGuessesForgetsThePasswordFailures(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	failPasswordPastEachPause(t, f, m, 11)
@@ -241,6 +247,7 @@ func TestADayWithNoGuessesForgetsThePasswordFailures(t *testing.T) {
 }
 
 func TestASweepWithinADayOfThePauseKeepsTheFailures(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	failPasswordPastEachPause(t, f, m, 11)
@@ -263,6 +270,7 @@ func TestASweepWithinADayOfThePauseKeepsTheFailures(t *testing.T) {
 }
 
 func TestPasswordSignInChecksTheBindingFirst(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	stranger := authtest.NewDevice(t)
@@ -292,6 +300,7 @@ func TestPasswordSignInChecksTheBindingFirst(t *testing.T) {
 }
 
 func TestDeviceStepUpChangesThePassword(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	other, err := m.loginPassword(m.s, nil)
@@ -339,6 +348,7 @@ func TestDeviceStepUpChangesThePassword(t *testing.T) {
 }
 
 func TestADeviceStepUpWithoutTheDAKNeverReachesThePassword(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	newS := f.stretch(m.addr, "an entirely new password")
@@ -357,6 +367,7 @@ func TestADeviceStepUpWithoutTheDAKNeverReachesThePassword(t *testing.T) {
 }
 
 func TestC8ResetsThePasswordWithTheDAKAndAnEmailedCode(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	newS := f.stretch(m.addr, "an entirely new password")
@@ -422,6 +433,7 @@ func TestC8ResetsThePasswordWithTheDAKAndAnEmailedCode(t *testing.T) {
 }
 
 func TestC8CodeChecksAreCountedLikeEveryOtherCode(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	newS := f.stretch(m.addr, "an entirely new password")
@@ -460,8 +472,9 @@ func TestC8CodeChecksAreCountedLikeEveryOtherCode(t *testing.T) {
 }
 
 func TestSetAndRemoveAPasswordNeedAPasskey(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	r, a, err := f.registerPasskey(f.provenSignup(addr, "Pat").SignupID)
 	if err != nil {
 		t.Fatal(err)

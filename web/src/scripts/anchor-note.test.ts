@@ -1,78 +1,69 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { anchorNote } from './anchor-note';
+import { fakeRoot, keepGlobals } from './test-fakes';
 
-const g = globalThis as unknown as Record<string, unknown>;
-const savedWindow = g.window;
-afterEach(() => {
-  g.window = savedWindow;
-});
+const globals = globalThis as unknown as Record<string, unknown>;
+afterEach(keepGlobals(['document']));
 
 const works = async () => {};
-const refused = () => Promise.reject(new DOMException('Write permission denied', 'NotAllowedError'));
+const refused = () =>
+  Promise.reject(new DOMException('Write permission denied', 'NotAllowedError'));
 
 function button() {
-  const timers = new Map<number, () => void>();
-  let next = 1;
-  g.window = {
-    setTimeout: (fn: () => void) => {
-      timers.set(next, fn);
-      return next++;
-    },
-    clearTimeout: (id: number) => timers.delete(id),
-  };
-  const note = { textContent: '' as string | null };
+  const root = fakeRoot();
+  globals.document = { documentElement: root };
+  const note = { textContent: '' };
   const page = new AbortController();
   const press = anchorNote(note, 'data', page.signal);
-  const runTimers = () => [...timers.values()].forEach((fn) => fn());
-  return { note, page, press, timers, runTimers };
+  return { note, page, press, root };
 }
 
 describe('the note beside a legal heading', () => {
   test('says the link was copied, then empties', async () => {
-    const b = button();
-    await b.press(works);
-    expect(b.note.textContent).toBe('#data · link copied');
-    b.runTimers();
-    expect(b.note.textContent).toBe('');
+    const target = button();
+    await target.press(works);
+    expect(target.note.textContent).toBe('#data · link copied');
+    target.root.finish();
+    expect(target.note.textContent).toBe('');
   });
 
   test('names the heading when the copy is refused, then empties', async () => {
-    const b = button();
-    await b.press(refused);
-    expect(b.note.textContent).toBe('#data');
-    b.runTimers();
-    expect(b.note.textContent).toBe('');
+    const target = button();
+    await target.press(refused);
+    expect(target.note.textContent).toBe('#data');
+    target.root.finish();
+    expect(target.note.textContent).toBe('');
   });
 
   test('a second press drops the first press timer, so the note stays its full time', async () => {
-    const b = button();
-    await b.press(works);
-    const [first] = [...b.timers.keys()];
-    await b.press(works);
-    expect(b.timers.has(first)).toBe(false);
-    expect(b.timers.size).toBe(1);
-    expect(b.note.textContent).toBe('#data · link copied');
+    const target = button();
+    await target.press(works);
+    const [first] = target.root.holds;
+    await target.press(works);
+    expect(first?.waiting).toBe(false);
+    expect(target.root.waiting()).toEqual([2400]);
+    expect(target.note.textContent).toBe('#data · link copied');
   });
 
   test('two presses waiting on the clipboard leave one timer', async () => {
-    const b = button();
-    await Promise.all([b.press(works), b.press(works)]);
-    expect(b.timers.size).toBe(1);
+    const target = button();
+    await Promise.all([target.press(works), target.press(works)]);
+    expect(target.root.waiting()).toEqual([2400]);
   });
 
   test('a refused press after a copy that worked leaves one timer', async () => {
-    const b = button();
-    await b.press(works);
-    await b.press(refused);
-    expect(b.timers.size).toBe(1);
-    expect(b.note.textContent).toBe('#data');
+    const target = button();
+    await target.press(works);
+    await target.press(refused);
+    expect(target.root.waiting()).toEqual([2400]);
+    expect(target.note.textContent).toBe('#data');
   });
 
   test('a page swap drops the waiting timer', async () => {
-    const b = button();
-    await b.press(works);
-    b.page.abort();
-    expect(b.timers.size).toBe(0);
+    const target = button();
+    await target.press(works);
+    target.page.abort();
+    expect(target.root.waiting()).toEqual([]);
   });
 });
 
@@ -82,5 +73,6 @@ describe('the legal page', () => {
     expect(source).toContain("from '../scripts/anchor-note'");
     expect(source).toContain('anchorNote(');
     expect(source).not.toContain('setTimeout(');
+    expect(source).not.toContain('.animate(null');
   });
 });

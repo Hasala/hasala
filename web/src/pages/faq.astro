@@ -6,10 +6,10 @@ import { FAQ, SITE, curly, faqText } from '../data/site';
 const faqLd = {
   '@type': 'FAQPage',
   '@id': `${SITE.url}/faq#faq`,
-  mainEntity: FAQ.map((f) => ({
+  mainEntity: FAQ.map((item) => ({
     '@type': 'Question',
-    name: f.q,
-    acceptedAnswer: { '@type': 'Answer', text: faqText(f) },
+    name: item.question,
+    acceptedAnswer: { '@type': 'Answer', text: faqText(item) },
   })),
 };
 ---
@@ -28,9 +28,9 @@ const faqLd = {
         {
           FAQ.map((f) => (
             <li class="qa" id={f.id} data-reveal>
-              <h2 class="qa__q">{f.q}</h2>
+              <h2 class="qa__q">{f.question}</h2>
               <p class="qa__short">{curly(f.short)}</p>
-              {f.a && <p class="qa__a">{curly(f.a)}</p>}
+              {f.answer && <p class="qa__a">{curly(f.answer)}</p>}
               {f.steps && (
                 <ol class="qa__steps">
                   {f.steps.map((step) => (

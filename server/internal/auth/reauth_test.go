@@ -29,6 +29,7 @@ func assertOver(t *testing.T, a *authtest.Authenticator, challenge []byte, count
 }
 
 func TestVerifyAssertionAcceptsAnEnrolledCredentialOverTheServersChallenge(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, a := enroll(t, p, mustMint(t, pool, "alice"))
@@ -56,6 +57,7 @@ func TestVerifyAssertionAcceptsAnEnrolledCredentialOverTheServersChallenge(t *te
 }
 
 func TestVerifyAssertionRefusesAnAssertionOverADifferentChallenge(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, a := enroll(t, p, mustMint(t, pool, "alice"))
@@ -69,6 +71,7 @@ func TestVerifyAssertionRefusesAnAssertionOverADifferentChallenge(t *testing.T) 
 }
 
 func TestVerifyAssertionRefusesACredentialOfADifferentAccount(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	alice, _ := enroll(t, p, mustMint(t, pool, "alice"))
@@ -82,6 +85,7 @@ func TestVerifyAssertionRefusesACredentialOfADifferentAccount(t *testing.T) {
 }
 
 func TestVerifyAssertionRefusesAnUnenrolledCredential(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, _ := enroll(t, p, mustMint(t, pool, "alice"))
@@ -97,6 +101,7 @@ func TestVerifyAssertionRefusesAnUnenrolledCredential(t *testing.T) {
 }
 
 func TestVerifyAssertionRefusesACounterThatDidNotAdvance(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, a := enroll(t, p, mustMint(t, pool, "alice"))
@@ -113,6 +118,7 @@ func TestVerifyAssertionRefusesACounterThatDidNotAdvance(t *testing.T) {
 }
 
 func TestVerifyAssertionRefusesAnEmptyAssertion(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, _ := enroll(t, p, mustMint(t, pool, "alice"))
@@ -124,6 +130,7 @@ func TestVerifyAssertionRefusesAnEmptyAssertion(t *testing.T) {
 }
 
 func TestVerifyAssertionRefusesAChallengeTooShortToBeOneOfOurs(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, a := enroll(t, p, mustMint(t, pool, "alice"))
@@ -139,6 +146,7 @@ func TestVerifyAssertionRefusesAChallengeTooShortToBeOneOfOurs(t *testing.T) {
 }
 
 func TestVerifyAssertionRefusesAZeroUser(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	_, a := enroll(t, p, mustMint(t, pool, "alice"))

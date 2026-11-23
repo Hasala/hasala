@@ -28,6 +28,7 @@ func newTestUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 }
 
 func TestSessionTokenIsNeverStoredInTheClear(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -63,6 +64,7 @@ func TestSessionTokenIsNeverStoredInTheClear(t *testing.T) {
 }
 
 func TestIssuedTokensAreDistinctAnd32BytesOfEntropy(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -89,6 +91,7 @@ func TestIssuedTokensAreDistinctAnd32BytesOfEntropy(t *testing.T) {
 }
 
 func TestExpiredSessionIsRejected(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -113,6 +116,7 @@ func TestExpiredSessionIsRejected(t *testing.T) {
 }
 
 func TestSessionsSlideUpToTheirAbsoluteCap(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -154,6 +158,7 @@ func TestSessionsSlideUpToTheirAbsoluteCap(t *testing.T) {
 }
 
 func TestRevocationsRecordTheirReason(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -178,6 +183,7 @@ func TestRevocationsRecordTheirReason(t *testing.T) {
 }
 
 func TestRevokedSessionIsRejected(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -219,6 +225,7 @@ func TestRevokedSessionIsRejected(t *testing.T) {
 }
 
 func TestResolveRejectsUnknownAndEmptyTokens(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -239,6 +246,7 @@ func TestResolveRejectsUnknownAndEmptyTokens(t *testing.T) {
 }
 
 func TestRevokeAllForUserRevokesOnlyThatUser(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	mine := newTestUser(t, pool)
 	theirs := newTestUser(t, pool)
@@ -272,6 +280,7 @@ func TestRevokeAllForUserRevokesOnlyThatUser(t *testing.T) {
 }
 
 func TestIssueRejectsAnUnusableConfiguration(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()

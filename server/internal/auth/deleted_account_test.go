@@ -12,6 +12,7 @@ import (
 )
 
 func TestASessionOfADeletedAccountIsDistinguishableFromAnExpiredOne(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -45,6 +46,7 @@ func TestASessionOfADeletedAccountIsDistinguishableFromAnExpiredOne(t *testing.T
 }
 
 func TestAnExpiredSessionIsNotReportedAsADeletedAccount(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -61,6 +63,7 @@ func TestAnExpiredSessionIsNotReportedAsADeletedAccount(t *testing.T) {
 }
 
 func TestAnUnknownTokenIsNotReportedAsADeletedAccount(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
@@ -70,6 +73,7 @@ func TestAnUnknownTokenIsNotReportedAsADeletedAccount(t *testing.T) {
 }
 
 func TestTheTombstoneStopsAnsweringOnceTheSessionWouldHaveExpired(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -92,6 +96,7 @@ func TestTheTombstoneStopsAnsweringOnceTheSessionWouldHaveExpired(t *testing.T) 
 }
 
 func TestTombstoneExpiryIsDecidedByTheSessionsClock(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newSkewedClock(-2 * time.Hour)
@@ -131,6 +136,7 @@ func newSkewedClock(skew time.Duration) *clock {
 }
 
 func TestATombstoneOutlivesADisagreementBetweenTheGoAndPostgresClocks(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		skew time.Duration
@@ -168,6 +174,7 @@ func TestATombstoneOutlivesADisagreementBetweenTheGoAndPostgresClocks(t *testing
 }
 
 func TestDeletingOneAccountDoesNotReapAnotherAccountsTombstone(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	c := newSkewedClock(-90 * 24 * time.Hour)
 	s := newSessions(pool, time.Hour, c)
@@ -202,6 +209,7 @@ func TestDeletingOneAccountDoesNotReapAnotherAccountsTombstone(t *testing.T) {
 }
 
 func TestTheTombstoneCarriesNoIdentity(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -245,6 +253,7 @@ func TestTheTombstoneCarriesNoIdentity(t *testing.T) {
 }
 
 func TestReapingTombstonesUsesTheSessionsClockAndSparesRowsInsideTheGrace(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	c := newSkewedClock(90 * 24 * time.Hour)
 	s := newSessions(pool, time.Hour, c)
@@ -324,6 +333,7 @@ func TestReapingTombstonesUsesTheSessionsClockAndSparesRowsInsideTheGrace(t *tes
 }
 
 func TestTheTombstoneGraceIsAFiniteWindowPastExpiry(t *testing.T) {
+	t.Parallel()
 	if tombstoneGrace <= 0 {
 		t.Fatalf("tombstoneGrace = %v: the sweep would reap rows the moment they expire", tombstoneGrace)
 	}

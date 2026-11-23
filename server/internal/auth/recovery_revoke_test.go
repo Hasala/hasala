@@ -169,6 +169,7 @@ func (f *acctFixture) assertOldAccessEnded(m *member, o outstanding) {
 }
 
 func TestPasskeyRecoveryRemovesTheOldPasskeysAndPassword(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	old := f.enrolPasskey(m.user.UserID)
@@ -214,6 +215,7 @@ func TestPasskeyRecoveryRemovesTheOldPasskeysAndPassword(t *testing.T) {
 }
 
 func TestPasswordRecoveryRemovesEveryPasskeyAndTheOldPassword(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	old := f.enrolPasskey(m.user.UserID)
@@ -247,6 +249,7 @@ func TestPasswordRecoveryRemovesEveryPasskeyAndTheOldPassword(t *testing.T) {
 }
 
 func TestARefusedOrAbortedRecoveryRevokesNothing(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	old := f.enrolPasskey(m.user.UserID)

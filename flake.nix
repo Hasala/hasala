@@ -62,6 +62,7 @@
           runtimeInputs = [
             pkgs.nixfmt
             (goFor system)
+            pkgs.oxfmt
           ];
           settings = {
             tree-root-file = "flake.nix";
@@ -75,6 +76,14 @@
               options = [ "-w" ];
               includes = [ "*.go" ];
               excludes = [ "server/oracle/v1ref/*" ];
+            };
+            formatter.oxfmt = {
+              command = "oxfmt";
+              includes = [
+                "*.ts"
+                "*.mjs"
+              ];
+              excludes = [ "conformance/*" ];
             };
           };
         };
@@ -143,13 +152,19 @@
             ]
             ++ goToolsFor system pkgs
             ++ [
-              pkgs.postgresql_17
+              pkgs.postgresql_17.out
               pkgs.bun
+              pkgs.oxfmt
+              pkgs.oxlint
+              pkgs.typescript-go
               pkgs.nodejs_22
               pkgs.sops
               pkgs.gh
               pkgs.nixfmt
               (treefmtFor system pkgs)
+              pkgs.gitleaks
+              pkgs.shellcheck
+              pkgs.jq
             ]
             ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
               (xcodegenFor pkgs)
@@ -162,6 +177,9 @@
             // lib.optionalAttrs (system == "x86_64-linux") {
               LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ];
             };
+            shellHook = ''
+              bash ${./scripts/install-hooks.sh}
+            '';
           };
         }
       );

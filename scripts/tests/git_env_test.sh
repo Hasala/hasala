@@ -45,6 +45,8 @@ runs_with_git_env() {
 
 runs_with_git_env fence_test.sh
 runs_with_git_env gate_run_test.sh
+runs_with_git_env pre_push_hook_test.sh
+runs_with_git_env ci_changes_test.sh
 runs_with_git_env comment_lint_test.sh
 
 if ((failures)); then

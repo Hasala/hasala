@@ -9,8 +9,8 @@ interface Props {
 const { id, img = false, class: className } = Astro.props;
 
 const svg = raw
-  .replace(/<title>[\s\S]*?<\/title>/, '')
-  .replace(/>\s+</g, '><')
+  .replace(/<title>[\s\S]*?<\/title>/u, '')
+  .replaceAll(/>\s+</gu, '><')
   .replaceAll('hasala-wm-', `${id}-`)
   .replaceAll('fill="#202023"', 'fill="currentColor"')
   .replace('fill="#E4E4E7"', 'fill="#BDBDC2"')

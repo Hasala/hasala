@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxfmt/configuration_schema.json",
+  "singleQuote": true,
+  "ignorePatterns": [
+    "conformance/**",
+    "**/*.css",
+    "**/*.html",
+    "**/*.json",
+    "**/*.jsonc",
+    "**/*.md",
+    "**/*.toml",
+    "**/*.webmanifest",
+    "**/*.yaml",
+    "**/*.yml"
+  ]
+}

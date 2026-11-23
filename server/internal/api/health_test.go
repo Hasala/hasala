@@ -6,6 +6,7 @@ import (
 )
 
 func TestHealthzIsUnauthenticatedAndReportsTheDatabase(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 
 	w := h.req(http.MethodGet, "/api/v1/healthz", "", nil)
@@ -27,6 +28,7 @@ func TestHealthzIsUnauthenticatedAndReportsTheDatabase(t *testing.T) {
 }
 
 func TestHealthzLeaksNothingButTwoWords(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 
 	w := h.req(http.MethodGet, "/api/v1/healthz", "", nil)
@@ -39,6 +41,7 @@ func TestHealthzLeaksNothingButTwoWords(t *testing.T) {
 }
 
 func TestHealthzReports503WhenTheDatabaseIsGone(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.pool.Close()
 
@@ -52,6 +55,7 @@ func TestHealthzReports503WhenTheDatabaseIsGone(t *testing.T) {
 }
 
 func TestHealthzIsGETOnly(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 
 	w := h.req(http.MethodPost, "/api/v1/healthz", "", nil)

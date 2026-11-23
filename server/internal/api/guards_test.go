@@ -33,6 +33,7 @@ func (h *harness) resume(u uuid.UUID) {
 }
 
 func TestASuspendedAccountIsRefusedOnEveryWriteMethod(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("suspended-writes")
 	tok := h.session(u)
@@ -59,6 +60,7 @@ func TestASuspendedAccountIsRefusedOnEveryWriteMethod(t *testing.T) {
 }
 
 func TestASuspendedAccountCanStillRead(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("suspended-reads")
 	tok := h.session(u)
@@ -81,6 +83,7 @@ func TestASuspendedAccountCanStillRead(t *testing.T) {
 }
 
 func TestASuspendedAccountCanStillSignIn(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	a, registered := h.register(h.invite(""))
 	u := uuid.MustParse(registered.UserID)
@@ -109,6 +112,7 @@ func TestASuspendedAccountCanStillSignIn(t *testing.T) {
 }
 
 func TestASuspendedAccountCanStillSignOut(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("suspended-signout")
 	tok := h.session(u)
@@ -118,6 +122,7 @@ func TestASuspendedAccountCanStillSignOut(t *testing.T) {
 }
 
 func TestResumingRestoresWriteAccess(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("resume-restores")
 	tok := h.session(u)
@@ -133,6 +138,7 @@ func TestResumingRestoresWriteAccess(t *testing.T) {
 }
 
 func TestAnActiveAccountWrites(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("active-writes")
 	tok := h.session(u)
@@ -146,6 +152,7 @@ type fakeFuse struct{ tripped bool }
 func (f *fakeFuse) Tripped() bool { return f.tripped }
 
 func TestTheHeadroomFuseRefusesWritesAndPermitsReads(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	fuse := &fakeFuse{}
 	h.srv.Headroom = fuse
@@ -196,6 +203,7 @@ func TestTheHeadroomFuseRefusesWritesAndPermitsReads(t *testing.T) {
 }
 
 func TestNoFuseMeansNoGate(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	if h.srv.Headroom != nil {
 		t.Fatal("the default server has a fuse; it must be opt-in")
@@ -207,6 +215,7 @@ func TestNoFuseMeansNoGate(t *testing.T) {
 }
 
 func TestTheUploadLimiterChargesBytesNotRequests(t *testing.T) {
+	t.Parallel()
 	const budget = 40 << 10
 
 	h := newHarness(t)
@@ -261,6 +270,7 @@ func TestTheUploadLimiterChargesBytesNotRequests(t *testing.T) {
 }
 
 func TestTheUploadRequestLimiterIsSeparateFromTheByteBudget(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.srv.SyncPerUser = NewLimiter(0, 2, 16, h.srv.now)
 	h.srv.SyncUploadBytes = NewLimiter(0, 1<<30, 16, h.srv.now)
@@ -292,6 +302,7 @@ func TestTheUploadRequestLimiterIsSeparateFromTheByteBudget(t *testing.T) {
 }
 
 func TestARejectedUploadCostsNoByteBudget(t *testing.T) {
+	t.Parallel()
 	const budget = 128 << 10
 	h := newHarness(t)
 	h.srv.SyncPerUser = NewLimiter(0, 1000, 16, h.srv.now)
@@ -325,6 +336,7 @@ func TestARejectedUploadCostsNoByteBudget(t *testing.T) {
 }
 
 func TestTheUploadByteBudgetIsSizedAgainstTheLargestUpload(t *testing.T) {
+	t.Parallel()
 	const maxDurablePerUpload = maxUploadBlobs * (1 << 20)
 	if syncByteBurst <= maxDurablePerUpload {
 		t.Fatalf("the byte burst (%d) is not larger than one maximal upload (%d): "+

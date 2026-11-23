@@ -22,6 +22,7 @@ func errorDetail(t *testing.T, body []byte) (code, detail string) {
 }
 
 func TestUploadRefusesEveryFrameThePredicateRefuses(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.srv.SyncPerUser = NewLimiter(0, 1000, 16, h.srv.now)
 	h.h = h.srv.Handler()
@@ -58,6 +59,7 @@ func TestUploadRefusesEveryFrameThePredicateRefuses(t *testing.T) {
 }
 
 func TestUploadRefusesALedgerdV1PlaintextFrame(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
@@ -79,6 +81,7 @@ func TestUploadRefusesALedgerdV1PlaintextFrame(t *testing.T) {
 }
 
 func TestARefusedFrameRefusesTheWholeBatch(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
@@ -101,6 +104,7 @@ func TestARefusedFrameRefusesTheWholeBatch(t *testing.T) {
 }
 
 func TestUploadRefusesAFrameSealedForAnotherAccount(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	a, b := h.user("a"), h.user("b")
 	h.writer(a, "ios-00000000-0000-4000-8000-00000000000a")
@@ -114,6 +118,7 @@ func TestUploadRefusesAFrameSealedForAnotherAccount(t *testing.T) {
 }
 
 func TestUploadNamesABucketMismatch(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")

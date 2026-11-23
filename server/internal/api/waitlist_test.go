@@ -81,6 +81,7 @@ func links(m mail.Message) map[string]string {
 }
 
 func TestWaitlistDoubleOptInInviteAndJoin(t *testing.T) {
+	t.Parallel()
 	r := newWebRig(t)
 	h := r.h
 	submit := func(email, bank string) *httptest.ResponseRecorder {
@@ -220,6 +221,7 @@ func TestWaitlistDoubleOptInInviteAndJoin(t *testing.T) {
 }
 
 func TestWaitlistAnswersAreUniform(t *testing.T) {
+	t.Parallel()
 	r := newWebRig(t)
 	h := r.h
 	u := h.user("has-account")
@@ -296,6 +298,7 @@ func TestWaitlistAnswersAreUniform(t *testing.T) {
 }
 
 func TestWebRoutesCORSMethodsAndForms(t *testing.T) {
+	t.Parallel()
 	r := newWebRig(t)
 	ok := `{"email":"cors@example.com","bank":"enbd","source":"web"}`
 	w := r.post("/api/v1/waitlist", ok, map[string]string{"Origin": "https://evil.example"})
@@ -345,6 +348,7 @@ func TestWebRoutesCORSMethodsAndForms(t *testing.T) {
 }
 
 func TestWaitlistLeave(t *testing.T) {
+	t.Parallel()
 	r := newWebRig(t)
 	wantStatus(t, r.post("/api/v1/waitlist", `{"email":"leaver@example.com","bank":"enbd","source":"web"}`, nil), http.StatusAccepted)
 	l := links(r.drain()[0])
@@ -366,6 +370,7 @@ func TestWaitlistLeave(t *testing.T) {
 }
 
 func TestWaitlistOneClickUnsubscribe(t *testing.T) {
+	t.Parallel()
 	r := newWebRig(t)
 	wantStatus(t, r.post("/api/v1/waitlist", `{"email":"clicker@example.com","bank":"enbd","source":"web"}`, nil), http.StatusAccepted)
 	m := r.drain()[0]
@@ -423,6 +428,7 @@ func TestWaitlistOneClickUnsubscribe(t *testing.T) {
 }
 
 func TestBankRequests(t *testing.T) {
+	t.Parallel()
 	r := newWebRig(t)
 	h := r.h
 	count := func() (n int) {
@@ -463,6 +469,7 @@ func TestBankRequests(t *testing.T) {
 }
 
 func TestCLIEmailedInviteIsTaggedAndMintedByTheWorker(t *testing.T) {
+	t.Parallel()
 	r := newWebRig(t)
 	h := r.h
 	cli := mailq.New(h.pool, nil, nil)

@@ -75,29 +75,47 @@ const COPY = {
 
   onPage((signal) => {
     const root = document.querySelector<HTMLElement>('[data-wlink]');
-    if (!root) return;
-    window.addEventListener('hashchange', () => /^#[A-Za-z0-9_-]{43}$/.test(location.hash) && location.reload(), { signal });
+    if (!root) {
+      return;
+    }
+    addEventListener(
+      'hashchange',
+      () => /^#[A-Za-z0-9_-]{43}$/u.test(location.hash) && location.reload(),
+      { signal },
+    );
     const kind = root.dataset.wlink as 'confirm' | 'leave';
-    const button = root.querySelector<HTMLButtonElement>('[data-wlink-button]')!;
-    const label = button.querySelector<HTMLElement>('[data-label]')!;
-    const spinner = button.querySelector<HTMLElement>('.spinner')!;
-    const status = root.querySelector<HTMLElement>('.wlink__status')!;
-    const panel = root.querySelector<HTMLElement>('.wlink__panel')!;
+    const button = root.querySelector<HTMLButtonElement>('[data-wlink-button]');
+    const label = button?.querySelector<HTMLElement>('[data-label]');
+    const spinner = button?.querySelector<HTMLElement>('.spinner');
+    const status = root.querySelector<HTMLElement>('.wlink__status');
+    const panel = root.querySelector<HTMLElement>('.wlink__panel');
+    if (!button || !label || !spinner || !status || !panel) {
+      return;
+    }
+    const HTTP_OK = 200;
+    const HTTP_BAD_REQUEST = 400;
+    const HTTP_GONE = 410;
+    const HTTP_TOO_MANY = 429;
 
-    const incomplete = 'This link isn’t complete. Open it again from our email, or copy the whole link into your browser.';
-    const say = (text: string) => {
+    const incomplete =
+      'This link isn’t complete. Open it again from our email, or copy the whole link into your browser.';
+    const say = (text: string): void => {
       status.dataset.tone = 'error';
       status.textContent = text;
     };
-    const show = (step: 'ask' | 'done' | 'expired') => {
-      root.querySelectorAll<HTMLElement>('[data-step]').forEach((el) => (el.hidden = el.dataset.step !== step));
+    const show = (step: 'ask' | 'done' | 'expired'): void => {
+      for (const el of root.querySelectorAll<HTMLElement>('[data-step]')) {
+        el.hidden = el.dataset.step !== step;
+      }
       button.hidden = step !== 'ask';
       status.textContent = '';
       root.querySelector<HTMLElement>(`[data-step="${step}"] h1`)?.focus();
     };
 
-    const finish = () => {
-      if (kind === 'confirm') panel.dataset.state = 'success';
+    const finish = (): void => {
+      if (kind === 'confirm') {
+        panel.dataset.state = 'success';
+      }
       show('done');
     };
 
@@ -119,25 +137,30 @@ const COPY = {
         button.disabled = true;
         button.style.width = `${button.offsetWidth}px`;
         spinner.hidden = false;
-        label.textContent = label.dataset.busy!;
+        label.textContent = label.dataset.busy ?? '';
         status.textContent = '';
-        const a = await postJson(`${root.dataset.api}/v1/waitlist/${kind}`, { token });
-        if (signal.aborted) return;
+        const answer = await postJson(`${root.dataset.api}/v1/waitlist/${kind}`, { token });
+        if (signal.aborted) {
+          return;
+        }
         button.disabled = false;
         button.style.width = '';
         spinner.hidden = true;
-        label.textContent = label.dataset.idle!;
-        if (a.status === 200) {
+        label.textContent = label.dataset.idle ?? '';
+        if (answer.status === HTTP_OK) {
           markLinkDone(kind);
           finish();
-        } else if (kind === 'confirm' && (a.status === 410 || a.status === 400)) {
+        } else if (
+          kind === 'confirm' &&
+          (answer.status === HTTP_GONE || answer.status === HTTP_BAD_REQUEST)
+        ) {
           show('expired');
-        } else if (a.status === 400) {
+        } else if (answer.status === HTTP_BAD_REQUEST) {
           say(incomplete);
-        } else if (a.status === 0) {
+        } else if (answer.status === 0) {
           say('We couldn’t reach Hasala. Check your connection and try again.');
-        } else if (a.status === 429) {
-          say(`Too many tries from here. Try again in ${waitText(a.retryAfter)}.`);
+        } else if (answer.status === HTTP_TOO_MANY) {
+          say(`Too many tries from here. Try again in ${waitText(answer.retryAfter)}.`);
         } else {
           say('Something went wrong on our side. Try again in a minute.');
         }

@@ -53,6 +53,7 @@ func countUsers(t *testing.T, pool *pgxpool.Pool) int {
 }
 
 func TestMintedInviteIsNeverStoredInTheClear(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	code := mintCode(t, pool, "for maya")
 	var (
@@ -69,6 +70,7 @@ func TestMintedInviteIsNeverStoredInTheClear(t *testing.T) {
 }
 
 func TestInviteCodeNormalizationIsForgiving(t *testing.T) {
+	t.Parallel()
 	code := "ABCDEFGHIJKLMNOPQRSTUVWX"
 	for _, in := range []string{"abcd-efgh-ijkl-mnop-qrst-uvwx", " ABCD EFGH\tIJKL\nMNOP_QRST-UVWX "} {
 		if NormalizeInviteCode(in) != code {
@@ -81,6 +83,7 @@ func TestInviteCodeNormalizationIsForgiving(t *testing.T) {
 }
 
 func TestAReviewInviteCarriesNoAddress(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	if _, err := MintInvite(bgctx, pool, MintOptions{Review: true}); err != nil {
 		t.Fatal(err)
@@ -91,6 +94,7 @@ func TestAReviewInviteCarriesNoAddress(t *testing.T) {
 }
 
 func TestTheInviteCodeSourceIsCryptoRand(t *testing.T) {
+	t.Parallel()
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "../invites/invites.go", nil, 0)
 	if err != nil {
@@ -151,6 +155,7 @@ func TestTheInviteCodeSourceIsCryptoRand(t *testing.T) {
 }
 
 func TestMintedInviteCodesAreUnguessable(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 
 	const (

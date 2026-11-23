@@ -26,11 +26,11 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         with:
           diagnostic-endpoint: ""
-      - name: Nix store cache (vuln's, read only)
+      - name: Devshell Nix store cache
         uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
         with:
-          primary-key: nix-${{ runner.os }}-vuln-${{ hashFiles('flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-vuln-
+          primary-key: nix-${{ runner.os }}-devshell-${{ hashFiles('flake.lock', 'flake.nix') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-devshell-
           save: false
 
       - name: govulncheck ./... (server)

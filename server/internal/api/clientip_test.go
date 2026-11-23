@@ -7,6 +7,7 @@ import (
 )
 
 func TestClientKeyFor(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name, peer, header string
 		cloudflare         bool
@@ -41,6 +42,7 @@ func TestClientKeyFor(t *testing.T) {
 }
 
 func TestPerIPLimitsFollowCfConnectingIP(t *testing.T) {
+	t.Parallel()
 	srv := &Server{TrustCloudflare: true, Logf: func(string, ...any) {}}
 	srv.MetaPerIP = NewLimiter(0, 1, metaMaxKeys, nil)
 	h := srv.Handler()

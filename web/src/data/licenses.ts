@@ -16,7 +16,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.`;
 
-export const mitLicense = (copyright: readonly string[]) => `MIT License\n\n${copyright.join('\n')}\n\n${MIT_TERMS}\n`;
+export const mitLicense = (copyright: readonly string[]): string =>
+  `MIT License\n\n${copyright.join('\n')}\n\n${MIT_TERMS}\n`;
 
 export interface ThirdParty {
   name: string;
@@ -63,7 +64,10 @@ export const THIRD_PARTY: readonly ThirdParty[] = [
   {
     name: 'uqr',
     use: 'The QR code encoder on the invite page, for opening an invite on your iPhone from a computer.',
-    copyright: ['Copyright (c) Project Nayuki', 'Copyright (c) 2023 Anthony Fu <https://github.com/antfu>'],
+    copyright: [
+      'Copyright (c) Project Nayuki',
+      'Copyright (c) 2023 Anthony Fu <https://github.com/antfu>',
+    ],
     license: 'MIT',
     licenseName: 'MIT License',
     licenseUrl: 'https://spdx.org/licenses/MIT.html',

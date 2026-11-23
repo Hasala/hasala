@@ -66,6 +66,7 @@ func (h *harness) register(signupID string) (*authtest.Authenticator, SessionRes
 }
 
 func TestPasskeyRoutesAreNotMountedWithoutARelyingParty(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	for _, path := range []string{
 		"/api/v1/auth/passkey/register/begin",
@@ -84,6 +85,7 @@ func TestPasskeyRoutesAreNotMountedWithoutARelyingParty(t *testing.T) {
 }
 
 func TestPasskeyRegistrationOverHTTPMintsASessionForANewAccount(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, out := h.register(h.invite("passkey beta"))
 
@@ -100,6 +102,7 @@ func TestPasskeyRegistrationOverHTTPMintsASessionForANewAccount(t *testing.T) {
 }
 
 func TestPasskeyRegistrationWithoutASignupIsRefused(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	w := h.req("POST", "/api/v1/auth/passkey/register/begin", "",
 		PasskeyRegisterBeginRequest{SignupID: "NOTASIGNUP", AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
@@ -113,6 +116,7 @@ func TestPasskeyRegistrationWithoutASignupIsRefused(t *testing.T) {
 }
 
 func TestPasskeyRegistrationFinishWithAMismatchedCeremonyIsRefused(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	idA, optsA := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
 		PasskeyRegisterBeginRequest{SignupID: h.invite("a"), AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
@@ -132,6 +136,7 @@ func TestPasskeyRegistrationFinishWithAMismatchedCeremonyIsRefused(t *testing.T)
 }
 
 func TestPasskeyFinishWithAnUnknownCeremonyIsRefused(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	w := h.req("POST", "/api/v1/auth/passkey/login/finish", "", PasskeyFinishRequest{
 		CeremonyID: "not-a-ceremony", Credential: json.RawMessage(`{}`),
@@ -143,6 +148,7 @@ func TestPasskeyFinishWithAnUnknownCeremonyIsRefused(t *testing.T) {
 }
 
 func TestPasskeyLoginOverHTTPReturnsASessionForTheSameAccount(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	a, registered := h.register(h.invite("returning"))
 
@@ -165,6 +171,7 @@ func TestPasskeyLoginOverHTTPReturnsASessionForTheSameAccount(t *testing.T) {
 }
 
 func TestPasskeyLoginBeginNeedsNoSessionAndNamesNobody(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, opts := h.beginAssert("/api/v1/auth/passkey/login/begin", "")
 	if len(opts.Response.AllowedCredentials) != 0 {
@@ -176,6 +183,7 @@ func TestPasskeyLoginBeginNeedsNoSessionAndNamesNobody(t *testing.T) {
 }
 
 func TestAddPasskeyNeedsASession(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	for _, path := range []string{
 		"/api/v1/auth/passkey/add/begin",
@@ -190,6 +198,7 @@ func TestAddPasskeyNeedsASession(t *testing.T) {
 }
 
 func TestAddPasskeyStoresASecondCredentialForTheSameAccount(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 
@@ -225,6 +234,7 @@ func TestAddPasskeyStoresASecondCredentialForTheSameAccount(t *testing.T) {
 }
 
 func TestAddPasskeyNeedsMoreThanASession(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.srv.PasskeyPerIP = NewLimiter(passkeyPerIPRate, 64, passkeyMaxKeys, h.srv.now)
 
@@ -272,6 +282,7 @@ func TestAddPasskeyNeedsMoreThanASession(t *testing.T) {
 }
 
 func TestEveryPasskeyRouteIsRateLimited(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.srv.PasskeyPerIP = NewLimiter(0, 1, 16, h.srv.now)
 	h.srv.PasskeyGlobal = NewLimiter(0, 1000, 1, h.srv.now)
@@ -298,6 +309,7 @@ func TestEveryPasskeyRouteIsRateLimited(t *testing.T) {
 }
 
 func TestThePasskeyLimiterIsCheckedBeforeTheSession(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.srv.PasskeyPerIP = NewLimiter(0, 1, 16, h.srv.now)
 	h.h = h.srv.Handler()

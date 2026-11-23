@@ -13,6 +13,7 @@ import (
 )
 
 func TestAGuardedRequestNeedsOneConnection(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	one := onePool(t, f.pool)
 	pk := newPasskeys(t, one)
@@ -67,6 +68,7 @@ func onePool(t *testing.T, pool *pgxpool.Pool) *pgxpool.Pool {
 }
 
 func TestADeviceGuardedRequestNeedsOneConnection(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	one := onePool(t, f.pool)

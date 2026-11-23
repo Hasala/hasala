@@ -24,6 +24,21 @@ cat >"$work/bin/govulncheck" <<'STUB'
 #!/bin/sh
 exit 0
 STUB
+cat >"$work/bin/oxlint" <<'STUB'
+#!/bin/sh
+printf 'oxlint %s\n' "$*" >>"$STUB_LOG"
+exit "${STUB_OXLINT_RC:-0}"
+STUB
+cat >"$work/bin/oxfmt" <<'STUB'
+#!/bin/sh
+printf 'oxfmt %s\n' "$*" >>"$STUB_LOG"
+exit "${STUB_OXFMT_RC:-0}"
+STUB
+cat >"$work/bin/tsgo" <<'STUB'
+#!/bin/sh
+printf 'tsgo %s\n' "$*" >>"$STUB_LOG"
+exit "${STUB_TSGO_RC:-0}"
+STUB
 cat >"$work/bin/go" <<'STUB'
 #!/bin/sh
 case "$PWD" in
@@ -50,11 +65,19 @@ test) ;;
 	exit 64
 	;;
 esac
+shuffle=""
+for a in "$@"; do
+	case "$a" in
+	-shuffle=on) shuffle=42 ;;
+	-shuffle=*) shuffle="${a#-shuffle=}" ;;
+	esac
+done
 case " $* " in
 *" -list "*)
 	printf '{"Action":"output","Package":"%s","Output":"%s\\n"}\n{"Action":"pass","Package":"%s"}\n' "$pkg" "$tst" "$pkg"
 	;;
 *" -skip "*)
+	[ -n "$shuffle" ] && printf '{"Action":"output","Package":"%s","Output":"-test.shuffle %s\\n"}\n' "$pkg" "$shuffle"
 	if [ "$side" = oracle ] && [ -n "${STUB_ORACLE_TEST_FAILS:-}" ]; then
 		printf '{"Action":"fail","Package":"%s","Test":"%s"}\n{"Action":"fail","Package":"%s"}\n' "$pkg" "$tst" "$pkg"
 		exit 1
@@ -69,7 +92,7 @@ case " $* " in
 esac
 exit 0
 STUB
-chmod +x "$work/bin/bun" "$work/bin/govulncheck" "$work/bin/go"
+chmod +x "$work/bin/bun" "$work/bin/govulncheck" "$work/bin/oxlint" "$work/bin/oxfmt" "$work/bin/tsgo" "$work/bin/go"
 
 sed -nE 's/^[[:space:]]*"[^|]*\|[^|]*\|[^|]*\|(.*)"$/\1/p' "$ROOT/scripts/check.sh" >"$work/recorded"
 
@@ -105,9 +128,19 @@ fresh() {
 gate() {
 	local name="$1" want="$2" rc=0
 	shift 2
-	env -u GITHUB_ACTIONS -u GITHUB_STEP_SUMMARY -u HASALA_PRIVATE_FIXTURES -u HASALA_TEST_POSTGRES_URL \
-		TMPDIR="$work/tmp" STUB_LOG="$work/log" STUB_RECORDED="$work/recorded" PATH="$work/bin:$PATH" "$@" \
-		"$work/t/scripts/check.sh" >"$work/out" 2>&1 || rc=$?
+	local vars=() args=()
+	while (($#)); do
+		if [[ "$1" == -- ]]; then
+			shift
+			args=("$@")
+			break
+		fi
+		vars+=("$1")
+		shift
+	done
+	env -u GITHUB_ACTIONS -u GITHUB_STEP_SUMMARY -u HASALA_PRIVATE_FIXTURES -u HASALA_TEST_POSTGRES_URL -u CHECK_SHUFFLE \
+		TMPDIR="$work/tmp" STUB_LOG="$work/log" STUB_RECORDED="$work/recorded" PATH="$work/bin:$PATH" ${vars[@]+"${vars[@]}"} \
+		"$work/t/scripts/check.sh" ${args[@]+"${args[@]}"} >"$work/out" 2>&1 || rc=$?
 	if [[ "$rc" == "$want" ]]; then echo "ok   $name (exit $rc)"; else
 		echo "FAIL $name: exit $rc, want $want"
 		sed 's/^/     /' "$work/out"
@@ -134,7 +167,7 @@ lacks() {
 fresh
 g update-ref refs/remotes/origin/main HEAD
 gate "a local run with a merge base" 0
-says "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, assist worker, conformance)"
+says "check: OK (real-mail fence, toolchain, fence, oxlint, oxfmt, govulncheck, go vet, go test, assist worker, scripts typecheck, conformance)"
 lacks "NOT RUN"
 
 fresh
@@ -144,13 +177,26 @@ says "NOT RUN: the golden-fixture rule"
 fresh
 commit second
 gate "a CI run" 0 GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$work/summary"
-says "check: OK (real-mail fence, toolchain, fence, go vet, go test, assist worker, conformance)"
-says "NOT RUN: govulncheck"
+says "check: OK (real-mail fence, toolchain, fence, oxlint, oxfmt, go vet, go test, assist worker, scripts typecheck, conformance)"
+says "NOT RUN: the self-tests (the selftest job runs them); govulncheck"
+lacks "== check: gate run self-test"
 lacks "golden-fixture rule ("
 if grep -qF "govulncheck" "$work/summary"; then echo "ok   ...and the job summary names it"; else
 	echo "FAIL the job summary does not name the step that did not run"
 	failures=$((failures + 1))
 fi
+
+fresh
+gate "the self-tests alone, in CI" 0 GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$work/summary" -- --self-tests
+says "== check: gate run self-test"
+says "check: OK (real-mail fence, self-tests)"
+lacks "== check: toolchain"
+lacks "NOT RUN"
+
+fresh
+gate "a local run runs the self-tests" 0
+says "== check: gate run self-test"
+lacks "NOT RUN: the self-tests"
 
 fresh
 gate "a CI run with no HEAD^1" 1 GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$work/summary"
@@ -169,7 +215,18 @@ leftovers() {
 
 fresh
 gate "a failing oracle go test" 1 STUB_ORACLE_TEST_FAILS=1
+says "go test -count=1 -shuffle=42 stub/oracle"
 leftovers
+
+fresh
+gate "a failing oracle go test in a given order" 1 STUB_ORACLE_TEST_FAILS=1 CHECK_SHUFFLE=7
+says "-shuffle=7; known failures"
+says "go test -count=1 -shuffle=7 stub/oracle"
+
+fresh
+gate "a run that asks for no random order" 2 CHECK_SHUFFLE=off
+says "CHECK_SHUFFLE=off must be"
+lacks "check: OK"
 
 fresh
 gate "a failing oracle go vet" 1 STUB_ORACLE_VET_RC=1
@@ -195,6 +252,38 @@ logged "install --frozen-lockfile"
 fresh
 gate "an assist worker with no node_modules" 0
 logged "install --frozen-lockfile"
+
+fresh
+gate "a run that lints the gate's own TypeScript" 0
+if grep -qxF "oxlint infra/assist scripts ios/scripts" "$work/log"; then echo "ok   ...ran oxlint on infra/assist, scripts and ios/scripts"; else
+	echo "FAIL oxlint did not run on infra/assist, scripts and ios/scripts; the log has:"
+	sed 's/^/     /' "$work/log"
+	failures=$((failures + 1))
+fi
+
+if grep -qxF "oxfmt --check infra/assist scripts ios/scripts" "$work/log"; then echo "ok   ...ran oxfmt --check on infra/assist, scripts and ios/scripts"; else
+	echo "FAIL oxfmt --check did not run on infra/assist, scripts and ios/scripts; the log has:"
+	sed 's/^/     /' "$work/log"
+	failures=$((failures + 1))
+fi
+
+if grep -qxF "tsgo --noEmit -p scripts" "$work/log"; then echo "ok   ...ran tsgo on the scripts project"; else
+	echo "FAIL tsgo did not run on the scripts project; the log has:"
+	sed 's/^/     /' "$work/log"
+	failures=$((failures + 1))
+fi
+
+fresh
+gate "a type error in a script" 1 STUB_TSGO_RC=1
+lacks "check: OK"
+
+fresh
+gate "a lint finding" 1 STUB_OXLINT_RC=1
+lacks "check: OK"
+
+fresh
+gate "a file that is not formatted" 1 STUB_OXFMT_RC=1
+lacks "check: OK"
 
 fresh
 gate "a known failure that now fails for another reason" 1 STUB_KNOWN_TEXT="panic: something else broke"

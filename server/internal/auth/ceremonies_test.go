@@ -19,6 +19,7 @@ import (
 )
 
 func TestC9ResetIsApprovedByASignedInIPhone(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	stale, err := m.loginPassword(m.s, nil)
@@ -114,6 +115,7 @@ func TestC9ResetIsApprovedByASignedInIPhone(t *testing.T) {
 }
 
 func TestC9BeginIsUniform(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.fake.Reset()
@@ -121,7 +123,7 @@ func TestC9BeginIsUniform(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stranger := newAddr()
+	stranger := f.newAddr()
 	b, err := f.acct.ResetBegin(bgctx, stranger)
 	if err != nil {
 		t.Fatal(err)
@@ -138,6 +140,7 @@ func TestC9BeginIsUniform(t *testing.T) {
 }
 
 func TestRecoveryWithAPasswordRegistersANewDevice(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	old := m.token
@@ -210,6 +213,7 @@ func TestRecoveryWithAPasswordRegistersANewDevice(t *testing.T) {
 }
 
 func TestRecoveryWithAPasskeyRegistersTheCredentialAndItsWrap(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	b, err := f.acct.RecoverBegin(bgctx, cryptoref.RKPub(m.acct.E))
@@ -263,9 +267,10 @@ func mustB64URL(t *testing.T, s string) []byte {
 }
 
 func TestEmailChangeNeedsAStepUpAndCodesToBothAddresses(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
-	next := newAddr()
+	next := f.newAddr()
 	sNew := f.stretch(next, m.pw)
 	addrHash := sha([]byte(next))
 	if _, err := f.acct.EmailChangeBegin(bgctx, m.info(), next, nil, nil); !errors.Is(err, ErrBadRequest) {
@@ -311,9 +316,10 @@ func TestEmailChangeNeedsAStepUpAndCodesToBothAddresses(t *testing.T) {
 }
 
 func TestEmailChangeWithThePhraseInsteadOfTheOldMailbox(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
-	next := newAddr()
+	next := f.newAddr()
 	sNew := f.stretch(next, m.pw)
 	su := m.deviceStepUp(keyproto.ActionEmailChange, m.s, sha([]byte(next)), sumBytes(sNew))
 	begun, err := f.acct.EmailChangeBegin(bgctx, m.info(), next, sNew, su)
@@ -328,6 +334,7 @@ func TestEmailChangeWithThePhraseInsteadOfTheOldMailbox(t *testing.T) {
 }
 
 func TestEmailChangeFinishDoesNotUndoANewerPasswordState(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name   string
 		change func(f *acctFixture, m *member)
@@ -352,7 +359,7 @@ func TestEmailChangeFinishDoesNotUndoANewerPasswordState(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newAcctFixture(t)
 			m := f.passwordMember("Maya")
-			next := newAddr()
+			next := f.newAddr()
 			sNew := f.stretch(next, m.pw)
 			su := m.deviceStepUp(keyproto.ActionEmailChange, m.s, sha([]byte(next)), sumBytes(sNew))
 			begun, err := f.acct.EmailChangeBegin(bgctx, m.info(), next, sNew, su)
@@ -381,6 +388,7 @@ func TestEmailChangeFinishDoesNotUndoANewerPasswordState(t *testing.T) {
 }
 
 func TestEmailChangeToAnAddressInUseNeverFinishes(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	taken := f.passwordMember("Pat")
@@ -401,6 +409,7 @@ func TestEmailChangeToAnAddressInUseNeverFinishes(t *testing.T) {
 }
 
 func TestReverificationClearsTheBounceAndTheOperatorsRequest(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	if _, err := f.pool.Exec(bgctx, `UPDATE users SET email_undeliverable_at = now(), reverify_requested_at = now() WHERE id = $1`, m.user.UserID); err != nil {
@@ -418,6 +427,7 @@ func TestReverificationClearsTheBounceAndTheOperatorsRequest(t *testing.T) {
 }
 
 func TestTheFreezeLinkFreezesAndOnlyAnOlderFactorUnfreezes(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -456,6 +466,7 @@ func TestTheFreezeLinkFreezesAndOnlyAnOlderFactorUnfreezes(t *testing.T) {
 }
 
 func TestANewPasswordCannotUnfreeze(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -477,6 +488,7 @@ func TestANewPasswordCannotUnfreeze(t *testing.T) {
 }
 
 func TestOperatorFreezeOutranksTheHolder(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	tx, _ := f.pool.Begin(bgctx)
@@ -533,6 +545,7 @@ func TestOperatorFreezeOutranksTheHolder(t *testing.T) {
 }
 
 func TestADeviceFreezeIsDatedBackToTheSignOut(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
@@ -581,8 +594,9 @@ func sha(b []byte) []byte {
 }
 
 func TestPasskeySignInBindsADeviceAndRecordsOnlyUnboundSignIns(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	r, a, err := f.registerPasskey(f.provenSignup(addr, "Pat").SignupID)
 	if err != nil {
 		t.Fatal(err)
@@ -639,6 +653,7 @@ func TestPasskeySignInBindsADeviceAndRecordsOnlyUnboundSignIns(t *testing.T) {
 }
 
 func TestThePhraseBoxIsReleasedOnlyToAPasskeyWithAWrap(t *testing.T) {
+	t.Parallel()
 	k := newKeyFixture(t)
 	m := &Mailer{}
 	acct := &Accounts{Pool: k.pool, Sessions: k.sessions, Passkeys: k.passkeys, StepUp: k.stepUp, Mail: m, Now: k.clock.now}
@@ -662,8 +677,9 @@ func TestThePhraseBoxIsReleasedOnlyToAPasskeyWithAWrap(t *testing.T) {
 }
 
 func TestSweepsForgetExpiredCeremoniesAndCodes(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: f.printedInvite(false), Email: addr, DisplayName: "Maya"}); err != nil {
 		t.Fatal(err)
 	}
@@ -680,6 +696,7 @@ func TestSweepsForgetExpiredCeremoniesAndCodes(t *testing.T) {
 }
 
 func TestSweepsDeleteLongExpiredMailboxLinkChallenges(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	f.clock.advance(time.Since(f.clock.now()))
 	m := f.passwordMember("Maya")
@@ -705,6 +722,7 @@ func TestSweepsDeleteLongExpiredMailboxLinkChallenges(t *testing.T) {
 }
 
 func TestSweepsDeleteOldAdminAuditAndRefusals(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	f.clock.advance(time.Since(f.clock.now()))
 	if _, err := f.pool.Exec(bgctx, `INSERT INTO admin_audit (at, actor, action, result) VALUES (now() - interval '401 days', 'system:sweep', 'invite.mint', 'ok'), (now() - interval '399 days', 'system:sweep', 'invite.mint', 'ok')`); err != nil {
@@ -719,6 +737,7 @@ func TestSweepsDeleteOldAdminAuditAndRefusals(t *testing.T) {
 }
 
 func TestSweepsDeleteOldAnonymousBankCounts(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	f.clock.advance(time.Since(f.clock.now()))
 	if _, err := f.pool.Exec(bgctx, `INSERT INTO bank_requests (other_key, other_text, source, created_at) VALUES ('old', 'Old Bank', 'web', now() - interval '366 days'), ('new', 'New Bank', 'web', now() - interval '364 days')`); err != nil {
@@ -740,6 +759,7 @@ func markAddressInDoubt(t *testing.T, f *acctFixture, m *member) {
 }
 
 func TestARecoveryInProgressStopsWhenTheAddressIsInDoubt(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	b, err := f.acct.RecoverBegin(bgctx, cryptoref.RKPub(m.acct.E))
@@ -773,6 +793,7 @@ func TestARecoveryInProgressStopsWhenTheAddressIsInDoubt(t *testing.T) {
 }
 
 func TestAPasswordResetSendsNoCodeToAnAddressInDoubt(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	markAddressInDoubt(t, f, m)

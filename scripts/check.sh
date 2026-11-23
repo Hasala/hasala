@@ -3,14 +3,21 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 JOBS="${CHECK_JOBS:-8}"
+SHUFFLE="${CHECK_SHUFFLE:-on}"
+if [[ ! "$SHUFFLE" =~ ^(on|[0-9]+)$ ]]; then
+	echo "check: CHECK_SHUFFLE=$SHUFFLE must be 'on' or a seed that an earlier run printed" >&2
+	exit 2
+fi
 step() { printf '\n== check: %s\n' "$*"; }
 
 FENCE_ONLY=""
+SELF_TESTS_ONLY=""
 case "$*" in
 "") ;;
 --fence-only) FENCE_ONLY=1 ;;
+--self-tests) SELF_TESTS_ONLY=1 ;;
 *)
-	echo "usage: scripts/check.sh [--fence-only]" >&2
+	echo "usage: scripts/check.sh [--fence-only | --self-tests]" >&2
 	exit 2
 	;;
 esac
@@ -77,17 +84,39 @@ if [[ -n "$FENCE_ONLY" ]]; then
 	exit 0
 fi
 
-step "real-mail fence self-test"
-"$ROOT/scripts/tests/fence_test.sh"
+NOT_RUN=()
+if [[ -n "$CI_RUN" && -z "$SELF_TESTS_ONLY" ]]; then
+	step "self-tests"
+	echo "skipped in CI: the selftest job runs scripts/check.sh --self-tests"
+	NOT_RUN+=("the self-tests (the selftest job runs them)")
+else
+	step "real-mail fence self-test"
+	"$ROOT/scripts/tests/fence_test.sh"
 
-step "gate run self-test"
-"$ROOT/scripts/tests/gate_run_test.sh"
-"$ROOT/scripts/tests/gotest_ran_test.sh"
-"$ROOT/scripts/tests/git_env_test.sh"
-"$ROOT/scripts/tests/comment_lint_test.sh"
+	step "gate run self-test"
+	"$ROOT/scripts/tests/gate_run_test.sh"
+	"$ROOT/scripts/tests/gotest_ran_test.sh"
+	"$ROOT/scripts/tests/git_env_test.sh"
+	"$ROOT/scripts/tests/ci_changes_test.sh"
+	"$ROOT/scripts/tests/comment_lint_test.sh"
+
+	step "Mac devShell cache check self-test"
+	"$ROOT/scripts/tests/ci_mac_devshell_test.sh"
+
+	step "CI time budget self-test"
+	"$ROOT/scripts/tests/ci_budget_test.sh"
+fi
+
+if [[ -n "$SELF_TESTS_ONLY" ]]; then
+	echo
+	echo "check: OK (real-mail fence, self-tests)"
+	exit 0
+fi
+
+step "pre-push hook self-test"
+"$ROOT/scripts/tests/pre_push_hook_test.sh"
 
 GATE_STEPS="real-mail fence, toolchain, fence"
-NOT_RUN=()
 
 step "HasalaCore import and API lints"
 "$ROOT/ios/scripts/check-imports.sh" --no-manifest
@@ -114,6 +143,14 @@ echo "$(ls -1 "$seed"/*.json | wc -l | tr -d ' ') templates identical"
 step "the template manifest names every seed by its hash"
 "$ROOT/scripts/tests/templates_manifest_test.sh"
 "$ROOT/scripts/check-templates-manifest.sh"
+
+step "oxlint (infra/assist, scripts, ios/scripts)"
+(cd "$ROOT" && oxlint infra/assist scripts ios/scripts)
+GATE_STEPS+=", oxlint"
+
+step "oxfmt --check (infra/assist, scripts, ios/scripts)"
+(cd "$ROOT" && oxfmt --check infra/assist scripts ios/scripts)
+GATE_STEPS+=", oxfmt"
 
 GOLDEN_SETS=(authres categorize extract fx merchant-group norm-dates outlook-sender replay sms-extract)
 step "golden fixtures change only with a Swift test change"
@@ -234,14 +271,14 @@ fi
 step "go vet ./..."
 go vet -p "$JOBS" ./...
 
-step "go test ./... (known failures skipped by name: $skip_re)"
-go test -count=1 -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | tee "$GO_RECORD" | REALCORPUS_COUNTS="$REAL_GO" bun "$ROOT/scripts/gotest-summary.ts"
+step "go test ./... (random order, -shuffle=$SHUFFLE; known failures skipped by name: $skip_re)"
+go test -count=1 -shuffle="$SHUFFLE" -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | tee "$GO_RECORD" | REALCORPUS_COUNTS="$REAL_GO" bun "$ROOT/scripts/gotest-summary.ts"
 
 step "oracle: go vet ./... and go test ./..."
 (
 	cd oracle
 	go vet -p "$JOBS" ./...
-	go test -count=1 -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | tee "$ORACLE_RECORD" | REALCORPUS_COUNTS="$REAL_ORACLE" bun "$ROOT/scripts/gotest-summary.ts"
+	go test -count=1 -shuffle="$SHUFFLE" -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | tee "$ORACLE_RECORD" | REALCORPUS_COUNTS="$REAL_ORACLE" bun "$ROOT/scripts/gotest-summary.ts"
 )
 read -r s_ran s_skipped <"$REAL_GO"
 read -r o_ran o_skipped <"$REAL_ORACLE"
@@ -251,7 +288,10 @@ step "assist worker (infra/assist)"
 cd "$ROOT/infra/assist"
 bun install --frozen-lockfile
 bun run --bun typecheck
-bun test
+bun test --randomize
+
+step "typecheck the scripts (scripts, ios/scripts)"
+(cd "$ROOT" && tsgo --noEmit -p scripts)
 
 CONFORMANCE=(
 	"api-v1|./cmd/gen-crypto-vectors ./internal/cryptoref"
@@ -322,7 +362,7 @@ for entry in "${KNOWN_FAILING[@]}"; do
 	{ grep -E '^\s+\S+_test\.go:[0-9]+:' <<<"$out" || true; } | sed 's/^/    /'
 done
 
-GATE_STEPS+=", go vet, go test, assist worker, conformance"
+GATE_STEPS+=", go vet, go test, assist worker, scripts typecheck, conformance"
 read -r go_ran go_skipped <"$REAL_GO"
 corpus="go ${go_ran} ran / ${go_skipped} skipped"
 echo

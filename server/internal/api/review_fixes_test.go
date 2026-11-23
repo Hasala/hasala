@@ -22,6 +22,7 @@ import (
 )
 
 func TestASuspendedAccountCanStillDeleteItself(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "suspended-delete")
 	h.suspend(acc.u)
@@ -40,6 +41,7 @@ func TestASuspendedAccountCanStillDeleteItself(t *testing.T) {
 }
 
 func TestABusyGateAnswers503WithRetryAfter(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	keys, fake, _ := h.accounts()
 	a := h.passwordSignup(keys, fake, "gate@example.com")

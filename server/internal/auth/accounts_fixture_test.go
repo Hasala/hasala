@@ -15,7 +15,6 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/authkeys"
 	"github.com/salehtl/hasala/server/internal/authtest"
-	"github.com/salehtl/hasala/server/internal/cryptoref"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/mail"
 	"github.com/salehtl/hasala/server/internal/mailq"
@@ -37,14 +36,15 @@ type acctFixture struct {
 	writers  *Writers
 	keysSvc  *AccountKeys
 	acct     *Accounts
+	addrN    atomic.Int64
 }
 
 var testSaltKey = bytes.Repeat([]byte{0x5a}, 32)
 var testAuthKey = bytes.Repeat([]byte{0xa5}, 32)
 
-var addrN atomic.Int64
-
-func newAddr() string { return fmt.Sprintf("maya.%d@example.com", addrN.Add(1)) }
+func (f *acctFixture) newAddr() string {
+	return fmt.Sprintf("maya.%d@example.com", f.addrN.Add(1))
+}
 
 func newAcctFixture(t *testing.T) *acctFixture {
 	t.Helper()
@@ -154,12 +154,12 @@ type member struct {
 }
 
 func (f *acctFixture) stretch(addr, pw string) []byte {
-	return cryptoref.Stretch(pw, f.keys.PasswordSalt(addr), addr)
+	return authtest.Stretch(pw, f.keys.PasswordSalt(addr), addr)
 }
 
 func (f *acctFixture) passwordMember(name string) *member {
 	f.t.Helper()
-	addr := newAddr()
+	addr := f.newAddr()
 	s := f.provenSignup(addr, name)
 	m := &member{f: f, addr: addr, pw: "correct horse battery staple"}
 	m.s = f.stretch(addr, m.pw)

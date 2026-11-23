@@ -7,8 +7,14 @@ cd "$here"
 command -v node >/dev/null || { echo "Lighthouse CI needs Node (and Chrome) on PATH" >&2; exit 1; }
 [[ -x node_modules/.bin/lhci ]] || { echo "run \`bun install --frozen-lockfile\` in web/lighthouse first" >&2; exit 1; }
 
+presets=("${@:2}")
+((${#presets[@]})) || presets=(mobile desktop)
+for preset in "${presets[@]}"; do
+  [[ $preset == mobile || $preset == desktop ]] || { echo "unknown preset: $preset (mobile or desktop)" >&2; exit 2; }
+done
+
 status=0
-for preset in mobile desktop; do
+for preset in "${presets[@]}"; do
   rm -rf .lighthouseci "${out:?}/$preset"
   flags=(--upload.target=filesystem "--upload.outputDir=$out/$preset")
   [[ $preset == desktop ]] && flags+=(--collect.settings.preset=desktop)

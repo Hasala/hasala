@@ -33,6 +33,7 @@ func refusalCount(t *testing.T, h *harness, u uuid.UUID, resource string) int64 
 }
 
 func TestAnUploadOverTheAccountCeilingIs413AndNot500(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("full")
 	tok := h.session(u)
@@ -75,6 +76,7 @@ func TestAnUploadOverTheAccountCeilingIs413AndNot500(t *testing.T) {
 }
 
 func TestTheCeilingAndTheUploadLimiterAreDifferentAnswers(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("shaped")
 	tok := h.session(u)
@@ -98,6 +100,7 @@ func TestTheCeilingAndTheUploadLimiterAreDifferentAnswers(t *testing.T) {
 }
 
 func TestOnlyTheCeilingRefusalCarriesBudgetNumbers(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("chained")
 	tok := h.session(u)
@@ -116,6 +119,7 @@ func TestOnlyTheCeilingRefusalCarriesBudgetNumbers(t *testing.T) {
 }
 
 func TestTheUploadByteBudgetIsRefundedWhenNothingIsStored(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("refund")
 	tok := h.session(u)
@@ -169,6 +173,7 @@ func TestTheUploadByteBudgetIsRefundedWhenNothingIsStored(t *testing.T) {
 }
 
 func TestAnUploadWhoseCommitAnswerIsLostKeepsItsByteCharge(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("lost-commit")
 	tok := h.session(u)

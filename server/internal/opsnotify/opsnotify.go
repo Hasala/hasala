@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -21,7 +22,15 @@ func New(url, click string) *Notifier {
 	return &Notifier{URL: url, Click: click, Client: &http.Client{Timeout: Timeout}}
 }
 
-func (n *Notifier) Post(ctx context.Context, title, message, tags string) error {
+func Title(level, source, subject string) string {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		host = "hasala"
+	}
+	return fmt.Sprintf("[%s] %s %s: %s", host, strings.ToUpper(level), source, subject)
+}
+
+func (n *Notifier) Post(ctx context.Context, title, message, tags, priority string) error {
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.URL, strings.NewReader(message))
@@ -32,6 +41,9 @@ func (n *Notifier) Post(ctx context.Context, title, message, tags string) error 
 	req.Header.Set("Title", title)
 	if tags != "" {
 		req.Header.Set("Tags", tags)
+	}
+	if priority != "" {
+		req.Header.Set("Priority", priority)
 	}
 	if n.Click != "" {
 		req.Header.Set("Click", n.Click)

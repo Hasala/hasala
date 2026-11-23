@@ -86,6 +86,7 @@ func lifecycleNote(cs, event string) map[string]any {
 }
 
 func TestOutlookHookPathsAreTheConfiguredOnes(t *testing.T) {
+	t.Parallel()
 	if outlookHookPath != config.OutlookNotificationPath || outlookLifecyclePath != config.OutlookLifecyclePath {
 		t.Fatalf("hook paths %q %q, config %q %q", outlookHookPath, outlookLifecyclePath,
 			config.OutlookNotificationPath, config.OutlookLifecyclePath)
@@ -93,6 +94,7 @@ func TestOutlookHookPathsAreTheConfiguredOnes(t *testing.T) {
 }
 
 func TestOutlookHookIsMountedOnlyWithItsPush(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	for _, p := range []string{outlookHookPath, outlookLifecyclePath} {
 		wantNotFound(t, h.graph(p, "validationToken=abc", nil), "no mailbox at all")
@@ -115,6 +117,7 @@ func TestOutlookHookIsMountedOnlyWithItsPush(t *testing.T) {
 }
 
 func TestOutlookHookValidation(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	push := outlookPushOn()
 	push.HookPerIP = NewLimiter(0, 8, 16, time.Now)
@@ -171,6 +174,7 @@ func TestOutlookHookValidation(t *testing.T) {
 }
 
 func TestOutlookHookUnverifiedRequestsSpendNoGlobalBudget(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, o, _ := withOutlook(h, outlookPushOn())
 	o.Push.HookPerIP = NewLimiter(1e6, 1e6, 10, time.Now)
@@ -193,6 +197,7 @@ func TestOutlookHookUnverifiedRequestsSpendNoGlobalBudget(t *testing.T) {
 }
 
 func TestOutlookHookTokenWithBody(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, o, _ := withOutlook(h, outlookPushOn())
 	outlookLinkRow(h, o, "tok-body", "ios-61111111-1111-4111-8111-111111111111", testClientState)
@@ -204,6 +209,7 @@ func TestOutlookHookTokenWithBody(t *testing.T) {
 }
 
 func TestOutlookHookNotifications(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	logs := &capturedLogs{}
 	h.srv.Logf = logs.logf
@@ -259,6 +265,7 @@ func TestOutlookHookNotifications(t *testing.T) {
 }
 
 func TestOutlookLifecycleHook(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, o, _ := withOutlook(h, outlookPushOn())
 	holder := "ios-63333333-3333-4333-8333-333333333333"
@@ -283,6 +290,7 @@ func TestOutlookLifecycleHook(t *testing.T) {
 }
 
 func TestOutlookHookLinkLimiter(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, o, _ := withOutlook(h, outlookPushOn())
 	outlookLinkRow(h, o, "limit-a", "ios-64444444-4444-4444-8444-444444444444", testClientState)
@@ -302,6 +310,7 @@ func TestOutlookHookLinkLimiter(t *testing.T) {
 }
 
 func TestOutlookHookLinkOverItsBudgetSpendsNoGlobalBudget(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, o, _ := withOutlook(h, outlookPushOn())
 	o.Push.HookPerIP = NewLimiter(1e6, 1e6, 10, time.Now)
@@ -322,6 +331,7 @@ func TestOutlookHookLinkOverItsBudgetSpendsNoGlobalBudget(t *testing.T) {
 }
 
 func TestOutlookHookOverTheGlobalBudgetKeepsTheLinkBudget(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, o, _ := withOutlook(h, outlookPushOn())
 	o.Push.HookPerIP = NewLimiter(1e6, 1e6, 10, time.Now)
@@ -343,6 +353,7 @@ func TestOutlookHookOverTheGlobalBudgetKeepsTheLinkBudget(t *testing.T) {
 }
 
 func TestOutlookHookUnknownClientStatesSpendNoLinkBudget(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, o, _ := withOutlook(h, outlookPushOn())
 	o.Push.HookPerIP = NewLimiter(1e6, 1e6, 10, time.Now)
@@ -369,6 +380,7 @@ func TestOutlookHookUnknownClientStatesSpendNoLinkBudget(t *testing.T) {
 }
 
 func TestOutlookHookDatabaseFailure(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	logs := &capturedLogs{}
 	h.srv.Logf = logs.logf
@@ -392,6 +404,7 @@ func TestOutlookHookDatabaseFailure(t *testing.T) {
 }
 
 func TestOutlookHookPassesTheHeadroomFuse(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.srv.Headroom = &fakeFuse{tripped: true}
 	wk, o, _ := withOutlook(h, outlookPushOn())
@@ -411,6 +424,7 @@ func TestOutlookHookPassesTheHeadroomFuse(t *testing.T) {
 }
 
 func TestOutlookLinkThenHook(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	wk, _, _ := withOutlook(h, outlookPushOn())
 	k := h.onboard(true)
@@ -426,6 +440,7 @@ func TestOutlookLinkThenHook(t *testing.T) {
 }
 
 func TestGmailHookIgnoresOutlookLinks(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wk, g := withPushAndGmail(h)
 	_, o, _ := withOutlook(h, outlookPushOn())
@@ -449,6 +464,7 @@ func TestGmailHookIgnoresOutlookLinks(t *testing.T) {
 }
 
 func TestNudgeIsPerProvider(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	_, o, _ := withOutlook(h, outlookPushOn())
 	holder := "ios-69999999-9999-4999-8999-999999999999"

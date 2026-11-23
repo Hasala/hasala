@@ -40,6 +40,8 @@ type harness struct {
 	pool *pgxpool.Pool
 	srv  *Server
 	h    http.Handler
+
+	rawHeads bool
 }
 
 func newHarness(t *testing.T) *harness {
@@ -88,11 +90,9 @@ func (h *harness) bind(tok, id string) {
 	}
 }
 
-var signHeads = true
-
 func (h *harness) prepareUpload(token string, req *UploadRequest) {
 	h.t.Helper()
-	if !signHeads || token == "" {
+	if h.rawHeads || token == "" {
 		return
 	}
 	info, err := h.srv.Sessions.Info(bg, token)
@@ -238,6 +238,7 @@ func countRows(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) int {
 }
 
 func TestSyncReturnsOnlyTheCallersRows(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	a, b := h.user("a"), h.user("b")
 	h.seed(a, 2)
@@ -258,6 +259,7 @@ func TestSyncReturnsOnlyTheCallersRows(t *testing.T) {
 }
 
 func TestSyncIgnoresAUserIDSuppliedByTheCaller(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	a, b := h.user("a"), h.user("b")
 	h.seed(b, 4)
@@ -269,6 +271,7 @@ func TestSyncIgnoresAUserIDSuppliedByTheCaller(t *testing.T) {
 }
 
 func TestAPullOfTheWholeLogIsCompleteAndVerifiesAsOneChain(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	h.seed(u, 10)
@@ -305,6 +308,7 @@ func TestAPullOfTheWholeLogIsCompleteAndVerifiesAsOneChain(t *testing.T) {
 }
 
 func TestSyncCursorPagesWithoutGapsWithinAStream(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
@@ -341,6 +345,7 @@ func TestSyncCursorPagesWithoutGapsWithinAStream(t *testing.T) {
 }
 
 func TestHashListCoversEveryBlobAndMatchesTheStoredHashes(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
@@ -370,6 +375,7 @@ func TestHashListCoversEveryBlobAndMatchesTheStoredHashes(t *testing.T) {
 }
 
 func TestAPullTruncatedByTheByteBudgetIsNotComplete(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
@@ -404,6 +410,7 @@ func TestAPullTruncatedByTheByteBudgetIsNotComplete(t *testing.T) {
 }
 
 func TestACursorPastTheEndOfTheStreamIsCursorAhead(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
@@ -442,6 +449,7 @@ func TestACursorPastTheEndOfTheStreamIsCursorAhead(t *testing.T) {
 }
 
 func TestPullHasOneStream(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	tok := h.session(h.user("u"))
 	for _, path := range []string{
@@ -459,6 +467,7 @@ func TestPullHasOneStream(t *testing.T) {
 }
 
 func TestUploadAppendsAndIsIdempotentOnResend(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
@@ -483,6 +492,7 @@ func TestUploadAppendsAndIsIdempotentOnResend(t *testing.T) {
 }
 
 func TestUploadRejectsAWriterIDTheCallerDoesNotOwn(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	a, b := h.user("a"), h.user("b")
 	h.writer(b, "ios-00000000-0000-4000-8000-00000000000b")
@@ -501,6 +511,7 @@ func TestUploadRejectsAWriterIDTheCallerDoesNotOwn(t *testing.T) {
 }
 
 func TestUploadCannotWriteIntoAnotherUsersLog(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	a, b := h.user("a"), h.user("b")
 	h.writer(a, "ios-00000000-0000-4000-8000-00000000000a")
@@ -520,6 +531,7 @@ func TestUploadCannotWriteIntoAnotherUsersLog(t *testing.T) {
 }
 
 func TestUploadRejectsARevokedWriter(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
@@ -542,6 +554,7 @@ func TestUploadRejectsARevokedWriter(t *testing.T) {
 }
 
 func TestUploadRejectsBlobWhoseAADDoesNotMatchTheRow(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
@@ -558,6 +571,7 @@ func TestUploadRejectsBlobWhoseAADDoesNotMatchTheRow(t *testing.T) {
 }
 
 func TestUploadRejectsOversizeAndBadBucket(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
@@ -608,6 +622,7 @@ func TestUploadRejectsOversizeAndBadBucket(t *testing.T) {
 }
 
 func TestUploadRefusesAnyStreamButHot(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
@@ -623,6 +638,7 @@ func TestUploadRefusesAnyStreamButHot(t *testing.T) {
 }
 
 func TestUploadReportsAChainBreakAsAConflict(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
@@ -639,6 +655,7 @@ func TestUploadReportsAChainBreakAsAConflict(t *testing.T) {
 }
 
 func TestABatchThatDoesNotChainToItselfIsAClientErrorNotATamperSignal(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
@@ -677,6 +694,7 @@ func TestABatchThatDoesNotChainToItselfIsAClientErrorNotATamperSignal(t *testing
 }
 
 func TestUploadTellsAPartialResendToResendAboveTheHead(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
@@ -700,6 +718,7 @@ func TestUploadTellsAPartialResendToResendAboveTheHead(t *testing.T) {
 }
 
 func TestConcurrentUploadsFromOneWriterProduceOneWinner(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	warmPool(t, pool, 4)
 	srv := &Server{
@@ -774,6 +793,7 @@ func warmPool(t *testing.T, pool *pgxpool.Pool, n int) {
 }
 
 func TestEveryEndpointRefusesAnAbsentSession(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	for _, c := range []struct{ method, path string }{
 		{"GET", "/api/v1/sync?stream=hot"},
@@ -791,6 +811,7 @@ func TestEveryEndpointRefusesAnAbsentSession(t *testing.T) {
 }
 
 func TestUnknownExpiredAndRevokedSessionsAreIndistinguishable(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	now := time.Now()
 	clock := func() time.Time { return now }
@@ -833,6 +854,7 @@ func TestUnknownExpiredAndRevokedSessionsAreIndistinguishable(t *testing.T) {
 }
 
 func TestABearerTokenAloneCannotRegisterAWriter(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
@@ -863,6 +885,7 @@ func mustNewKey(t *testing.T) ed25519.PrivateKey {
 }
 
 func TestRosterIsScopedToTheCaller(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	a, b := h.user("a"), h.user("b")
 	h.writer(a, "ios-00000000-0000-4000-8000-00000000000a")
@@ -882,6 +905,7 @@ func TestRosterIsScopedToTheCaller(t *testing.T) {
 }
 
 func TestResponsesAreNotCacheable(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	pull := h.req("GET", "/api/v1/sync?stream=hot", h.session(h.user("u")), nil)
 	wantStatus(t, pull, http.StatusOK)
@@ -891,6 +915,7 @@ func TestResponsesAreNotCacheable(t *testing.T) {
 }
 
 func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	tok := h.session(h.user("u"))
 	for _, w := range []*httptest.ResponseRecorder{
@@ -913,6 +938,7 @@ func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
 }
 
 func TestUploadSizeCapsAgree(t *testing.T) {
+	t.Parallel()
 	worst := base64.StdEncoding.EncodedLen(blob.MaxBucket)*maxUploadBlobs + 1024
 	if worst > maxUploadBytes {
 		t.Fatalf("%d max-size blobs base64-encode to %d bytes, over the %d-byte body cap: "+
@@ -921,6 +947,7 @@ func TestUploadSizeCapsAgree(t *testing.T) {
 }
 
 func TestRegistrationAttemptsAreRateLimited(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.srv.RegisterPerUser = NewLimiter(0, 3, 128, time.Now)
 	h.h = h.srv.Handler()
@@ -957,6 +984,7 @@ func TestRegistrationAttemptsAreRateLimited(t *testing.T) {
 }
 
 func TestChallengeMintingIsCappedPerUser(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.srv.ChallengePerUser = NewLimiter(0, 4, 128, time.Now)
 	h.h = h.srv.Handler()
@@ -987,6 +1015,7 @@ func TestChallengeMintingIsCappedPerUser(t *testing.T) {
 }
 
 func TestUnknownAPIPathIs404JSON(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	w := h.req("GET", "/api/v1/nope", h.session(h.user("u")), nil)
 	wantStatus(t, w, http.StatusNotFound)
@@ -1000,6 +1029,7 @@ func TestUnknownAPIPathIs404JSON(t *testing.T) {
 }
 
 func TestUnknownPathOutsideTheAPIIs404JSON(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	for _, path := range []string{"/", "/console", "/console/", "/admin", "/index.html"} {
 		w := h.req("GET", path, "", nil)
@@ -1011,6 +1041,7 @@ func TestUnknownPathOutsideTheAPIIs404JSON(t *testing.T) {
 }
 
 func TestRetiredLedgerdRoutesAreGone(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	tok := h.session(h.user("u"))
 	retired := []string{
@@ -1080,6 +1111,7 @@ func TestRetiredLedgerdRoutesAreGone(t *testing.T) {
 }
 
 func TestWrongMethodIsNotSilentlyRouted(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	tok := h.session(h.user("u"))
 	if w := h.req("DELETE", "/api/v1/sync", tok, nil); w.Code == http.StatusOK {
@@ -1124,6 +1156,7 @@ func wireToRow(t *testing.T, r Row) oplog.Row {
 }
 
 func TestPullsAreLimitedPerAccountAndToTwoInFlight(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
@@ -1175,6 +1208,7 @@ func (h *harness) uploadsInFlight(u uuid.UUID) int {
 }
 
 func TestUploadsAreLimitedToTwoInFlightPerAccount(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)

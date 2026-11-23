@@ -6,6 +6,6 @@ export const JS_CLASS =
 export const HERO_SEEN =
   "try{if(sessionStorage.getItem('hasala:hero'))document.documentElement.classList.add('hero-seen');else sessionStorage.setItem('hasala:hero','1')}catch(e){}";
 
-export const INVITE_CODE = "if(/^\\/i\\/./.test(location.pathname)||location.hash.length>1){let c=document.documentElement.classList;c.add('has-code');addEventListener('error',()=>{c.contains('js')||document.querySelector('[data-code]:not([hidden])')||c.remove('has-code')},true)}";
+export const INVITE_CODE = String.raw`if(/^\/i\/./.test(location.pathname)||location.hash.length>1){let c=document.documentElement.classList;c.add('has-code');addEventListener('error',()=>{c.contains('js')||document.querySelector('[data-code]:not([hidden])')||c.remove('has-code')},true)}`;
 
 export const INLINE_SCRIPTS = [JS_CLASS, HERO_SEEN, INVITE_CODE];

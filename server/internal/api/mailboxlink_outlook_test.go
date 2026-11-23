@@ -113,6 +113,7 @@ func (c *capturedLogs) String() string {
 }
 
 func TestOutlookMailboxLink(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	logs := &capturedLogs{}
 	h.srv.Logf = logs.logf
@@ -228,6 +229,7 @@ func TestOutlookMailboxLink(t *testing.T) {
 }
 
 func TestMailboxLinkProviderIsCheckedFirst(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	withGmail(h, nil)
 	k := h.onboard(true)
@@ -259,6 +261,7 @@ func TestMailboxLinkProviderIsCheckedFirst(t *testing.T) {
 }
 
 func TestLinkingOneProviderReplacesTheOther(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, g := withGmail(h, &GmailPush{Topic: testTopic, Hook: fakeVerifier{testAudience}, Subscription: testSub,
 		ServiceAccount: testSA})
@@ -320,6 +323,7 @@ func TestLinkingOneProviderReplacesTheOther(t *testing.T) {
 }
 
 func TestMailboxLinksSchemaRules(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	withGmail(h, nil)
 	k := h.onboard(true)
@@ -350,6 +354,7 @@ func TestMailboxLinksSchemaRules(t *testing.T) {
 }
 
 func TestOutlookMailboxIsKeyedOnTheSubject(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, o, _ := withOutlook(h, nil)
 	a, b, c := h.onboard(true), h.onboard(true), h.onboard(true)

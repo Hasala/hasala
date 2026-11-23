@@ -44,6 +44,7 @@ var appRoutes = []struct{ method, path string }{
 }
 
 func TestTheAppsRoutesAreMounted(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.accounts()
 	for _, rt := range appRoutes {
@@ -59,6 +60,7 @@ func TestTheAppsRoutesAreMounted(t *testing.T) {
 }
 
 func TestTheReviewAccountPathOverHTTP(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	keys, fake, q := h.accounts()
 	code, err := auth.MintInvite(bg, h.pool, auth.MintOptions{Review: true, Note: "demo", Now: time.Now()})
@@ -198,6 +200,7 @@ func TestTheReviewAccountPathOverHTTP(t *testing.T) {
 }
 
 func TestAPasskeyAccountDeletesItselfWithAStepUp(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	su := k.stepUp(k.token, keyproto.ActionAccountDelete, []byte(k.user.String()))

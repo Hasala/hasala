@@ -12,6 +12,7 @@ import (
 )
 
 func TestRemovingTheReadingIPhoneUnlinksTheMailboxAndIgnoresItsNotices(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	wk, g := withPushAndGmail(h)
 	ledger := filepath.Join(t.TempDir(), "purged")

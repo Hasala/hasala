@@ -24,8 +24,9 @@ func busyGate(t *testing.T) (*authkeys.Gate, func()) {
 }
 
 func TestABusyGateLeavesThePasswordSignupUnclaimed(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	s := f.provenSignup(addr, "Maya")
 	m := &member{f: f, addr: addr, pw: "a password of some length"}
 	m.s = f.stretch(addr, m.pw)
@@ -54,6 +55,7 @@ func TestABusyGateLeavesThePasswordSignupUnclaimed(t *testing.T) {
 }
 
 func TestABusyGateLeavesTheRecoveryCeremonyUnclaimed(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	rk := cryptoref.RK(m.acct.E)
@@ -92,6 +94,7 @@ func TestABusyGateLeavesTheRecoveryCeremonyUnclaimed(t *testing.T) {
 }
 
 func TestABusyGateLeavesThePasswordLoginCeremonyUsable(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	b, err := f.acct.PasswordLoginBegin(bgctx, m.addr)
@@ -114,6 +117,7 @@ func TestABusyGateLeavesThePasswordLoginCeremonyUsable(t *testing.T) {
 }
 
 func TestABusyGateGivesBackAnUnboundAttemptOnTheAddress(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	g, release := busyGate(t)
@@ -136,6 +140,7 @@ func TestABusyGateGivesBackAnUnboundAttemptOnTheAddress(t *testing.T) {
 }
 
 func TestABusyGateGivesBackABoundAttemptOnTheDevice(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	g, release := busyGate(t)

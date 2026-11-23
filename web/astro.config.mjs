@@ -4,25 +4,34 @@ import sitemap from '@astrojs/sitemap';
 import { unified } from '@astrojs/markdown-remark';
 import { loadEnv } from 'vite';
 import { createHash } from 'node:crypto';
-import remarkOwnerNotes from './src/lib/remark-owner-notes.mjs';
+import { remarkOwnerNotes } from './src/lib/remark-owner-notes.mjs';
 import { draftLegalPaths } from './src/lib/legal-status.mjs';
 import { INLINE_SCRIPTS } from './src/lib/inline-scripts.mjs';
-import cspUnion from './src/lib/csp-union.mjs';
+import { cspUnion } from './src/lib/csp-union.mjs';
 
 const env = loadEnv(process.env.NODE_ENV ?? 'production', process.cwd(), 'PUBLIC_');
-const API_BASE = (env.PUBLIC_API_BASE || 'https://api.hasala.app/api').replace(/\/+$/, '');
+const API_BASE = (env.PUBLIC_API_BASE || 'https://api.hasala.app/api').replace(/\/+$/u, '');
 const API_ORIGIN = new URL(API_BASE).origin;
 const WAITLIST_MODE = env.PUBLIC_WAITLIST_MODE || 'api';
 if (WAITLIST_MODE !== 'email' && WAITLIST_MODE !== 'api') {
-  throw new Error(`PUBLIC_WAITLIST_MODE must be "email" or "api", not ${JSON.stringify(WAITLIST_MODE)}`);
+  throw new Error(
+    `PUBLIC_WAITLIST_MODE must be "email" or "api", not ${JSON.stringify(WAITLIST_MODE)}`,
+  );
 }
 const TURNSTILE = WAITLIST_MODE === 'api' && Boolean(env.PUBLIC_TURNSTILE_SITEKEY);
 const TURNSTILE_ORIGIN = 'https://challenges.cloudflare.com';
 const CF_ANALYTICS_SCRIPT = 'https://static.cloudflareinsights.com';
 const CF_ANALYTICS_REPORT = 'https://cloudflareinsights.com';
 
-const NOT_IN_SITEMAP = ['/i', '/freeze', '/joined', '/waitlist/confirm', '/waitlist/leave', '/404'];
-NOT_IN_SITEMAP.push(...draftLegalPaths(new URL('../docs/legal/', import.meta.url)));
+const NOT_IN_SITEMAP = [
+  '/i',
+  '/freeze',
+  '/joined',
+  '/waitlist/confirm',
+  '/waitlist/leave',
+  '/404',
+  ...draftLegalPaths(new URL('../docs/legal/', import.meta.url)),
+];
 
 export default defineConfig({
   site: 'https://hasala.app',
@@ -39,9 +48,15 @@ export default defineConfig({
   devToolbar: { enabled: false },
   integrations: [
     sitemap({
-      filter: (page) => !NOT_IN_SITEMAP.some((p) => new URL(page).pathname.replace(/\/$/, '') === p),
+      filter: (page) =>
+        !NOT_IN_SITEMAP.some((path) => new URL(page).pathname.replace(/\/$/u, '') === path),
     }),
-    cspUnion({ withoutAnalytics: { token: '%CSP_WITHOUT_ANALYTICS%', drop: [CF_ANALYTICS_SCRIPT, CF_ANALYTICS_REPORT] } }),
+    cspUnion({
+      withoutAnalytics: {
+        token: '%CSP_WITHOUT_ANALYTICS%',
+        drop: [CF_ANALYTICS_SCRIPT, CF_ANALYTICS_REPORT],
+      },
+    }),
   ],
   fonts: [
     {
@@ -79,7 +94,12 @@ export default defineConfig({
       ],
       scriptDirective: {
         resources: ["'self'", CF_ANALYTICS_SCRIPT, ...(TURNSTILE ? [TURNSTILE_ORIGIN] : [])],
-        hashes: INLINE_SCRIPTS.map((s) => /** @type {`sha256-${string}`} */ (`sha256-${createHash('sha256').update(s).digest('base64')}`)),
+        hashes: INLINE_SCRIPTS.map(
+          (script) =>
+            /** @type {`sha256-${string}`} */ (
+              `sha256-${createHash('sha256').update(script).digest('base64')}`
+            ),
+        ),
       },
       styleDirective: {
         resources: ["'self'"],

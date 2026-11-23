@@ -86,6 +86,7 @@ func (h *harness) accountExists(t *testing.T, u uuid.UUID) bool {
 }
 
 func TestDeleteAccountRefusesASessionTokenAlone(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
 
@@ -107,6 +108,7 @@ func TestDeleteAccountRefusesASessionTokenAlone(t *testing.T) {
 }
 
 func TestLedgerdsDeletionFormIsGone(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
 	wantStatus(t, h.req("POST", "/api/v1/account/challenge", acc.tok, struct{}{}), http.StatusNotFound)
@@ -122,6 +124,7 @@ func TestLedgerdsDeletionFormIsGone(t *testing.T) {
 }
 
 func TestEveryDeletionRefusalIsTheSameAnswer(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name  string
 		build func(t *testing.T, h *harness, acc, mallory *deletable) DeleteAccountRequest
@@ -195,6 +198,7 @@ func TestEveryDeletionRefusalIsTheSameAnswer(t *testing.T) {
 }
 
 func TestDeleteAccountWithAllThreeFactorsPurgesTheAccount(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
 	bystander := h.deletable(t, "bob")
@@ -231,6 +235,7 @@ func TestDeleteAccountWithAllThreeFactorsPurgesTheAccount(t *testing.T) {
 }
 
 func TestAnotherLiveWriterMaySignTheDeletion(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
 	other := h.writer(acc.u, "ios-22222222-2222-4222-8222-222222222222")
@@ -243,11 +248,13 @@ func TestAnotherLiveWriterMaySignTheDeletion(t *testing.T) {
 }
 
 func TestDeleteAccountNeedsASession(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	wantStatus(t, h.req("DELETE", "/api/v1/account", "", DeleteAccountRequest{}), http.StatusUnauthorized)
 }
 
 func TestDeleteAccountAnswers400ForMalformedInput(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
 	good := acc.body(t, h)
@@ -266,6 +273,7 @@ func TestDeleteAccountAnswers400ForMalformedInput(t *testing.T) {
 }
 
 func TestDeleteAccountWritesThePurgeLedger(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.srv.PurgeLedger = filepath.Join(t.TempDir(), "purged")
 	acc := h.deletable(t, "alice")
@@ -280,6 +288,7 @@ func TestDeleteAccountWritesThePurgeLedger(t *testing.T) {
 }
 
 func TestDeleteAccountThatCannotBeRecordedDeletesNothing(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.srv.PurgeLedger = filepath.Join(t.TempDir(), "missing", "purged")
 	acc := h.deletable(t, "alice")

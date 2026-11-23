@@ -48,6 +48,7 @@ func countCeremonies(t *testing.T, pool *pgxpool.Pool) int {
 }
 
 func TestPasskeyRegistrationWithAValidInviteCreatesOnePasskeyUserAndSpendsTheCode(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	code := mustMint(t, pool, "the passkey beta tester")
@@ -103,6 +104,7 @@ func TestPasskeyRegistrationWithAValidInviteCreatesOnePasskeyUserAndSpendsTheCod
 }
 
 func TestPasskeyRegistrationWithASpentCodeIsRefusedAndCreatesNothing(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	code := mustMint(t, pool, "spent once")
@@ -140,6 +142,7 @@ func TestPasskeyRegistrationWithASpentCodeIsRefusedAndCreatesNothing(t *testing.
 }
 
 func TestTwoRegistrationsBegunAgainstOneLiveCodeYieldOneAccount(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	code := mustMint(t, pool, "one code, two tabs")
@@ -172,6 +175,7 @@ func TestTwoRegistrationsBegunAgainstOneLiveCodeYieldOneAccount(t *testing.T) {
 }
 
 func TestARegistrationThatFailsAfterTheUpsertDoesNotBurnTheInvite(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	_, first := enroll(t, p, mustMint(t, pool, "the first account"))
@@ -229,6 +233,7 @@ func enrollErr(t *testing.T, p *Passkeys, code string) (uuid.UUID, *authtest.Aut
 }
 
 func TestPasskeyLoginReturnsTheSameUserTheRegistrationCreated(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	registered, a := enroll(t, p, mustMint(t, pool, "returning user"))
@@ -270,6 +275,7 @@ func TestPasskeyLoginReturnsTheSameUserTheRegistrationCreated(t *testing.T) {
 }
 
 func TestPasskeyUserNameIsTheRPNameAloneRegardlessOfHandle(t *testing.T) {
+	t.Parallel()
 	a := passkeyUser{handle: []byte{1, 2, 3}, rpName: "Ledger by Example Co"}
 	b := passkeyUser{handle: []byte{9, 9, 9, 9, 9, 9}, rpName: "Ledger by Example Co"}
 
@@ -286,6 +292,7 @@ func TestPasskeyUserNameIsTheRPNameAloneRegardlessOfHandle(t *testing.T) {
 }
 
 func TestTwoAccountsWithIdenticalPasskeyNamesStillLoginToDistinctAccounts(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	first, aAuth := enroll(t, p, mustMint(t, pool, "account one"))
@@ -320,6 +327,7 @@ func TestTwoAccountsWithIdenticalPasskeyNamesStillLoginToDistinctAccounts(t *tes
 }
 
 func TestPasskeyLoginWithAnUnknownCredentialIsRefused(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	_, enrolled := enroll(t, p, mustMint(t, pool, "the real one"))
@@ -339,6 +347,7 @@ func TestPasskeyLoginWithAnUnknownCredentialIsRefused(t *testing.T) {
 }
 
 func TestPasskeyCeremonyIsSingleUse(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	_, a := enroll(t, p, mustMint(t, pool, "replayer"))
@@ -360,6 +369,7 @@ func TestPasskeyCeremonyIsSingleUse(t *testing.T) {
 }
 
 func TestExpiredPasskeyCeremonyIsRefused(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	_, a := enroll(t, p, mustMint(t, pool, "slow"))
@@ -380,6 +390,7 @@ func TestExpiredPasskeyCeremonyIsRefused(t *testing.T) {
 }
 
 func TestPasskeySignCountGoingBackwardsIsRefusedAsCloneEvidence(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	_, a := enroll(t, p, mustMint(t, pool, "cloned"))
@@ -412,6 +423,7 @@ func TestPasskeySignCountGoingBackwardsIsRefusedAsCloneEvidence(t *testing.T) {
 }
 
 func TestAPermanentZeroCounterSignsInRepeatedlyAndStillRecordsLastUsed(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 
@@ -458,6 +470,7 @@ func TestAPermanentZeroCounterSignsInRepeatedlyAndStillRecordsLastUsed(t *testin
 }
 
 func TestAddingASecondPasskeyKeepsOneAccountAndOneHandle(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	userID, first := enroll(t, p, mustMint(t, pool, "two devices"))
@@ -495,6 +508,7 @@ func TestAddingASecondPasskeyKeepsOneAccountAndOneHandle(t *testing.T) {
 }
 
 func TestAddCeremonyIsBoundToTheSessionThatStartedIt(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	victim, _ := enroll(t, p, mustMint(t, pool, "victim"))
@@ -513,6 +527,7 @@ func TestAddCeremonyIsBoundToTheSessionThatStartedIt(t *testing.T) {
 }
 
 func TestAddUsesTheAccountsHandleEvenWithNoPasskeyYet(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	u := newTestUser(t, pool)
@@ -530,6 +545,7 @@ func TestAddUsesTheAccountsHandleEvenWithNoPasskeyYet(t *testing.T) {
 }
 
 func TestExpiredCeremoniesAreSwept(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	now := time.Now().UTC()
@@ -555,6 +571,7 @@ func TestExpiredCeremoniesAreSwept(t *testing.T) {
 }
 
 func TestPasskeyCeremonyOptionsRequireADiscoverableCredential(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	_, opts, _, err := p.BeginRegistration(bgctx, mustMint(t, pool, "opts"), authtest.AuthorityPub(t))
@@ -575,6 +592,7 @@ func TestPasskeyCeremonyOptionsRequireADiscoverableCredential(t *testing.T) {
 }
 
 func TestPasskeyCeremonyIDIsNotGuessable(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	seen := map[string]bool{}
@@ -598,6 +616,7 @@ func TestPasskeyCeremonyIDIsNotGuessable(t *testing.T) {
 }
 
 func TestPasskeysRefusesAConfigWithNoOrigin(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	if _, err := NewPasskeys(pool, authtest.RPID, authtest.RPDisplayName, nil); err == nil {
 		t.Fatal("a relying party with no origins was accepted; every ceremony would be unverifiable")

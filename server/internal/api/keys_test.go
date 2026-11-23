@@ -199,6 +199,7 @@ func (k *keyed) verifyHistory(token string) map[string]bool {
 }
 
 func TestOnboardingOverHTTPPublishesKeysAndBindsTheFirstWriter(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 
@@ -223,8 +224,7 @@ func TestOnboardingOverHTTPPublishesKeysAndBindsTheFirstWriter(t *testing.T) {
 		t.Fatal("the first writer is not live in the verified history")
 	}
 
-	signHeads = false
-	defer func() { signHeads = true }()
+	h.rawHeads = true
 	blobs, last := uploadChain(t, k.user, k.device.WriterID, 1, blob.ZeroHash, 2)
 	m, _ := keyproto.HeadMessage(k.user, 2, last[:], k.device.WriterID)
 	wantStatus(t, h.req("POST", "/api/v1/sync", k.token, UploadRequest{
@@ -237,6 +237,7 @@ func TestOnboardingOverHTTPPublishesKeysAndBindsTheFirstWriter(t *testing.T) {
 }
 
 func TestBootstrapAnswersWithSpec02Codes(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(false)
 	type tc struct {
@@ -278,6 +279,7 @@ func TestBootstrapAnswersWithSpec02Codes(t *testing.T) {
 }
 
 func TestWritersRegisterAndRevokeOverHTTP(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	d2 := authtest.NewDevice(t)
@@ -329,6 +331,7 @@ func mustB64(t *testing.T, s string) []byte {
 }
 
 func TestWrapPutNeedsItsOwnCredentialAndTheWriterSignature(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	cred := k.authn.CredID
@@ -365,6 +368,7 @@ func TestWrapPutNeedsItsOwnCredentialAndTheWriterSignature(t *testing.T) {
 }
 
 func TestStepUpBeginOverHTTP(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	ph := hex.EncodeToString(make([]byte, 32))

@@ -20,13 +20,21 @@ var migrations embed.FS
 var gooseMu sync.Mutex
 
 func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
+	cfg, err := PoolConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	return pgxpool.NewWithConfig(ctx, cfg)
+}
+
+func PoolConfig(dsn string) (*pgxpool.Config, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("parse dsn: %w", err)
 	}
 	cfg.MaxConns = 16
 	cfg.MinConns = 2
-	return pgxpool.NewWithConfig(ctx, cfg)
+	return cfg, nil
 }
 
 func LogIdentity(ctx context.Context, pool *pgxpool.Pool) (string, error) {

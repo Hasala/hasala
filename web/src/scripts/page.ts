@@ -1,7 +1,7 @@
 export function onPage(init: (signal: AbortSignal) => void): void {
-  let ctrl: AbortController | undefined;
+  let ctrl: AbortController | undefined = undefined;
   let stale = false;
-  const run = () => {
+  const run = (): void => {
     ctrl?.abort();
     ctrl = new AbortController();
     stale = false;
@@ -13,20 +13,32 @@ export function onPage(init: (signal: AbortSignal) => void): void {
     stale = true;
   });
   document.addEventListener('astro:page-load', () => {
-    if (stale) run();
+    if (stale) {
+      run();
+    }
   });
   run();
 }
 
-export function pageTimer(signal: AbortSignal) {
-  let id = 0;
-  const clear = () => window.clearTimeout(id);
+export interface PageTimer {
+  clear: () => void;
+  set: (fn: () => void, ms: number) => void;
+}
+
+const hold = (ms: number): Animation => document.documentElement.animate(null, ms);
+
+export const pause = (ms: number): Promise<unknown> => hold(ms).finished;
+
+export function pageTimer(signal: AbortSignal): PageTimer {
+  let held: Animation | null = null;
+  const clear = (): void => held?.cancel();
   signal.addEventListener('abort', clear, { once: true });
   return {
     clear,
-    set: (fn: () => void, ms: number) => {
+    set: (fn: () => void, ms: number): void => {
       clear();
-      id = window.setTimeout(fn, ms);
+      held = hold(ms);
+      held.addEventListener('finish', fn);
     },
   };
 }
@@ -36,7 +48,9 @@ export function observe(
   cb: IntersectionObserverCallback,
   opts?: IntersectionObserverInit,
 ): IntersectionObserver | null {
-  if (!('IntersectionObserver' in window)) return null;
+  if (!('IntersectionObserver' in globalThis)) {
+    return null;
+  }
   const io = new IntersectionObserver(cb, opts);
   signal.addEventListener('abort', () => io.disconnect(), { once: true });
   return io;

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"testing"
@@ -695,6 +696,8 @@ func TestWriteTwinArtifacts(t *testing.T) {
 }
 
 func TestTwinArtifactsAreFresh(t *testing.T) {
+	gcPercent := debug.SetGCPercent(400)
+	t.Cleanup(func() { debug.SetGCPercent(gcPercent) })
 	for _, a := range []struct {
 		path string
 		want []byte

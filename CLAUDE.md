@@ -16,7 +16,7 @@ At this time, Hasala goes to a small TestFlight beta. All deployments are
 
 | Path | Contents |
 | --- | --- |
-| `server/` | The Go server `hasalad` (module `github.com/salehtl/hasala/server`). It uses Postgres. It is a fork of ledgerd at commit `4b01e36`. |
+| `server/` | The Go server `hasalad` (module `github.com/salehtl/hasala/server`; the path keeps the name of the first owner, and the move to the organization did not change it). It uses Postgres. It is a fork of ledgerd at commit `4b01e36`. |
 | `server/oracle/` | A different Go module. It contains the frozen ledgerd v1 reference packages (`v1ref`), the corpus reader and the corpus gates. Use it only as a test oracle. The server build graph cannot get access to it. |
 | `ios/` | The native SwiftUI app and its Swift packages. `HasalaCore` is the client core (the port from TypeScript). `HasalaKit` is the design system, the read models, the widget data and the Maya mock. `Hasala/` is the app (`App/`, `Features/`, and `Live/`, which connects the screens to the core). `HasalaWidgets/` is the widget extension, with its own `PrivacyInfo.xcprivacy`. Refer to "How the code fits together" below. |
 | `conformance/` | Shared fixtures. Go and Swift must give output that is the same, byte for byte. Nine sets are golden files that the Swift tests own (`conformance/README.md`). The ledgerd TypeScript client core and PWA that wrote some of them were removed after commit `9b4aae2`. |
@@ -90,6 +90,8 @@ reachable.
   `server/internal/tmpl/seed`. `scripts/check-templates-manifest.sh` also
   compares the SHA-256 of each seed with `TemplatesManifest.swift`. After you
   change a seed template, run `swift ios/tools/templates/sync.swift`.
+- `oxlint` and `oxfmt --check` on `infra/assist`, `scripts` and `ios/scripts`
+  (refer to "Lint and format" below).
 - The golden fixtures check. The sets `authres`, `categorize`, `extract`, `fx`,
   `merchant-group`, `norm-dates`, `outlook-sender`, `replay` and `sms-extract` are golden files: the Swift tests own their
   expected output, and `HASALA_UPDATE_GOLDEN=1` rewrites it
@@ -99,9 +101,11 @@ reachable.
 - The toolchain floor.
 - The hasalad fences (`server/cmd/hasalad/fence_test.go`).
 - `go vet` and `go test` in `server/`, then in `server/oracle/`. Both use one
-  temporary Postgres (unix socket only).
-- The typecheck and `bun test` of the assist worker (`infra/assist`). Its
-  dependencies are always installed from the lockfile.
+  temporary Postgres (unix socket only). The tests run in random order (refer
+  to "Go test order and cleanup").
+- The typecheck and `bun test` of the assist worker (`infra/assist`), then the
+  typecheck of `scripts/*.ts` and `ios/scripts` (refer to "Typecheck" below).
+  The worker's dependencies are always installed from the lockfile.
 - The conformance suites. The `CONFORMANCE` table in `scripts/check.sh` names
   the Go packages of each fixture set. Each directory
   in `conformance/` must have an entry. When you add a fixture set, add its
@@ -112,17 +116,84 @@ reachable.
   alone, and it must still fail with that text.
 
 The gate also runs its own self-tests: `scripts/tests/gate_run_test.sh`,
-`gotest_ran_test.sh`, `git_env_test.sh` and `pre_push_hook_test.sh` (the
+`gotest_ran_test.sh`, `git_env_test.sh`, `ci_mac_devshell_test.sh`,
+`ci_changes_test.sh`, `ci_budget_test.sh` and `pre_push_hook_test.sh` (the
 pre-push hook, refer to "Before a push"). `git_env_test.sh` proves that the
 self-tests leave the surrounding repository alone when git's variables are
-exported. The closing lines name only the steps that ran, and a step that did
+exported. `ci_changes_test.sh` tests the path rules of CI (refer to "Path rules
+in CI"). The closing lines name only the steps that ran, and a step that did
 not run adds `check: NOT RUN: ...`.
+
+### Go test order and cleanup
+
+The gate runs the Go tests of the two modules in random order
+(`-shuffle=on`). A package that fails shows its seed:
+`FAIL <package> (<time>s) -shuffle=<seed>`. The gate then prints the command
+that runs this package again in the same order.
+`CHECK_SHUFFLE=<seed> scripts/check.sh` gives that order to the full gate. Do
+not set the order to make a test pass.
+
+In the gate, all packages use one Postgres cluster at the same time. Thus a
+test must pass alone, in each order and while the tests of other packages
+run. A test that fails only in some orders, or only on a busy machine, has a
+bug. Find the cause. Do not add a retry and do not make a timeout longer.
+
+- Do not keep state that changes in a package-level variable. Put it in the
+  fixture of the test.
+- Set an environment variable only with `t.Setenv`. Change the directory only
+  with `t.Chdir`. Write files only below `t.TempDir()`.
+- Use `t.Cleanup` to put back each thing that the test changes, at the line
+  that changes it: a server, a goroutine, a process, a held transaction.
+- The standard logger is process state. `slog.SetDefault` also changes the
+  writer and the flags of the `log` package, and `slog.SetDefault(previous)`
+  does not put them back. Put back `log.Writer()`, `log.Flags()` and
+  `slog.Default()` (refer to `captureLog` in `server/cmd/hasalad/main_test.go`).
+- Use a database of your own. `pgtest.New(t)` gives each test a new migrated
+  database and drops it. Do not rely on a row or a sequence value of another
+  test.
+- Each test sees the sessions and the locks of all databases in the cluster.
+  Limit a query on `pg_stat_activity` with `datname = current_database()`, and
+  a query on `pg_locks` with the `database` of the test.
+- To wait for a lock, wait until `pg_stat_activity` shows the session in a
+  lock wait. Do not sleep.
+- A row lock does not keep its queue. When the holder ends, a new session can
+  get the row before a session that waited. If a test needs one sequence, use
+  `LOCK TABLE`, which keeps its queue.
+- Do not move a test clock while a goroutine of the code under test still
+  handles an event. Wait for a sign that it finished (a counter, a row, a
+  channel). A callback that the code calls in the middle of its work is not
+  that sign.
+- Other gate runs can use the same host at the same time. Do not rely on the
+  process table or on a fixed path outside `t.TempDir()`.
+
+### Fast Go tests
+
+The Go tests of `server/` must stay below 60 seconds on 4 cores. Most of the
+time is Postgres work for each test database, and password hashing.
+
+- The tests of `internal/auth` and `internal/api` run in parallel. Start a new
+  test there with `t.Parallel()`. A test that changes process state (the
+  logger, the environment) does not call it. Such a test then runs alone,
+  before the parallel tests.
+- A parallel test uses only its own database, its own fixture and its own
+  clock.
+- Each test database is a file copy of one migrated template
+  (`internal/pgtest`). Its pools open a connection only at the first query. Do
+  not migrate a database in a test, unless the migration is the subject.
+- For the password stretch of the client (600,000 rounds), use
+  `authtest.Stretch`. It keeps each result. In `internal/auth`, get addresses
+  from `f.newAddr()`, so that the same inputs occur again.
+- Do not make the password hash of the server cheaper in a test.
+- To test a lock timeout or a statement timeout, set it on a pool of the test
+  (`RuntimeParams`). Do not wait for the 5 seconds of the runtime role.
+- Do not build a binary more than one time in a package.
 
 ### One test
 
 - Go (in `server/` or `server/oracle/`):
   `go test -count=1 -run '^TestName$' ./internal/oplog`. Tests that use
-  Postgres start their own temporary cluster.
+  Postgres start their own temporary cluster. Add `-shuffle=<seed>` to get the
+  order of a failed gate run.
 - HasalaCore: `swift test --package-path ios/HasalaCore --filter <Target>.<Class>/<test>`.
   CI (job `swift`) runs `swift test --disable-automatic-resolution --explicit-target-dependency-import-check error`
   in `ios/HasalaCore`.
@@ -144,13 +215,14 @@ The hook runs these checks:
   change. `go vet` is also the Go typecheck.
 - `nixfmt --check` on the changed Nix files.
 - shellcheck on the changed scripts and hooks.
-- A typecheck of each TypeScript project that has a change (`tsgo` when it is
-  on PATH, else the `tsc` of the project).
+- A typecheck of each TypeScript project that has a change, and of its
+  `tsconfig.test.json` (`tsgo` when it is on PATH, else the `tsc` of the
+  project).
 - oxfmt and oxlint on the changed TypeScript, JavaScript and Astro files, when
   the tree has their configuration (`.oxfmtrc.json`, `.oxlintrc.json`).
-- The HasalaCore lints, the tool pins, the templates and the fast self-tests,
-  when their paths changed. On a Mac, also the design tokens and the Xcode
-  project.
+- The HasalaCore lints, the tool pins, the templates, the CI path rules and
+  the fast self-tests, when their paths changed. On a Mac, also the design
+  tokens and the Xcode project.
 
 Each check shows one state:
 
@@ -195,27 +267,91 @@ that the hook leaves to CI: `astro check`, the gate self-tests and the hook
 self-test (`scripts/tests/pre_push_hook_test.sh`). `--all` runs the checks on
 all files.
 
+### Lint and format
+
+`oxlint` (from the flake) lints all TypeScript, JavaScript and Astro files. The
+configuration is `.oxlintrc.json` in the repository root. Run `oxlint` in the
+repository root. It takes less than one second.
+
+- All rule categories are on. To switch a rule off, change `.oxlintrc.json`
+  and give the reason in the pull request. Do not write a disable comment.
+- Do not use `oxlint --fix` without a typecheck and a test run after it. Some
+  of its fixes change behaviour.
+- In an `.astro` file, `oxlint` reads the frontmatter and each `<script>`
+  element. It does not read the expressions in the markup (`{...}`), and it
+  does not report an unused import or variable in the frontmatter.
+- Three jobs run it: `web` lints `web/`, `gate` (through `scripts/check.sh`)
+  lints `infra/assist`, `scripts` and `ios/scripts`, and `secrets` lints
+  `ios/scripts`, because `gate` does not start for a change only in `ios/`.
+  The same three jobs run `oxfmt --check` on the same paths.
+- The home page has a JavaScript budget of 15 KB (gzip) and little free space.
+  For this reason, some rules are off for `web/src/scripts/`. Run
+  `bun run build` in `web/` after each change to a page script.
+
+`oxfmt` (from the flake) formats the TypeScript and JavaScript files (`.ts`,
+`.mjs`). The configuration is `.oxfmtrc.json` in the repository root. Run
+`oxfmt` to format and `oxfmt --check` to examine. `nix fmt` also runs it.
+
+- `oxfmt` does not format `.astro` files, and no check examines their format.
+  Write the frontmatter and the `<script>` elements in the same style.
+- `.oxfmtrc.json` keeps `oxfmt` away from JSON, CSS, Markdown, YAML, HTML and
+  TOML files. The JSON fixtures and templates must stay the same byte for
+  byte.
+
+### Typecheck
+
+`tsgo` (TypeScript 7, the package `typescript-go` from the flake) does the
+typechecks. Each one takes less than one second.
+
+| Project | Command | Files |
+| --- | --- | --- |
+| `infra/assist/tsconfig.json` | `tsgo --noEmit` | The worker, with the Workers types. |
+| `infra/assist/tsconfig.test.json` | `tsgo --noEmit -p tsconfig.test.json` | The worker and its tests, with the Bun types. |
+| `scripts/tsconfig.json` | `tsgo --noEmit -p scripts` | `scripts/*.ts` and `ios/scripts/**/*.ts`. The Bun types come from `infra/assist/node_modules`, thus install them there first. |
+| `web/tsconfig.json` | `tsgo --noEmit` | The `.ts` and `.mjs` files of the site. |
+| `web/tsconfig.test.json` | `tsgo --noEmit -p tsconfig.test.json` | The tests of the site, with the Bun types. |
+
+- In `infra/assist` and in `web/`, `bun run typecheck` runs the two projects.
+  In `web/` it first runs `astro sync`, which writes `web/.astro/types.d.ts`
+  (the types of `astro:content` and `import.meta.env`). That file is not in the
+  repository, and `tsgo` alone fails in a new checkout.
+- `tsgo` does not read `.astro` files. `bun run check` (`astro check`, with
+  TypeScript 6 from `web/node_modules`) is the only typecheck of the
+  frontmatter, the markup and the `<script>` elements. Do not remove it. It
+  also fails on a hint, thus an unused import in a frontmatter stops it.
+- `gate` runs the worker and the scripts projects, `web` runs the two web
+  projects and `astro check`, and `secrets` runs the scripts project.
+
 ### CI
 
-CI is `.github/workflows/ci.yml`. It runs on each pull request and on each
-push to `main`. You can also start it manually (`workflow_dispatch`). CI does
-not have the private fixtures.
+CI is `.github/workflows/ci.yml`. It runs on each pull request, on each
+merge group of the merge queue and on each push to `main`. You can also start
+it manually (`workflow_dispatch`). CI does not have the private fixtures.
+A pull request merges only through the merge queue. On a merge group, the Mac
+jobs skip, and the queue merges when `ci-ok` passes (`docs/ci.md`).
 
-The last job, `ci-ok`, needs only the fast jobs: `changes`, `gate`, `vuln`
-and `secrets`. It always runs. It fails if one of these jobs failed or was
-cancelled. It passes when each one succeeded or was skipped. `ci-ok` is the
-required check that the ruleset must name. Until the owner changes the
-ruleset, the ruleset names these three jobs:
+The last job, `ci-ok`, needs only the fast jobs: `changes`, `gate`,
+`nix-eval`, `nix-build`, `vuln` and `secrets`. It always runs. It fails if
+one of these jobs failed or was cancelled. It passes when each one succeeded or
+was skipped. `ci-ok` is the one required check that the ruleset names. These
+jobs run at the same time:
 
-- `gate`: first `nix flake check --no-build`, then a build of each check
-  except `qa-vm`, then `scripts/check.sh` in the devShell. In CI,
-  `scripts/check.sh` skips its `govulncheck ./cmd/hasalad/...` step, because
-  `vuln` scans all packages.
+- `gate`: `scripts/check.sh` in the devShell. In CI, `scripts/check.sh`
+  skips its `govulncheck ./cmd/hasalad/...` step, because `vuln` scans all
+  packages.
+- `nix-eval`: `nix flake check --no-build`, then
+  `scripts/ci-mac-devshell-cached.sh`. This script plans the Mac devShell and
+  builds nothing. It fails when the public cache has no Mac build of a
+  nixpkgs package in the devShell, because a Mac then builds that package
+  from source and `ios-tools` cannot end in its time limit. Move the nixpkgs
+  pin when it fails.
+- `nix-build`: a build of each check except `qa-vm`.
 - `vuln`: `govulncheck ./...` in `server/` and in `server/oracle/`. The job
   fails if it finds a reachable advisory.
 - `secrets`: the real-mail fence, the HasalaCore lints
   (`ios/scripts/check-imports.sh --no-manifest` and `check-forbidden.sh`),
-  then gitleaks on the full history.
+  then gitleaks on the full history, then `oxlint`, `oxfmt --check` and the
+  typecheck on `ios/scripts`.
 
 Do not change these job names or the name `ci-ok`. The required status
 checks find the jobs by their names. Add a new job to the `needs` of `ci-ok`
@@ -228,20 +364,49 @@ thus they do not stop a merge: `swift` (HasalaCore on a Mac), `ios-tools`
 (the website, refer to "Website") and `nixos-vm` (it builds
 `checks.x86_64-linux.qa-vm` with KVM).
 
+### Time budgets
+
+Each job has a time budget, in seconds, in `scripts/ci-budget.sh`.
+
+- `ci-ok` fails when a job that it needs ran longer than its budget. It also
+  fails when the time from the start of the run to the end of these jobs is
+  longer than the path budget in that script.
+- The last job, `budget`, does the same check for all jobs when they are
+  complete. It is not required.
+- A new job must get a budget in that script. Without one, `budget` fails.
+- The `timeout-minutes` of a job is a hard stop at about two times its
+  budget.
+- A wait for a runner above 10 s gives a warning and not a failure, because
+  no change in this repository can make it shorter.
+- Make a budget smaller when a change makes its job faster. Make a budget
+  larger only with the times of real runs in the pull request. Do not start a
+  job again to get below a budget: a second attempt keeps the time of each
+  job that it does not run again.
+
 ### Path rules in CI
 
 On a pull request and on a push to `main`, CI examines the changed paths. If
 it is not sure, it runs the job.
 
-- The first job, `changes`, makes a list of the changed paths in the pull
-  request (`git diff -z`, thus each file name agrees exactly as it is
-  written).
-- CI skips `gate`/`vuln`, `swift`, `ios-tools`, `web` or `nixos-vm` only
-  when all changed paths are on the list of paths that the job does not read.
+- The first job, `changes`, makes a list of the changed paths
+  (`git diff -z --no-renames --name-only`). With `-z`, each file name agrees
+  exactly as it is written. With `--no-renames`, a file that moved is on the
+  list two times, with its old path and its new path.
+- On a pull request, the checkout is the merge commit, and the list is the
+  change from `HEAD^1` to `HEAD`. This is the change that the merge makes on
+  the base branch.
+- `scripts/ci-changes.sh` contains the rules. It reads the list and prints
+  `true` or `false` for each output: `gate` (the jobs `gate`, `nix-eval`,
+  `nix-build` and `vuln`),
+  `swift`, `ios` (the job `ios-tools`), `ios_scripts` (the devShell step of
+  `ios-tools`), `web` and `nixos_vm`. `scripts/tests/ci_changes_test.sh` tests
+  the rules, and the gate runs it.
+- Each output has a list of paths that its job does not read. An output is
+  `false`, and CI skips the job, only when all changed paths are on that list.
   All other paths start the job. This includes paths that nobody expected
   (for example a new top-level directory, `go.work`, `.gitattributes`).
-- No job reads `LICENSES/`, root `*.md`, `NOTICE` or
-  `private-fixtures.lock`. Only `ios-tools` reads `design/`.
+- No job reads `LICENSES/`, root `*.md` or `NOTICE`. Only `ios-tools` reads
+  `design/`. Only `swift` reads `private-fixtures.lock`.
 - `gate` and `vuln` also do not read `docs/`, `web/` and `ios/`. But they read
   all `*.go`, `*.nix`, `go.mod`, `go.sum`, `go.work` and `go.work.sum` files
   in those directories, the bundled templates
@@ -250,25 +415,44 @@ it is not sure, it runs the job.
   also reads `docs/runbooks/restore.md` (`module-eval` pins it), and `vuln`
   shares the output of `gate`, so it also runs when that file changes. A change
   in `infra/` starts them.
-- `swift` reads only `ios/` and `conformance/`, plus `server/internal/tmpl/seed/`.
-- `ios-tools` reads only `ios/`, `design/` and the
-  flake. The devShell step of `ios-tools` reads only `ios/scripts/` and the
-  flake (output `ios_scripts`).
-- `web` reads only `web/`, `docs/legal/` and the flake.
+- `scripts/check.sh` also runs the real-mail fence and the HasalaCore lints on
+  `docs/`, `web/` and `ios/`. These directories do not start `gate`, because
+  `secrets` runs the same two checks on each push and pull request.
+- `swift` reads only `ios/` and `conformance/`, plus
+  `server/internal/tmpl/seed/` and `private-fixtures.lock`. A test of
+  `outlook-trust-check` finds the repository through that file. `swift` does
+  not use the flake.
+- `ios-tools` reads only `ios/`, `design/` and the flake. The devShell step of
+  `ios-tools` reads only `ios/` and the flake (output `ios_scripts`). The
+  release-script tests run `archive.sh` on the checkout, and its gate examines
+  the sources in `ios/`. Thus a change in `ios/` starts this step, not only a
+  change in `ios/scripts/`.
+- `web` and `web-lighthouse` read only `web/`, `docs/legal/` and the flake.
+  `web` does the typecheck, the tests and the build. `web-lighthouse` builds
+  the site again and runs Lighthouse, mobile and desktop in two jobs.
 - `nixos-vm` reads only `infra/` (except `infra/assist/`), `server/` and the
   flake.
-- A change in `.github/` starts all jobs. `secrets` always runs.
-- If `changes` does not succeed, all jobs run.
+- A change in `.github/` or in `scripts/ci-changes.sh` starts all jobs.
+  `secrets` always runs.
+- If `changes` does not succeed, all jobs run. An empty list, a list that the
+  script cannot read and an incorrect pattern also start all jobs.
 - A manual run starts all jobs.
 - A push to `main` uses the same path rules for all jobs, against the commit
   that `main` was at before the push. The pull request already ran them on
   the same code, because a branch must be up to date before it merges. If CI
   cannot get that commit (a new branch, a force push), all jobs run.
+- The rules see only the path of a symbolic link, not its target. Do not add
+  a symbolic link from a path that a job reads to a path that the job does
+  not read. The self-test fails when the tree gets a new symbolic link or a
+  submodule.
+- `changes` prints the changed paths between `::stop-commands::` and a random
+  token. Thus a file name cannot give a command to the runner.
 
 ### Concurrency and caches
 
 A new push to a pull request cancels its older run. A newer push to `main`
-cancels the Mac jobs of an older push. Only a push to `main` saves a Nix cache entry. Do not use
+cancels the Mac jobs of an older push. The seed jobs (`nix-cache`, `nix-cache-mac`) save the Nix cache entries when
+`flake.nix` or `flake.lock` changes; the test jobs only restore them. Do not use
 `magic-nix-cache-action`. `vuln-weekly.yml` and `ci-weekly.yml` run on a
 schedule and are not required. The details are in `docs/ci.md`.
 
@@ -279,7 +463,8 @@ Rules for a change to the CI:
 2. Do not use a workflow-level `paths:` filter. It keeps the required checks
    in the pending state permanently.
 3. If a job starts to read a path on its list of paths that it does not read,
-   remove that path from the list in `changes`.
+   remove that path from the list in `scripts/ci-changes.sh`. Add a case for
+   the path to `scripts/tests/ci_changes_test.sh`.
 
 ### Secrets and real mail
 
@@ -401,7 +586,10 @@ Release scripts:
   password of the owner. Until the owner gives it, `simctl` and the UI
   tests stop with no error.
 - `ios/scripts/tests/run.sh` runs the release-script tests offline (stub
-  xcodebuild and altool, fake keys, synthetic .ipa files).
+  xcodebuild and altool, fake keys, synthetic .ipa files). It starts all test
+  files at the same time and prints their output in the sequence of their
+  names. `RELEASE_TEST_JOBS=1` runs them one at a time. Each test file must
+  use only its own temporary directory.
   `ios/scripts/tests/devshell_test.sh` runs them again in the devShell, where
   GNU coreutils are first on PATH.
 
@@ -413,15 +601,15 @@ CI for iOS:
 - Job `ios-tools` does the checks that do not use the app build or a simulator: the
   HasalaKit tests, the design tokens, the project against `ios/project.yml`,
   `ios/scripts/tests/run.sh` and shellcheck on `ios/scripts`. It runs
-  `ios/scripts/tests/devshell_test.sh` only when `ios/scripts/` or the flake
-  changed.
+  `ios/scripts/tests/devshell_test.sh` only when `ios/` or the flake changed.
 - `ios-tools` is not a required check, and `ci-ok` does not need it.
 
 ### Nix
 
 - `nix build .#hasalad` builds `cmd/hasalad`.
 - `nix flake check` builds it and examines the format.
-- `nix fmt` formats Nix and Go. It does not format `server/oracle/v1ref`.
+- `nix fmt` formats Nix, Go, TypeScript and JavaScript. It does not format
+  `server/oracle/v1ref`.
   Do not change the bytes of `server/oracle/v1ref`.
 - The infra checks:
   - `ingress-lint` (on the two systems). It compares the tunnel configuration
@@ -580,7 +768,8 @@ From `web/`:
 
 1. Run `bun install --frozen-lockfile` one time.
 2. When you edit, run `bun run dev`.
-3. Run `bun run check` (this is `astro check`) and `bun run test`.
+3. Run `bun run typecheck` (TypeScript 7), `bun run check` (this is
+   `astro check`) and `bun run test`.
 4. Run `bun run build`. It writes `dist/` and then runs
    `scripts/check-dist.ts`. The build fails if one of these conditions
    occurs:
@@ -633,7 +822,8 @@ If you add a page with a code or a token in its address, do these steps:
   127.0.0.1:4321. It uses the `_headers`, the `_redirects`, the
   trailing-slash rules of production and gzip.
 - `web/lighthouse/run.sh` runs Lighthouse CI on `/` (mobile and desktop) on
-  that server. It must have Node and Chrome, thus it runs in CI (job `web`).
+  that server. It must have Node and Chrome, thus it runs in CI (job
+  `web-lighthouse`, one job for each preset).
   CI keeps the reports as a workflow artifact. The minimum scores are 0.9
   for performance, and 0.95 for accessibility, best practices and SEO.
 

@@ -28,8 +28,9 @@ func busyGate(t *testing.T) (*authkeys.Gate, func()) {
 // AT-AUTH-2, review should-fix 2: a busy gate answers 503 and leaves the
 // signup unclaimed, so the retry succeeds with the same code.
 func TestABusyGateLeavesThePasswordSignupUnclaimed(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	s := f.provenSignup(addr, "Maya")
 	m := &member{f: f, addr: addr, pw: "a password of some length"}
 	m.s = f.stretch(addr, m.pw)
@@ -59,6 +60,7 @@ func TestABusyGateLeavesThePasswordSignupUnclaimed(t *testing.T) {
 
 // Review should-fix 3: a busy gate does not spend a verified C4 ceremony.
 func TestABusyGateLeavesTheRecoveryCeremonyUnclaimed(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	rk := cryptoref.RK(m.acct.E)
@@ -99,6 +101,7 @@ func TestABusyGateLeavesTheRecoveryCeremonyUnclaimed(t *testing.T) {
 // Spec 02 §10.8 steps 4 and 5: the gate comes before the ceremony is spent,
 // so a 503 leaves the password-login ceremony usable.
 func TestABusyGateLeavesThePasswordLoginCeremonyUsable(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	b, err := f.acct.PasswordLoginBegin(bgctx, m.addr)
@@ -121,6 +124,7 @@ func TestABusyGateLeavesThePasswordLoginCeremonyUsable(t *testing.T) {
 }
 
 func TestABusyGateGivesBackAnUnboundAttemptOnTheAddress(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	g, release := busyGate(t)
@@ -143,6 +147,7 @@ func TestABusyGateGivesBackAnUnboundAttemptOnTheAddress(t *testing.T) {
 }
 
 func TestABusyGateGivesBackABoundAttemptOnTheDevice(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	g, release := busyGate(t)

@@ -153,66 +153,42 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
 
   // The code: 24 base32 characters, from /i/<code> or, in the
   // older form, from /i#<code>. Hyphens and spaces are ignored, as in the app.
-  const norm = (v: string) => v.toUpperCase().replace(/[\s-]/g, '');
-  const isCode = (v: string) => /^[A-Z2-7]{24}$/.test(v);
+  const norm = (value: string): string => value.toUpperCase().replaceAll(/[\s-]/gu, '');
+  const isCode = (value: string): boolean => /^[A-Z2-7]{24}$/u.test(value);
+  const LINK_KEY = /^[A-Za-z0-9_-]{43}$/u;
+  const COPIED_MS = 2000;
 
-  // Through onPage, like every page script, though the router always loads this page in full.
-  onPage((signal) => {
-    if (!document.querySelector('[data-code]')) return;
-    window.addEventListener(
-      'hashchange',
-      () => {
-        const h = location.hash.slice(1);
-        if (isCode(norm(h)) || /^[A-Za-z0-9_-]{43}$/.test(h)) location.reload();
-      },
-      { signal },
-    );
-    const fragment = location.hash.slice(1);
-    const match = /^\/i\/([^/?#]+)/.exec(location.pathname);
-    // The code and the link key leave the address bar and the history entry
-    // (the router's state stays, so Back and Forward still work).
-    if (location.pathname !== '/i' || location.search || location.hash) history.replaceState(history.state, '', '/i');
-    let code = '';
-    let linkKey = '';
+  const pathCode = (): string => {
+    const match = /^\/i\/([^/?#]+)/u.exec(location.pathname);
     try {
-      code = match ? norm(decodeURIComponent(match[1])) : '';
+      return match ? norm(decodeURIComponent(match[1])) : '';
     } catch {
-      code = '';
+      return '';
     }
-    if (isCode(code)) {
-      // The link key proves the address; only the email carries it.
-      if (/^[A-Za-z0-9_-]{43}$/.test(fragment)) linkKey = fragment;
-    } else {
-      code = isCode(norm(fragment)) ? norm(fragment) : '';
-    }
-    if (!code) {
-      document.documentElement.classList.remove('has-code');
-      return;
-    }
+  };
 
-    document.documentElement.classList.add('has-code');
-    const shown = code.match(/.{4}/g)!.join('-');
-    document.querySelectorAll<HTMLElement>('[data-code]').forEach((el) => {
-      el.textContent = shown;
-      el.hidden = false;
-    });
-
-    const link = `https://hasala.app/i/${code}${linkKey ? `#${linkKey}` : ''}`;
-    const copied = linkKey ? link : shown;
-    const idle = linkKey ? 'Copy invite link' : 'Copy code';
+  const wireCopy = (copied: string, idle: string, signal: AbortSignal): void => {
     const copy = document.querySelector<HTMLButtonElement>('[data-copy-code]');
     const field = document.querySelector<HTMLInputElement>('[data-copy-field]');
     const hint = document.querySelector<HTMLElement>('[data-copy-hint]');
     const manual = document.querySelector<HTMLElement>('[data-copy-manual]');
     const go = document.querySelector<HTMLAnchorElement>('.invite__cta:not(.invite__cta--second)');
     const goLabel = go?.textContent ?? '';
-    const showManual = (focus: boolean) => {
-      if (!field) return;
+    const showManual = (focus: boolean): void => {
+      if (!field) {
+        return;
+      }
       field.value = copied;
       field.hidden = false;
-      if (hint) hint.hidden = true;
-      if (manual) manual.hidden = false;
-      if (go) go.textContent = goLabel;
+      if (hint) {
+        hint.hidden = true;
+      }
+      if (manual) {
+        manual.hidden = false;
+      }
+      if (go) {
+        go.textContent = goLabel;
+      }
       if (focus) {
         field.scrollIntoView({ block: 'center' });
         field.focus();
@@ -220,8 +196,8 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
       }
     };
     field?.addEventListener('focus', () => field.select(), { signal });
-    if (copy && navigator.clipboard) {
-      const label = copy.querySelector('span')!;
+    const label = copy?.querySelector('span');
+    if (copy && label && navigator.clipboard) {
       label.textContent = idle;
       copy.hidden = false;
       let reset = 0;
@@ -235,40 +211,110 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
           clearTimeout(reset);
           if (await clipboard.copy()) {
             label.textContent = 'Copied';
-            reset = window.setTimeout(() => (label.textContent = idle), 2000);
+            reset = window.setTimeout(() => (label.textContent = idle), COPIED_MS);
           } else {
             label.textContent = idle;
           }
         },
         { signal },
       );
-      if (go) go.textContent = 'Copy invite and open TestFlight';
-      document.querySelectorAll<HTMLAnchorElement>('[data-copy-go]').forEach((a) =>
-        a.addEventListener('click', (event) => void clipboard.leave(event, () => (location.href = a.href)), { signal }),
-      );
+      if (go) {
+        go.textContent = 'Copy invite and open TestFlight';
+      }
+      for (const anchor of document.querySelectorAll<HTMLAnchorElement>('[data-copy-go]')) {
+        anchor.addEventListener(
+          'click',
+          (event) => void clipboard.leave(event, () => (location.href = anchor.href)),
+          { signal },
+        );
+      }
     } else {
       showManual(false);
     }
+  };
+
+  const drawQr = async (link: string, signal: AbortSignal): Promise<void> => {
+    const { encode } = await import('uqr');
+    const box = document.querySelector('[data-qr]');
+    if (signal.aborted || !box) {
+      return;
+    }
+    const { data, size } = encode(link, { ecc: 'M', border: 0 });
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+    svg.setAttribute('shape-rendering', 'crispEdges');
+    let dots = '';
+    for (const [y, row] of data.entries()) {
+      for (const [x, on] of row.entries()) {
+        if (on) {
+          dots += `M${x} ${y}h1v1h-1z`;
+        }
+      }
+    }
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', dots);
+    path.setAttribute('fill', '#202023');
+    svg.append(path);
+    box.replaceChildren(svg);
+    const wrap = document.querySelector<HTMLElement>('[data-qr-wrap]');
+    if (wrap) {
+      wrap.hidden = false;
+    }
+  };
+
+  // Through onPage, like every page script, though the router always loads this page in full.
+  onPage((signal) => {
+    if (!document.querySelector('[data-code]')) {
+      return;
+    }
+    window.addEventListener(
+      'hashchange',
+      () => {
+        const hash = location.hash.slice(1);
+        if (isCode(norm(hash)) || LINK_KEY.test(hash)) {
+          location.reload();
+        }
+      },
+      { signal },
+    );
+    const fragment = location.hash.slice(1);
+    const fromPath = pathCode();
+    // The code and the link key leave the address bar and the history entry
+    // (the router's state stays, so Back and Forward still work).
+    if (location.pathname !== '/i' || location.search || location.hash) {
+      history.replaceState(history.state, '', '/i');
+    }
+    let code = fromPath;
+    let linkKey = '';
+    if (isCode(code)) {
+      // The link key proves the address; only the email carries it.
+      if (LINK_KEY.test(fragment)) {
+        linkKey = fragment;
+      }
+    } else {
+      code = isCode(norm(fragment)) ? norm(fragment) : '';
+    }
+    if (!code) {
+      document.documentElement.classList.remove('has-code');
+      return;
+    }
+
+    document.documentElement.classList.add('has-code');
+    const shown = (code.match(/.{4}/gu) ?? []).join('-');
+    for (const el of document.querySelectorAll<HTMLElement>('[data-code]')) {
+      el.textContent = shown;
+      el.hidden = false;
+    }
+
+    const link = `https://hasala.app/i/${code}${linkKey ? `#${linkKey}` : ''}`;
+    const copied = linkKey ? link : shown;
+    const idle = linkKey ? 'Copy invite link' : 'Copy code';
+    wireCopy(copied, idle, signal);
 
     // A QR code of this link, link key included, for people reading on a computer.
     if (matchMedia('(min-width: 1024px) and (pointer: fine)').matches) {
-      import('uqr').then(({ encode }) => {
-        const box = document.querySelector('[data-qr]');
-        if (signal.aborted || !box) return;
-        const { data, size } = encode(link, { ecc: 'M', border: 0 });
-        const ns = 'http://www.w3.org/2000/svg';
-        const svg = document.createElementNS(ns, 'svg');
-        svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
-        svg.setAttribute('shape-rendering', 'crispEdges');
-        let d = '';
-        data.forEach((row, y) => row.forEach((on, x) => on && (d += `M${x} ${y}h1v1h-1z`)));
-        const path = document.createElementNS(ns, 'path');
-        path.setAttribute('d', d);
-        path.setAttribute('fill', '#202023');
-        svg.append(path);
-        box.replaceChildren(svg);
-        document.querySelector<HTMLElement>('[data-qr-wrap]')!.hidden = false;
-      });
+      void drawQr(link, signal);
     }
   });
 </script>

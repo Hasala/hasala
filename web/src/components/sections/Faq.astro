@@ -25,13 +25,13 @@ import { SITE } from '../../data/site';
           <details class="faq__item" open={i === 0}>
             <summary class="faq__summary">
               <span class="faq__q">
-                {f.qMobile ? (
+                {f.questionMobile ? (
                   <>
-                    <span class="faq__d">{f.q}</span>
-                    <span class="faq__m">{f.qMobile}</span>
+                    <span class="faq__d">{f.question}</span>
+                    <span class="faq__m">{f.questionMobile}</span>
                   </>
                 ) : (
-                  f.q
+                  f.question
                 )}
               </span>
               <span class="faq__toggle" aria-hidden="true" />

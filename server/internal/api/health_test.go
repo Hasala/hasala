@@ -9,6 +9,7 @@ import (
 // tests are about what it must NOT do as much as what it must.
 
 func TestHealthzIsUnauthenticatedAndReportsTheDatabase(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 
 	w := h.req(http.MethodGet, "/api/v1/healthz", "", nil)
@@ -36,6 +37,7 @@ func TestHealthzIsUnauthenticatedAndReportsTheDatabase(t *testing.T) {
 // it returns is public. It returns two closed-enum words and nothing else — no
 // version, no DSN, no user counts, no hostname.
 func TestHealthzLeaksNothingButTwoWords(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 
 	w := h.req(http.MethodGet, "/api/v1/healthz", "", nil)
@@ -52,6 +54,7 @@ func TestHealthzLeaksNothingButTwoWords(t *testing.T) {
 // routing to a process whose database is gone is worse than one that has no
 // healthy backend and says so.
 func TestHealthzReports503WhenTheDatabaseIsGone(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.pool.Close()
 
@@ -67,6 +70,7 @@ func TestHealthzReports503WhenTheDatabaseIsGone(t *testing.T) {
 // Every other method is a 404 from the catch-all, not a 405 and never the
 // SPA-ish fallthrough the catch-all exists to prevent.
 func TestHealthzIsGETOnly(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 
 	w := h.req(http.MethodPost, "/api/v1/healthz", "", nil)

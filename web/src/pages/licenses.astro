@@ -16,9 +16,11 @@ import astroLicense from '../../node_modules/astro/LICENSE?raw';
 import uqrLicense from '../../node_modules/uqr/LICENSE?raw';
 
 const title = 'Third-party licences';
-const description = 'The third-party software the hasala.app website sends to your browser, with the full text of each licence, and how Hasala’s own code is licensed.';
+const description =
+  'The third-party software the hasala.app website sends to your browser, with the full text of each licence, and how Hasala’s own code is licensed.';
 const VERBATIM: Record<string, string> = { Inter: interOfl, Astro: astroLicense, uqr: uqrLicense };
-const textFor = (p: (typeof THIRD_PARTY)[number]) => (VERBATIM[p.name] ?? mitLicense(p.copyright)).trim();
+const textFor = (pkg: (typeof THIRD_PARTY)[number]): string =>
+  (VERBATIM[pkg.name] ?? mitLicense(pkg.copyright)).trim();
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -50,7 +52,7 @@ const jsonLd = {
     <section class="lic-own" aria-labelledby="own-title">
       <h2 id="own-title">Hasala’s own code</h2>
       <p>
-        Hasala’s code, this website included, is source-available at <a href={SITE.repoUrl}>github.com/salehtl/hasala</a> under the Functional Source License,
+        Hasala’s code, this website included, is source-available at <a href={SITE.repoUrl}>github.com/Hasala/hasala</a> under the Functional Source License,
         Version 1.1, ALv2 Future License (<a href={SITE.licenseUrl}>FSL-1.1-ALv2</a>). Each version becomes available under the Apache License 2.0 two years after
         it is released. The name Hasala (حصّالة) and the Slot mark are trademarks and are not covered by the licence; see <a href={SITE.trademarksUrl}
           >TRADEMARKS.md</a

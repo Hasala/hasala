@@ -6,6 +6,7 @@ import (
 )
 
 func TestTheSessionLivenessRuleIsTheSameInGoAndInSQL(t *testing.T) {
+	t.Parallel()
 	f := newKeyFixture(t)
 	now := f.clock.now()
 	ttl := f.sessions.TTL

@@ -20,6 +20,7 @@ func (f *acctFixture) takeEveryAttempt(codeID uuid.UUID) {
 }
 
 func TestAnAddressPausesWhenItsCodesLastGuessWasNeverJudged(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	id, err := f.acct.ResetBegin(bgctx, m.addr)
@@ -45,13 +46,14 @@ func TestAnAddressPausesWhenItsCodesLastGuessWasNeverJudged(t *testing.T) {
 }
 
 func TestGuessesAtAnExpiredSignupCodeDoNotPauseTheAddress(t *testing.T) {
+	t.Parallel()
 	for name, late := range map[string]time.Duration{
 		"at the moment it expires": CodeTTL,
 		"after it expired":         CodeTTL + time.Minute,
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newAcctFixture(t)
-			addr := newAddr()
+			addr := f.newAddr()
 			invite := f.printedInvite(false)
 			s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: invite, Email: addr, DisplayName: "Maya"})
 			if err != nil {
@@ -72,8 +74,9 @@ func TestGuessesAtAnExpiredSignupCodeDoNotPauseTheAddress(t *testing.T) {
 }
 
 func TestASignupCodeStillUsableAtItsLastGuessPausesTheAddress(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
-	addr := newAddr()
+	addr := f.newAddr()
 	invite := f.printedInvite(false)
 	s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: invite, Email: addr, DisplayName: "Maya"})
 	if err != nil {
@@ -91,6 +94,7 @@ func TestASignupCodeStillUsableAtItsLastGuessPausesTheAddress(t *testing.T) {
 }
 
 func TestADeviceCodeWhoseLastGuessWasNeverJudgedPausesTheAccountsResets(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	i := m.info()
@@ -117,9 +121,10 @@ func TestADeviceCodeWhoseLastGuessWasNeverJudgedPausesTheAccountsResets(t *testi
 }
 
 func TestAnEmailChangeRefusedAtItsOldCodeStillPausesTheAddressOfItsLastAttempt(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
-	next := newAddr()
+	next := f.newAddr()
 	sNew := f.stretch(next, m.pw)
 	begin := func() (EmailChangeBegun, error) {
 		su := m.deviceStepUp(keyproto.ActionEmailChange, m.s, sha([]byte(next)), sumBytes(sNew))
@@ -144,6 +149,7 @@ func TestAnEmailChangeRefusedAtItsOldCodeStillPausesTheAddressOfItsLastAttempt(t
 }
 
 func TestTheRightCodeOnTheLastAttemptPausesNothing(t *testing.T) {
+	t.Parallel()
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	id, err := f.acct.ResetBegin(bgctx, m.addr)

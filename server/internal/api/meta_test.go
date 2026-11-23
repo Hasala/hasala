@@ -12,6 +12,7 @@ import (
 // the Graph push is (a mailbox link alone is not enough), log_generation 1
 // when no file says otherwise.
 func TestMetaReportsTheServersPublicFacts(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.srv.Now = func() time.Time { return time.Date(2026, 10, 11, 9, 30, 15, 999, time.FixedZone("GST", 4*3600)) }
 	h.srv.Meta = Meta{RPID: "hasala.app", MinIOSBuild: 50}
@@ -80,6 +81,7 @@ func TestMetaReportsTheServersPublicFacts(t *testing.T) {
 
 // meta-ip: 1/s per client, burst 20.
 func TestMetaIsRateLimitedPerClient(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.srv.MetaPerIP = NewLimiter(0, 2, metaMaxKeys, h.srv.now)
 	for i := 0; i < 2; i++ {

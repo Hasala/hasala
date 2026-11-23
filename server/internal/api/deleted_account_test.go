@@ -16,6 +16,7 @@ import (
 // check looks for ("session resolves, user row missing") is unreachable in
 // production, and a test that arranged that state by hand would pass over it.
 func TestADeletedAccountAnswers410AndAnExpiredSessionStill401(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("sub-doomed")
 	tok := h.session(u)
@@ -39,6 +40,7 @@ func TestADeletedAccountAnswers410AndAnExpiredSessionStill401(t *testing.T) {
 }
 
 func TestAnExpiredSessionIsStillA401(t *testing.T) {
+	t.Parallel()
 	// The case a client must NOT wipe on, and the common one. If this ever
 	// becomes a 410, every routine token expiry destroys an offline user's
 	// outbox.
@@ -63,6 +65,7 @@ func TestAnExpiredSessionIsStillA401(t *testing.T) {
 // that would confirm to an unauthenticated caller that a guessed token was once
 // real.
 func TestAnUnknownTokenIsA401(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	w := h.req("GET", "/api/v1/writers", "not-a-token-anyone-issued", nil)
 	wantStatus(t, w, http.StatusUnauthorized)

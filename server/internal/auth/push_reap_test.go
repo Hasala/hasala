@@ -9,6 +9,7 @@ import (
 )
 
 func TestTheSweepForgetsThePushTokensOfEndedSessions(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	c := newClock()
 	sessions := &Sessions{Pool: pool, TTL: time.Hour, Max: 24 * time.Hour, Now: c.now}

@@ -537,21 +537,29 @@ import Icon from '../Icon.astro';
      diagram's cards and arrows, the who-can-see rows). Without
      IntersectionObserver it plays at once; with reduced motion the CSS keeps
      everything still whatever this sets. */
-  import { onPage, observe } from '../../scripts/page';
+  import { observe, onPage } from '../../scripts/page';
 
   onPage((signal) => {
     const els = document.querySelectorAll('[data-play-in]');
     const io = observe(
       signal,
       (entries, obs) => {
-        for (const e of entries) {
-          if (!e.isIntersecting) continue;
-          obs.unobserve(e.target);
-          e.target.setAttribute('data-play', '');
+        for (const entry of entries) {
+          if (!entry.isIntersecting) {
+            continue;
+          }
+          obs.unobserve(entry.target);
+          entry.target.setAttribute('data-play', '');
         }
       },
       { threshold: 0.2 },
     );
-    els.forEach((el) => (io ? io.observe(el) : el.setAttribute('data-play', '')));
+    for (const el of els) {
+      if (io) {
+        io.observe(el);
+      } else {
+        el.setAttribute('data-play', '');
+      }
+    }
   });
 </script>

@@ -350,7 +350,10 @@ typecheck() {
 		touch .astro/pre-push.stamp
 	fi
 	if have tsgo; then
-		tsgo --noEmit --pretty false --checkers 2
+		tsgo --noEmit --pretty false --checkers 2 || return 1
+		if [[ -f tsconfig.test.json ]]; then
+			tsgo --noEmit --pretty false --checkers 2 -p tsconfig.test.json
+		fi
 	elif [[ -x node_modules/.bin/tsc ]]; then
 		node_modules/.bin/tsc --noEmit --pretty false
 	else
@@ -372,6 +375,9 @@ ts_projects() {
 	fi
 	printf '%s\n' "$PATHS" | { grep -E '(\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)|(^|/)(tsconfig\.json|package\.json|bun\.lock))$' || true; } | while IFS= read -r f; do
 		d="$(dirname "$f")"
+		if [[ "$f" == ios/scripts/* ]]; then
+			d=scripts
+		fi
 		while :; do
 			if [[ -f "$d/tsconfig.json" ]]; then
 				printf '%s\n' "$d"
@@ -489,7 +495,7 @@ else
 	skip "private fixtures lock self-test" "no lock script changes"
 fi
 
-if changed '^scripts/(check\.sh|gotest-(ran|summary)\.ts|tests/(gate_run|gotest_ran|git_env|fence)_test\.sh)$'; then
+if changed '^scripts/(check\.sh|gotest-(ran|summary)\.ts|tests/(gate_run|gotest_ran|git_env|fence|ci_changes)_test\.sh)$'; then
 	check "conformance record self-test" bun 1 scripts/tests/gotest_ran_test.sh
 	slow "real-mail fence self-test" 6 gate "" 1 scripts/tests/fence_test.sh
 	slow "gate run self-test" 4 gate bun 1 scripts/tests/gate_run_test.sh
@@ -505,9 +511,15 @@ else
 	skip "pre-push hook self-test" "no hook changes"
 fi
 
-if changed '^(\.githooks/|scripts/(check|pre-push|install-hooks)\.sh$|scripts/gotest-(ran|summary)\.ts$|scripts/tests/(gate_run|gotest_ran|git_env|fence|pre_push_hook)_test\.sh$)'; then
+if changed '^(\.githooks/|scripts/(check|pre-push|install-hooks)\.sh$|scripts/gotest-(ran|summary)\.ts$|scripts/tests/(gate_run|gotest_ran|git_env|fence|pre_push_hook|ci_changes)_test\.sh$)'; then
 	slow "self-tests leave the repository alone" 20 gate "bun go gofmt nixfmt shellcheck gitleaks" 4 scripts/tests/git_env_test.sh
 	needs_mb 400
+fi
+
+if changed '^scripts/(ci-changes\.sh|tests/ci_changes_test\.sh)$'; then
+	check "CI path selection self-test" "" 1 scripts/tests/ci_changes_test.sh
+else
+	skip "CI path selection self-test" "no selection changes"
 fi
 
 if changed '(\.sh$|^\.githooks/)'; then
@@ -556,8 +568,12 @@ if [[ -z "$TSPROJECTS" ]]; then
 	skip "typecheck" "no change in a TypeScript project"
 else
 	while IFS= read -r project; do
-		if [[ ! -d "$project/node_modules" ]]; then
-			miss "typecheck $project/" "$project/node_modules is missing; run: (cd $project && bun install --frozen-lockfile)"
+		deps="$project"
+		if [[ "$project" == scripts ]]; then
+			deps=infra/assist
+		fi
+		if [[ ! -d "$deps/node_modules" ]]; then
+			miss "typecheck $project/" "$deps/node_modules is missing; run: (cd $deps && bun install --frozen-lockfile)"
 		elif have tsgo; then
 			check "typecheck $project/ (tsgo)" node 2 typecheck "$project"
 			early

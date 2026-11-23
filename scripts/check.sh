@@ -79,6 +79,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 JOBS="${CHECK_JOBS:-8}"
+SHUFFLE="${CHECK_SHUFFLE:-on}"
+if [[ ! "$SHUFFLE" =~ ^(on|[0-9]+)$ ]]; then
+	echo "check: CHECK_SHUFFLE=$SHUFFLE must be 'on' or a seed that an earlier run printed" >&2
+	exit 2
+fi
 step() { printf '\n== check: %s\n' "$*"; }
 
 FENCE_ONLY=""
@@ -176,6 +181,13 @@ step "gate run self-test"
 "$ROOT/scripts/tests/gate_run_test.sh"
 "$ROOT/scripts/tests/gotest_ran_test.sh"
 "$ROOT/scripts/tests/git_env_test.sh"
+"$ROOT/scripts/tests/ci_changes_test.sh"
+
+step "Mac devShell cache check self-test"
+"$ROOT/scripts/tests/ci_mac_devshell_test.sh"
+
+step "CI time budget self-test"
+"$ROOT/scripts/tests/ci_budget_test.sh"
 
 step "pre-push hook self-test"
 "$ROOT/scripts/tests/pre_push_hook_test.sh"
@@ -215,6 +227,14 @@ echo "$(ls -1 "$seed"/*.json | wc -l | tr -d ' ') templates identical"
 step "the template manifest names every seed by its hash"
 "$ROOT/scripts/tests/templates_manifest_test.sh"
 "$ROOT/scripts/check-templates-manifest.sh"
+
+step "oxlint (infra/assist, scripts, ios/scripts)"
+(cd "$ROOT" && oxlint infra/assist scripts ios/scripts)
+GATE_STEPS+=", oxlint"
+
+step "oxfmt --check (infra/assist, scripts, ios/scripts)"
+(cd "$ROOT" && oxfmt --check infra/assist scripts ios/scripts)
+GATE_STEPS+=", oxfmt"
 
 GOLDEN_SETS=(authres categorize extract fx merchant-group norm-dates outlook-sender replay sms-extract)
 step "golden fixtures change only with a Swift test change"
@@ -322,7 +342,7 @@ REAL_ORACLE="$(mktemp)"
 # Step 4's `go test -json` streams (server/ and server/oracle/), which step 6
 # checks the conformance packages against, and step 6's `go test -list`. Step 6
 # relies on step 4 running every test exactly as a run of its own would (only
-# -count=1 and the KNOWN_FAILING -skip, which names top-level tests): a flag
+# -count=1, -shuffle and the KNOWN_FAILING -skip, which names top-level tests): a flag
 # there that makes tests skip themselves, such as -short, would pass unseen.
 GO_RECORD="$(mktemp)"
 ORACLE_RECORD="$(mktemp)"
@@ -393,8 +413,8 @@ fi
 step "go vet ./..."
 go vet -p "$JOBS" ./...
 
-step "go test ./... (known failures skipped by name: $skip_re)"
-go test -count=1 -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | tee "$GO_RECORD" | REALCORPUS_COUNTS="$REAL_GO" bun "$ROOT/scripts/gotest-summary.ts"
+step "go test ./... (random order, -shuffle=$SHUFFLE; known failures skipped by name: $skip_re)"
+go test -count=1 -shuffle="$SHUFFLE" -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | tee "$GO_RECORD" | REALCORPUS_COUNTS="$REAL_GO" bun "$ROOT/scripts/gotest-summary.ts"
 
 # The oracle module (spec 02 §4.3): the frozen v1 reference packages and the
 # corpus gates. Its real-corpus tests are counted with the server's.
@@ -402,7 +422,7 @@ step "oracle: go vet ./... and go test ./..."
 (
 	cd oracle
 	go vet -p "$JOBS" ./...
-	go test -count=1 -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | tee "$ORACLE_RECORD" | REALCORPUS_COUNTS="$REAL_ORACLE" bun "$ROOT/scripts/gotest-summary.ts"
+	go test -count=1 -shuffle="$SHUFFLE" -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | tee "$ORACLE_RECORD" | REALCORPUS_COUNTS="$REAL_ORACLE" bun "$ROOT/scripts/gotest-summary.ts"
 )
 read -r s_ran s_skipped <"$REAL_GO"
 read -r o_ran o_skipped <"$REAL_ORACLE"
@@ -415,6 +435,9 @@ cd "$ROOT/infra/assist"
 bun install --frozen-lockfile
 bun run --bun typecheck
 bun test
+
+step "typecheck the scripts (scripts, ios/scripts)"
+(cd "$ROOT" && tsgo --noEmit -p scripts)
 
 # --- 6. conformance suites ------------------------------------------------------------
 # Every fixture set under conformance/, with the Go packages that check it:
@@ -527,7 +550,7 @@ for entry in "${KNOWN_FAILING[@]}"; do
 done
 
 # --- the real corpus, accounted for -----------------------------------------------
-GATE_STEPS+=", go vet, go test, assist worker, conformance"
+GATE_STEPS+=", go vet, go test, assist worker, scripts typecheck, conformance"
 read -r go_ran go_skipped <"$REAL_GO"
 corpus="go ${go_ran} ran / ${go_skipped} skipped"
 echo

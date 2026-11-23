@@ -6,13 +6,27 @@ const read = (path: string) => Bun.file(new URL(path, import.meta.url)).text();
 function page(answers: boolean[]) {
   const seen = { writes: 0, manual: 0, went: 0, held: 0 };
   const clipboard = inviteCopy(
-    async () => {
-      seen.writes++;
-      if (!(answers.shift() ?? true)) throw new DOMException('Write permission denied', 'NotAllowedError');
+    () => {
+      seen.writes += 1;
+      return (answers.shift() ?? true)
+        ? Promise.resolve()
+        : Promise.reject(new DOMException('Write permission denied', 'NotAllowedError'));
     },
-    () => seen.manual++,
+    () => {
+      seen.manual += 1;
+    },
   );
-  const press = () => clipboard.leave({ preventDefault: () => seen.held++ }, () => seen.went++);
+  const press = () =>
+    clipboard.leave(
+      {
+        preventDefault: () => {
+          seen.held += 1;
+        },
+      },
+      () => {
+        seen.went += 1;
+      },
+    );
   return { seen, clipboard, press };
 }
 
@@ -70,6 +84,6 @@ describe('the invite page', () => {
 
   test('stops offering to copy once the copy is by hand', async () => {
     const source = await read('../pages/i.astro');
-    expect(source).toContain('if (go) go.textContent = goLabel;');
+    expect(source).toContain('go.textContent = goLabel;');
   });
 });

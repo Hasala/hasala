@@ -35,6 +35,7 @@ func newTestUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 // ---------------------------------------------------------------------------
 
 func TestSessionTokenIsNeverStoredInTheClear(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -73,6 +74,7 @@ func TestSessionTokenIsNeverStoredInTheClear(t *testing.T) {
 // from crypto/rand is the requirement, and the encoding must not silently
 // shrink that.
 func TestIssuedTokensAreDistinctAnd32BytesOfEntropy(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -99,6 +101,7 @@ func TestIssuedTokensAreDistinctAnd32BytesOfEntropy(t *testing.T) {
 }
 
 func TestExpiredSessionIsRejected(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -128,6 +131,7 @@ func TestExpiredSessionIsRejected(t *testing.T) {
 // Spec 02 §9.2: the idle window slides with use (at most one write per
 // session-hour) up to the absolute cap, which nothing extends.
 func TestSessionsSlideUpToTheirAbsoluteCap(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -173,6 +177,7 @@ func TestSessionsSlideUpToTheirAbsoluteCap(t *testing.T) {
 
 // Every revocation says why (spec 02 §9.3): logout, writer, others.
 func TestRevocationsRecordTheirReason(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -197,6 +202,7 @@ func TestRevocationsRecordTheirReason(t *testing.T) {
 }
 
 func TestRevokedSessionIsRejected(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -240,6 +246,7 @@ func TestRevokedSessionIsRejected(t *testing.T) {
 }
 
 func TestResolveRejectsUnknownAndEmptyTokens(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()
@@ -262,6 +269,7 @@ func TestResolveRejectsUnknownAndEmptyTokens(t *testing.T) {
 // "Sign out everywhere" and, later, the account-deletion path both need this.
 // It must not touch another user's sessions.
 func TestRevokeAllForUserRevokesOnlyThatUser(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	mine := newTestUser(t, pool)
 	theirs := newTestUser(t, pool)
@@ -295,6 +303,7 @@ func TestRevokeAllForUserRevokesOnlyThatUser(t *testing.T) {
 }
 
 func TestIssueRejectsAnUnusableConfiguration(t *testing.T) {
+	t.Parallel()
 	pool := pgtest.New(t)
 	u := newTestUser(t, pool)
 	c := newClock()

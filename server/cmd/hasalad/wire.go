@@ -298,7 +298,10 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 		n := opsnotify.New(cfg.Ops.NtfyURL, cfg.Ops.NtfyClick)
 		wl.OnConfirmed = func() {
 			go func() {
-				if err := n.Post(context.Background(), "Hasala", "New early-access request", "inbox_tray"); err != nil {
+				if err := n.Post(context.Background(),
+					opsnotify.Title("info", "hasala", "new early-access request"),
+					"A new early-access request waits in the console.",
+					"information_source", "low"); err != nil {
 					slog.Warn("hasalad serve: early-access notice not delivered", "err", err)
 				}
 			}()

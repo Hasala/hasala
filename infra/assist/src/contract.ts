@@ -1,13 +1,19 @@
-export const MODEL = "@cf/cloudflare/clef";
-export const TAG = "cf-clef/1";
+export const MODEL = '@cf/cloudflare/clef';
+export const TAG = 'cf-clef/1';
 export const MAX_BODY_BYTES = 8192;
-export const UNKNOWN = "unknown";
-export const UNKNOWN_CRITERION = "the name alone does not say what kind of business this is";
+export const UNKNOWN = 'unknown';
+export const UNKNOWN_CRITERION = 'the name alone does not say what kind of business this is';
 
-const CLIENT_RE = /^ios\/[0-9]{1,4}(\.[0-9]{1,4}){0,3}$/;
-const ID_RE = /^[a-z][a-z0-9_]{0,31}$/;
-const CONTROL_RE = /[\u0000-\u001f\u007f]/g;
-const LONE_SURROGATE_RE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+const CLIENT_RE = /^ios\/[0-9]{1,4}(\.[0-9]{1,4}){0,3}$/u;
+const ID_RE = /^[a-z][a-z0-9_]{0,31}$/u;
+const LAST_C0_CONTROL = 0x1f;
+const DELETE = 0x7f;
+const MAX_SUBJECT = 128;
+const MAX_CATEGORIES = 32;
+const MAX_NAME = 64;
+const MAX_HINT = 200;
+const MAX_ANSWER_DEPTH = 3;
+const LONE_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
 
 export interface Category {
   id: string;
@@ -21,11 +27,11 @@ export interface Suggestion {
 }
 
 export interface ClefBody {
-  model: "clef";
+  model: 'clef';
   state: string;
   questions: {
     category: {
-      type: "choice";
+      type: 'choice';
       instructions: string;
       criteria: Record<string, string>;
     };
@@ -44,79 +50,126 @@ export function validClient(value: string | null): value is string {
 
 export function refusedClients(list: string | undefined): Set<string> {
   return new Set(
-    (list ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0),
+    (list ?? '')
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0),
   );
 }
 
-function scalars(s: string): number {
-  let n = 0;
-  for (const _ of s) n++;
-  return n;
+function scalars(text: string): number {
+  let count = 0;
+  for (const _ of text) {
+    count += 1;
+  }
+  return count;
 }
 
-function clean(s: string): string | null {
-  if (LONE_SURROGATE_RE.test(s)) return null;
-  return s.replace(CONTROL_RE, "").trim();
+function withoutControls(text: string): string {
+  let out = '';
+  for (const scalar of text) {
+    const code = scalar.codePointAt(0) ?? 0;
+    if (code > LAST_C0_CONTROL && code !== DELETE) {
+      out += scalar;
+    }
+  }
+  return out;
 }
 
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
+function clean(text: string): string | null {
+  if (LONE_SURROGATE_RE.test(text)) {
+    return null;
+  }
+  return withoutControls(text).trim();
 }
 
-function onlyKeys(o: Record<string, unknown>, required: string[], optional: string[] = []): boolean {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function onlyKeys(
+  record: Record<string, unknown>,
+  required: string[],
+  optional: string[] = [],
+): boolean {
   const allowed = new Set([...required, ...optional]);
-  for (const k of Object.keys(o)) if (!allowed.has(k)) return false;
-  for (const k of required) if (!Object.hasOwn(o, k)) return false;
+  for (const key of Object.keys(record)) {
+    if (!allowed.has(key)) {
+      return false;
+    }
+  }
+  for (const key of required) {
+    if (!Object.hasOwn(record, key)) {
+      return false;
+    }
+  }
   return true;
 }
 
-function boundedText(v: unknown, max: number): string | null {
-  if (typeof v !== "string") return null;
-  const s = clean(v);
-  if (s === null) return null;
-  const n = scalars(s);
-  return n >= 1 && n <= max ? s : null;
+function boundedText(value: unknown, max: number): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const text = clean(value);
+  if (text === null) {
+    return null;
+  }
+  const count = scalars(text);
+  return count >= 1 && count <= max ? text : null;
 }
 
 export function parseSuggestion(body: unknown): Suggestion | null {
-  if (!isPlainObject(body) || !onlyKeys(body, ["subject", "categories"])) return null;
-  const subject = boundedText(body.subject, 128);
-  if (subject === null) return null;
+  if (!isPlainObject(body) || !onlyKeys(body, ['subject', 'categories'])) {
+    return null;
+  }
+  const subject = boundedText(body.subject, MAX_SUBJECT);
+  if (subject === null) {
+    return null;
+  }
   const raw = body.categories;
-  if (!Array.isArray(raw) || raw.length < 1 || raw.length > 32) return null;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_CATEGORIES) {
+    return null;
+  }
   const seen = new Set<string>();
   const categories: Category[] = [];
-  for (const c of raw) {
-    if (!isPlainObject(c) || !onlyKeys(c, ["id", "name"], ["hint"])) return null;
-    const id = c.id;
-    if (typeof id !== "string" || !ID_RE.test(id) || id === UNKNOWN || seen.has(id)) return null;
+  for (const entry of raw) {
+    if (!isPlainObject(entry) || !onlyKeys(entry, ['id', 'name'], ['hint'])) {
+      return null;
+    }
+    const { id } = entry;
+    if (typeof id !== 'string' || !ID_RE.test(id) || id === UNKNOWN || seen.has(id)) {
+      return null;
+    }
     seen.add(id);
-    const name = boundedText(c.name, 64);
-    if (name === null) return null;
+    const name = boundedText(entry.name, MAX_NAME);
+    if (name === null) {
+      return null;
+    }
     let hint: string | null = null;
-    if (c.hint !== undefined && c.hint !== null) {
-      hint = boundedText(c.hint, 200);
-      if (hint === null) return null;
+    if (entry.hint !== undefined && entry.hint !== null) {
+      hint = boundedText(entry.hint, MAX_HINT);
+      if (hint === null) {
+        return null;
+      }
     }
     categories.push({ id, name, hint });
   }
   return { subject, categories };
 }
 
-export function clefBody(s: Suggestion): ClefBody {
+export function clefBody(suggestion: Suggestion): ClefBody {
   const criteria: Record<string, string> = {};
-  for (const c of s.categories) criteria[c.id] = c.hint ?? c.name;
+  for (const entry of suggestion.categories) {
+    criteria[entry.id] = entry.hint ?? entry.name;
+  }
   criteria[UNKNOWN] = UNKNOWN_CRITERION;
   return {
-    model: "clef",
-    state: `The merchant name on a card payment from a bank in the United Arab Emirates: ${JSON.stringify(s.subject)}`,
+    model: 'clef',
+    state: `The merchant name on a card payment from a bank in the United Arab Emirates: ${JSON.stringify(suggestion.subject)}`,
     questions: {
       category: {
-        type: "choice",
-        instructions: "Which spending category does a payment to this merchant belong to?",
+        type: 'choice',
+        instructions: 'Which spending category does a payment to this merchant belong to?',
         criteria,
       },
     },
@@ -124,29 +177,41 @@ export function clefBody(s: Suggestion): ClefBody {
 }
 
 function categoryAnswer(result: unknown): Record<string, unknown> | null {
-  let r: unknown = result;
-  for (let depth = 0; depth < 3 && isPlainObject(r); depth++) {
-    const answers = r.answers;
-    if (isPlainObject(answers) && isPlainObject(answers.category)) return answers.category;
-    r = r.result;
+  let current: unknown = result;
+  for (let depth = 0; depth < MAX_ANSWER_DEPTH && isPlainObject(current); depth += 1) {
+    const { answers } = current;
+    if (isPlainObject(answers) && isPlainObject(answers.category)) {
+      return answers.category;
+    }
+    current = current.result;
   }
   return null;
 }
 
-export function mapAnswer(result: unknown, s: Suggestion): Answer | null {
+export function mapAnswer(result: unknown, suggestion: Suggestion): Answer | null {
   const category = categoryAnswer(result);
-  if (category === null) return null;
-  const ids = [...s.categories.map((c) => c.id), UNKNOWN];
+  if (category === null) {
+    return null;
+  }
+  const ids = [...suggestion.categories.map((entry) => entry.id), UNKNOWN];
   const allowed = new Set(ids);
-  const choice = category.choice;
-  if (typeof choice !== "string" || !allowed.has(choice)) return null;
+  const { choice } = category;
+  if (typeof choice !== 'string' || !allowed.has(choice)) {
+    return null;
+  }
   const raw = category.probabilities;
-  if (!isPlainObject(raw)) return null;
+  if (!isPlainObject(raw)) {
+    return null;
+  }
   const probabilities: Record<string, number> = {};
   for (const id of ids) {
-    if (!Object.hasOwn(raw, id)) continue;
-    const p = raw[id];
-    if (typeof p === "number" && Number.isFinite(p) && p >= 0 && p <= 1) probabilities[id] = p;
+    if (!Object.hasOwn(raw, id)) {
+      continue;
+    }
+    const score = raw[id];
+    if (typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 1) {
+      probabilities[id] = score;
+    }
   }
   return { tag: TAG, choice, probabilities };
 }

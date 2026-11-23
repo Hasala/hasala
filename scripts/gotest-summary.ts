@@ -14,83 +14,109 @@
 // separately, printed, and — when REALCORPUS_COUNTS names a file — written there
 // as "<ran> <skipped>" for scripts/check.sh's closing summary.
 
-type Event = {
+interface Event {
   Action: string;
   Package?: string;
   ImportPath?: string;
   Test?: string;
   Output?: string;
   Elapsed?: number;
-};
+}
 
 const output = new Map<string, string[]>();
 const failed: string[] = [];
+const failedPackages: string[] = [];
 const skipped: string[] = [];
 const totals = { pass: 0, fail: 0, skip: 0 };
 const packages = { ok: 0, fail: 0, noTests: 0 };
-const key = (e: Event) => `${e.Package ?? ""} ${e.Test ?? ""}`;
-const REAL_CORPUS = "[real-corpus]";
+const key = (event: Event): string => `${event.Package ?? ''} ${event.Test ?? ''}`;
+const REAL_CORPUS = '[real-corpus]';
 const realCorpus = { ran: 0, skipped: 0 };
-const marked = (k: string): boolean => (output.get(k) ?? []).some((l) => l.includes(REAL_CORPUS));
+const marked = (id: string): boolean =>
+  (output.get(id) ?? []).some((line) => line.includes(REAL_CORPUS));
+const seeds = new Map<string, string>();
+const SEED = /^-test\.shuffle (\d+)\s*$/u;
+const order = (pkg: string | undefined): string => {
+  const seed = seeds.get(pkg ?? '');
+  return seed === undefined ? '' : ` -shuffle=${seed}`;
+};
 
 for await (const line of console) {
-  if (!line.startsWith("{")) {
-    if (line.trim() !== "") console.log(line);
-    continue;
-  }
-  const e = JSON.parse(line) as Event;
-  if (e.Action === "build-output") {
-    process.stdout.write(e.Output ?? "");
-    continue;
-  }
-  if (e.Action === "output") {
-    const k = key(e);
-    const lines = output.get(k) ?? [];
-    lines.push(e.Output ?? "");
-    output.set(k, lines);
-    continue;
-  }
-  if (e.Test === undefined) {
-    // A package-level result.
-    if (e.Action === "pass") {
-      packages.ok++;
-      console.log(`ok    ${e.Package} (${e.Elapsed ?? 0}s)`);
-    } else if (e.Action === "fail") {
-      packages.fail++;
-      console.log(`FAIL  ${e.Package} (${e.Elapsed ?? 0}s)`);
-      // A package that fails outside any test (TestMain, a panic between
-      // tests, a build failure) has its reason only in package-level output.
-      failed.push(key(e));
-    } else if (e.Action === "skip") {
-      packages.noTests++;
+  if (!line.startsWith('{')) {
+    if (line.trim() !== '') {
+      console.log(line);
     }
     continue;
   }
-  if (e.Action === "pass" || e.Action === "fail" || e.Action === "skip") {
-    totals[e.Action]++;
-    if (e.Action === "fail") failed.push(key(e));
-    if (e.Action === "skip") skipped.push(key(e));
-    if (marked(key(e))) {
-      if (e.Action === "skip") realCorpus.skipped++;
-      else realCorpus.ran++;
+  const event = JSON.parse(line) as Event;
+  if (event.Action === 'build-output') {
+    process.stdout.write(event.Output ?? '');
+    continue;
+  }
+  if (event.Action === 'output') {
+    const id = key(event);
+    const seed = event.Test === undefined ? SEED.exec(event.Output ?? '') : null;
+    if (seed?.[1] !== undefined) {
+      seeds.set(event.Package ?? '', seed[1]);
+    }
+    const lines = output.get(id) ?? [];
+    lines.push(event.Output ?? '');
+    output.set(id, lines);
+    continue;
+  }
+  if (event.Test === undefined) {
+    // A package-level result.
+    if (event.Action === 'pass') {
+      packages.ok += 1;
+      console.log(`ok    ${event.Package} (${event.Elapsed ?? 0}s)`);
+    } else if (event.Action === 'fail') {
+      packages.fail += 1;
+      console.log(`FAIL  ${event.Package} (${event.Elapsed ?? 0}s)${order(event.Package)}`);
+      // A package that fails outside any test (TestMain, a panic between
+      // tests, a build failure) has its reason only in package-level output.
+      failed.push(key(event));
+      failedPackages.push(event.Package ?? '');
+    } else if (event.Action === 'skip') {
+      packages.noTests += 1;
+    }
+    continue;
+  }
+  if (event.Action === 'pass' || event.Action === 'fail' || event.Action === 'skip') {
+    totals[event.Action] += 1;
+    if (event.Action === 'fail') {
+      failed.push(key(event));
+    }
+    if (event.Action === 'skip') {
+      skipped.push(key(event));
+    }
+    if (marked(key(event))) {
+      if (event.Action === 'skip') {
+        realCorpus.skipped += 1;
+      } else {
+        realCorpus.ran += 1;
+      }
     }
   }
 }
 
-const reason = (k: string): string => {
-  const lines = (output.get(k) ?? []).map((l) => l.trim()).filter((l) => l !== "" && !l.startsWith("--- SKIP") && !l.startsWith("=== "));
-  return lines.at(-1) ?? "(no reason given)";
+const reason = (id: string): string => {
+  const lines = (output.get(id) ?? [])
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('--- SKIP') && !line.startsWith('=== '));
+  return lines.at(-1) ?? '(no reason given)';
 };
 
 if (skipped.length > 0) {
   console.log(`\nskipped (${skipped.length}):`);
-  for (const k of skipped) console.log(`  ${k}\n      ${reason(k)}`);
+  for (const id of skipped) {
+    console.log(`  ${id}\n      ${reason(id)}`);
+  }
 }
 if (failed.length > 0) {
   console.log(`\nfailed (${failed.length}):`);
-  for (const k of failed) {
-    console.log(`\n=== ${k}`);
-    process.stdout.write((output.get(k) ?? ["(no output)\n"]).join(""));
+  for (const id of failed) {
+    console.log(`\n=== ${id}`);
+    process.stdout.write((output.get(id) ?? ['(no output)\n']).join(''));
   }
 }
 console.log(
@@ -100,10 +126,20 @@ console.log(
 console.log(
   `go test: real corpus (HASALA_PRIVATE_FIXTURES): ${realCorpus.ran} tests ran against it, ${realCorpus.skipped} skipped without it`,
 );
-const countsFile = process.env["REALCORPUS_COUNTS"];
-if (countsFile) await Bun.write(countsFile, `${realCorpus.ran} ${realCorpus.skipped}\n`);
-if (failed.length > 0 || packages.fail > 0) process.exit(1);
+const countsFile = process.env['REALCORPUS_COUNTS'];
+if (countsFile) {
+  await Bun.write(countsFile, `${realCorpus.ran} ${realCorpus.skipped}\n`);
+}
+if (failedPackages.length > 0) {
+  console.log('\nto run a failed package again in the same order:');
+  for (const pkg of failedPackages) {
+    console.log(`  go test -count=1${order(pkg)} ${pkg}`);
+  }
+}
+if (failed.length > 0 || packages.fail > 0) {
+  process.exit(1);
+}
 if (totals.pass === 0) {
-  console.log("go test: nothing ran; refusing to call that a pass");
+  console.log('go test: nothing ran; refusing to call that a pass');
   process.exit(1);
 }

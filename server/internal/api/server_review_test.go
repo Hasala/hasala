@@ -10,6 +10,7 @@ import (
 )
 
 func TestABoundWriterCheckThatCannotReadTheRosterIsNotAnUnbind(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("bound-check")
 	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")

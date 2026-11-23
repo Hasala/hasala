@@ -1,8 +1,14 @@
 export type FreezeResult = 'done' | 'retry' | 'unreachable';
 
 const FREEZE_WAIT_MS = 20_000;
+const NO_CONTENT = 204;
 
-export async function postFreeze(api: string, token: string, send: typeof fetch = fetch, waitMs = FREEZE_WAIT_MS): Promise<FreezeResult> {
+export async function postFreeze(
+  api: string,
+  token: string,
+  send: typeof fetch = fetch,
+  waitMs = FREEZE_WAIT_MS,
+): Promise<FreezeResult> {
   const stop = new AbortController();
   let waitedOut = false;
   const timer = setTimeout(() => {
@@ -20,7 +26,7 @@ export async function postFreeze(api: string, token: string, send: typeof fetch 
       body: JSON.stringify({ token }),
       signal: stop.signal,
     });
-    return answer.status === 204 ? 'done' : 'retry';
+    return answer.status === NO_CONTENT ? 'done' : 'retry';
   } catch {
     return waitedOut ? 'retry' : 'unreachable';
   } finally {

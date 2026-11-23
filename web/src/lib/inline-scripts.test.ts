@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { INVITE_CODE, JS_CLASS } from './inline-scripts.mjs';
 
-type Listener = { type: string; fn: (e: unknown) => void; capture: unknown };
+interface Listener {
+  type: string;
+  fn: (event: unknown) => void;
+  capture: unknown;
+}
 
 const ORIGIN = 'https://hasala.app';
 const MODULE = `${ORIGIN}/_astro/Base.abc123.js`;
@@ -12,13 +16,36 @@ function boot() {
   const invite = { shown: false };
   const document = {
     readyState: 'interactive',
-    documentElement: { classList: { add: (c: string) => classes.add(c), remove: (c: string) => classes.delete(c), contains: (c: string) => classes.has(c) } },
-    querySelector: (selector: string) => (selector === '[data-code]:not([hidden])' && invite.shown ? {} : null),
+    documentElement: {
+      classList: {
+        add: (name: string) => classes.add(name),
+        remove: (name: string) => classes.delete(name),
+        contains: (name: string) => classes.has(name),
+      },
+    },
+    querySelector: (selector: string) =>
+      selector === '[data-code]:not([hidden])' && invite.shown ? {} : null,
   };
-  const addEventListener = (type: string, fn: (e: unknown) => void, capture: unknown) => listeners.push({ type, fn, capture });
-  new Function('document', 'addEventListener', 'origin', JS_CLASS)(document, addEventListener, ORIGIN);
-  const openInvite = (location: { pathname: string; hash: string }) => new Function('document', 'addEventListener', 'location', INVITE_CODE)(document, addEventListener, location);
-  const dispatch = (e: unknown) => listeners.filter((l) => l.type === 'error' && l.capture === true).forEach((l) => l.fn(e));
+  const addEventListener = (type: string, fn: (event: unknown) => void, capture: unknown) =>
+    listeners.push({ type, fn, capture });
+  new Function('document', 'addEventListener', 'origin', JS_CLASS)(
+    document,
+    addEventListener,
+    ORIGIN,
+  );
+  const openInvite = (location: { pathname: string; hash: string }) =>
+    new Function('document', 'addEventListener', 'location', INVITE_CODE)(
+      document,
+      addEventListener,
+      location,
+    );
+  const dispatch = (event: unknown) => {
+    for (const listener of listeners.filter(
+      (each) => each.type === 'error' && each.capture === true,
+    )) {
+      listener.fn(event);
+    }
+  };
   const fire = (target: unknown) => dispatch({ target });
   const fireOnWindow = (filename: string) => dispatch({ target: {}, filename });
   return { classes, document, invite, openInvite, fire, fireOnWindow };
@@ -119,8 +146,12 @@ describe('the invite view', () => {
 
   test('the page script puts it back when it reads a code after another module failed', async () => {
     const source = await Bun.file(new URL('../pages/i.astro', import.meta.url)).text();
-    const showing = source.indexOf("const shown = code.match(/.{4}/g)!.join('-');");
-    expect(source.indexOf("document.documentElement.classList.add('has-code');")).toBeGreaterThan(-1);
-    expect(source.indexOf("document.documentElement.classList.add('has-code');")).toBeLessThan(showing);
+    const showing = source.indexOf("const shown = (code.match(/.{4}/gu) ?? []).join('-');");
+    expect(source.indexOf("document.documentElement.classList.add('has-code');")).toBeGreaterThan(
+      -1,
+    );
+    expect(source.indexOf("document.documentElement.classList.add('has-code');")).toBeLessThan(
+      showing,
+    );
   });
 });

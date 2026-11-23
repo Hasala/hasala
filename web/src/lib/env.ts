@@ -4,7 +4,10 @@
  * https://api.hasala.app/api/v1/waitlist (/api/v1/ is the only prefix the
  * API's edge admits).
  */
-export const API_BASE = (import.meta.env.PUBLIC_API_BASE || 'https://api.hasala.app/api').replace(/\/+$/, '');
+export const API_BASE = (import.meta.env.PUBLIC_API_BASE || 'https://api.hasala.app/api').replace(
+  /\/+$/u,
+  '',
+);
 
 /**
  * How the "Request an invite" form sends what people enter (including the
@@ -16,7 +19,9 @@ export const API_BASE = (import.meta.env.PUBLIC_API_BASE || 'https://api.hasala.
  * /joined, which says to email us. astro.config.mjs reads the same variable
  * (for the CSP) and fails the build on any other value.
  */
-export const WAITLIST_MODE: 'email' | 'api' = import.meta.env.PUBLIC_WAITLIST_MODE === 'email' ? 'email' : 'api';
+export const WAITLIST_MODE: 'email' | 'api' =
+  import.meta.env.PUBLIC_WAITLIST_MODE === 'email' ? 'email' : 'api';
 
 /** Turnstile runs only in "api" mode: in "email" mode there is nothing to protect. */
-export const TURNSTILE_SITEKEY: string = WAITLIST_MODE === 'api' ? import.meta.env.PUBLIC_TURNSTILE_SITEKEY || '' : '';
+export const TURNSTILE_SITEKEY: string =
+  WAITLIST_MODE === 'api' ? import.meta.env.PUBLIC_TURNSTILE_SITEKEY || '' : '';

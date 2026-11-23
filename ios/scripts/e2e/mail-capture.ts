@@ -20,60 +20,92 @@
 // Listens on 127.0.0.1 only and never sends anything anywhere. GET /healthz
 // answers 200 for the harness's readiness poll.
 
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 function arg(name: string, fallback?: string): string {
-  const i = Bun.argv.indexOf(`--${name}`);
-  if (i >= 0 && i + 1 < Bun.argv.length) return Bun.argv[i + 1];
-  if (fallback !== undefined) return fallback;
+  const index = Bun.argv.indexOf(`--${name}`);
+  const value = index === -1 ? undefined : Bun.argv[index + 1];
+  if (value !== undefined) {
+    return value;
+  }
+  if (fallback !== undefined) {
+    return fallback;
+  }
   console.error(`mail-capture: --${name} is required`);
   process.exit(2);
 }
 
-const port = Number(arg("port"));
-const dir = arg("dir");
-const token = arg("token", "e2e");
-if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-  console.error("mail-capture: --port must be a TCP port");
+const port = Number(arg('port'));
+const dir = arg('dir');
+const token = arg('token', 'e2e');
+if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+  console.error('mail-capture: --port must be a TCP port');
   process.exit(2);
 }
 mkdirSync(dir, { recursive: true });
 
-const SEND = /^\/client\/v4\/accounts\/[0-9a-f]{32}\/email\/sending\/send$/;
+const SEND = /^\/client\/v4\/accounts\/[0-9a-f]{32}\/email\/sending\/send$/u;
 let count = 0;
 
 function failure(status: number, code: number, message: string): Response {
-  return Response.json({ success: false, errors: [{ code, message }], messages: [], result: null }, { status });
+  return Response.json(
+    { success: false, errors: [{ code, message }], messages: [], result: null },
+    { status },
+  );
+}
+
+interface Message {
+  to?: unknown;
+  from?: unknown;
+  subject?: unknown;
+  text?: unknown;
+}
+
+async function readMessage(req: Request): Promise<Message | null> {
+  try {
+    return (await req.json()) as Message | null;
+  } catch {
+    return null;
+  }
 }
 
 const server = Bun.serve({
-  hostname: "127.0.0.1",
+  hostname: '127.0.0.1',
   port,
   async fetch(req) {
     const url = new URL(req.url);
-    if (req.method === "GET" && url.pathname === "/healthz") return new Response("ok\n");
-    if (!SEND.test(url.pathname)) return failure(404, 7003, "No route for that URI");
-    if (req.method !== "POST") return failure(405, 7001, "Method not allowed");
-    if (req.headers.get("authorization") !== `Bearer ${token}`) {
-      return failure(401, 10000, "Authentication error");
+    if (req.method === 'GET' && url.pathname === '/healthz') {
+      return new Response('ok\n');
     }
-    let body: { to?: unknown; from?: unknown; subject?: unknown; text?: unknown };
-    try {
-      body = await req.json();
-    } catch {
-      return failure(400, 10001, "Invalid JSON");
+    if (!SEND.test(url.pathname)) {
+      return failure(404, 7003, 'No route for that URI');
+    }
+    if (req.method !== 'POST') {
+      return failure(405, 7001, 'Method not allowed');
+    }
+    if (req.headers.get('authorization') !== `Bearer ${token}`) {
+      return failure(401, 10_000, 'Authentication error');
+    }
+    const body = await readMessage(req);
+    if (body === null) {
+      return failure(400, 10_001, 'Invalid JSON');
     }
     const { to, from, subject, text } = body;
-    if (typeof to !== "string" || typeof from !== "string" || typeof subject !== "string" || typeof text !== "string") {
-      return failure(400, 10001, "to, from, subject and text are required");
+    if (
+      typeof to !== 'string' ||
+      typeof from !== 'string' ||
+      typeof subject !== 'string' ||
+      typeof text !== 'string'
+    ) {
+      return failure(400, 10_001, 'to, from, subject and text are required');
     }
     count += 1;
     const id = `e2e-${count}`;
-    const name = String(count).padStart(5, "0");
+    const name = String(count).padStart(5, '0');
     const record = { to, from, subject, text, received_at: new Date().toISOString() };
     const tmp = join(dir, `.${name}.tmp`);
-    writeFileSync(tmp, JSON.stringify(record, null, 2) + "\n");
+    writeFileSync(tmp, `${JSON.stringify(record, null, 2)}\n`);
     renameSync(tmp, join(dir, `${name}.json`));
     // One line per message: the subject and the recipient, never the body (it
     // carries the code).

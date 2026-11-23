@@ -27,8 +27,18 @@ const jsonLd = {
       email: SITE.supportEmail,
       areaServed: { '@type': 'Country', name: 'United Arab Emirates' },
       contactPoint: [
-        { '@type': 'ContactPoint', contactType: 'customer support', email: SITE.supportEmail, availableLanguage: 'English' },
-        { '@type': 'ContactPoint', contactType: 'privacy', email: SITE.privacyEmail, availableLanguage: 'English' },
+        {
+          '@type': 'ContactPoint',
+          contactType: 'customer support',
+          email: SITE.supportEmail,
+          availableLanguage: 'English',
+        },
+        {
+          '@type': 'ContactPoint',
+          contactType: 'privacy',
+          email: SITE.privacyEmail,
+          availableLanguage: 'English',
+        },
       ],
     },
     {

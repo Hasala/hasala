@@ -1,0 +1,151 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import", "promise", "node", "jest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "pedantic": "error",
+    "perf": "error",
+    "style": "error",
+    "restriction": "error",
+    "nursery": "error"
+  },
+  "env": { "builtin": true, "es2024": true },
+  "ignorePatterns": ["conformance/normalizer/charset-tables.ts"],
+  "rules": {
+    "capitalized-comments": "off",
+    "import/exports-last": "off",
+    "import/group-exports": "off",
+    "import/no-named-export": "off",
+    "import/no-relative-parent-imports": "off",
+    "import/prefer-default-export": "off",
+    "jest/require-hook": "off",
+    "max-lines": "off",
+    "max-lines-per-function": "off",
+    "max-statements": "off",
+    "no-continue": "off",
+    "no-empty-function": "off",
+    "no-inline-comments": "off",
+    "no-ternary": "off",
+    "no-undefined": "off",
+    "oxc/no-async-await": "off",
+    "oxc/no-optional-chaining": "off",
+    "oxc/no-rest-spread-properties": "off",
+    "promise/avoid-new": "off",
+    "promise/no-multiple-resolved": "off",
+    "sort-keys": "off",
+    "unicorn/no-null": "off",
+    "unicorn/number-literal-case": "off",
+    "unicorn/prefer-dom-node-dataset": "off",
+    "unicorn/prefer-global-this": "off",
+
+    "func-style": ["error", "declaration", { "allowArrowFunctions": true }],
+    "id-length": ["error", { "min": 2, "properties": "never", "exceptions": ["_", "T", "x", "y"] }],
+    "import/no-unassigned-import": ["error", { "allow": ["**/*.css", "**/scripts/router", "**/scripts/edges", "**/scripts/nav"] }],
+    "max-params": ["error", { "max": 4 }],
+    "no-duplicate-imports": ["error", { "allowSeparateTypeImports": true }],
+    "no-magic-numbers": [
+      "error",
+      {
+        "ignore": [-1, 0, 1, 2],
+        "ignoreArrayIndexes": true,
+        "ignoreDefaultValues": true,
+        "ignoreClassFieldInitialValues": true,
+        "ignoreEnums": true,
+        "ignoreNumericLiteralTypes": true,
+        "ignoreReadonlyClassProperties": true,
+        "ignoreTypeIndexes": true
+      }
+    ],
+    "no-use-before-define": ["error", { "functions": false, "classes": true, "variables": false }],
+    "no-void": ["error", { "allowAsStatement": true }],
+    "sort-imports": ["error", { "ignoreDeclarationSort": true }],
+    "typescript/explicit-function-return-type": ["error", { "allowExpressions": true }],
+    "typescript/explicit-member-accessibility": ["error", { "accessibility": "no-public" }]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.astro"],
+      "env": { "browser": true, "node": true },
+      "globals": { "Astro": "readonly" },
+      "rules": {
+        "import/max-dependencies": "off",
+        "import/unambiguous": "off",
+        "unicorn/filename-case": ["error", { "cases": { "pascalCase": true, "kebabCase": true } }]
+      }
+    },
+    {
+      "files": ["web/src/scripts/**", "web/src/lib/**/*.ts"],
+      "env": { "browser": true }
+    },
+    {
+      "files": ["web/src/pages/**/*.ts"],
+      "env": { "node": true }
+    },
+    {
+      "files": ["infra/assist/src/**"],
+      "env": { "worker": true }
+    },
+    {
+      "files": ["scripts/*.ts", "web/scripts/*.ts", "ios/scripts/**/*.ts", "web/astro.config.mjs", "web/src/lib/*.mjs", "web/src/content.config.ts"],
+      "env": { "node": true },
+      "globals": { "Bun": "readonly" },
+      "rules": {
+        "import/no-nodejs-modules": "off",
+        "no-console": "off",
+        "no-magic-numbers": "off",
+        "node/no-process-env": "off",
+        "unicorn/no-process-exit": "off"
+      }
+    },
+    {
+      "files": ["web/astro.config.mjs", "web/src/content.config.ts", "infra/assist/src/index.ts"],
+      "rules": { "import/no-default-export": "off" }
+    },
+    {
+      "files": ["**/*.test.ts", "infra/assist/test/**"],
+      "env": { "node": true, "browser": true },
+      "globals": { "Bun": "readonly" },
+      "rules": {
+        "class-methods-use-this": "off",
+        "import/no-nodejs-modules": "off",
+        "jest/require-hook": "error",
+        "max-classes-per-file": "off",
+        "no-await-in-loop": "off",
+        "no-magic-numbers": "off",
+        "node/no-process-env": "off",
+        "typescript/explicit-function-return-type": "off"
+      }
+    },
+    {
+      "files": ["web/src/lib/inline-scripts.test.ts"],
+      "rules": { "no-new-func": "off" }
+    },
+    {
+      "files": ["web/src/scripts/**", "web/src/components/HomePhone.astro"],
+      "rules": {
+        "no-magic-numbers": "off",
+        "unicorn/no-array-for-each": "off"
+      }
+    },
+    {
+      "files": ["web/src/scripts/waitlist.ts", "web/src/scripts/review.ts"],
+      "rules": { "typescript/no-non-null-assertion": "off" }
+    },
+    {
+      "files": ["web/src/scripts/review.ts"],
+      "rules": {
+        "no-await-in-loop": "off",
+        "oxc/no-const-enum": "off"
+      }
+    },
+    {
+      "files": ["infra/assist/src/index.ts"],
+      "rules": { "no-await-in-loop": "off" }
+    },
+    {
+      "files": ["web/src/components/Icon.astro"],
+      "rules": { "no-magic-numbers": "off" }
+    }
+  ]
+}

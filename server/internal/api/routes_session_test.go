@@ -39,6 +39,7 @@ func (h *harness) countAPNs(u uuid.UUID) int {
 }
 
 func TestLogoutRevokesThePresentedSessionOnTheServer(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	phone, laptop := h.session(u), h.session(u)
@@ -62,6 +63,7 @@ func TestLogoutRevokesThePresentedSessionOnTheServer(t *testing.T) {
 }
 
 func TestLogoutTakesNoBodyOrAnEmptyObject(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	u := h.user("u")
 	wantStatus(t, h.req("POST", "/api/v1/auth/logout", h.session(u), nil), http.StatusNoContent)
@@ -70,6 +72,7 @@ func TestLogoutTakesNoBodyOrAnEmptyObject(t *testing.T) {
 }
 
 func TestLogoutWithoutAValidSessionIsTheOne401(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	for _, tok := range []string{"", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"} {
 		w := h.req("POST", "/api/v1/auth/logout", tok, nil)
@@ -81,6 +84,7 @@ func TestLogoutWithoutAValidSessionIsTheOne401(t *testing.T) {
 }
 
 func TestLogoutAllRevokesEverySessionAndEveryPushTokenButNoWriter(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
 	u, other := k.user, h.user("other")
@@ -129,6 +133,7 @@ func TestLogoutAllRevokesEverySessionAndEveryPushTokenButNoWriter(t *testing.T) 
 }
 
 func TestLogoutAllNeedsASession(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	wantStatus(t, h.req("POST", "/api/v1/auth/logout-all", "", nil), http.StatusUnauthorized)
 }

@@ -37,7 +37,7 @@ func TestASecondPurgeOfOneAccountQueuesNoSecondGoodbye(t *testing.T) {
 		rep, err := PurgeWith(bg, pool, u, Options{Goodbye: true})
 		second <- result{rep, err}
 	}()
-	time.Sleep(300 * time.Millisecond)
+	waitForLockWaiter(t, pool)
 	if _, err := first.Exec(bg, `DELETE FROM users WHERE id = $1`, u); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,8 @@ func waitForLockWaiter(t *testing.T, pool *pgxpool.Pool) {
 
 func heldAdvisoryLocks(t *testing.T, pool *pgxpool.Pool) int {
 	t.Helper()
-	return countRows(t, pool, `SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted`)
+	return countRows(t, pool, `SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted
+		AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`)
 }
 
 type ledgerReplay struct {
@@ -201,7 +202,7 @@ func TestAFailedCommitKeepsTheAccountHeldUntilItIsSettled(t *testing.T) {
 			}
 			go func() {
 				defer func() { _ = next.Rollback(bg) }()
-				if _, err := next.Exec(bg, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, u); err != nil {
+				if _, err := next.Exec(bg, `LOCK TABLE users IN EXCLUSIVE MODE`); err != nil {
 					inTheGap <- ledgerReplay{err: err}
 					return
 				}

@@ -24,7 +24,7 @@ interface Props {
 }
 
 const { title, heading, lead, description = lead, path, jsonLd = [] } = Astro.props;
-const next = NAV.filter((n) => n.href !== path);
+const next = NAV.filter((item) => item.href !== path);
 
 const ld = {
   '@context': 'https://schema.org',

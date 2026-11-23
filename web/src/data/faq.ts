@@ -4,7 +4,8 @@
  * llms-full.txt); the homepage only swaps in Paper's own wording for the first
  * answer, which is the one drawn open.
  */
-import { FAQ, curly, type FaqItem } from './site';
+import { FAQ, curly } from './site';
+import type { FaqItem } from './site';
 
 const OPEN_FIRST: Record<string, string> = {
   'bank-login':
@@ -13,17 +14,31 @@ const OPEN_FIRST: Record<string, string> = {
 
 const MOBILE_Q: Record<string, string> = { email: 'What can Hasala read in my email?' };
 const MOBILE_A: Record<string, string> = {
-  'bank-login': "No. Hasala only reads the alerts your bank already sends. It can't move money and won't ask for your bank password.",
+  'bank-login':
+    "No. Hasala only reads the alerts your bank already sends. It can't move money and won't ask for your bank password.",
 };
 
-export type HomeFaq = { id: string; q: string; qMobile?: string; mobileFirst?: string; paragraphs: string[]; steps: string[]; more: FaqItem['more'] };
+export interface HomeFaq {
+  id: string;
+  question: string;
+  questionMobile?: string;
+  mobileFirst?: string;
+  paragraphs: string[];
+  steps: string[];
+  more: FaqItem['more'];
+}
 
-export const HOME_FAQ: readonly HomeFaq[] = FAQ.map((f) => ({
-  id: f.id,
-  q: f.q,
-  qMobile: MOBILE_Q[f.id],
-  mobileFirst: MOBILE_A[f.id] ? curly(MOBILE_A[f.id]) : undefined,
-  paragraphs: (OPEN_FIRST[f.id] ? [OPEN_FIRST[f.id]] : [f.short, f.a, f.after].filter((p): p is string => !!p)).map(curly),
-  steps: (f.steps ?? []).map(curly),
-  more: f.more,
+export const HOME_FAQ: readonly HomeFaq[] = FAQ.map((item) => ({
+  id: item.id,
+  question: item.question,
+  questionMobile: MOBILE_Q[item.id],
+  mobileFirst: MOBILE_A[item.id] ? curly(MOBILE_A[item.id]) : undefined,
+  paragraphs: (OPEN_FIRST[item.id]
+    ? [OPEN_FIRST[item.id]]
+    : [item.short, item.answer, item.after].filter(
+        (part): part is string => part !== undefined && part !== '',
+      )
+  ).map((part) => curly(part)),
+  steps: (item.steps ?? []).map((step) => curly(step)),
+  more: item.more,
 }));

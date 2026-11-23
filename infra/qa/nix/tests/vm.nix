@@ -688,6 +688,7 @@ in
 
       with subtest("AT-V14: the kill switch stops everything"):
           machine.succeed("systemctl stop hasala.target")
+          machine.wait_until_succeeds("test -z \"$(systemctl list-jobs --no-legend)\"", timeout=120)
           for unit in ["hasalad", "hasala-postgresql", "hasala-console"]:
               machine.fail(f"systemctl is-active {unit}.service")
           machine.fail(f"curl -s --max-time 5 {API}/api/v1/healthz")

@@ -181,6 +181,7 @@ step "gate run self-test"
 "$ROOT/scripts/tests/gate_run_test.sh"
 "$ROOT/scripts/tests/gotest_ran_test.sh"
 "$ROOT/scripts/tests/git_env_test.sh"
+"$ROOT/scripts/tests/ci_changes_test.sh"
 
 step "Mac devShell cache check self-test"
 "$ROOT/scripts/tests/ci_mac_devshell_test.sh"

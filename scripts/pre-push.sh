@@ -226,7 +226,7 @@ else
 	skip "private fixtures lock self-test" "no lock script changes"
 fi
 
-if changed '^scripts/(check\.sh|gotest-(ran|summary)\.ts|tests/(gate_run|gotest_ran|git_env|fence)_test\.sh)$'; then
+if changed '^scripts/(check\.sh|gotest-(ran|summary)\.ts|tests/(gate_run|gotest_ran|git_env|fence|ci_changes)_test\.sh)$'; then
 	if have bun; then
 		run "gate run self-test" scripts/tests/gate_run_test.sh
 		run "conformance record self-test" scripts/tests/gotest_ran_test.sh
@@ -236,6 +236,12 @@ if changed '^scripts/(check\.sh|gotest-(ran|summary)\.ts|tests/(gate_run|gotest_
 	fi
 else
 	skip "gate run self-test" "no gate changes"
+fi
+
+if changed '^scripts/(ci-changes\.sh|tests/ci_changes_test\.sh)$'; then
+	run "CI path selection self-test" scripts/tests/ci_changes_test.sh
+else
+	skip "CI path selection self-test" "no selection changes"
 fi
 
 if changed '\.sh$'; then

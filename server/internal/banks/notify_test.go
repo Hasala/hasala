@@ -224,7 +224,7 @@ func TestAJoinDuringNotifyLeavesTheRequestToBeTold(t *testing.T) {
 	for {
 		var waiting int
 		if err := r.pool.QueryRow(bg, `SELECT count(*) FROM pg_stat_activity
-			WHERE wait_event_type = 'Lock' AND query LIKE '%FOR UPDATE OF r%'`).Scan(&waiting); err != nil {
+			WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%FOR UPDATE OF r%'`).Scan(&waiting); err != nil {
 			t.Fatal(err)
 		}
 		if waiting == 1 {

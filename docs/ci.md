@@ -94,3 +94,22 @@ All times are seconds, p50 / p95.
 - The Mac jobs wait when more than five Mac jobs are in progress for the
   account. The longest wait was 50 minutes.
 - The runs used 5524 minutes of `macos-26` and 883 minutes of `ubuntu-latest`.
+
+## Merge queue
+
+`.github/workflows/merge-queue.yml` runs all jobs of `ci.yml` on a merge group
+(`merge_group`). The path rules do not apply to this event, thus each job
+runs. Its last job has the check name `ci-ok` and passes only when each job of
+the full suite succeeded, the Mac jobs, `web` and `nixos-vm` included. On a
+pull request, the path rules still select the jobs, and `ci-ok` needs only the
+fast jobs.
+
+The ruleset of `main` has the rule "Require merge queue" since 2026-11-22,
+when the repository moved to the `Hasala` organization (GitHub gives merge
+queues only to repositories that an organization owns). A pull request
+merges only through the queue, with the squash method. It does not have to
+be up to date with `main`: the queue tests it on top of `main` and of the
+entries before it.
+
+A pull request that changes `merge-queue.yml` runs the workflow as a test. Its
+last job then has the name `full-suite-ok`, not `ci-ok`.

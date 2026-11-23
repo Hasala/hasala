@@ -99,6 +99,17 @@ func (r *nudgeRig) waitForSend() {
 	}
 }
 
+func (r *nudgeRig) waitForCooldown() {
+	r.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for r.d.Stats.Cooled.Load() == 0 {
+		if time.Now().After(deadline) {
+			r.t.Fatal("the dispatcher never rested the token")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func (r *nudgeRig) markAgeMinutes() float64 {
 	r.t.Helper()
 	var age float64
@@ -142,6 +153,9 @@ func TestNudgeThatAPNsDidNotTakeIsTriedAgainOnTheNextRun(t *testing.T) {
 				t.Fatal("the first run nudged nobody")
 			}
 			r.waitForSend()
+			if result == pushv2.ResultCooldown {
+				r.waitForCooldown()
+			}
 			if msg := r.sweep(); msg != "" {
 				t.Fatalf("the same run's mark did not hold off an immediate second sweep: %q", msg)
 			}

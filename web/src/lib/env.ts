@@ -4,7 +4,7 @@
  * https://api.hasala.app/api/v1/waitlist (/api/v1/ is the only prefix the
  * API's edge admits).
  */
-export const API_BASE = (import.meta.env.PUBLIC_API_BASE || 'https://api.hasala.app/api').replace(/\/+$/, '');
+export const API_BASE = (import.meta.env.PUBLIC_API_BASE || 'https://api.hasala.app/api').replace(/\/+$/u, '');
 
 /**
  * How the "Request an invite" form sends what people enter (including the

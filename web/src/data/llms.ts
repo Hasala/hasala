@@ -1,6 +1,6 @@
 import { BANKS, FAQ, MAIL, SITE, VISIBILITY, faqText } from './site';
 
-const plain = (s: string) => s.replace(/‑/g, '-').replace(/[’]/g, "'");
+const plain = (text: string): string => text.replaceAll('‑', '-').replaceAll(/[’]/gu, "'");
 
 /** /llms.txt, following the llmstxt.org layout: a title, a summary, then links. */
 export function llmsTxt(): string {
@@ -15,7 +15,7 @@ Key facts:
 - What it is for: knowing where your money goes, privately. Hasala shows what you spent, on what, and what's left this month, and starts you on a simple plan.
 - Platform: iPhone only, iOS 26 or later. No Android app, no web app.
 - Where transactions come from: your bank's alert emails in your own email account (${MAIL} today), read-only. Your iPhone asks your email account only for messages from your bank's alert senders, so the rest of your inbox is never downloaded; the iPhone checks each email before it uses it, and one it can't be sure came from your bank waits for you to review. Outlook means personal Microsoft accounts (outlook.com, hotmail.com, live.com); work and school accounts are not supported. One mailbox at a time. Or, with no mailbox: your bank's texts. With one automation in Apple's Shortcuts, your iPhone hands Hasala the texts it receives; Hasala keeps only payment texts and drops the rest at once, and no text leaves the iPhone. An account uses bank email or bank texts, not both. There is no email forwarding and no bank login, and Hasala can't move money.
-- Banks today: ${BANKS.slice(0, -1).map((b) => b.name).join(', ')} and ${BANKS[BANKS.length - 1].name}. Other banks: people tell us which bank they use when they request an invite, and we use that to decide which bank to add next.
+- Banks today: ${BANKS.slice(0, -1).map((bank) => bank.name).join(', ')} and ${BANKS.at(-1)?.name ?? ''}. Other banks: people tell us which bank they use when they request an invite, and we use that to decide which bank to add next.
 - Categorization starts on the iPhone: your own rules first, then a built-in list of UAE merchants, then, only if you turn on Cloud suggestions (off by default), a suggestion for the merchant name from Cloudflare's AI service or Apple's on-device model. You confirm the rest. No email is sent to an AI service.
 - Privacy: your transactions, budget and plan are encrypted on the iPhone before they sync. Hasala's server stores them but cannot read them. The app contains no ads, analytics or tracking tools. The website, hasala.app, counts visits with Cloudflare Web Analytics (never on invite, freeze or waitlist links), which sets no cookies, doesn't fingerprint or follow visitors across sites, and reports only totals, never linked to a person or a Hasala account.
 - Sign-in: verified email and a display name; Face ID (passkey, recommended) or email and password. A password never unlocks your data: your passkey or your 12-word recovery phrase does. Hasala cannot reset the recovery phrase.
@@ -44,10 +44,10 @@ Key facts:
 }
 
 export function llmsFullTxt(legal: { title: string; url: string; body: string }[]): string {
-  const who = VISIBILITY.map((v) => `- ${v.who}. Can see: ${v.sees}.${v.never ? ` Cannot see: ${v.never}.` : ''}`).join('\n');
-  const faq = FAQ.map((f) => `### ${f.q}\n\n${faqText(f)}`).join('\n\n');
-  const docs = legal.length
-    ? legal.map((d) => `## ${d.title}\n\nSource: ${d.url}\n\n${d.body.trim()}`).join('\n\n')
+  const who = VISIBILITY.map((row) => `- ${row.who}. Can see: ${row.sees}.${row.never ? ` Cannot see: ${row.never}.` : ''}`).join('\n');
+  const faq = FAQ.map((item) => `### ${item.question}\n\n${faqText(item)}`).join('\n\n');
+  const docs = legal.length > 0
+    ? legal.map((doc) => `## ${doc.title}\n\nSource: ${doc.url}\n\n${doc.body.trim()}`).join('\n\n')
     : '## Legal pages\n\nThe Privacy Policy, Terms of Service, Security and Support pages are drafts and not published yet. The privacy model above is how Hasala works today.';
   return plain(`${llmsTxt()}
 ## How it works

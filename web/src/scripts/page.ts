@@ -8,9 +8,9 @@
  * observers, so nothing from the old page keeps running.
  */
 export function onPage(init: (signal: AbortSignal) => void): void {
-  let ctrl: AbortController | undefined;
+  let ctrl: AbortController | undefined = undefined;
   let stale = false;
-  const run = () => {
+  const run = (): void => {
     ctrl?.abort();
     ctrl = new AbortController();
     stale = false;
@@ -22,18 +22,23 @@ export function onPage(init: (signal: AbortSignal) => void): void {
     stale = true;
   });
   document.addEventListener('astro:page-load', () => {
-    if (stale) run();
+    if (stale) {run();}
   });
   run();
 }
 
-export function pageTimer(signal: AbortSignal) {
+export interface PageTimer {
+  clear: () => void;
+  set: (fn: () => void, ms: number) => void;
+}
+
+export function pageTimer(signal: AbortSignal): PageTimer {
   let id = 0;
-  const clear = () => window.clearTimeout(id);
+  const clear = (): void => window.clearTimeout(id);
   signal.addEventListener('abort', clear, { once: true });
   return {
     clear,
-    set: (fn: () => void, ms: number) => {
+    set: (fn: () => void, ms: number): void => {
       clear();
       id = window.setTimeout(fn, ms);
     },
@@ -46,7 +51,7 @@ export function observe(
   cb: IntersectionObserverCallback,
   opts?: IntersectionObserverInit,
 ): IntersectionObserver | null {
-  if (!('IntersectionObserver' in window)) return null;
+  if (!('IntersectionObserver' in window)) {return null;}
   const io = new IntersectionObserver(cb, opts);
   signal.addEventListener('abort', () => io.disconnect(), { once: true });
   return io;

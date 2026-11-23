@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { initWaitlist } from './waitlist';
 
-type Handler = (e: Record<string, unknown>) => unknown;
+type Handler = (event: Record<string, unknown>) => unknown;
 
-const g = globalThis as unknown as Record<string, unknown>;
-const saved = Object.fromEntries(['window', 'document', 'history', 'location', 'fetch', 'requestAnimationFrame', 'navigator'].map((k) => [k, g[k]]));
+const globals = globalThis as unknown as Record<string, unknown>;
+const saved = Object.fromEntries(['window', 'document', 'history', 'location', 'fetch', 'requestAnimationFrame', 'navigator'].map((key) => [key, globals[key]]));
 afterEach(() => {
-  for (const [k, v] of Object.entries(saved)) g[k] = v;
+  for (const [key, value] of Object.entries(saved)) {globals[key] = value;}
 });
 
 class El {
@@ -50,9 +50,9 @@ class El {
   addEventListener(type: string, fn: Handler, opts?: { signal?: AbortSignal }) {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), { fn, signal: opts?.signal }]);
   }
-  fire(type: string, e: Record<string, unknown> = {}) {
-    const live = (this.listeners.get(type) ?? []).filter((l) => !l.signal?.aborted);
-    return Promise.all(live.map((l) => l.fn({ preventDefault: () => {}, ...e })));
+  fire(type: string, event: Record<string, unknown> = {}) {
+    const live = (this.listeners.get(type) ?? []).filter((listener) => !listener.signal?.aborted);
+    return Promise.all(live.map((listener) => listener.fn({ preventDefault: () => {}, ...event })));
   }
   setAttribute(name: string, value: string) {
     this.attrs.set(name, value);
@@ -64,11 +64,11 @@ class El {
     return this.attrs.get(name) ?? null;
   }
   toggleAttribute(name: string, on: boolean) {
-    if (on) this.attrs.set(name, '');
-    else this.attrs.delete(name);
+    if (on) {this.attrs.set(name, '');}
+    else {this.attrs.delete(name);}
   }
   focus() {
-    this.focused++;
+    this.focused += 1;
   }
   scrollIntoView() {}
   contains() {
@@ -83,11 +83,11 @@ function field() {
 }
 
 const allowCopy = () => {
-  g.navigator = { clipboard: { writeText: async () => {} } };
+  globals.navigator = { clipboard: { writeText: async () => {} } };
 };
 
 const refuseCopy = () => {
-  g.navigator = { clipboard: { writeText: () => Promise.reject(new DOMException('Write permission denied', 'NotAllowedError')) } };
+  globals.navigator = { clipboard: { writeText: () => Promise.reject(new DOMException('Write permission denied', 'NotAllowedError')) } };
 };
 
 function start(arrival: { hash?: string; bank?: string } = {}) {
@@ -127,21 +127,22 @@ function start(arrival: { hash?: string; bank?: string } = {}) {
   let nextTimer = 1;
   const replaced: string[] = [];
   const location = { hash: arrival.hash ?? '', href: '' };
-  g.document = document;
-  g.location = location;
-  g.history = {
+  globals.document = document;
+  globals.location = location;
+  globals.history = {
     state: null,
     replaceState: (_: unknown, __: string, url: string) => {
       replaced.push(url);
       location.hash = url;
     },
   };
-  g.requestAnimationFrame = () => 0;
-  g.window = {
+  globals.requestAnimationFrame = () => 0;
+  globals.window = {
     location,
     setTimeout: (fn: () => void) => {
       timers.set(nextTimer, fn);
-      return nextTimer++;
+      nextTimer += 1;
+      return nextTimer - 1;
     },
     clearTimeout: (id: number) => timers.delete(id),
   };
@@ -156,99 +157,102 @@ function start(arrival: { hash?: string; bank?: string } = {}) {
 }
 
 function holdFetch() {
-  let answer: (r: Response) => void = () => {};
-  g.fetch = () => new Promise<Response>((resolve) => (answer = resolve));
-  return (status: number, body = '{}') => answer(new Response(body, { status }));
+  const held: { answer: (response: Response) => void } = { answer: () => {} };
+  globals.fetch = () =>
+    new Promise<Response>((resolve) => {
+      held.answer = resolve;
+    });
+  return (status: number, body = '{}') => held.answer(new Response(body, { status }));
 }
 
 const tick = () => Bun.sleep(1);
 
 describe('work that ends with the page', () => {
   test('pressing a request button twice leaves one focus waiting', () => {
-    const p = start();
-    p.cta.fire('click');
-    p.cta.fire('click');
-    expect(p.timers.size).toBe(1);
-    p.runTimers();
-    expect(p.email.focused).toBe(1);
+    const view = start();
+    view.cta.fire('click');
+    view.cta.fire('click');
+    expect(view.timers.size).toBe(1);
+    view.runTimers();
+    expect(view.email.focused).toBe(1);
   });
 
   test('a page swap drops the focus a press left waiting', () => {
-    const p = start();
-    p.cta.fire('click');
-    p.document.fire('astro:before-swap');
-    expect(p.timers.size).toBe(0);
+    const view = start();
+    view.cta.fire('click');
+    view.document.fire('astro:before-swap');
+    expect(view.timers.size).toBe(0);
   });
 
   test('a page swap drops the focus an arrival left waiting', () => {
-    const p = start({ hash: '#invite' });
-    expect(p.timers.size).toBe(1);
-    p.document.fire('astro:before-swap');
-    expect(p.timers.size).toBe(0);
+    const view = start({ hash: '#invite' });
+    expect(view.timers.size).toBe(1);
+    view.document.fire('astro:before-swap');
+    expect(view.timers.size).toBe(0);
   });
 
   test('pressing copy twice leaves one restore waiting, and the label comes back', async () => {
-    const p = start();
-    await p.copy.fire('click');
-    await p.copy.fire('click');
-    expect(p.timers.size).toBe(1);
-    p.runTimers();
-    expect(p.copyText.textContent).toBe('Copy link for a friend');
+    const view = start();
+    await view.copy.fire('click');
+    await view.copy.fire('click');
+    expect(view.timers.size).toBe(1);
+    view.runTimers();
+    expect(view.copyText.textContent).toBe('Copy link for a friend');
   });
 
   test('a page swap drops the copy restore', async () => {
-    const p = start();
-    await p.copy.fire('click');
-    p.document.fire('astro:before-swap');
-    expect(p.timers.size).toBe(0);
+    const view = start();
+    await view.copy.fire('click');
+    view.document.fire('astro:before-swap');
+    expect(view.timers.size).toBe(0);
   });
 
   test('a page swap during a send drops the still-trying note', async () => {
-    const p = start();
+    const view = start();
     holdFetch();
-    p.send();
+    view.send();
     await tick();
-    expect(p.timers.size).toBe(1);
-    p.document.fire('astro:before-swap');
-    expect(p.timers.size).toBe(0);
+    expect(view.timers.size).toBe(1);
+    view.document.fire('astro:before-swap');
+    expect(view.timers.size).toBe(0);
   });
 
   test('an accepted answer after a page swap leaves the old form alone', async () => {
-    const p = start();
+    const view = start();
     const reply = holdFetch();
-    const sending = p.send();
+    const sending = view.send();
     await tick();
-    p.document.fire('astro:before-swap');
+    view.document.fire('astro:before-swap');
     reply(202);
     await sending;
-    expect(p.done.hidden).toBe(true);
-    expect(p.form.hidden).toBe(false);
-    expect(p.root.dataset.state).toBe('default');
+    expect(view.done.hidden).toBe(true);
+    expect(view.form.hidden).toBe(false);
+    expect(view.root.dataset.state).toBe('default');
   });
 
   test('a refused answer after a page swap leaves the old form alone', async () => {
-    const p = start();
+    const view = start();
     const reply = holdFetch();
-    const sending = p.send();
+    const sending = view.send();
     await tick();
-    p.document.fire('astro:before-swap');
+    view.document.fire('astro:before-swap');
     reply(400, '{"error":"bad_email"}');
     await sending;
-    expect(p.root.dataset.state).toBe('default');
-    expect(p.email.getAttribute('aria-invalid')).toBeNull();
+    expect(view.root.dataset.state).toBe('default');
+    expect(view.email.getAttribute('aria-invalid')).toBeNull();
   });
 
   test('an accepted answer on the same page shows the done card and clears the note', async () => {
-    const p = start();
+    const view = start();
     const reply = holdFetch();
-    const sending = p.send();
+    const sending = view.send();
     await tick();
     reply(202);
     await sending;
-    expect(p.done.hidden).toBe(false);
-    expect(p.form.hidden).toBe(true);
-    expect(p.root.dataset.state).toBe('success');
-    expect(p.timers.size).toBe(0);
+    expect(view.done.hidden).toBe(false);
+    expect(view.form.hidden).toBe(true);
+    expect(view.root.dataset.state).toBe('success');
+    expect(view.timers.size).toBe(0);
   });
 });
 
@@ -256,64 +260,64 @@ describe('a copy the browser refuses', () => {
   const link = 'https://hasala.test/#invite';
 
   test('the link stays on the button with no restore waiting', async () => {
-    const p = start();
+    const view = start();
     refuseCopy();
-    await p.copy.fire('click');
-    expect(p.copyText.textContent).toBe(link);
-    expect(p.timers.size).toBe(0);
-    p.runTimers();
-    expect(p.copyText.textContent).toBe(link);
+    await view.copy.fire('click');
+    expect(view.copyText.textContent).toBe(link);
+    expect(view.timers.size).toBe(0);
+    view.runTimers();
+    expect(view.copyText.textContent).toBe(link);
   });
 
   test('a browser with no clipboard keeps the link on the button', async () => {
-    const p = start();
-    g.navigator = {};
-    await p.copy.fire('click');
-    expect(p.copyText.textContent).toBe(link);
-    expect(p.timers.size).toBe(0);
+    const view = start();
+    globals.navigator = {};
+    await view.copy.fire('click');
+    expect(view.copyText.textContent).toBe(link);
+    expect(view.timers.size).toBe(0);
   });
 
   test('a refusal right after a copy that worked drops the waiting restore', async () => {
-    const p = start();
-    await p.copy.fire('click');
-    expect(p.copyText.textContent).toBe('Copied');
-    expect(p.timers.size).toBe(1);
+    const view = start();
+    await view.copy.fire('click');
+    expect(view.copyText.textContent).toBe('Copied');
+    expect(view.timers.size).toBe(1);
     refuseCopy();
-    await p.copy.fire('click');
-    expect(p.timers.size).toBe(0);
-    p.runTimers();
-    expect(p.copyText.textContent).toBe(link);
+    await view.copy.fire('click');
+    expect(view.timers.size).toBe(0);
+    view.runTimers();
+    expect(view.copyText.textContent).toBe(link);
   });
 
   test('a copy that works after a refusal brings the label back', async () => {
-    const p = start();
+    const view = start();
     refuseCopy();
-    await p.copy.fire('click');
+    await view.copy.fire('click');
     allowCopy();
-    await p.copy.fire('click');
-    expect(p.copyText.textContent).toBe('Copied');
-    expect(p.timers.size).toBe(1);
-    p.runTimers();
-    expect(p.copyText.textContent).toBe('Copy link for a friend');
+    await view.copy.fire('click');
+    expect(view.copyText.textContent).toBe('Copied');
+    expect(view.timers.size).toBe(1);
+    view.runTimers();
+    expect(view.copyText.textContent).toBe('Copy link for a friend');
   });
 });
 
 describe('the invite hash', () => {
   test('a press on a request button leaves no hash for a later reload', () => {
-    const p = start();
-    p.cta.fire('click');
-    expect(p.replaced).toEqual([]);
-    expect(p.location.hash).toBe('');
-    p.runTimers();
-    expect(p.email.focused).toBe(1);
-    const reloaded = start({ hash: p.location.hash });
+    const view = start();
+    view.cta.fire('click');
+    expect(view.replaced).toEqual([]);
+    expect(view.location.hash).toBe('');
+    view.runTimers();
+    expect(view.email.focused).toBe(1);
+    const reloaded = start({ hash: view.location.hash });
     expect(reloaded.timers.size).toBe(0);
   });
 
   test('a link that arrives with the hash still focuses Email', () => {
-    const p = start({ hash: '#invite' });
-    p.runTimers();
-    expect(p.email.focused).toBe(1);
+    const view = start({ hash: '#invite' });
+    view.runTimers();
+    expect(view.email.focused).toBe(1);
   });
 });
 
@@ -333,19 +337,19 @@ describe('a restored form', () => {
 
 describe('the coin after a failed send', () => {
   test('a field error fixed before a failed send does not leave the coin in error', async () => {
-    const p = start();
-    p.email.value = 'not-an-address';
-    p.bank.value = 'dib';
-    await p.form.fire('submit');
-    expect(p.root.dataset.state).toBe('error');
+    const view = start();
+    view.email.value = 'not-an-address';
+    view.bank.value = 'dib';
+    await view.form.fire('submit');
+    expect(view.root.dataset.state).toBe('error');
     const reply = holdFetch();
-    const sending = p.send();
+    const sending = view.send();
     await tick();
-    expect(p.root.dataset.state).toBe('default');
+    expect(view.root.dataset.state).toBe('default');
     reply(500);
     await sending;
-    expect(p.root.dataset.state).toBe('default');
-    expect(p.status.dataset.tone).toBe('error');
-    expect(p.submit.disabled).toBe(false);
+    expect(view.root.dataset.state).toBe('default');
+    expect(view.status.dataset.tone).toBe('error');
+    expect(view.submit.disabled).toBe(false);
   });
 });

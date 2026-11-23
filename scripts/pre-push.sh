@@ -257,6 +257,16 @@ else
 	skip "shellcheck" "no shell changes"
 fi
 
+if changed '\.(ts|mjs|astro)$|^\.oxlintrc\.json$|^flake\.(nix|lock)$'; then
+	if have oxlint; then
+		run "oxlint" oxlint
+	else
+		skip "oxlint" "not on PATH"
+	fi
+else
+	skip "oxlint" "no TypeScript, JavaScript, Astro or lint configuration changes"
+fi
+
 if changed '^(web/|docs/legal/)'; then
 	if [[ -d web/node_modules ]] && have bun; then
 		run "web: astro check" bash -c 'cd web && bun run check'

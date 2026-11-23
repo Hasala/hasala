@@ -11,7 +11,7 @@ const { variant = 'full' } = Astro.props;
 /* Every item is its own page (the detail pages in src/data/site.ts), so
    nav.ts marks the current one. The bar says "Privacy" for short. Banks stays
    a homepage section, not a nav item. */
-const NAV = PAGES.map((item) => ({ ...item, label: item.href === '/how-privacy-works' ? 'Privacy' : item.label }));
+const NAV = PAGES.map((item) => ({ href: item.href, label: item.href === '/how-privacy-works' ? 'Privacy' : item.label }));
 /* /i keeps its own "How privacy works" button, so its links leave it out. */
 const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-privacy-works') : NAV;
 /*

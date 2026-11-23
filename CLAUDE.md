@@ -90,6 +90,7 @@ reachable.
   `server/internal/tmpl/seed`. `scripts/check-templates-manifest.sh` also
   compares the SHA-256 of each seed with `TemplatesManifest.swift`. After you
   change a seed template, run `swift ios/tools/templates/sync.swift`.
+- `oxlint` on `infra/assist`, `scripts` and `ios/scripts` (refer to "Lint" below).
 - The golden fixtures check. The sets `authres`, `categorize`, `extract`, `fx`,
   `merchant-group`, `norm-dates`, `outlook-sender`, `replay` and `sms-extract` are golden files: the Swift tests own their
   expected output, and `HASALA_UPDATE_GOLDEN=1` rewrites it
@@ -200,8 +201,8 @@ time is Postgres work for each test database, and password hashing.
 
 `scripts/pre-push.sh` runs the fast CI checks on the paths that you changed
 since `origin/main`: the fence, the HasalaCore lints, gitleaks on the new
-commits, gofmt and go vet, nixfmt, the tokens, the project, the templates,
-the CI path rules, shellcheck and the web check. It takes seconds. `--all` runs all the checks.
+commits, gofmt and go vet, nixfmt, oxlint, the tokens, the project, the
+templates, the CI path rules, shellcheck and the web check. It takes seconds. `--all` runs all the checks.
 It shows PASS, FAIL or SKIP for each check and fails on a FAIL. A check skips
 when its tool is not on PATH, thus run it in the devShell.
 
@@ -209,6 +210,26 @@ The script is not a hook. The owner can link it in their own clone:
 `ln -s ../../scripts/pre-push.sh .git/hooks/pre-push`. All worktrees of that
 clone then use it. Agents do not set `core.hooksPath` and do not install
 hooks.
+
+### Lint
+
+`oxlint` (from the flake) lints all TypeScript, JavaScript and Astro files. The
+configuration is `.oxlintrc.json` in the repository root. Run `oxlint` in the
+repository root. It takes less than one second.
+
+- All rule categories are on. To switch a rule off, change `.oxlintrc.json`
+  and give the reason in the pull request. Do not write a disable comment.
+- Do not use `oxlint --fix` without a typecheck and a test run after it. Some
+  of its fixes change behaviour.
+- In an `.astro` file, `oxlint` reads the frontmatter and each `<script>`
+  element. It does not read the expressions in the markup (`{...}`), and it
+  does not report an unused import or variable in the frontmatter.
+- Three jobs run it: `web` lints `web/`, `gate` (through `scripts/check.sh`)
+  lints `infra/assist`, `scripts` and `ios/scripts`, and `secrets` lints
+  `ios/scripts`, because `gate` does not start for a change only in `ios/`.
+- The home page has a JavaScript budget of 15 KB (gzip) and little free space.
+  For this reason, some rules are off for `web/src/scripts/`. Run
+  `bun run build` in `web/` after each change to a page script.
 
 ### CI
 
@@ -237,7 +258,7 @@ ruleset, the ruleset names these three jobs:
   fails if it finds a reachable advisory.
 - `secrets`: the real-mail fence, the HasalaCore lints
   (`ios/scripts/check-imports.sh --no-manifest` and `check-forbidden.sh`),
-  then gitleaks on the full history.
+  then gitleaks on the full history, then `oxlint ios/scripts`.
 
 Do not change these job names or the name `ci-ok`. The required status
 checks find the jobs by their names. Add a new job to the `needs` of `ci-ok`

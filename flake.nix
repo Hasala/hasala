@@ -199,6 +199,7 @@
             ++ [
               pkgs.postgresql_17.out
               pkgs.bun
+              pkgs.oxlint
               # web/: wrangler (`bun run deploy`) is unreliable under Bun's
               # runtime; `bun run` starts its `#!/usr/bin/env node` bin with this.
               pkgs.nodejs_22

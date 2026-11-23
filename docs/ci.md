@@ -21,15 +21,25 @@ entries that were used least recently.
 
 - `actions/cache` keeps the Go caches (`gate`, `vuln` only reads them), the
   Bun caches (`gate`, `web`) and the SwiftPM caches (`swift`).
-- `nix-community/cache-nix-action` keeps the Nix store in `gate`, `vuln`,
-  `nixos-vm`, `web` and `ios-tools`. Each job has one entry, with the key
-  `nix-<runner OS>-<job>-<hash of flake.lock>`.
-- Only a push to `main` saves a Nix entry. Pull requests and manual runs only
-  restore it. When `flake.lock` changes, a run restores the newest entry with
-  the same prefix.
-- Before a save, the job collects garbage until the store is at most
-  `gc-max-store-size`. After a save, it deletes the older entries of the same
-  prefix on `main` (`purge`). For this, these jobs have `actions: write`.
+- `nix-community/cache-nix-action` keeps the Nix store. There are four entries,
+  with the key `nix-<runner OS>-<name>-<hash of flake.lock and flake.nix>`:
+  `devshell` (the devShell; `gate`, `vuln` and `web` restore it), `checks`
+  (the inputs of the flake checks; `gate`), `vm` (the inputs of `qa-vm`;
+  `nixos-vm`) and `ios-tools` (the Mac devShell, XcodeGen and shellcheck).
+- The test jobs only restore. They do not save and they do not build the
+  tools again, thus their setup time does not change from run to run.
+- The jobs `nix-cache` and `nix-cache-mac` save the entries
+  (`scripts/ci-nix-seed.sh`). `changes` asks the cache API if each entry
+  exists. The seed jobs run only when one is missing: on `main`, and on a
+  pull request that changes `flake.nix` or `flake.lock`. A pull request saves
+  into its own scope. The test jobs wait for the seed jobs.
+- A seed job starts with an empty store. `devshell` and `ios-tools` keep only
+  the closure of the devShell and the flake inputs (garbage collection to
+  zero, with GC roots). `checks` and `vm` keep all that their build got.
+- On `main`, a seed job deletes the older entries with the same prefix
+  (`purge`). For this, only the seed jobs have `actions: write`.
+- A pull request that saved entries keeps them in its own scope. When it
+  closes, `.github/workflows/cache-cleanup.yml` deletes them.
 - Do not use `magic-nix-cache-action` again. It saved one entry for each
   store path, with a random suffix, also in the scopes of pull requests. On
   2026-10-20 it had 5300 entries (9.5 GB) for 974 different paths (1.5 GB).
@@ -106,7 +116,7 @@ entries before it.
 
 `ci.yml` runs on the merge group (`merge_group`). The path rules do not apply
 to this event, thus each Linux job runs. The Mac jobs (`swift` and
-`ios-tools`) skip on a merge group, by the owner's choice (2026-11-23): the
+`ios-tools`, and the Mac seed job `nix-cache-mac`) skip on a merge group, by the owner's choice (2026-11-23): the
 free plan has five Mac runners, and they made each queue entry wait. The
 queue merges when `ci-ok` passes, as on a pull request. The push to `main`
 then runs the Mac jobs on the merged commit, with the usual path rules.

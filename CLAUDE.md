@@ -315,7 +315,8 @@ it is not sure, it runs the job.
 ### Concurrency and caches
 
 A new push to a pull request cancels its older run. A newer push to `main`
-cancels the Mac jobs of an older push. Only a push to `main` saves a Nix cache entry. Do not use
+cancels the Mac jobs of an older push. The seed jobs (`nix-cache`, `nix-cache-mac`) save the Nix cache entries when
+`flake.nix` or `flake.lock` changes; the test jobs only restore them. Do not use
 `magic-nix-cache-action`. `vuln-weekly.yml` and `ci-weekly.yml` run on a
 schedule and are not required. The details are in `docs/ci.md`.
 

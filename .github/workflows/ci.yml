@@ -41,17 +41,6 @@
 # byte-identical inputs and toolchain); SwiftPM checks out the revision
 # Package.resolved pins, from the cached clone or the network alike; and
 # check.sh still runs every Go test with -count=1, so no test result is cached.
-#
-# Nix store (nix-community/cache-nix-action) in `gate`, `vuln`, `nixos-vm`,
-# `web` and `ios-tools`: one entry of the whole /nix per job, keyed
-# nix-<runner OS>-<job>-<hash of flake.lock>. Only a push to main saves it,
-# and only when that exact key is missing; pull requests and manual runs only
-# restore (main's entry, or the newest one of the same prefix when flake.lock
-# changed). Before it saves, the job collects garbage down to
-# gc-max-store-size; after it saves, it deletes main's older entries of the
-# same prefix (purge, which is why these jobs have `actions: write`). So the
-# Nix store is at most five entries, all on main, and none in a pull
-# request's scope.
 name: CI
 
 on:
@@ -85,8 +74,13 @@ defaults:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     timeout-minutes: 5
     outputs:
+      nix_linux: ${{ steps.nix.outputs.linux }}
+      nix_mac: ${{ steps.nix.outputs.mac }}
       gate: ${{ steps.areas.outputs.gate }}
       swift: ${{ steps.areas.outputs.swift }}
       ios: ${{ steps.areas.outputs.ios }}
@@ -98,6 +92,33 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
+
+      - name: Nix store caches that this run can restore
+        id: nix
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEY: ${{ hashFiles('flake.lock', 'flake.nix') }}
+          DEFAULT_REF: refs/heads/${{ github.event.repository.default_branch }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          have() {
+            local ref n
+            for ref in "$GITHUB_REF" "${BASE_REF:+refs/heads/$BASE_REF}" "$DEFAULT_REF"; do
+              [[ -n "$ref" ]] || continue
+              n="$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/caches" -f key="$1" -f ref="$ref" \
+                --jq "[.actions_caches[] | select(.key == \"$1\")] | length")" || return 1
+              if ((n > 0)); then return 0; fi
+            done
+            return 1
+          }
+          linux=true
+          for name in devshell checks vm; do
+            have "nix-Linux-$name-$KEY" || linux=false
+          done
+          mac=true
+          have "nix-macOS-ios-tools-$KEY" || mac=false
+          echo "linux=$linux" | tee -a "$GITHUB_OUTPUT"
+          echo "mac=$mac" | tee -a "$GITHUB_OUTPUT"
 
       - name: Changed areas
         id: areas
@@ -125,15 +146,85 @@ jobs:
           git diff -z --no-renames --name-only "$base" HEAD >"$changed"
           scripts/ci-changes.sh --log "$changed" | tee -a "$GITHUB_OUTPUT"
 
-  # A skipped required job reports "skipped", which passes. Each job below is
-  # skipped only when `changes` succeeded and said "false".
-  gate:
+  nix-cache:
+    name: nix-cache (${{ matrix.name }})
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.gate != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (needs.changes.outputs.nix_linux != 'true' && (needs.changes.outputs.gate != 'false' || needs.changes.outputs.web != 'false' || needs.changes.outputs.nixos_vm != 'false'))) }}
     runs-on: ubuntu-latest
     permissions:
       actions: write
       contents: read
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: devshell
+            gc: "0"
+          - name: checks
+            gc: ""
+          - name: vm
+            gc: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+      - name: Nix store cache
+        id: cache
+        uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
+        with:
+          primary-key: nix-${{ runner.os }}-${{ matrix.name }}-${{ hashFiles('flake.lock', 'flake.nix') }}
+          lookup-only: true
+          gc-max-store-size: ${{ matrix.gc }}
+          purge: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          purge-prefixes: nix-${{ runner.os }}-${{ matrix.name }}-
+          purge-created: 0
+          purge-primary-key: never
+      - name: Build what the cache holds
+        if: ${{ steps.cache.outputs.hit-primary-key != 'true' }}
+        env:
+          NAME: ${{ matrix.name }}
+        run: scripts/ci-nix-seed.sh "$NAME"
+
+  nix-cache-mac:
+    needs: changes
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || (needs.changes.outputs.nix_mac != 'true' && needs.changes.outputs.ios != 'false')) }}
+    runs-on: macos-26
+    permissions:
+      actions: write
+      contents: read
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+      - name: Nix store cache
+        id: cache
+        uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
+        with:
+          primary-key: nix-${{ runner.os }}-ios-tools-${{ hashFiles('flake.lock', 'flake.nix') }}
+          lookup-only: true
+          gc-max-store-size: "0"
+          purge: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          purge-prefixes: nix-${{ runner.os }}-ios-tools-
+          purge-created: 0
+          purge-primary-key: never
+      - name: Build what the cache holds
+        if: ${{ steps.cache.outputs.hit-primary-key != 'true' }}
+        run: scripts/ci-nix-seed.sh ios-tools
+
+  # A skipped required job reports "skipped", which passes. Each job below is
+  # skipped only when `changes` succeeded and said "false".
+  gate:
+    needs: [changes, nix-cache]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.gate != 'false') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -147,17 +238,16 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         with:
           diagnostic-endpoint: ""
-      - name: Nix store cache
+      - name: Devshell Nix store cache
         uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
         with:
-          primary-key: nix-${{ runner.os }}-gate-${{ hashFiles('flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-gate-
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          gc-max-store-size: 6G
-          purge: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          purge-prefixes: nix-${{ runner.os }}-gate-
-          purge-created: 0
-          purge-primary-key: never
+          primary-key: nix-${{ runner.os }}-devshell-${{ hashFiles('flake.lock', 'flake.nix') }}
+          save: false
+      - name: Checks Nix store cache
+        uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
+        with:
+          primary-key: nix-${{ runner.os }}-checks-${{ hashFiles('flake.lock', 'flake.nix') }}
+          save: false
 
       # Every check is evaluated, and every check except the NixOS VM test is
       # built. The VM test needs KVM and minutes; it has its own job below
@@ -243,12 +333,9 @@ jobs:
   # required check, so a slow or flaky runner never blocks a merge. Skipped,
   # like the jobs above, only when `changes` succeeded and said "false".
   nixos-vm:
-    needs: changes
+    needs: [changes, nix-cache]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.nixos_vm != 'false') }}
     runs-on: ubuntu-latest
-    permissions:
-      actions: write
-      contents: read
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -265,28 +352,19 @@ jobs:
           diagnostic-endpoint: ""
           extra-conf: |
             system-features = nixos-test benchmark big-parallel kvm
-      - name: Nix store cache
+      - name: VM Nix store cache
         uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
         with:
-          primary-key: nix-${{ runner.os }}-nixos-vm-${{ hashFiles('flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-nixos-vm-
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          gc-max-store-size: 6G
-          purge: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          purge-prefixes: nix-${{ runner.os }}-nixos-vm-
-          purge-created: 0
-          purge-primary-key: never
+          primary-key: nix-${{ runner.os }}-vm-${{ hashFiles('flake.lock', 'flake.nix') }}
+          save: false
       - name: qa-vm
         run: nix build --no-link --print-build-logs .#checks.x86_64-linux.qa-vm
 
   # vuln-weekly.yml runs the same scan on main every week.
   vuln:
-    needs: changes
+    needs: [changes, nix-cache]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.gate != 'false') }}
     runs-on: ubuntu-latest
-    permissions:
-      actions: write
-      contents: read
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -295,17 +373,11 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         with:
           diagnostic-endpoint: ""
-      - name: Nix store cache
+      - name: Devshell Nix store cache
         uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
         with:
-          primary-key: nix-${{ runner.os }}-vuln-${{ hashFiles('flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-vuln-
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          gc-max-store-size: 6G
-          purge: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          purge-prefixes: nix-${{ runner.os }}-vuln-
-          purge-created: 0
-          purge-primary-key: never
+          primary-key: nix-${{ runner.os }}-devshell-${{ hashFiles('flake.lock', 'flake.nix') }}
+          save: false
 
       # The modules govulncheck loads, and their compiled export data: `gate`'s
       # cache (see "Caches" above), read only. Saving here would race `gate`
@@ -386,15 +458,12 @@ jobs:
   # signing and uploads happen only on the owner's Mac (ios/scripts/archive.sh,
   # ios/scripts/upload.sh). Not a required check.
   ios-tools:
-    needs: changes
+    needs: [changes, nix-cache-mac]
     if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
     concurrency:
       group: ci-mac-ios-tools-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || github.run_id }}
       cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: macos-26
-    permissions:
-      actions: write
-      contents: read
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -431,17 +500,11 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         with:
           diagnostic-endpoint: ""
-      - name: Nix store cache
+      - name: Mac Nix store cache
         uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
         with:
-          primary-key: nix-${{ runner.os }}-ios-tools-${{ hashFiles('flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-ios-tools-
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          gc-max-store-size: 4G
-          purge: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          purge-prefixes: nix-${{ runner.os }}-ios-tools-
-          purge-created: 0
-          purge-primary-key: never
+          primary-key: nix-${{ runner.os }}-ios-tools-${{ hashFiles('flake.lock', 'flake.nix') }}
+          save: false
 
       - name: Project matches ios/project.yml (XcodeGen 2.46.0, AT-01)
         run: |
@@ -532,12 +595,9 @@ jobs:
   # that comes with the runner image, and keeps its reports in a workflow
   # artifact only (never temporary-public-storage). Nothing here deploys.
   web:
-    needs: changes
+    needs: [changes, nix-cache]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.web != 'false') }}
     runs-on: ubuntu-latest
-    permissions:
-      actions: write
-      contents: read
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -546,17 +606,11 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         with:
           diagnostic-endpoint: ""
-      - name: Nix store cache
+      - name: Devshell Nix store cache
         uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
         with:
-          primary-key: nix-${{ runner.os }}-web-${{ hashFiles('flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-web-
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          gc-max-store-size: 6G
-          purge: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          purge-prefixes: nix-${{ runner.os }}-web-
-          purge-created: 0
-          purge-primary-key: never
+          primary-key: nix-${{ runner.os }}-devshell-${{ hashFiles('flake.lock', 'flake.nix') }}
+          save: false
 
       - name: Bun package cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

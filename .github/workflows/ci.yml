@@ -56,6 +56,7 @@ name: CI
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
   workflow_dispatch:
@@ -449,7 +450,7 @@ jobs:
   # ios/scripts/upload.sh). Not a required check.
   ios-tools:
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
     concurrency:
       group: ci-mac-ios-tools-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || github.run_id }}
       cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
@@ -537,7 +538,7 @@ jobs:
   # manifest that disagrees with it fails instead of resolving afresh.
   swift:
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.swift != 'false') }}
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.swift != 'false') }}
     concurrency:
       group: ci-mac-swift-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || github.run_id }}
       cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}

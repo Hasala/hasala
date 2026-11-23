@@ -328,7 +328,8 @@ let
     timeout ${toString cfg.backup.dumpTimeoutSec} pg_dump --host=${socketDir} --username=hasala_backup --dbname=hasala \
       --format=custom --compress=zstd:6 --no-password \
       | tee "$work/stream" \
-      | age ${ageRecipientFlags} -o "$out.part"
+      | age ${ageRecipientFlags} \
+      | dd of="$out.part" bs=4M iflag=fullblock oflag=dsync status=none
     wait "$toc_pid"
     if [ "$tag" = daily ]; then grep -q ' TABLE DATA public op_log ' "$work/toc"; fi
     # The purge ledger and the log generation (§5.8.1), read through the

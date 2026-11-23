@@ -219,6 +219,48 @@ jobs:
         if: ${{ steps.cache.outputs.hit-primary-key != 'true' }}
         run: scripts/ci-nix-seed.sh ios-tools
 
+  nix-eval:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.gate != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+      - name: nix flake check --no-build
+        run: nix flake check --no-build
+
+      - name: The Mac devShell needs no build of a nixpkgs package
+        run: scripts/ci-mac-devshell-cached.sh
+
+  nix-build:
+    needs: [changes, nix-cache]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.gate != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+      - name: Checks Nix store cache
+        uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
+        with:
+          primary-key: nix-${{ runner.os }}-checks-${{ hashFiles('flake.lock', 'flake.nix') }}
+          save: false
+      - name: Build every check but qa-vm
+        run: |
+          mapfile -t checks < <(nix eval --raw .#checks.x86_64-linux --apply \
+            'cs: builtins.concatStringsSep "\n" (builtins.attrNames (removeAttrs cs [ "qa-vm" ])) + "\n"')
+          printf '%s\n' "${checks[@]}"
+          nix build --no-link --print-build-logs "${checks[@]/#/.#checks.x86_64-linux.}"
+
   # A skipped required job reports "skipped", which passes. Each job below is
   # skipped only when `changes` succeeded and said "false".
   gate:
@@ -243,59 +285,6 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-devshell-${{ hashFiles('flake.lock', 'flake.nix') }}
           save: false
-      - name: Checks Nix store cache
-        uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
-        with:
-          primary-key: nix-${{ runner.os }}-checks-${{ hashFiles('flake.lock', 'flake.nix') }}
-          save: false
-
-      # Every check is evaluated, and every check except the NixOS VM test is
-      # built. The VM test needs KVM and minutes; it has its own job below
-      # (nixos-vm), which is not a required check. The two are independent Nix
-      # runs, each mostly one evaluation thread, so they run side by side: each
-      # one's output is printed in its own group once both have finished, and
-      # the step fails if either failed.
-      - name: nix flake check (evaluate everything; build every check but qa-vm)
-        run: |
-          set -euo pipefail
-          checks="$(nix eval --json .#checks.x86_64-linux --apply 'cs: builtins.attrNames (removeAttrs cs [ "qa-vm" ])' \
-            | jq -r '.[] | ".#checks.x86_64-linux." + .')"
-          echo "$checks"
-          logs="$RUNNER_TEMP/nix-check-logs"
-          mkdir -p "$logs"
-          # bg LOG COMMAND...: COMMAND in the background, its output and time in LOG.
-          bg() {
-            local log="$1"
-            shift
-            (
-              start=$SECONDS rc=0
-              "$@" >"$log" 2>&1 || rc=$?
-              echo "(exit $rc after $((SECONDS - start)) s)" >>"$log"
-              exit "$rc"
-            ) &
-          }
-          bg "$logs/evaluate" nix flake check --no-build
-          evaluate=$!
-          # shellcheck disable=SC2086 # one installable per word
-          bg "$logs/build" nix build --no-link --print-build-logs $checks
-          build=$!
-          failed=0
-          for run in "evaluate:$evaluate:nix flake check --no-build" "build:$build:nix build of every check but qa-vm"; do
-            IFS=: read -r log pid what <<<"$run"
-            rc=0
-            wait "$pid" || rc=$?
-            echo "::group::$what (exit $rc)"
-            cat "$logs/$log"
-            echo "::endgroup::"
-            if [[ "$rc" != 0 ]]; then
-              echo "::error::$what failed (exit $rc)"
-              failed=1
-            fi
-          done
-          exit "$failed"
-
-      - name: The Mac devShell needs no build of a nixpkgs package
-        run: scripts/ci-mac-devshell-cached.sh
 
       - name: Build the devShell
         run: nix develop --command true
@@ -657,7 +646,7 @@ jobs:
           retention-days: 14
 
   ci-ok:
-    needs: [changes, gate, vuln, secrets]
+    needs: [changes, gate, nix-eval, nix-build, vuln, secrets]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -22,7 +22,9 @@ export function onPage(init: (signal: AbortSignal) => void): void {
     stale = true;
   });
   document.addEventListener('astro:page-load', () => {
-    if (stale) {run();}
+    if (stale) {
+      run();
+    }
   });
   run();
 }
@@ -51,7 +53,9 @@ export function observe(
   cb: IntersectionObserverCallback,
   opts?: IntersectionObserverInit,
 ): IntersectionObserver | null {
-  if (!('IntersectionObserver' in window)) {return null;}
+  if (!('IntersectionObserver' in window)) {
+    return null;
+  }
   const io = new IntersectionObserver(cb, opts);
   signal.addEventListener('abort', () => io.disconnect(), { once: true });
   return io;

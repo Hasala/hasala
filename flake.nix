@@ -83,6 +83,7 @@
           runtimeInputs = [
             pkgs.nixfmt
             (goFor system)
+            pkgs.oxfmt
           ];
           settings = {
             tree-root-file = "flake.nix";
@@ -98,6 +99,14 @@
               # Byte-frozen v1 reference code (see its README): a formatter
               # must never be the thing that edits it.
               excludes = [ "server/oracle/v1ref/*" ];
+            };
+            formatter.oxfmt = {
+              command = "oxfmt";
+              includes = [
+                "*.ts"
+                "*.mjs"
+              ];
+              excludes = [ "conformance/*" ];
             };
           };
         };
@@ -199,6 +208,7 @@
             ++ [
               pkgs.postgresql_17.out
               pkgs.bun
+              pkgs.oxfmt
               pkgs.oxlint
               # web/: wrangler (`bun run deploy`) is unreliable under Bun's
               # runtime; `bun run` starts its `#!/usr/bin/env node` bin with this.

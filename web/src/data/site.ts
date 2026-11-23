@@ -17,7 +17,8 @@ export const MAIL_PROVIDERS = ['Gmail', 'Outlook'] as const;
 export const MAIL = new Intl.ListFormat('en', { type: 'disjunction' }).format(MAIL_PROVIDERS);
 /** "Gmail or personal Outlook": where a line names the services in passing. */
 export const MAIL_PERSONAL = 'Gmail or personal Outlook';
-export const MAIL_NOTE = 'Hasala works with Gmail and with personal Outlook accounts (outlook.com, hotmail.com and live.com) for now. Work and school accounts aren’t supported yet.';
+export const MAIL_NOTE =
+  'Hasala works with Gmail and with personal Outlook accounts (outlook.com, hotmail.com and live.com) for now. Work and school accounts aren’t supported yet.';
 
 export const SITE = {
   name: 'Hasala',
@@ -33,7 +34,8 @@ export const SITE = {
   securityEmail: 'security@hasala.app',
   mailFrom: 'no-reply@hasala.app',
   ogImage: '/og-image.png',
-  ogImageAlt: 'Hasala: a private budgeting app that shows where your money goes. For iPhone, in the UAE.',
+  ogImageAlt:
+    'Hasala: a private budgeting app that shows where your money goes. For iPhone, in the UAE.',
   testFlightAppStore: 'https://apps.apple.com/app/testflight/id899247664',
   /** The source: source-available under FSL-1.1-ALv2 (never call it open source). */
   repoUrl: 'https://github.com/Hasala/hasala',
@@ -167,14 +169,16 @@ export const FAQ: readonly FaqItem[] = [
     id: 'texts',
     question: "Can Hasala use my bank's texts instead of my email?",
     short: 'Yes. Bank texts work with no mailbox access.',
-    answer: "Set up one automation in Apple's Shortcuts, and your iPhone hands Hasala the texts it receives. It keeps only payment texts and drops the rest at once. No text leaves your iPhone. It works from your next payment on, with any bank. An account uses bank email or bank texts, not both.",
+    answer:
+      "Set up one automation in Apple's Shortcuts, and your iPhone hands Hasala the texts it receives. It keeps only payment texts and drops the rest at once. No text leaves your iPhone. It works from your next payment on, with any bank. An account uses bank email or bank texts, not both.",
     more: { href: '/how-it-works#texts', label: 'Using bank texts instead' },
   },
   {
     id: 'lost-phone',
     question: 'What if I lose my phone?',
     short: 'Your passkey or your 12‑word recovery phrase unlocks your data on a new iPhone.',
-    answer: "Your transactions and budget are encrypted with a key only your devices hold. Your passkey syncs in iCloud Keychain. A password signs you in but never unlocks your data. Keep the 12 words somewhere safe: we can't reset them for you.",
+    answer:
+      "Your transactions and budget are encrypted with a key only your devices hold. Your passkey syncs in iCloud Keychain. A password signs you in but never unlocks your data. Keep the 12 words somewhere safe: we can't reset them for you.",
     more: { href: '/how-privacy-works#new-phone', label: 'A new or lost phone' },
   },
   {
@@ -187,14 +191,16 @@ export const FAQ: readonly FaqItem[] = [
     id: 'iphone-english',
     question: 'Why only iPhone, and only English?',
     short: 'Hasala does its work on the iPhone itself.',
-    answer: "Starting with one platform and one language lets us get every bank alert right before we promise more. The app is in light mode only for now, too.",
+    answer:
+      'Starting with one platform and one language lets us get every bank alert right before we promise more. The app is in light mode only for now, too.',
     more: { href: '/how-it-works#iphone', label: 'iPhone and English only, for now' },
   },
   {
     id: 'delete',
     question: 'How do I delete my account and data?',
     short: 'In Hasala, open Profile, then Delete your account.',
-    answer: 'That removes your account and the encrypted data our server keeps. To leave the waitlist instead, use the link in any email we sent you, or write to support@hasala.app.',
+    answer:
+      'That removes your account and the encrypted data our server keeps. To leave the waitlist instead, use the link in any email we sent you, or write to support@hasala.app.',
     more: { href: '/support', label: 'Support' },
   },
   {
@@ -207,14 +213,20 @@ export const FAQ: readonly FaqItem[] = [
       "Accept Apple's invitation and install Hasala. It comes by email, or use the link in your invite.",
       'Open Hasala and paste or type your invite.',
     ],
-    after:
-      `Apple handles the invitation, so it sees your email address and that you installed Hasala; other testers never see you. New versions reach you in TestFlight after Apple's beta review, which usually takes about a day. You need an iPhone with iOS 26 or later, and your bank's alerts by text or in a ${MAIL_PERSONAL} address.`,
+    after: `Apple handles the invitation, so it sees your email address and that you installed Hasala; other testers never see you. New versions reach you in TestFlight after Apple's beta review, which usually takes about a day. You need an iPhone with iOS 26 or later, and your bank's alerts by text or in a ${MAIL_PERSONAL} address.`,
     more: { href: '/#invite', label: 'Request an invite' },
   },
 ];
 
-export const curly = (text: string): string => text.replaceAll('\'', '’');
+export const curly = (text: string): string => text.replaceAll("'", '’');
 
 /** One FAQ answer as plain text: the one-line reply, then the detail. */
 export const faqText = (item: FaqItem): string =>
-  [item.short, item.answer, item.steps?.map((step, index) => `${index + 1}. ${step}`).join(' '), item.after].filter(Boolean).join(' ');
+  [
+    item.short,
+    item.answer,
+    item.steps?.map((step, index) => `${index + 1}. ${step}`).join(' '),
+    item.after,
+  ]
+    .filter(Boolean)
+    .join(' ');

@@ -7,14 +7,22 @@
  */
 import { observe, onPage } from './page';
 
-export const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+export const reducedMotion = (): boolean =>
+  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const once = (signal: AbortSignal, els: Iterable<Element>, threshold: number, fn: (el: HTMLElement) => void): void => {
+const once = (
+  signal: AbortSignal,
+  els: Iterable<Element>,
+  threshold: number,
+  fn: (el: HTMLElement) => void,
+): void => {
   const io = observe(
     signal,
     (entries, obs) => {
       for (const entry of entries) {
-        if (!entry.isIntersecting) {continue;}
+        if (!entry.isIntersecting) {
+          continue;
+        }
         obs.unobserve(entry.target);
         fn(entry.target as HTMLElement);
       }
@@ -22,8 +30,11 @@ const once = (signal: AbortSignal, els: Iterable<Element>, threshold: number, fn
     { threshold },
   );
   for (const el of els) {
-    if (io) {io.observe(el);}
-    else {fn(el as HTMLElement);}
+    if (io) {
+      io.observe(el);
+    } else {
+      fn(el as HTMLElement);
+    }
   }
 };
 
@@ -35,7 +46,9 @@ const inView = (el: Element): boolean => {
 /** B: each section enters once, when 15% of it is in view. Stagger 60 ms, max 4. */
 function reveals(signal: AbortSignal): void {
   const els = [...document.querySelectorAll<HTMLElement>('[data-reveal]')];
-  if (els.length === 0) {return;}
+  if (els.length === 0) {
+    return;
+  }
   if (reducedMotion() || !('IntersectionObserver' in window)) {
     els.forEach((el) => el.classList.add('is-in'));
     return;
@@ -72,32 +85,47 @@ function reveals(signal: AbortSignal): void {
 }
 
 const fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const easeInOut = (progress: number): number => (progress < 0.5 ? 4 * progress * progress * progress : 1 - (-2 * progress + 2) ** 3 / 2);
+const easeInOut = (progress: number): number =>
+  progress < 0.5 ? 4 * progress * progress * progress : 1 - (-2 * progress + 2) ** 3 / 2;
 
 /** C: the figure counts up with the bar (900 ms, ease-in-out), the today marker drops in, the verdict lands last. */
 function pace(signal: AbortSignal): void {
   const card = document.querySelector<HTMLElement>('[data-pace]');
-  if (!card || reducedMotion()) {return;}
+  if (!card || reducedMotion()) {
+    return;
+  }
   const value = card.querySelector<HTMLElement>('[data-count]');
   const fill = card.querySelector<HTMLElement>('.pace__fill');
   const today = card.querySelector<HTMLElement>('.pace__today');
   const verdict = card.querySelector<HTMLElement>('.pace__verdict');
-  if (!value || !fill || !today || !verdict) {return;}
+  if (!value || !fill || !today || !verdict) {
+    return;
+  }
   const target = Number(value.dataset.count);
   // Only arm it if it starts out of view, so nobody sees it reset.
-  if (card.getBoundingClientRect().top < innerHeight) {return;}
+  if (card.getBoundingClientRect().top < innerHeight) {
+    return;
+  }
   card.setAttribute('data-armed', '');
   value.textContent = fmt.format(0);
   once(signal, [card], 0.4, () => {
     const start = performance.now();
     const step = (now: number): void => {
-      if (signal.aborted) {return;}
+      if (signal.aborted) {
+        return;
+      }
       const progress = Math.min(1, (now - start) / 900);
       value.textContent = fmt.format(target * easeInOut(progress));
-      if (progress < 1) {requestAnimationFrame(step);}
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      }
     };
     requestAnimationFrame(step);
-    fill.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 900, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' });
+    fill.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], {
+      duration: 900,
+      easing: 'cubic-bezier(.65,0,.35,1)',
+      fill: 'forwards',
+    });
     today.animate(
       [
         { opacity: 0, transform: 'translateY(-8px)' },
@@ -105,22 +133,32 @@ function pace(signal: AbortSignal): void {
       ],
       { duration: 160, delay: 900, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' },
     );
-    verdict.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, delay: 1100, fill: 'forwards' });
+    verdict.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 200,
+      delay: 1100,
+      fill: 'forwards',
+    });
   });
 }
 
 /** Phones drift at 0.94× scroll speed, at most 40 px. */
 function parallax(signal: AbortSignal): void {
-  if (reducedMotion()) {return;}
+  if (reducedMotion()) {
+    return;
+  }
   const els = [...document.querySelectorAll<HTMLElement>('[data-parallax]')];
-  if (els.length === 0) {return;}
+  if (els.length === 0) {
+    return;
+  }
   let ticking = false;
   const update = (): void => {
     ticking = false;
     const vh = innerHeight;
     for (const el of els) {
       const rect = el.getBoundingClientRect();
-      if (rect.bottom < -100 || rect.top > vh + 100) {continue;}
+      if (rect.bottom < -100 || rect.top > vh + 100) {
+        continue;
+      }
       const offset = Math.max(-40, Math.min(40, (rect.top + rect.height / 2 - vh / 2) * 0.06));
       el.style.transform = `translate3d(0, ${offset.toFixed(1)}px, 0)`;
     }
@@ -145,7 +183,9 @@ function parallax(signal: AbortSignal): void {
  */
 let started = false;
 export function initMotion(): void {
-  if (started) {return;}
+  if (started) {
+    return;
+  }
   started = true;
   onPage((signal) => {
     reveals(signal);

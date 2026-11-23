@@ -86,34 +86,47 @@ const COPY = {
   // onPage: it runs again whenever the router brings this page back (Back).
   onPage((signal) => {
     const root = document.querySelector<HTMLElement>('[data-wlink]');
-    if (!root) {return;}
-    window.addEventListener('hashchange', () => /^#[A-Za-z0-9_-]{43}$/u.test(location.hash) && location.reload(), { signal });
+    if (!root) {
+      return;
+    }
+    window.addEventListener(
+      'hashchange',
+      () => /^#[A-Za-z0-9_-]{43}$/u.test(location.hash) && location.reload(),
+      { signal },
+    );
     const kind = root.dataset.wlink as 'confirm' | 'leave';
     const button = root.querySelector<HTMLButtonElement>('[data-wlink-button]');
     const label = button?.querySelector<HTMLElement>('[data-label]');
     const spinner = button?.querySelector<HTMLElement>('.spinner');
     const status = root.querySelector<HTMLElement>('.wlink__status');
     const panel = root.querySelector<HTMLElement>('.wlink__panel');
-    if (!button || !label || !spinner || !status || !panel) {return;}
+    if (!button || !label || !spinner || !status || !panel) {
+      return;
+    }
     const HTTP_OK = 200;
     const HTTP_BAD_REQUEST = 400;
     const HTTP_GONE = 410;
     const HTTP_TOO_MANY = 429;
 
-    const incomplete = 'This link isn’t complete. Open it again from our email, or copy the whole link into your browser.';
+    const incomplete =
+      'This link isn’t complete. Open it again from our email, or copy the whole link into your browser.';
     const say = (text: string): void => {
       status.dataset.tone = 'error';
       status.textContent = text;
     };
     const show = (step: 'ask' | 'done' | 'expired'): void => {
-      for (const el of root.querySelectorAll<HTMLElement>('[data-step]')) {el.hidden = el.dataset.step !== step;}
+      for (const el of root.querySelectorAll<HTMLElement>('[data-step]')) {
+        el.hidden = el.dataset.step !== step;
+      }
       button.hidden = step !== 'ask';
       status.textContent = '';
       root.querySelector<HTMLElement>(`[data-step="${step}"] h1`)?.focus();
     };
 
     const finish = (): void => {
-      if (kind === 'confirm') {panel.dataset.state = 'success';}
+      if (kind === 'confirm') {
+        panel.dataset.state = 'success';
+      }
       show('done');
     };
 
@@ -138,7 +151,9 @@ const COPY = {
         label.textContent = label.dataset.busy ?? '';
         status.textContent = '';
         const answer = await postJson(`${root.dataset.api}/v1/waitlist/${kind}`, { token });
-        if (signal.aborted) {return;}
+        if (signal.aborted) {
+          return;
+        }
         button.disabled = false;
         button.style.width = '';
         spinner.hidden = true;
@@ -146,7 +161,10 @@ const COPY = {
         if (answer.status === HTTP_OK) {
           markLinkDone(kind);
           finish();
-        } else if (kind === 'confirm' && (answer.status === HTTP_GONE || answer.status === HTTP_BAD_REQUEST)) {
+        } else if (
+          kind === 'confirm' &&
+          (answer.status === HTTP_GONE || answer.status === HTTP_BAD_REQUEST)
+        ) {
           show('expired');
         } else if (answer.status === HTTP_BAD_REQUEST) {
           say(incomplete);

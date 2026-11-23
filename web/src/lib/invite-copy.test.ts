@@ -8,7 +8,9 @@ function page(answers: boolean[]) {
   const clipboard = inviteCopy(
     () => {
       seen.writes += 1;
-      return (answers.shift() ?? true) ? Promise.resolve() : Promise.reject(new DOMException('Write permission denied', 'NotAllowedError'));
+      return (answers.shift() ?? true)
+        ? Promise.resolve()
+        : Promise.reject(new DOMException('Write permission denied', 'NotAllowedError'));
     },
     () => {
       seen.manual += 1;
@@ -82,6 +84,6 @@ describe('the invite page', () => {
 
   test('stops offering to copy once the copy is by hand', async () => {
     const source = await read('../pages/i.astro');
-    expect(source).toContain('if (go) {go.textContent = goLabel;}');
+    expect(source).toContain('go.textContent = goLabel;');
   });
 });

@@ -545,7 +545,9 @@ import Icon from '../Icon.astro';
       signal,
       (entries, obs) => {
         for (const entry of entries) {
-          if (!entry.isIntersecting) {continue;}
+          if (!entry.isIntersecting) {
+            continue;
+          }
           obs.unobserve(entry.target);
           entry.target.setAttribute('data-play', '');
         }
@@ -553,8 +555,11 @@ import Icon from '../Icon.astro';
       { threshold: 0.2 },
     );
     for (const el of els) {
-      if (io) {io.observe(el);}
-      else {el.setAttribute('data-play', '');}
+      if (io) {
+        io.observe(el);
+      } else {
+        el.setAttribute('data-play', '');
+      }
     }
   });
 </script>

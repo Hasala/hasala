@@ -233,23 +233,34 @@ const uid = `hp-${play}`;
   const fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   onPage((signal) => {
-    const io = observe(signal, (entries) => entries.forEach((entry) => entry.target.classList.toggle('is-off', !entry.isIntersecting)));
+    const io = observe(signal, (entries) =>
+      entries.forEach((entry) => entry.target.classList.toggle('is-off', !entry.isIntersecting)),
+    );
     document.querySelectorAll('[data-alive]').forEach((el) => io?.observe(el));
     document.querySelectorAll<HTMLElement>('[data-hp-count]').forEach((el) => {
-      if (!getComputedStyle(el).getPropertyValue('--hp-rise').trim()) {return;}
+      if (!getComputedStyle(el).getPropertyValue('--hp-rise').trim()) {
+        return;
+      }
       const to = Number(el.dataset.hpCount);
       // Keep to the bar's own clock: a late script must not reset a figure
       // the visitor has already seen, so past the 300 ms delay it stays put.
       const wipe = el.closest('.hp')?.querySelector('.hp__fill')?.getAnimations()[0];
       const at = Number(wipe?.currentTime ?? Infinity);
-      if (!(at <= 300)) {return;}
+      if (!(at <= 300)) {
+        return;
+      }
       const t0 = performance.now() - at + 300;
       const step = (now: number): void => {
-        if (signal.aborted) {return;}
+        if (signal.aborted) {
+          return;
+        }
         const progress = Math.max(0, Math.min(1, (now - t0) / 900));
-        const eased = progress < 0.5 ? 4 * progress * progress * progress : 1 - (-2 * progress + 2) ** 3 / 2;
+        const eased =
+          progress < 0.5 ? 4 * progress * progress * progress : 1 - (-2 * progress + 2) ** 3 / 2;
         el.textContent = fmt.format(to * eased);
-        if (progress < 1) {requestAnimationFrame(step);}
+        if (progress < 1) {
+          requestAnimationFrame(step);
+        }
       };
       step(performance.now());
     });

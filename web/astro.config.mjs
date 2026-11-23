@@ -17,7 +17,9 @@ const API_ORIGIN = new URL(API_BASE).origin;
 // "api" (default) or "email"; see src/lib/env.ts. Turnstile loads only in "api" mode.
 const WAITLIST_MODE = env.PUBLIC_WAITLIST_MODE || 'api';
 if (WAITLIST_MODE !== 'email' && WAITLIST_MODE !== 'api') {
-  throw new Error(`PUBLIC_WAITLIST_MODE must be "email" or "api", not ${JSON.stringify(WAITLIST_MODE)}`);
+  throw new Error(
+    `PUBLIC_WAITLIST_MODE must be "email" or "api", not ${JSON.stringify(WAITLIST_MODE)}`,
+  );
 }
 const TURNSTILE = WAITLIST_MODE === 'api' && Boolean(env.PUBLIC_TURNSTILE_SITEKEY);
 const TURNSTILE_ORIGIN = 'https://challenges.cloudflare.com';
@@ -33,7 +35,15 @@ const CF_ANALYTICS_REPORT = 'https://cloudflareinsights.com';
 // Pages that are not for search engines (they only make sense from an email
 // or a form post) stay out of the sitemap; they also carry noindex.
 // Legal pages stay out of the sitemap (and carry noindex) while they are drafts.
-const NOT_IN_SITEMAP = ['/i', '/freeze', '/joined', '/waitlist/confirm', '/waitlist/leave', '/404', ...draftLegalPaths(new URL('../docs/legal/', import.meta.url))];
+const NOT_IN_SITEMAP = [
+  '/i',
+  '/freeze',
+  '/joined',
+  '/waitlist/confirm',
+  '/waitlist/leave',
+  '/404',
+  ...draftLegalPaths(new URL('../docs/legal/', import.meta.url)),
+];
 
 export default defineConfig({
   site: 'https://hasala.app',
@@ -55,12 +65,18 @@ export default defineConfig({
   devToolbar: { enabled: false },
   integrations: [
     sitemap({
-      filter: (page) => !NOT_IN_SITEMAP.some((path) => new URL(page).pathname.replace(/\/$/u, '') === path),
+      filter: (page) =>
+        !NOT_IN_SITEMAP.some((path) => new URL(page).pathname.replace(/\/$/u, '') === path),
     }),
     // After the build: every page gets the same CSP, which <ClientRouter /> needs.
     // The pages whose address carries a code or a token also get a CSP header
     // without Web Analytics (public/_headers): it would record their paths.
-    cspUnion({ withoutAnalytics: { token: '%CSP_WITHOUT_ANALYTICS%', drop: [CF_ANALYTICS_SCRIPT, CF_ANALYTICS_REPORT] } }),
+    cspUnion({
+      withoutAnalytics: {
+        token: '%CSP_WITHOUT_ANALYTICS%',
+        drop: [CF_ANALYTICS_SCRIPT, CF_ANALYTICS_REPORT],
+      },
+    }),
   ],
   fonts: [
     {
@@ -102,7 +118,12 @@ export default defineConfig({
       scriptDirective: {
         resources: ["'self'", CF_ANALYTICS_SCRIPT, ...(TURNSTILE ? [TURNSTILE_ORIGIN] : [])],
         // The two <head> scripts in src/lib/inline-scripts.mjs; Astro hashes only bundled ones.
-        hashes: INLINE_SCRIPTS.map((script) => /** @type {`sha256-${string}`} */ (`sha256-${createHash('sha256').update(script).digest('base64')}`)),
+        hashes: INLINE_SCRIPTS.map(
+          (script) =>
+            /** @type {`sha256-${string}`} */ (
+              `sha256-${createHash('sha256').update(script).digest('base64')}`
+            ),
+        ),
       },
       styleDirective: {
         resources: ["'self'"],

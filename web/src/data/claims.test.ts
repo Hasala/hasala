@@ -59,7 +59,9 @@ describe('the waitlist answer asks for the confirm tap', () => {
 describe('the invite panel text reaches 4.5:1', () => {
   test('the pace wash starts at #3C62F0 and the panel text is solid white', async () => {
     const css = await web('styles/global.css');
-    expect(css).toContain('--wash-pace: linear-gradient(in oklab 160deg, oklab(55.6% -0.01 -0.217) 0%');
+    expect(css).toContain(
+      '--wash-pace: linear-gradient(in oklab 160deg, oklab(55.6% -0.01 -0.217) 0%',
+    );
     const beta = await web('components/sections/Beta.astro');
     expect(beta).toContain('background: rgb(20 38 89 / 24%)');
     expect(beta).not.toContain('rgb(255 255 255 / 88%)');
@@ -99,6 +101,8 @@ describe('the legal pages match the app', () => {
   test('the privacy policy describes removing a disconnected mailbox’s transactions', async () => {
     const text = await read('docs/legal/privacy.md');
     expect(text).toContain('Removing takes them out of your lists and totals.');
-    expect(text).not.toContain('Transactions it has already brought in stay in Hasala, archived or not, until you delete your account.\n\n### Stopping Gmail');
+    expect(text).not.toContain(
+      'Transactions it has already brought in stay in Hasala, archived or not, until you delete your account.\n\n### Stopping Gmail',
+    );
   });
 });

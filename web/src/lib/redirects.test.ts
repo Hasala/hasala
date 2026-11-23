@@ -9,5 +9,9 @@ const parse = (text: string): string[][] =>
 test('/testflight sends email readers to TestFlight on the App Store', async () => {
   const text = await Bun.file(new URL('../../public/_redirects', import.meta.url)).text();
   const rules = parse(text);
-  expect(rules).toContainEqual(['/testflight', 'https://apps.apple.com/app/testflight/id899247664', '302']);
+  expect(rules).toContainEqual([
+    '/testflight',
+    'https://apps.apple.com/app/testflight/id899247664',
+    '302',
+  ]);
 });

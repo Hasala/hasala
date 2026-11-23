@@ -226,6 +226,10 @@ step "oxlint (infra/assist, scripts, ios/scripts)"
 (cd "$ROOT" && oxlint infra/assist scripts ios/scripts)
 GATE_STEPS+=", oxlint"
 
+step "oxfmt --check (infra/assist, scripts, ios/scripts)"
+(cd "$ROOT" && oxfmt --check infra/assist scripts ios/scripts)
+GATE_STEPS+=", oxfmt"
+
 GOLDEN_SETS=(authres categorize extract fx merchant-group norm-dates outlook-sender replay sms-extract)
 step "golden fixtures change only with a Swift test change"
 cd "$ROOT"

@@ -3,7 +3,12 @@ export type FreezeResult = 'done' | 'retry' | 'unreachable';
 const FREEZE_WAIT_MS = 20_000;
 const NO_CONTENT = 204;
 
-export async function postFreeze(api: string, token: string, send: typeof fetch = fetch, waitMs = FREEZE_WAIT_MS): Promise<FreezeResult> {
+export async function postFreeze(
+  api: string,
+  token: string,
+  send: typeof fetch = fetch,
+  waitMs = FREEZE_WAIT_MS,
+): Promise<FreezeResult> {
   const stop = new AbortController();
   let waitedOut = false;
   const timer = setTimeout(() => {

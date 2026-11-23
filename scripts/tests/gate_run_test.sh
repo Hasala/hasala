@@ -29,6 +29,11 @@ cat >"$work/bin/oxlint" <<'STUB'
 printf 'oxlint %s\n' "$*" >>"$STUB_LOG"
 exit "${STUB_OXLINT_RC:-0}"
 STUB
+cat >"$work/bin/oxfmt" <<'STUB'
+#!/bin/sh
+printf 'oxfmt %s\n' "$*" >>"$STUB_LOG"
+exit "${STUB_OXFMT_RC:-0}"
+STUB
 cat >"$work/bin/go" <<'STUB'
 #!/bin/sh
 case "$PWD" in
@@ -82,7 +87,7 @@ case " $* " in
 esac
 exit 0
 STUB
-chmod +x "$work/bin/bun" "$work/bin/govulncheck" "$work/bin/oxlint" "$work/bin/go"
+chmod +x "$work/bin/bun" "$work/bin/govulncheck" "$work/bin/oxlint" "$work/bin/oxfmt" "$work/bin/go"
 
 sed -nE 's/^[[:space:]]*"[^|]*\|[^|]*\|[^|]*\|(.*)"$/\1/p' "$ROOT/scripts/check.sh" >"$work/recorded"
 
@@ -147,7 +152,7 @@ lacks() {
 fresh
 g update-ref refs/remotes/origin/main HEAD
 gate "a local run with a merge base" 0
-says "check: OK (real-mail fence, toolchain, fence, oxlint, govulncheck, go vet, go test, assist worker, conformance)"
+says "check: OK (real-mail fence, toolchain, fence, oxlint, oxfmt, govulncheck, go vet, go test, assist worker, conformance)"
 lacks "NOT RUN"
 
 fresh
@@ -157,7 +162,7 @@ says "NOT RUN: the golden-fixture rule"
 fresh
 commit second
 gate "a CI run" 0 GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$work/summary"
-says "check: OK (real-mail fence, toolchain, fence, oxlint, go vet, go test, assist worker, conformance)"
+says "check: OK (real-mail fence, toolchain, fence, oxlint, oxfmt, go vet, go test, assist worker, conformance)"
 says "NOT RUN: govulncheck"
 lacks "golden-fixture rule ("
 if grep -qF "govulncheck" "$work/summary"; then echo "ok   ...and the job summary names it"; else
@@ -228,8 +233,18 @@ if grep -qxF "oxlint infra/assist scripts ios/scripts" "$work/log"; then echo "o
 	failures=$((failures + 1))
 fi
 
+if grep -qxF "oxfmt --check infra/assist scripts ios/scripts" "$work/log"; then echo "ok   ...ran oxfmt --check on infra/assist, scripts and ios/scripts"; else
+	echo "FAIL oxfmt --check did not run on infra/assist, scripts and ios/scripts; the log has:"
+	sed 's/^/     /' "$work/log"
+	failures=$((failures + 1))
+fi
+
 fresh
 gate "a lint finding" 1 STUB_OXLINT_RC=1
+lacks "check: OK"
+
+fresh
+gate "a file that is not formatted" 1 STUB_OXFMT_RC=1
 lacks "check: OK"
 
 fresh

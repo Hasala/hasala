@@ -12,7 +12,8 @@ const classList = (set: Set<string>) => ({
 beforeAll(async () => {
   (globalThis as { document?: unknown }).document = {
     documentElement: { classList: classList(root) },
-    addEventListener: (type: string, fn: (event: unknown) => void) => handlers.set(type, [...(handlers.get(type) ?? []), fn]),
+    addEventListener: (type: string, fn: (event: unknown) => void) =>
+      handlers.set(type, [...(handlers.get(type) ?? []), fn]),
   };
   await import('./router');
 });

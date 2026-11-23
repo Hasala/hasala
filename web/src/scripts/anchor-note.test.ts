@@ -8,7 +8,8 @@ afterEach(() => {
 });
 
 const works = async () => {};
-const refused = () => Promise.reject(new DOMException('Write permission denied', 'NotAllowedError'));
+const refused = () =>
+  Promise.reject(new DOMException('Write permission denied', 'NotAllowedError'));
 
 function button() {
   const timers = new Map<number, () => void>();

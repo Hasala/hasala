@@ -20,9 +20,13 @@ export function inviteCopy(write: () => Promise<void>, onManual: () => void): In
   return {
     copy,
     async leave(event: Pick<Event, 'preventDefault'>, go: () => void): Promise<void> {
-      if (mode === 'manual') {return;}
+      if (mode === 'manual') {
+        return;
+      }
       event.preventDefault();
-      if (await copy()) {go();}
+      if (await copy()) {
+        go();
+      }
     },
   };
 }

@@ -22,7 +22,8 @@ const pub = new URL('../public/', import.meta.url);
 const brand = new URL('../src/assets/brand/', import.meta.url);
 const out = (path: string): URL => new URL(path, pub);
 
-const COIN = '<linearGradient id="c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F9DC94"/><stop offset="1" stop-color="#EBB04A"/></linearGradient>';
+const COIN =
+  '<linearGradient id="c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F9DC94"/><stop offset="1" stop-color="#EBB04A"/></linearGradient>';
 const markSvg = (plate: string): string => `
   <rect x="212" y="576" width="600" height="112" rx="56" fill="${plate}"/>
   <rect x="244" y="600" width="536" height="64" rx="32" fill="#142659"/>
@@ -43,7 +44,8 @@ const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 10
 </svg>`;
 
 // Hand-tuned 32 and 16 drawings from the board.
-const TILE32 = '<linearGradient id="t" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#5479FF"/><stop offset="1" stop-color="#2B4AD2"/></linearGradient>';
+const TILE32 =
+  '<linearGradient id="t" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#5479FF"/><stop offset="1" stop-color="#2B4AD2"/></linearGradient>';
 const svg32 = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><defs>${TILE32}<clipPath id="k"><rect width="32" height="20.5"/></clipPath></defs><rect width="32" height="32" rx="7.5" fill="url(#t)"/><rect x="5" y="18.5" width="22" height="4.5" rx="2.25" fill="#142659"/><g clip-path="url(#k)"><circle cx="16" cy="16.6" r="7.6" fill="#F1C66E"/><path d="M13 14.6h6M13 17.4h6" stroke="#8A5A05" stroke-width="1.3" stroke-linecap="round"/></g></svg>`;
 const svg16 = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 32 32"><defs>${TILE32}<clipPath id="k"><rect width="32" height="20.5"/></clipPath></defs><rect width="32" height="32" rx="7.5" fill="url(#t)"/><rect x="4" y="18" width="24" height="5.5" rx="2.75" fill="#142659"/><g clip-path="url(#k)"><circle cx="16" cy="16" r="8.5" fill="#F1C66E"/></g></svg>`;
 
@@ -65,7 +67,11 @@ const emailMarkSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="120" height
     <line x1="442.1" y1="552.9" x2="581.9" y2="552.9" stroke="#8A5A05" stroke-width="25.8" stroke-linecap="round"/>
   </g></svg>`;
 
-const png = (svg: string, size: number): Promise<Buffer<ArrayBuffer>> => sharp(Buffer.from(svg), { density: 72 * (size / 32) * 4 }).resize(size, size).png().toBuffer();
+const png = (svg: string, size: number): Promise<Buffer<ArrayBuffer>> =>
+  sharp(Buffer.from(svg), { density: 72 * (size / 32) * 4 })
+    .resize(size, size)
+    .png()
+    .toBuffer();
 
 /** An ICO file whose entries are PNGs (supported everywhere that matters). */
 function ico(images: { size: number; data: Buffer }[]): Buffer {
@@ -91,34 +97,73 @@ function ico(images: { size: number; data: Buffer }[]): Buffer {
 }
 
 /** Round every number in path data and attributes to two decimals. */
-const roundSvg = (svg: string): string => svg.replaceAll(/-?\d+\.\d{3,}/gu, (digits) => String(Math.round(Number(digits) * 100) / 100));
+const roundSvg = (svg: string): string =>
+  svg.replaceAll(/-?\d+\.\d{3,}/gu, (digits) => String(Math.round(Number(digits) * 100) / 100));
 
 await mkdir(out('brand/'), { recursive: true });
 
 const lightPng = await readFile(new URL('hasala-icon-1024-light.png', brand));
 await writeFile(out('favicon.svg'), faviconSvg);
 await writeFile(out('mask-icon.svg'), maskIcon);
-await writeFile(out('apple-touch-icon.png'), await sharp(lightPng).resize(180, 180).png({ compressionLevel: 9 }).toBuffer());
-await writeFile(out('icon-192.png'), await sharp(lightPng).resize(192, 192).png({ compressionLevel: 9 }).toBuffer());
-await writeFile(out('icon-512.png'), await sharp(lightPng).resize(512, 512).png({ compressionLevel: 9 }).toBuffer());
-await writeFile(out('icon-maskable-512.png'), await sharp(Buffer.from(maskableSvg)).resize(512, 512).png({ compressionLevel: 9 }).toBuffer());
+await writeFile(
+  out('apple-touch-icon.png'),
+  await sharp(lightPng).resize(180, 180).png({ compressionLevel: 9 }).toBuffer(),
+);
+await writeFile(
+  out('icon-192.png'),
+  await sharp(lightPng).resize(192, 192).png({ compressionLevel: 9 }).toBuffer(),
+);
+await writeFile(
+  out('icon-512.png'),
+  await sharp(lightPng).resize(512, 512).png({ compressionLevel: 9 }).toBuffer(),
+);
+await writeFile(
+  out('icon-maskable-512.png'),
+  await sharp(Buffer.from(maskableSvg)).resize(512, 512).png({ compressionLevel: 9 }).toBuffer(),
+);
 await writeFile(
   out('favicon.ico'),
   ico([
     { size: 16, data: await png(svg16, 16) },
     { size: 32, data: await png(svg32, 32) },
-    { size: 48, data: await sharp(Buffer.from(faviconSvg.replace(/<style>.*?<\/style>/su, '').replace('<rect class="ink"', '<rect style="display:none"')), { density: 300 }).resize(48, 48).png().toBuffer() },
+    {
+      size: 48,
+      data: await sharp(
+        Buffer.from(
+          faviconSvg
+            .replace(/<style>.*?<\/style>/su, '')
+            .replace('<rect class="ink"', '<rect style="display:none"'),
+        ),
+        { density: 300 },
+      )
+        .resize(48, 48)
+        .png()
+        .toBuffer(),
+    },
   ]),
 );
 
 const wordmark = await readFile(new URL('hasala-wordmark.svg', brand), 'utf8');
-await writeFile(out('brand/hasala-wordmark.svg'), roundSvg(wordmark.replaceAll(/<!--[\s\S]*?-->\s*/gu, '')));
+await writeFile(
+  out('brand/hasala-wordmark.svg'),
+  roundSvg(wordmark.replaceAll(/<!--[\s\S]*?-->\s*/gu, '')),
+);
 
-await writeFile(out('brand/hasala-mark-email.png'), await sharp(Buffer.from(emailMarkSvg), { density: 72 * 4 }).resize(120, 72).png({ compressionLevel: 9 }).toBuffer());
+await writeFile(
+  out('brand/hasala-mark-email.png'),
+  await sharp(Buffer.from(emailMarkSvg), { density: 72 * 4 })
+    .resize(120, 72)
+    .png({ compressionLevel: 9 })
+    .toBuffer(),
+);
 
 const og = new URL('og-image.png', pub);
 const ogBuf = await readFile(og);
-const smaller = await sharp(ogBuf).png({ palette: true, quality: 92, effort: 10, compressionLevel: 9 }).toBuffer();
-if (smaller.length < ogBuf.length) {await writeFile(og, smaller);}
+const smaller = await sharp(ogBuf)
+  .png({ palette: true, quality: 92, effort: 10, compressionLevel: 9 })
+  .toBuffer();
+if (smaller.length < ogBuf.length) {
+  await writeFile(og, smaller);
+}
 
 console.log('icons written');

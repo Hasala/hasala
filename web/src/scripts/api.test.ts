@@ -6,8 +6,18 @@ interface Api {
   postWithTurnstile: typeof postWithTurnstile;
   renderTurnstile: typeof renderTurnstile;
 }
-interface FakeScript { dataset: Record<string, string>; src?: string; removed?: boolean; fail?: () => void; remove: () => void; addEventListener: (type: string, fn: () => void) => void }
-interface Callbacks { callback: (token: string) => void; 'expired-callback': () => void }
+interface FakeScript {
+  dataset: Record<string, string>;
+  src?: string;
+  removed?: boolean;
+  fail?: () => void;
+  remove: () => void;
+  addEventListener: (type: string, fn: () => void) => void;
+}
+interface Callbacks {
+  callback: (token: string) => void;
+  'expired-callback': () => void;
+}
 
 const globals = globalThis as unknown as Record<string, unknown>;
 const saved = { window: globals.window, document: globals.document, fetch: globals.fetch };
@@ -52,7 +62,9 @@ function page(turnstile?: ReturnType<typeof fakeTurnstile>) {
         dataset: {},
         remove: () => (script.removed = true),
         addEventListener: (type, fn) => {
-          if (type === 'error') {script.fail = fn;}
+          if (type === 'error') {
+            script.fail = fn;
+          }
         },
       };
       return script;
@@ -60,12 +72,16 @@ function page(turnstile?: ReturnType<typeof fakeTurnstile>) {
     head: { append: (script: FakeScript) => scripts.push(script) },
     addEventListener: () => {},
   };
-  const form = { querySelector: () => ({ dataset: { sitekey: 'synthetic-site-key' }, childElementCount: 0 }) } as unknown as HTMLFormElement;
+  const form = {
+    querySelector: () => ({ dataset: { sitekey: 'synthetic-site-key' }, childElementCount: 0 }),
+  } as unknown as HTMLFormElement;
   return { scripts, win, form };
 }
 
 const PENDING = 'pending';
-const state = <T>(promise: Promise<T>) => Promise.race([promise, 
+const state = <T>(promise: Promise<T>) =>
+  Promise.race([
+    promise,
     new Promise<typeof PENDING>((resolve) => {
       setTimeout(() => {
         resolve(PENDING);
@@ -118,7 +134,12 @@ describe('renderTurnstile', () => {
 
   test('no token in time is reported as missing', async () => {
     const { renderTurnstile } = await loadApi();
-    const gate = renderTurnstile(page(fakeTurnstile()).form, 'waitlist', new AbortController().signal, 1);
+    const gate = renderTurnstile(
+      page(fakeTurnstile()).form,
+      'waitlist',
+      new AbortController().signal,
+      1,
+    );
     expect(await gate.check()).toEqual({ state: 'missing' });
   });
 
@@ -193,7 +214,8 @@ describe('postJson', () => {
 
   test('a request that gets no answer stops waiting and reads as a network failure', async () => {
     const { postJson } = await loadApi();
-    globals.fetch = ((_u: string, init: RequestInit) => noAnswer(init.signal)) as unknown as typeof fetch;
+    globals.fetch = ((_u: string, init: RequestInit) =>
+      noAnswer(init.signal)) as unknown as typeof fetch;
     const answer = postJson(URL, { token: 't' });
     expect(await state(answer)).toBe(PENDING);
     wait.expire();
@@ -202,14 +224,20 @@ describe('postJson', () => {
 
   test('it waits for 20 seconds', async () => {
     const { postJson } = await loadApi();
-    globals.fetch = (() => Promise.resolve(new Response('{}', { status: 200 }))) as unknown as typeof fetch;
+    globals.fetch = (() =>
+      Promise.resolve(new Response('{}', { status: 200 }))) as unknown as typeof fetch;
     await postJson(URL, { token: 't' });
     expect(wait.ms).toBe(20_000);
   });
 
   test('an answer whose body never ends still counts by its status', async () => {
     const { postJson } = await loadApi();
-    globals.fetch = ((_u: string, init: RequestInit) => Promise.resolve({ status: 200, headers: new Headers(), json: () => noAnswer(init.signal) })) as unknown as typeof fetch;
+    globals.fetch = ((_u: string, init: RequestInit) =>
+      Promise.resolve({
+        status: 200,
+        headers: new Headers(),
+        json: () => noAnswer(init.signal),
+      })) as unknown as typeof fetch;
     const answer = postJson(URL, { token: 't' });
     await Bun.sleep(1);
     wait.expire();
@@ -218,13 +246,22 @@ describe('postJson', () => {
 
   test('an answer inside the wait counts', async () => {
     const { postJson } = await loadApi();
-    globals.fetch = (() => Promise.resolve(new Response('{"status":"confirmed"}', { status: 200 }))) as unknown as typeof fetch;
-    expect(await postJson(URL, { token: 't' })).toEqual({ status: 200, error: '', data: { status: 'confirmed' }, retryAfter: 0 });
+    globals.fetch = (() =>
+      Promise.resolve(
+        new Response('{"status":"confirmed"}', { status: 200 }),
+      )) as unknown as typeof fetch;
+    expect(await postJson(URL, { token: 't' })).toEqual({
+      status: 200,
+      error: '',
+      data: { status: 'confirmed' },
+      retryAfter: 0,
+    });
   });
 
   test('a network failure inside the wait reads the same', async () => {
     const { postJson } = await loadApi();
-    globals.fetch = (() => Promise.reject(new TypeError('failed to fetch'))) as unknown as typeof fetch;
+    globals.fetch = (() =>
+      Promise.reject(new TypeError('failed to fetch'))) as unknown as typeof fetch;
     const answer = await postJson(URL, { token: 't' });
     expect(answer.status).toBe(0);
   });
@@ -232,7 +269,8 @@ describe('postJson', () => {
   test('a browser with no timed signal still sends the request', async () => {
     const { postJson } = await loadApi();
     (AbortSignal as unknown as Record<string, unknown>).timeout = undefined;
-    globals.fetch = (() => Promise.resolve(new Response('{}', { status: 200 }))) as unknown as typeof fetch;
+    globals.fetch = (() =>
+      Promise.resolve(new Response('{}', { status: 200 }))) as unknown as typeof fetch;
     const answer = await postJson(URL, { token: 't' });
     expect(answer.status).toBe(200);
   });
@@ -243,7 +281,11 @@ describe('postWithTurnstile', () => {
     const { postWithTurnstile } = await loadApi();
     const sent: unknown[] = [];
     globals.fetch = answering(sent);
-    const answer = await postWithTurnstile('https://api.example/api/v1/waitlist', { email: 'a@example.com' }, { check: () => Promise.resolve({ state: 'missing' }), reset: () => {} });
+    const answer = await postWithTurnstile(
+      'https://api.example/api/v1/waitlist',
+      { email: 'a@example.com' },
+      { check: () => Promise.resolve({ state: 'missing' }), reset: () => {} },
+    );
     expect(sent).toEqual([]);
     expect(answer).toEqual({ status: 403, error: 'turnstile_failed', data: {}, retryAfter: 0 });
   });
@@ -252,7 +294,11 @@ describe('postWithTurnstile', () => {
     const { postWithTurnstile } = await loadApi();
     const sent: unknown[] = [];
     globals.fetch = answering(sent);
-    await postWithTurnstile('https://api.example/api/v1/waitlist', { email: 'a@example.com' }, { check: () => Promise.resolve({ state: 'ready', token: 'token-1' }), reset: () => {} });
+    await postWithTurnstile(
+      'https://api.example/api/v1/waitlist',
+      { email: 'a@example.com' },
+      { check: () => Promise.resolve({ state: 'ready', token: 'token-1' }), reset: () => {} },
+    );
     expect(sent).toEqual([{ email: 'a@example.com', turnstileToken: 'token-1' }]);
   });
 
@@ -260,7 +306,11 @@ describe('postWithTurnstile', () => {
     const { postWithTurnstile } = await loadApi();
     const sent: unknown[] = [];
     globals.fetch = answering(sent);
-    await postWithTurnstile('https://api.example/api/v1/waitlist', { email: 'a@example.com' }, { check: () => Promise.resolve({ state: 'off' }), reset: () => {} });
+    await postWithTurnstile(
+      'https://api.example/api/v1/waitlist',
+      { email: 'a@example.com' },
+      { check: () => Promise.resolve({ state: 'off' }), reset: () => {} },
+    );
     expect(sent).toEqual([{ email: 'a@example.com' }]);
   });
 });

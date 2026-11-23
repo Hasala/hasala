@@ -25,6 +25,7 @@ interface Event {
 
 const output = new Map<string, string[]>();
 const failed: string[] = [];
+const failedPackages: string[] = [];
 const skipped: string[] = [];
 const totals = { pass: 0, fail: 0, skip: 0 };
 const packages = { ok: 0, fail: 0, noTests: 0 };
@@ -32,6 +33,12 @@ const key = (event: Event): string => `${event.Package ?? ""} ${event.Test ?? ""
 const REAL_CORPUS = "[real-corpus]";
 const realCorpus = { ran: 0, skipped: 0 };
 const marked = (id: string): boolean => (output.get(id) ?? []).some((line) => line.includes(REAL_CORPUS));
+const seeds = new Map<string, string>();
+const SEED = /^-test\.shuffle (\d+)\s*$/u;
+const order = (pkg: string | undefined): string => {
+  const seed = seeds.get(pkg ?? "");
+  return seed === undefined ? "" : ` -shuffle=${seed}`;
+};
 
 for await (const line of console) {
   if (!line.startsWith("{")) {
@@ -45,6 +52,8 @@ for await (const line of console) {
   }
   if (event.Action === "output") {
     const id = key(event);
+    const seed = event.Test === undefined ? SEED.exec(event.Output ?? "") : null;
+    if (seed?.[1] !== undefined) {seeds.set(event.Package ?? "", seed[1]);}
     const lines = output.get(id) ?? [];
     lines.push(event.Output ?? "");
     output.set(id, lines);
@@ -57,10 +66,11 @@ for await (const line of console) {
       console.log(`ok    ${event.Package} (${event.Elapsed ?? 0}s)`);
     } else if (event.Action === "fail") {
       packages.fail += 1;
-      console.log(`FAIL  ${event.Package} (${event.Elapsed ?? 0}s)`);
+      console.log(`FAIL  ${event.Package} (${event.Elapsed ?? 0}s)${order(event.Package)}`);
       // A package that fails outside any test (TestMain, a panic between
       // tests, a build failure) has its reason only in package-level output.
       failed.push(key(event));
+      failedPackages.push(event.Package ?? "");
     } else if (event.Action === "skip") {
       packages.noTests += 1;
     }
@@ -102,6 +112,10 @@ console.log(
 );
 const countsFile = process.env["REALCORPUS_COUNTS"];
 if (countsFile) {await Bun.write(countsFile, `${realCorpus.ran} ${realCorpus.skipped}\n`);}
+if (failedPackages.length > 0) {
+  console.log("\nto run a failed package again in the same order:");
+  for (const pkg of failedPackages) {console.log(`  go test -count=1${order(pkg)} ${pkg}`);}
+}
 if (failed.length > 0 || packages.fail > 0) {process.exit(1);}
 if (totals.pass === 0) {
   console.log("go test: nothing ran; refusing to call that a pass");

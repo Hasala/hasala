@@ -132,7 +132,7 @@ Not in the beta yet. Hasala doesn't put notifications on your Lock Screen, and t
 
 ### Where is Hasala's source code?
 
-At [github.com/salehtl/hasala](https://github.com/salehtl/hasala). It's source-available under the Functional Source License (FSL-1.1-ALv2): you can read, run and change it, but not use it in a commercial product or service that competes with Hasala. Each version becomes available under the Apache License 2.0 two years after it's released. The name Hasala and the Slot mark are trademarks and aren't covered by the licence. See [LICENSE.md](https://github.com/salehtl/hasala/blob/main/LICENSE.md) for the exact terms.
+At [github.com/Hasala/hasala](https://github.com/Hasala/hasala). It's source-available under the Functional Source License (FSL-1.1-ALv2): you can read, run and change it, but not use it in a commercial product or service that competes with Hasala. Each version becomes available under the Apache License 2.0 two years after it's released. The name Hasala and the Slot mark are trademarks and aren't covered by the licence. See [LICENSE.md](https://github.com/Hasala/hasala/blob/main/LICENSE.md) for the exact terms.
 
 ## Bank texts
 

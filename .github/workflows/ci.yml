@@ -607,12 +607,13 @@ jobs:
           primary-key: nix-${{ runner.os }}-devshell-${{ hashFiles('flake.lock', 'flake.nix') }}
           save: false
 
-      - name: Bun package cache
+      - name: node_modules cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.bun/install/cache
-          key: bun-web-${{ runner.os }}-${{ hashFiles('web/bun.lock', 'web/lighthouse/bun.lock') }}
-          restore-keys: bun-web-${{ runner.os }}-
+          path: |
+            web/node_modules
+            web/lighthouse/node_modules
+          key: node-modules-web-${{ runner.os }}-${{ hashFiles('flake.lock', 'web/bun.lock', 'web/lighthouse/bun.lock') }}
 
       - name: Install the site's dependencies
         run: >-
@@ -637,16 +638,54 @@ jobs:
       - name: Build, CSP and JS-budget checks
         run: nix develop --command bash -c 'cd web && bun run build'
 
-      # Serves dist/ on 127.0.0.1 (scripts/serve-dist.ts) and asserts the
-      # category scores in web/lighthouse/lighthouserc.json, mobile and desktop.
+  web-lighthouse:
+    needs: [changes, nix-cache]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.web != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [mobile, desktop]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+      - name: Devshell Nix store cache
+        uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
+        with:
+          primary-key: nix-${{ runner.os }}-devshell-${{ hashFiles('flake.lock', 'flake.nix') }}
+          save: false
+
+      - name: node_modules cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            web/node_modules
+            web/lighthouse/node_modules
+          key: node-modules-web-${{ runner.os }}-${{ hashFiles('flake.lock', 'web/bun.lock', 'web/lighthouse/bun.lock') }}
+
+      - name: Install the site's dependencies
+        run: >-
+          nix develop --command bash -c
+          'cd web && bun install --frozen-lockfile && cd lighthouse && bun install --frozen-lockfile'
+
+      - name: Build
+        run: nix develop --command bash -c 'cd web && bun run build'
+
       - name: Lighthouse CI
-        run: nix develop --command web/lighthouse/run.sh "$RUNNER_TEMP/lighthouse"
+        env:
+          PRESET: ${{ matrix.preset }}
+        run: nix develop --command web/lighthouse/run.sh "$RUNNER_TEMP/lighthouse" "$PRESET"
 
       - name: Upload the Lighthouse reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: lighthouse-reports
+          name: lighthouse-reports-${{ matrix.preset }}
           path: ${{ runner.temp }}/lighthouse
           if-no-files-found: warn
           retention-days: 14

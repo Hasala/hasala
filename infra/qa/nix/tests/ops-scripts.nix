@@ -51,12 +51,13 @@ let
           *) shift ;;
         esac
       done
-      if [ -n "''${AGE_FAIL_ON:-}" ] && [[ "$out" == *"$AGE_FAIL_ON"* ]]; then
+      target="''${out:-the .dump.age stream}"
+      if [ -n "''${AGE_FAIL_ON:-}" ] && [[ "$target" == *"$AGE_FAIL_ON"* ]]; then
         cat > /dev/null
-        printf 'partial' > "$out"
+        if [ -n "$out" ]; then printf 'partial' > "$out"; else printf 'partial'; fi
         exit 1
       fi
-      cat > "$out"
+      if [ -n "$out" ]; then cat > "$out"; else cat; fi
     '')
     (stub "id" "echo 0")
     (stub "logger" "true")

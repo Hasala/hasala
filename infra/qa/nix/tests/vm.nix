@@ -467,14 +467,14 @@ in
               as_user(
                   "hasala-migrate",
                   f"{PSQL} \"CREATE TABLE vm_bulk AS SELECT md5(random()::text) || md5(random()::text) AS t"
-                  " FROM generate_series(1, 3000000)\" -U hasala_migrate",
+                  " FROM generate_series(1, 1500000)\" -U hasala_migrate",
               )
           )
           machine.succeed(f"rm -f {BACKUP_DIR}/hasala-daily-*")
-          machine.succeed("systemctl set-property --runtime hasala-backup.service MemoryMax=64M")
+          machine.succeed("systemctl set-property --runtime hasala-backup.service MemoryMax=32M")
           machine.succeed("systemctl start hasala-backup.service")
           dump = machine.succeed(f"ls {BACKUP_DIR}/hasala-daily-*.dump.age").strip()
-          assert int(machine.succeed(f"stat -c %s {dump}").strip()) > 80 * 1024 * 1024
+          assert int(machine.succeed(f"stat -c %s {dump}").strip()) > 40 * 1024 * 1024
           machine.succeed(
               f"age -d -i /root/test-identity.txt -o /root/restore.dump {dump}"
               f" && pg_restore --list /root/restore.dump | grep ' TABLE DATA public vm_bulk ' >/dev/null"

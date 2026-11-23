@@ -128,9 +128,19 @@ fresh() {
 gate() {
 	local name="$1" want="$2" rc=0
 	shift 2
+	local vars=() args=()
+	while (($#)); do
+		if [[ "$1" == -- ]]; then
+			shift
+			args=("$@")
+			break
+		fi
+		vars+=("$1")
+		shift
+	done
 	env -u GITHUB_ACTIONS -u GITHUB_STEP_SUMMARY -u HASALA_PRIVATE_FIXTURES -u HASALA_TEST_POSTGRES_URL -u CHECK_SHUFFLE \
-		TMPDIR="$work/tmp" STUB_LOG="$work/log" STUB_RECORDED="$work/recorded" PATH="$work/bin:$PATH" "$@" \
-		"$work/t/scripts/check.sh" >"$work/out" 2>&1 || rc=$?
+		TMPDIR="$work/tmp" STUB_LOG="$work/log" STUB_RECORDED="$work/recorded" PATH="$work/bin:$PATH" ${vars[@]+"${vars[@]}"} \
+		"$work/t/scripts/check.sh" ${args[@]+"${args[@]}"} >"$work/out" 2>&1 || rc=$?
 	if [[ "$rc" == "$want" ]]; then echo "ok   $name (exit $rc)"; else
 		echo "FAIL $name: exit $rc, want $want"
 		sed 's/^/     /' "$work/out"
@@ -168,12 +178,25 @@ fresh
 commit second
 gate "a CI run" 0 GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$work/summary"
 says "check: OK (real-mail fence, toolchain, fence, oxlint, oxfmt, go vet, go test, assist worker, scripts typecheck, conformance)"
-says "NOT RUN: govulncheck"
+says "NOT RUN: the self-tests (the selftest job runs them); govulncheck"
+lacks "== check: gate run self-test"
 lacks "golden-fixture rule ("
 if grep -qF "govulncheck" "$work/summary"; then echo "ok   ...and the job summary names it"; else
 	echo "FAIL the job summary does not name the step that did not run"
 	failures=$((failures + 1))
 fi
+
+fresh
+gate "the self-tests alone, in CI" 0 GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$work/summary" -- --self-tests
+says "== check: gate run self-test"
+says "check: OK (real-mail fence, self-tests)"
+lacks "== check: toolchain"
+lacks "NOT RUN"
+
+fresh
+gate "a local run runs the self-tests" 0
+says "== check: gate run self-test"
+lacks "NOT RUN: the self-tests"
 
 fresh
 gate "a CI run with no HEAD^1" 1 GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$work/summary"

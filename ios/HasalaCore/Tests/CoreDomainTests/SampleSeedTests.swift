@@ -1,7 +1,3 @@
-// The sample-data loader (SampleSeed): the bundled seed and its manifest, the
-// document format, the month shift to the latest 10th at 13:40, the dropped
-// future, the fresh ids of every load, the `sample-<n>` message ids, the
-// 200-op blobs, and a clean fold of the whole seed with the scenario's shape.
 import CoreJSON
 import CorePrimitives
 import CoreReplay
@@ -16,7 +12,7 @@ import Testing
 
 @Suite("SampleSeed")
 struct SampleSeedTests {
-  static let anchor: Int64 = now  // 2026-10-10T09:40:00Z, 13:40 in Dubai
+  static let anchor: Int64 = now
   static let bootstrapWriter = "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
 
   static func context(at ms: Int64, seed: String = "sample") -> AuthorContext {
@@ -25,10 +21,8 @@ struct SampleSeedTests {
 
   static func ms(_ s: String) -> Int64 { try! parseInstantMs(s) }
 
-  /// The gate passed (a review account with an empty ledger).
   static let permit = try! SampleSeed.permit(reviewAccount: true, holdsTransactions: false, sampleLoaded: false)
 
-  /// The account's open (04 §6.2): home currency and the USD rate, then the seed.
   static func folded(_ blobs: [AuthoredBlob]) throws -> State {
     var s = State()
     var boot = OpAuthor(AuthorContext(writerID: bootstrapWriter, nowMs: anchor - 86_400_000, ownLastMs: nil, maxAuthored: [:], random: Counter()))
@@ -80,8 +74,7 @@ struct SampleSeedTests {
     #expect(t("2026-10-12T00:00:00.000Z")! == (0, Self.anchor))
     #expect(t("2026-10-10T09:39:59.999Z")! == (-1, Self.ms("2026-09-10T09:40:00.000Z")))
     #expect(t("2026-11-15T12:00:00.000Z")! == (1, Self.ms("2026-11-10T09:40:00.000Z")))
-    #expect(t("2027-01-09T20:00:00.000Z")! == (2, Self.ms("2026-12-10T09:40:00.000Z")))  // 10 Jan 00:00 local
-    // An anchor on the 31st clamps to a short month's last day.
+    #expect(t("2027-01-09T20:00:00.000Z")! == (2, Self.ms("2026-12-10T09:40:00.000Z")))
     let a31 = Self.ms("2026-10-31T09:40:00.000Z")
     #expect(SampleSeed.target(anchorMs: a31, nowMs: Self.ms("2026-11-30T12:00:00.000Z"))! == (1, Self.ms("2026-11-30T09:40:00.000Z")))
   }
@@ -101,15 +94,13 @@ struct SampleSeedTests {
     let posted = ops.filter { $0.type == .txnIngested }.compactMap { $0.payload["posted_at"]?.stringValue }
     let docPosted = doc.ops.filter { $0.type == .txnIngested }.compactMap { $0.payload["posted_at"]?.stringValue }
     #expect(posted == docPosted)
-    // Stamps strictly increase across the blobs.
     let stamps = ops.map { Self.ms($0.authoredAt) }
     #expect(zip(stamps, stamps.dropFirst()).allSatisfy { $0 < $1 })
 
-    // A second load (another device, another day) never collides.
     let again = try SampleSeed.batches(data, nowMs: Self.anchor, context: Self.context(at: Self.anchor, seed: "other"), permit: Self.permit)
     let ids = Set(ops.compactMap(\.entity?.id) + ops.compactMap(\.ingestID))
     let ids2 = Set(again.flatMap(\.ops).compactMap(\.entity?.id) + again.flatMap(\.ops).compactMap(\.ingestID))
-    let literal = Set(ops.filter { $0.type == .billSet }.compactMap(\.entity?.id))  // bd_ ids are derived, by design
+    let literal = Set(ops.filter { $0.type == .billSet }.compactMap(\.entity?.id))
     #expect(ids.intersection(ids2) == literal)
   }
 
@@ -119,7 +110,7 @@ struct SampleSeedTests {
     let nov = try SampleSeed.batches(data, nowMs: Self.ms("2026-11-15T12:00:00.000Z"), context: Self.context(at: Self.ms("2026-11-15T12:00:00.000Z")), permit: Self.permit)
       .flatMap(\.ops)
     let posted = nov.filter { $0.type == .txnIngested }.compactMap { $0.payload["posted_at"]?.stringValue }
-    #expect(posted.contains("2026-11-10T09:20:00.000Z"))  // Talabat, 13:20 on the 10th
+    #expect(posted.contains("2026-11-10T09:20:00.000Z"))
     #expect(!posted.contains { $0.hasPrefix("2026-09") } && posted.contains { $0.hasPrefix("2026-10-13") })
     #expect(nov.filter { $0.type == .budgetSet }.allSatisfy { $0.payload["month"]?.stringValue == "2026-11" })
     let project = try #require(nov.first { $0.type == .projectDefined })
@@ -128,11 +119,11 @@ struct SampleSeedTests {
     #expect(goal.payload["target_month"]?.stringValue == "2027-02")
     #expect(goal.payload["source"]?["since"]?.stringValue == "2026-11-01")
 
-    let early = Self.ms("2026-10-10T09:00:00.000Z")  // 13:00 local: the target is 10 September
+    let early = Self.ms("2026-10-10T09:00:00.000Z")
     let sep = try SampleSeed.batches(data, nowMs: early, context: Self.context(at: early), permit: Self.permit).flatMap(\.ops)
     let sepPosted = sep.filter { $0.type == .txnIngested }.compactMap { $0.payload["posted_at"]?.stringValue }
     #expect(sepPosted.contains("2026-09-10T09:20:00.000Z"))
-    #expect(sep.count == nov.count)  // nothing in the seed is after its anchor
+    #expect(sep.count == nov.count)
   }
 
   @Test("rows after the target are dropped; placeholders, unknown members and dates are checked")
@@ -173,7 +164,6 @@ struct SampleSeedTests {
       .replacingOccurrences(of: "{\"at\":", with: "{\"x\":1,\"at\":").utf8)
     #expect(throws: SampleSeedError.self) { try SampleSeed.Document(json: extra) }
     #expect(throws: SampleSeedError.self) { try SampleSeed.Document(json: Data("{}".utf8)) }
-    // A shift that leaves 2000-2099 is refused, not wrapped.
     let old = doc(txn("d", "2000-01-05T09:00:00.000Z") + [
       SampleSeed.Draft(type: .budgetSet, payload: JSONObject([("category_id", .string("rent")), ("month", .string("2000-01")), ("amount_minor", .string("1")), ("scope", .string("only"))]), at: "2000-01-05T09:00:00.000Z")
     ])

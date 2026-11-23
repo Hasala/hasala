@@ -1,34 +1,4 @@
 ---
-/**
- * The app's Home screen, built in HTML and CSS instead of a screenshot, in
- * its iPhone frame (Paper P3 Web hero A9Q-0 / B7Z-0, app Home 14O7-0): status
- * bar, header (eye, mark, bell with 4, avatar), "October · day 10 of 31",
- * AED 10,288.34 spent, the month bar (needs + wants spent against 19,000 and
- * today's tick; savings is not on the bar), the verdict, the Needs / Wants / Savings tiles, "Your
- * widgets" (Budget pace, Next bill, Net worth) and the tab bar. Every glyph is
- * text or vector, so it is sharp at any zoom.
- *
- * 418 x 900 at 1x; the page scales the whole frame. Figures never wrap
- * (nowrap) and the big one is sized in container units, so it shrinks with
- * the screen rather than reflowing.
- *
- * Motion (Paper 13 · Dynamic layer, C83-0): the first time it is shown, the
- * figure counts up with the bar (900 ms, ease-in-out), the today tick drops
- * in, the verdict lands, the tiles and widgets rise one after another and the
- * widget bars and the net-worth line draw. `play` picks when that happens:
- * "hero" once per tab session (html.hero-seen, like the rest of the hero),
- * "load" once per full page load (not after a client-side navigation,
- * html.routed). Then a slow idle float, paused while off screen. With reduced
- * motion it is simply shown in its final state.
- *
- * The entrance is pure CSS: the keyframe names are custom properties that
- * exist only while it should play, so without them every `animation` is
- * invalid and the screen is drawn final. A few lines of script count the
- * figure and pause the idle float off screen (any [data-alive] ancestor).
- *
- * The frame is aria-hidden; `label` is read instead (omit it where the whole
- * stage is decorative, as on /i).
- */
 interface Props {
   play: 'hero' | 'load';
   label?: string;
@@ -226,10 +196,6 @@ const uid = `hp-${play}`;
 <script>
   import { observe, onPage } from '../scripts/page';
 
-  // The figure counts up with the month bar (motion moment C: 900 ms,
-  // ease-in-out, from 300 ms), on the bar's clock, only while the CSS
-  // entrance has yet to reach it; and
-  // every [data-alive] stage pauses its idle float while off screen.
   const fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   onPage((signal) => {
@@ -242,8 +208,6 @@ const uid = `hp-${play}`;
         return;
       }
       const to = Number(el.dataset.hpCount);
-      // Keep to the bar's own clock: a late script must not reset a figure
-      // the visitor has already seen, so past the 300 ms delay it stays put.
       const wipe = el.closest('.hp')?.querySelector('.hp__fill')?.getAnimations()[0];
       const at = Number(wipe?.currentTime ?? Infinity);
       if (!(at <= 300)) {
@@ -315,8 +279,6 @@ const uid = `hp-${play}`;
     background: linear-gradient(in oklab 180deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.1% -0.003 -0.021) 38%, oklab(95.3% 0.0007 -0.003 / 0%) 100%);
   }
 
-  /* Status bar, 62 high */
-  /* Two equal halves either side of the island, each item centred in its half. */
   .hp__status {
     position: relative;
     display: flex;
@@ -350,7 +312,6 @@ const uid = `hp-${play}`;
     fill: #000;
   }
 
-  /* Header: eye, mark, bell, avatar */
   .hp__header {
     position: relative;
     display: flex;
@@ -362,7 +323,6 @@ const uid = `hp-${play}`;
     display: flex;
     gap: 10px;
   }
-  /* Liquid glass, drawn without backdrop-filter (the wash behind is flat). */
   .hp__glass {
     position: relative;
     display: flex;
@@ -429,7 +389,6 @@ const uid = `hp-${play}`;
     line-height: 20px;
   }
 
-  /* Content */
   .hp__content {
     position: relative;
     display: flex;
@@ -500,7 +459,6 @@ const uid = `hp-${play}`;
     font-weight: 600;
     line-height: 24px;
   }
-  /* 56 at the 402-wide screen; shrinks with it, never wraps. */
   .hp__figure {
     font-family: var(--font-figure);
     font-size: min(56px, 13.9cqi);
@@ -604,7 +562,6 @@ const uid = `hp-${play}`;
     line-height: 22px;
   }
 
-  /* Your widgets */
   .hp__widgets {
     display: flex;
     flex-direction: column;
@@ -836,7 +793,6 @@ const uid = `hp-${play}`;
     background: currentColor;
   }
 
-  /* Bottom: soft edge, tab bar, search, home indicator */
   .hp__edge {
     position: absolute;
     inset: auto 0 0;
@@ -902,8 +858,6 @@ const uid = `hp-${play}`;
     background: #000;
   }
 
-  /* Motion. The keyframe names exist only while the entrance should play;
-     otherwise `animation: var(--hp-…)` is invalid and nothing moves. */
   .hp__in {
     animation: var(--hp-rise) 600ms var(--ease-out-soft) both;
   }
@@ -934,7 +888,6 @@ const uid = `hp-${play}`;
   .hp__worth {
     animation-delay: 1040ms;
   }
-  /* C: the bar fills over 900 ms from 300, the tick drops at 1200, the verdict lands last. */
   .hp__fill {
     animation: var(--hp-wipe) 900ms 300ms cubic-bezier(0.65, 0, 0.35, 1) both;
   }
@@ -961,7 +914,6 @@ const uid = `hp-${play}`;
     animation: var(--hp-fade) 600ms 1900ms both;
   }
   .hp__device {
-    /* One float, up and back, done by 5 s (WCAG 2.2.2). */
     animation: var(--hp-idle) 1.3s 2.4s ease-in-out 2 alternate;
   }
   :global([data-alive].is-off) .hp__device,

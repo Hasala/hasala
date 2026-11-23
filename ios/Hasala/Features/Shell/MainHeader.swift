@@ -2,18 +2,7 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// The main header on every tab root (Paper "Header · Main", page 13 "The same top on every
-/// screen."): the profile avatar on the left, the Hasala mark centred and not a button, and
-/// on the right Hide amounts (the eye, eye-off while hidden), Search and the bell joined in
-/// one glass capsule. Adding a transaction is the round button beside the tab bar.
-///
-/// The buttons are the design system's `GlassIconButton`, `GlassButtonPair` and
-/// `GlassAvatarButton`: native Liquid Glass at Paper's 48 (decision 2), so the bar's own
-/// shared glass is turned off for each item. The bell's badge counts what needs a look and is
-/// in the button's label.
 struct MainHeader: ToolbarContent {
-  /// Glass glyphs are ink, not the accent (`--color-icon-glass`); for the bar items other
-  /// screens draw themselves.
   static let iconColor = HColor.iconGlass
 
   var barTitle: String? = nil

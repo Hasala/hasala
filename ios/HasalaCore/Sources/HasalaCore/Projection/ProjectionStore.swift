@@ -1,6 +1,3 @@
-// `projection.sqlite` as one value (spec 04 §4.3): the database the projector
-// writes and the screens read. It keeps GRDB inside CoreProjection (R6): the
-// sync layer and the app hold a `ProjectionStore`, never a database handle.
 import CoreCategorize
 import CoreReplay
 import CoreWire
@@ -10,14 +7,10 @@ import Synchronization
 
 public final class ProjectionStore: Sendable {
   let queue: DatabaseQueue
-  /// Typed queries and observation over this projection.
   public let reader: LedgerReader
-  /// The file, or nil for an in-memory projection.
   public let url: URL?
   private let projections = Atomic<UInt64>(0)
 
-  /// How many projections this value has written (a cache key for readers
-  /// that prepare something from the projection, e.g. the categorizer).
   public var generation: UInt64 { projections.load(ordering: .acquiring) }
 
   init(queue: DatabaseQueue, url: URL?) {
@@ -26,23 +19,15 @@ public final class ProjectionStore: Sendable {
     reader = LedgerReader(queue)
   }
 
-  /// Opens (or creates) `<directory>/projection.sqlite`, rebuilding it when it
-  /// is from another projection version. The directory is the account's store
-  /// directory; `LedgerPageObserver.open()` (CoreSync) re-asserts its file
-  /// protection and backup exclusion and marks the database file, so open the
-  /// observer before the first projection is read.
   public static func open(directory: URL) throws -> ProjectionStore {
     let url = directory.appendingPathComponent("projection.sqlite")
     return ProjectionStore(queue: try Projector.open(path: url.path), url: url)
   }
 
-  /// An in-memory projection (tests, previews).
   public static func inMemory() throws -> ProjectionStore {
     ProjectionStore(queue: try Projector.open(path: nil), url: nil)
   }
 
-  /// Replaces the projection with `state` plus the outbox overlay (`pending`,
-  /// one inner array per pending blob, in order), in one transaction.
   public func project(
     _ state: State, pending: [[Op]], writerID: String, dictionary: MerchantDictionary, projectedAtMs: Int64
   ) throws {

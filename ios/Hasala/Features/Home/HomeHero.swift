@@ -2,26 +2,13 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Hero · Spent on needs + wants (Paper 14SX-0, page 16 §01–02): the period pill, "Day 10 of
-/// 31", the figure, the caption, one bar for the month, the verdict in words and the Needs,
-/// Wants and Savings tiles. 20 from the screen edges, 16 between its blocks.
-///
-/// Motion (owner's motion policy, B1.3; `HeroReveal`): the first time Home appears after
-/// launch, the bar fills over 300 ms with the figure rolling on it, the tick drops in (120 ms)
-/// as the bar lands, then the verdict fades in (150 ms): 0–300–420–570 ms. Home is seen many
-/// times a day, so every later appearance, a tab switch or a return from a sheet shows the
-/// final state at once. A change while Home is open (a new transaction) moves the bar on
-/// `fillUpdate` (250 ms) and rolls the figure; the wash and the verdict cross-fade when the
-/// verdict changes. Reduce Motion shows the final state.
 struct HomeHero: View {
   let hero: SpendHero
   let hidden: Bool
-  /// "October 2026", "Aug – Oct 2026".
   let period: String
   let isThisMonth: Bool
   let changePeriod: () -> Void
   let backToThisMonth: () -> Void
-  /// "Insights": pushes Insights for Home's period.
   let insights: (() -> Void)?
   var reading = false
   let openNotCounted: (SpendHero.NotCounted) -> Void
@@ -53,7 +40,6 @@ struct HomeHero: View {
     hold?.overlineSuffix.map { "\(hero.overline) · \($0)" } ?? hero.overline
   }
 
-  /// Spent as a share of the plan, for the bar's geometry only.
   private var hasBar: Bool { hero.state == .live || hero.state == .ended }
 
   private var target: Double {
@@ -132,16 +118,9 @@ struct HomeHero: View {
     }
   }
 
-  // MARK: Figure
-
   private var figureBlock: some View {
     VStack(alignment: .leading, spacing: 6) {
       Text(overline).hType(.overline).foregroundStyle(HColor.textOnWashSecondary)
-      // 6 dots at Paper's 38 pt when hidden (page 06 §6.3). The figure is its own element
-      // (`home.hero.left`, plan decision 8) and carries the caption as its value, so VoiceOver
-      // reads "AED 10,288.34, spent of 19,000 on needs and wants".
-      // The figure is zero until the reveal's fill starts, so it rolls on the fill's curve. A
-      // live change rolls it on the bar's own 250 ms curve, so both land together.
       HeroFigure(amount: phase.figure(hero.spent), hidden: hidden)
         .hAnimation(.fillUpdate, value: hero.spent)
         .accessibilityValue(caption.spoken(hidden: hidden))
@@ -150,8 +129,6 @@ struct HomeHero: View {
         .accessibilityHidden(true)
     }
   }
-
-  // MARK: Reading held
 
   private func heldBlock(_ hold: ReadingHold) -> some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -167,9 +144,6 @@ struct HomeHero: View {
     .accessibilityIdentifier("home.hero.held")
   }
 
-  // MARK: Verdict
-
-  /// The verdict word changes only with the verdict; the line cross-fades when it does.
   private var verdictKey: String { hero.word.rendered(hidden: true) }
 
   private var verdictLine: some View {
@@ -209,9 +183,6 @@ struct HomeHero: View {
     }
   }
 
-  // MARK: Tiles
-
-  /// Three tiles side by side, their figures shrinking to fit; stacked at the accessibility sizes.
   @ViewBuilder private var tiles: some View {
     if typeSize.isAccessibilitySize {
       VStack(spacing: 8) { tileViews }
@@ -220,7 +191,6 @@ struct HomeHero: View {
     }
   }
 
-  /// Needs, Wants and Savings (`home.tile.needs`, `.wants`, `.savings`). Not controls.
   private var tileViews: some View {
     ForEach(hero.tiles) { tile in
       StatTile(tile, hidden: hidden)
@@ -229,10 +199,6 @@ struct HomeHero: View {
   }
 }
 
-/// The hero figure on Paper's 58 pt line: "AED" 20/24 and the figure 56/58 bold, −1.2, on one
-/// baseline. SF Rounded's own line at 56 is about 66.6, so the line gives back the difference
-/// (the design system adds leading but never takes it away). Hidden, six dots at 38 sit on the
-/// 58 line already. Capped at AX3 with the figure, so the trim scales with it.
 private struct HeroFigure: View {
   let amount: Money
   let hidden: Bool
@@ -246,11 +212,9 @@ private struct HeroFigure: View {
 private struct HeroFigureLine: View {
   let amount: Money
   let hidden: Bool
-  /// Half of 56 × 1.19 − 58.
   @ScaledMetric(relativeTo: .largeTitle) private var trim: CGFloat = 4.32
 
   var body: some View {
-    // Paper's hidden hero: 38 pt dots, 3 pt apart, on the 58 line (page 18 §18.7).
     MoneyText(amount, figure: .display, unit: .displayUnit, hidden: hidden, hiddenGlyphs: 6, hiddenDots: 38,
               hiddenTracking: 3, color: HColor.textPrimary, sign: amount.isNegative ? .debt : .none)
       .padding(.vertical, hidden ? 0 : -trim)

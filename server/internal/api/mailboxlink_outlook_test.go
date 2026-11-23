@@ -21,9 +21,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// fakeMSVerifier stands in for msjwt: a token is base64url(JSON claims), or
-// "down" (the key set is unreachable), or anything else (rejected). Calls are
-// counted, so a test can show a refusal came before any verification.
 type fakeMSVerifier struct {
 	audience string
 	calls    *atomic.Int64
@@ -47,8 +44,6 @@ func (f fakeMSVerifier) Verify(_ context.Context, tok string) (msjwt.Claims, err
 	if json.Unmarshal(raw, &c) != nil {
 		return msjwt.Claims{}, msjwt.ErrTokenRejected
 	}
-	// Like msjwt, the audience is checked by the verifier; the route checks
-	// it again, which "a verifier for another client" below exercises.
 	if f.audience != "" && c.Aud != f.audience {
 		return msjwt.Claims{}, msjwt.ErrTokenRejected
 	}
@@ -74,9 +69,6 @@ func goodMSClaims(nonce string) fakeMSClaims {
 		Iat: time.Now().Add(-time.Minute)}
 }
 
-// withOutlook mounts the Outlook link (and its push when push is not nil) on
-// the same route key and limiter withGmail uses, beside whatever Gmail
-// options h already has.
 func withOutlook(h *harness, push *OutlookPush) (*recWaker, *OutlookOptions, *atomic.Int64) {
 	h.t.Helper()
 	rk, err := gmailpush.NewRouteKey(bytes.Repeat([]byte{7}, 32))
@@ -103,7 +95,6 @@ func linkAs(k *keyed, tok, provider, idToken string) *httptest.ResponseRecorder 
 		StepUp: k.stepUp(tok, keyproto.ActionMailboxLink, th[:])})
 }
 
-// capturedLogs collects the operator log.
 type capturedLogs struct {
 	mu  sync.Mutex
 	buf strings.Builder
@@ -121,9 +112,6 @@ func (c *capturedLogs) String() string {
 	return c.buf.String()
 }
 
-// The Outlook link: the same nonce and step-up as Gmail's, Microsoft's claim
-// rules, a clientState returned once and kept only as its hash, and the
-// address only as an HMAC under the Outlook domain.
 func TestOutlookMailboxLink(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t).passkeys()
@@ -133,7 +121,6 @@ func TestOutlookMailboxLink(t *testing.T) {
 	k := h.onboard(true)
 	n := linkChallenge(h, k.token)
 
-	// Without a step-up: 403 step_up_required, and the token is not verified.
 	w := h.req("PUT", "/api/v1/mailbox/link", k.token, LinkRequest{Provider: "outlook", IDToken: fakeMSToken(goodMSClaims(n))})
 	if w.Code != http.StatusForbidden || decodeJSON[errorBody](t, w).Error != "step_up_required" {
 		t.Fatalf("no step-up: %d %s", w.Code, w.Body)
@@ -142,11 +129,10 @@ func TestOutlookMailboxLink(t *testing.T) {
 		t.Fatal("the ID token was verified before the step-up was asked for")
 	}
 
-	// Claim failures: each a 403 link_rejected.
 	other := h.session(k.user)
 	h.bind(other, k.device.WriterID)
 	foreign := linkChallenge(h, other)
-	o.Link = fakeMSVerifier{calls: calls} // the route's own audience check
+	o.Link = fakeMSVerifier{calls: calls}
 	h.h = h.srv.Handler()
 	for name, c := range map[string]fakeMSClaims{
 		"another session's nonce": goodMSClaims(foreign),
@@ -173,12 +159,10 @@ func TestOutlookMailboxLink(t *testing.T) {
 	o.Link = fakeMSVerifier{audience: testOutlookClient, calls: calls}
 	h.h = h.srv.Handler()
 	wantStatus(t, linkAs(k, k.token, "outlook", "down"), http.StatusServiceUnavailable)
-	// A Google-shaped token is not an Outlook one.
 	if w := linkAs(k, k.token, "outlook", fakeToken(goodClaims(n))); w.Code != http.StatusForbidden {
 		t.Fatalf("a Google token linked Outlook: %d", w.Code)
 	}
 
-	// The address from preferred_username when there is no email claim.
 	good := goodMSClaims(n)
 	good.Email, good.PreferredUsername = "", testOutlookMailbox
 	w = linkAs(k, k.token, "outlook", fakeMSToken(good))
@@ -213,13 +197,11 @@ func TestOutlookMailboxLink(t *testing.T) {
 		t.Fatalf("link wakes %+v", ws)
 	}
 
-	// #37 reports the provider.
 	if st := decodeJSON[LinkStatusResponse](t, h.req("GET", "/api/v1/mailbox/link", k.token, nil)); st.Provider != "outlook" ||
 		!st.Holder.IsThisDevice || st.WatchExpiresAt != nil {
 		t.Fatalf("status %+v", st)
 	}
 
-	// #36: a Graph subscription lasts at most 7 days.
 	wantStatus(t, h.req("PUT", "/api/v1/mailbox/link/watch", k.token,
 		LinkWatchRequest{ExpiresAt: time.Now().Add(7*24*time.Hour + time.Hour)}), http.StatusBadRequest)
 	wantStatus(t, h.req("PUT", "/api/v1/mailbox/link/watch", k.token,
@@ -228,7 +210,6 @@ func TestOutlookMailboxLink(t *testing.T) {
 		t.Fatal("#37 does not report the watch #36 recorded")
 	}
 
-	// Linking again mints a new clientState; the old one routes nowhere.
 	n2 := linkChallenge(h, k.token)
 	w = linkAs(k, k.token, "outlook", fakeMSToken(goodMSClaims(n2)))
 	wantStatus(t, w, http.StatusOK)
@@ -242,14 +223,11 @@ func TestOutlookMailboxLink(t *testing.T) {
 		t.Fatalf("the old clientState still routes: %d %v", count, err)
 	}
 
-	// #38 removes it.
 	wantStatus(t, h.req("DELETE", "/api/v1/mailbox/link", k.token,
 		UnlinkRequest{StepUp: k.stepUp(k.token, keyproto.ActionMailboxUnlink)}), http.StatusNoContent)
 	wantStatus(t, h.req("GET", "/api/v1/mailbox/link", k.token, nil), http.StatusNotFound)
 }
 
-// The provider is settled first: an unknown one, or one this server does not
-// link, is a 400 before any step-up or token work.
 func TestMailboxLinkProviderIsCheckedFirst(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t).passkeys()
@@ -274,7 +252,6 @@ func TestMailboxLinkProviderIsCheckedFirst(t *testing.T) {
 	if calls.Load() != 0 {
 		t.Fatal("an unsupported provider reached a verifier")
 	}
-	// The Outlook link alone mounts the routes; with no push #36 records nothing.
 	n := linkChallenge(h, k.token)
 	wantStatus(t, linkAs(k, k.token, "outlook", fakeMSToken(goodMSClaims(n))), http.StatusOK)
 	w := h.req("PUT", "/api/v1/mailbox/link/watch", k.token, LinkWatchRequest{ExpiresAt: time.Now().Add(time.Hour)})
@@ -283,14 +260,12 @@ func TestMailboxLinkProviderIsCheckedFirst(t *testing.T) {
 	}
 }
 
-// One mailbox per account: Gmail replaces Outlook and Outlook replaces Gmail,
-// leaving one row; each provider's watch rule follows the row.
 func TestLinkingOneProviderReplacesTheOther(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t).passkeys()
 	_, g := withGmail(h, &GmailPush{Topic: testTopic, Hook: fakeVerifier{testAudience}, Subscription: testSub,
 		ServiceAccount: testSA})
-	_, _, _ = withOutlook(h, nil) // the Graph push is off
+	_, _, _ = withOutlook(h, nil)
 	k := h.onboard(true)
 
 	row := func() (provider string, csHash []byte, n int) {
@@ -307,7 +282,6 @@ func TestLinkingOneProviderReplacesTheOther(t *testing.T) {
 		return
 	}
 
-	// Gmail, by default.
 	wantStatus(t, link(k, k.token, fakeToken(goodClaims(linkChallenge(h, k.token)))), http.StatusOK)
 	wantStatus(t, h.req("PUT", "/api/v1/mailbox/link/watch", k.token,
 		LinkWatchRequest{ExpiresAt: time.Now().Add(7*24*time.Hour + time.Hour)}), http.StatusNoContent)
@@ -315,7 +289,6 @@ func TestLinkingOneProviderReplacesTheOther(t *testing.T) {
 		t.Fatalf("after gmail: %d rows, %s %x", n, p, cs)
 	}
 
-	// Outlook replaces it, watch and all.
 	w := linkAs(k, k.token, "outlook", fakeMSToken(goodMSClaims(linkChallenge(h, k.token))))
 	wantStatus(t, w, http.StatusOK)
 	if p, cs, n := row(); n != 1 || p != "outlook" || len(cs) != 32 {
@@ -325,13 +298,11 @@ func TestLinkingOneProviderReplacesTheOther(t *testing.T) {
 	if st.Provider != "outlook" || st.WatchExpiresAt != nil {
 		t.Fatalf("status %+v", st)
 	}
-	// Gmail's push is on, Outlook's is not: no watch for this link.
 	w = h.req("PUT", "/api/v1/mailbox/link/watch", k.token, LinkWatchRequest{ExpiresAt: time.Now().Add(time.Hour)})
 	if w.Code != http.StatusConflict || decodeJSON[errorBody](t, w).Error != "no_watch_topic" {
 		t.Fatalf("outlook watch with only gmail's push: %d %s", w.Code, w.Body)
 	}
 
-	// And Gmail replaces Outlook again, explicitly named.
 	n := linkChallenge(h, k.token)
 	tok := fakeToken(goodClaims(n))
 	th := sha256.Sum256([]byte(tok))
@@ -351,8 +322,6 @@ func TestLinkingOneProviderReplacesTheOther(t *testing.T) {
 	}
 }
 
-// The schema holds the rules on its own: one link per account, and a
-// clientState hash exactly on Outlook links.
 func TestMailboxLinksSchemaRules(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t).passkeys()

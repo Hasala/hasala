@@ -1,9 +1,3 @@
-// Review lanes (spec 03c §3.7, port of `sources/review.ts` with v4 precedence):
-// superseded → none; archived → none; unparsed → unreadable; a possible
-// duplicate with no disposition → duplicate; needs_review → needs_review; no
-// category (and not split) or a model suggestion → uncategorized. The deck
-// shows the needs_review and uncategorized lanes. "Skip for now" is
-// device-local, never an op.
 import CoreCategorize
 import CoreReplay
 

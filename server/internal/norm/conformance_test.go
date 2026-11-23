@@ -14,34 +14,20 @@ import (
 	"github.com/salehtl/hasala/server/internal/privatefixtures"
 )
 
-// conformanceDir holds the committed SYNTHETIC fixtures both executors run
-// against (edge-cases.json and the artifacts twin_test.go writes).
 const conformanceDir = "../../../conformance/normalizer"
 
-// realCasesDir is RealCasesDir (fixtures.go).
 const realCasesDir = RealCasesDir
 
-// writeFixturesEnv gates the writers. A test that rewrites its own reference on
-// every run pins nothing, so writing is opt-in and the output is committed.
 const writeFixturesEnv = "HASALA_WRITE_CONFORMANCE"
 
-// conformanceCase and corpusFixtures live in fixtures.go, exported for the
-// oracle module's fixture writer (server/oracle/gates/norm).
 type conformanceCase = ConformanceCase
 
 var corpusFixtures = CorpusFixtures
 
-// resultHasField reports whether Result declares a field with this name. It
-// backs the assertion that nothing in Result can be mistaken for a verified
-// identity.
 func resultHasField(name string) bool {
 	_, ok := reflect.TypeOf(Result{}).FieldByName(name)
 	return ok
 }
-
-// ---------------------------------------------------------------------------
-// The runner
-// ---------------------------------------------------------------------------
 
 func loadCases(t *testing.T) []conformanceCase {
 	t.Helper()
@@ -50,9 +36,6 @@ func loadCases(t *testing.T) []conformanceCase {
 	if err != nil {
 		t.Fatalf("read %s: %v", dir, err)
 	}
-	// The case files must be exactly the ones the private manifest lists. The
-	// suite enumerates the directory, so a checkout missing one case would
-	// otherwise pass on whatever is left; the size floor below is not enough.
 	var manifest struct {
 		Cases []struct {
 			File string `json:"file"`
@@ -90,10 +73,6 @@ func loadCases(t *testing.T) []conformanceCase {
 	}
 	var cases []conformanceCase
 	for _, e := range entries {
-		// edge-cases.json is the synthetic family (see twin_test.go): a different
-		// schema, a single document rather than one file per case, and already
-		// executed against Go by TestTwinArtifactsAreFresh, which regenerates
-		// every expectation from Normalize and compares the whole file.
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") ||
 			e.Name() == "manifest.json" || e.Name() == "edge-cases.json" {
 			continue
@@ -166,9 +145,6 @@ func TestNormalizerConformance(t *testing.T) {
 	}
 }
 
-// TestConformanceCoversTheNamedShapes fails when a fixture the contract depends
-// on has been dropped. Coverage that quietly shrinks is the failure mode a
-// conformance suite exists to prevent.
 func TestConformanceCoversTheNamedShapes(t *testing.T) {
 	cases := loadCases(t)
 	byName := map[string]conformanceCase{}
@@ -215,9 +191,6 @@ func TestConformanceCoversTheNamedShapes(t *testing.T) {
 		t.Error("no windows-1256 fixture; the charset conversion is unpinned")
 	}
 
-	// Whitespace inside a base64 payload must be skipped, not decoded and not
-	// fatal, so indenting it changes nothing about the output. Asserting the two
-	// texts are equal is what makes that a contract rather than a coincidence.
 	plain, ok1 := byName["dib-arabic-01"]
 	indented, ok2 := byName["base64-continuation-indent"]
 	if ok1 && ok2 && plain.ExpectTextBase64 != indented.ExpectTextBase64 {
@@ -225,8 +198,6 @@ func TestConformanceCoversTheNamedShapes(t *testing.T) {
 			"embedded whitespace in a base64 payload is skipped, per RFC 2045")
 	}
 
-	// The raw fallback must still recover the headers. A message that failed
-	// MIME parsing is exactly the message whose Subject the review queue needs.
 	if raw, ok := byName["broken-mime-raw-fallback"]; ok {
 		if raw.ExpectSubjectBase64 == "" || string(mustB64(t, raw.ExpectSubjectBase64)) == "" {
 			t.Error("broken-mime-raw-fallback recovered no Subject; the ENBD alert template reads last4 from there")
@@ -243,8 +214,6 @@ func mustB64(t *testing.T, s string) []byte {
 	return b
 }
 
-// firstDiff trims two strings to a window around their first difference so a
-// failure on a 4 KB Arabic body is readable.
 func firstDiff(got, want string) (string, string) {
 	i := 0
 	for i < len(got) && i < len(want) && got[i] == want[i] {
@@ -267,16 +236,6 @@ func firstDiff(got, want string) (string, string) {
 	return clip(got), clip(want)
 }
 
-// ---------------------------------------------------------------------------
-// The writer
-// ---------------------------------------------------------------------------
-
-// TestDerivedFixturesReproduceFromTheirSources re-runs every derive function
-// over the committed raw bytes of its source case and requires the committed
-// DERIVED case byte for byte. The writer needs the corpus database, which no
-// checkout has; this pins the derivations themselves without it, so a change to
-// a derive function (or to its public inputs) cannot silently disagree with the
-// fixtures it once produced.
 func TestDerivedFixturesReproduceFromTheirSources(t *testing.T) {
 	byName := map[string]conformanceCase{}
 	for _, c := range loadCases(t) {
@@ -290,9 +249,6 @@ func TestDerivedFixturesReproduceFromTheirSources(t *testing.T) {
 			}
 		}
 	}
-	// gmail-forward-1 derives from id 6973, which is also apple-forward-enbd-alert
-	// (verbatim); mislabelled-utf8 from 2695 (dib-windows1256-01); the other two
-	// from 9 (dib-arabic-01).
 	for _, f := range corpusFixtures {
 		if f.Derive == nil {
 			continue

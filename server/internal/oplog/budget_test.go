@@ -15,11 +15,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// These tests cover the placement the design calls non-negotiable: the
-// cumulative ceiling lives INSIDE the append path (appendTx), so no append
-// path — today's AppendClient or any later one — can skip it.
-
-// appendOne appends one sealed row to writer's chain through AppendClient.
 func appendOne(ctx context.Context, t *testing.T, a *Appender, u uuid.UUID, writer string) error {
 	c, head, err := a.Head(ctx, u, writer, blob.StreamHot)
 	if err != nil {
@@ -42,8 +37,6 @@ func ledger(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, resource string) int6
 	return amount
 }
 
-// storedBytes is what the ledger is supposed to equal: exactly what
-// internal/verify's reconciliation computes.
 func storedBytes(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, stream string) int64 {
 	t.Helper()
 	var n int64
@@ -115,7 +108,6 @@ func TestAppendClientIsRefusedAtTheCeiling(t *testing.T) {
 	if got := refusalCount(t, pool, u, budget.ResourceOplogHotBytes); got != 1 {
 		t.Fatalf("hot refusals = %d, want 1", got)
 	}
-	// The rollback restores the counter, so the refusal costs no seq.
 	var next int64
 	if err := pool.QueryRow(bg, `SELECT next_seq FROM oplog_seq WHERE user_id = $1`, u).Scan(&next); err != nil {
 		t.Fatal(err)
@@ -125,15 +117,6 @@ func TestAppendClientIsRefusedAtTheCeiling(t *testing.T) {
 	}
 }
 
-// TestTheLedgerIsUnchangedAfterARolledBackAppend is the case that makes
-// transactional co-location worth the trouble. The second append reaches the
-// gate, is charged, and then dies on the unique (writer, stream, counter)
-// index — so the bytes never landed and the number that counts them must not
-// have either.
-//
-// If Admit ran on its own connection instead of the caller's transaction, the
-// ledger would read double here and every failed append would leak budget until
-// an honest account was locked out of its own log.
 func TestTheLedgerIsUnchangedAfterARolledBackAppend(t *testing.T) {
 	pool := pgtest.New(t)
 	a := &Appender{Pool: pool}
@@ -149,9 +132,6 @@ func TestTheLedgerIsUnchangedAfterARolledBackAppend(t *testing.T) {
 		t.Fatal("the first append charged nothing, so this test proves nothing")
 	}
 
-	// The identical row again: position (dev-a, hot, 1) is taken, so the INSERT
-	// fails AFTER the gate has already charged the account inside that same
-	// transaction.
 	r2, _ := mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, prev)
 	if _, err := a.appendRaw(bg, []Row{r2}); err == nil {
 		t.Fatal("re-appending a taken position succeeded")
@@ -164,16 +144,12 @@ func TestTheLedgerIsUnchangedAfterARolledBackAppend(t *testing.T) {
 	}
 }
 
-// TestConcurrentAppendsFromOneAccountSerializeWithoutDeadlock. The gate runs
-// after allocSeq, so these are already serialized on the counter row before
-// they reach the usage row — one lock, one order, no deadlock, and every byte
-// counted exactly once.
 func TestConcurrentAppendsFromOneAccountSerializeWithoutDeadlock(t *testing.T) {
 	pool := pgtest.New(t)
 	a := &Appender{Pool: pool}
 	u := insertUser(t, pool)
 
-	const n = 10 // one writer each: dev-0 … dev-9
+	const n = 10
 	var wg sync.WaitGroup
 	errs := make([]error, n)
 	for i := range n {
@@ -195,18 +171,12 @@ func TestConcurrentAppendsFromOneAccountSerializeWithoutDeadlock(t *testing.T) {
 	}
 }
 
-// TestOneAccountsHeldUsageRowDoesNotBlockAnother pins the isolation claim
-// itself: the gate locks rows keyed by account, never anything shared. The
-// same-account half of the test is what stops the other half from being
-// vacuous — if the lock were not being taken at all, both would pass.
 func TestOneAccountsHeldUsageRowDoesNotBlockAnother(t *testing.T) {
 	pool := pgtest.New(t)
 	a := &Appender{Pool: pool}
 	busy := insertUser(t, pool)
 	other := insertUser(t, pool)
 
-	// Hold busy's usage rows for the duration, exactly as an in-flight append
-	// would.
 	tx, err := pool.Begin(bg)
 	if err != nil {
 		t.Fatal(err)
@@ -216,14 +186,12 @@ func TestOneAccountsHeldUsageRowDoesNotBlockAnother(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A different account is untouched by that lock.
 	freeCtx, cancel := context.WithTimeout(bg, 15*time.Second)
 	defer cancel()
 	if err := appendOne(freeCtx, t, a, other, "ios-00000000-0000-4000-8000-00000000000a"); err != nil {
 		t.Fatalf("an append for a different account was blocked: %v", err)
 	}
 
-	// The same account waits, which is what proves the lock is real.
 	sameCtx, cancelSame := context.WithCancel(bg)
 	defer cancelSame()
 	blocked := make(chan error, 1)

@@ -1,9 +1,3 @@
-/**
- * The homepage FAQ (Paper 09 FAQ). The questions and fuller answers are the
- * same as /faq (FAQ in site.ts, which also feeds the FAQPage JSON-LD and
- * llms-full.txt); the homepage only swaps in Paper's own wording for the first
- * answer, which is the one drawn open.
- */
 import { FAQ, curly } from './site';
 import type { FaqItem } from './site';
 

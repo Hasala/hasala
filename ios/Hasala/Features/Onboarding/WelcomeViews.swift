@@ -4,20 +4,12 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-// The welcome stories (Paper row 10: Welcome · Story 1–4 of 4, the "Who can see what"
-// sheet, and Welcome · Motion and haptics; spec 04). Privacy-first: every claim is one the
-// design makes and the privacy policy backs.
-
-// MARK: - The stories
-
 struct Story: Identifiable {
   let id: Int
   let kicker: String
-  /// The headline's lines; story 1's second line is in blue 700.
   let headline: [String]
   let accentSecondLine: Bool
   let body: String
-  /// Story 3 links to "Who can see what".
   let whoSees: Bool
 }
 
@@ -39,8 +31,6 @@ enum Stories {
   ]
 }
 
-/// The pager's position as it moves, in pages (1.5 is halfway from story 2 to story 3).
-/// Only the orbit reads it, so a drag redraws the orbit, not the screen.
 @MainActor
 @Observable
 final class StoryPagerMotion {
@@ -51,26 +41,9 @@ final class StoryPagerMotion {
   }
 }
 
-/// The four welcome stories as one pager under a fixed Start panel (spec 04 §2): the
-/// story progress, the Hasala header, the stage and the copy page; "Get started" and "I
-/// already have an account" never move.
-///
-/// Motion (spec 04 §3, the owner's "delight" allowance): the art moves at 1.25× the finger
-/// and the copy at 1×; the orbit turns 20° per page; each story deals its cards in when it
-/// becomes the current one, then plays its key moment. A swipe or tap that changes the story
-/// plays a selection haptic as it settles; the timer never buzzes. Each story plays 6 s,
-/// then the pager moves on, and stops after story 4. It pauses while the person drags, under
-/// the "Who can see what" sheet, under a pushed screen, in the background, and while
-/// VoiceOver runs (no auto-advance; the progress reads "Page n of 4"). At the accessibility
-/// text sizes it doesn't auto-advance either: a story's copy then fills the screen and takes
-/// longer than 6 s to read, so the words would change mid-read. Reduce Motion: pages
-/// cross-fade, nothing turns or counts, the cards stop floating; the haptics stay.
-///
-/// The page is the onboarding store's, so it is where the person left it.
 struct StoriesView: View {
   @Binding var page: Int
   @Binding var whoSeesOpen: Bool
-  /// Outlook can be connected in this build (the sheet names Microsoft only then).
   var outlook: Bool
   var onGetStarted: () -> Void
   var onPasteInvite: (String) -> Void
@@ -94,19 +67,14 @@ struct StoriesView: View {
   @State private var position: ScrollPosition
   @State private var pager: StoryPagerMotion
   @State private var clock = StoryClock()
-  /// Each story's current run of its choreography; nil until it deals in again.
   @State private var runs: [StoryRun?] = Array(repeating: nil, count: Stories.all.count)
   @State private var runCount = 0
   @State private var copyHeights: [CGFloat] = Array(repeating: 0, count: Stories.all.count)
-  /// The person's finger is on the pager, or it is still coasting from a swipe.
   @State private var dragging = false
   @State private var onScreen = false
-  /// The pager has been put on the store's page.
   @State private var placed = false
   @State private var copyIn = false
-  /// The Reduce Motion cross-fade between stories.
   @State private var fading = false
-  /// Plays the selection haptic each time a change the person made settles.
   @State private var settles = 0
   @State private var linkCopied = false
   @State private var pasteboardChecks = 0
@@ -119,12 +87,8 @@ struct StoriesView: View {
 
   private var count: Int { Stories.all.count }
 
-  /// Someone can see the stories: not under a pushed screen or the sheet, not in the
-  /// background.
   private var visible: Bool { onScreen && !whoSeesOpen && scenePhase == .active }
 
-  /// Reading a story takes longer than it plays (VoiceOver, the accessibility text sizes):
-  /// the person moves on, and the progress marks where they are.
   private var handPaced: Bool {
     Self.handPaced(voiceOver: voiceOver, accessibilitySize: typeSize.isAccessibilitySize,
                    reduceMotion: motion.reduceMotion, handStopped: handStopped)
@@ -138,7 +102,6 @@ struct StoriesView: View {
     phase == .tracking || phase == .interacting
   }
 
-  /// The clock runs only while someone can watch the story, and never when it is hand-paced.
   private var shouldRun: Bool { visible && !handPaced && !dragging }
 
   var body: some View {
@@ -177,13 +140,9 @@ struct StoriesView: View {
       if run { clock.resume(at: .now) } else { clock.pause(at: .now) }
     }
     .task(id: AdvanceKey(page: page, running: clock.isRunning)) { await advanceWhenDone() }
-    // The other layout's pager opens on the first story: put it on this one.
     .onChange(of: typeSize.isAccessibilitySize) { placed = false }
   }
 
-  /// At the accessibility text sizes the copy needs the screen (spec 04 §11, plan 0.1 rule
-  /// 11): the drawings go, and the whole screen scrolls, the pager as tall as the longest
-  /// story and the Start panel under it, so nothing is cut off at the bottom.
   private var largeTextLayout: some View {
     ScrollView(.vertical) {
       VStack(spacing: 0) {
@@ -213,11 +172,6 @@ struct StoriesView: View {
     .scrollIndicators(.hidden)
   }
 
-  // MARK: Chrome
-
-  /// Four segments, the current one filling as it plays (spec 04 §2.3). VoiceOver reads
-  /// "Page n of 4" and swipes up or down to change the story; the element is a 44 band
-  /// around the 3 pt bars, so it is a size people can reach, without moving the header.
   private var progress: some View {
     TimelineView(.animation(minimumInterval: nil, paused: !clock.isRunning)) { context in
       StoryProgress(count: count, current: page, fill: handPaced ? 1 : clock.progress(at: context.date))
@@ -245,7 +199,6 @@ struct StoriesView: View {
     }
   }
 
-  /// "Hasala · Welcome" with the app icon (spec 04 §2.4).
   private var header: some View {
     HStack(spacing: 10) {
       AppIconTile(size: 32, radius: 8)
@@ -267,7 +220,6 @@ struct StoriesView: View {
     .accessibilityElement(children: .combine)
   }
 
-  /// The two buttons and the terms line, fixed under the pager (Paper "Start panel").
   private func startPanel(bottom: CGFloat) -> some View {
     VStack(spacing: 12) {
       if linkCopied {
@@ -278,7 +230,6 @@ struct StoriesView: View {
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("stories.getStarted")
       Button(action: onSignIn) {
-        // Paper sets this label in text-primary, not the link blue of "On grouped".
         Text("I already have an account").foregroundStyle(HColor.textPrimary)
       }
       .buttonStyle(.pill(.onGrouped, fill: true))
@@ -327,8 +278,6 @@ struct StoriesView: View {
     return found?.contains(\.probableWebURL) == true
   }
 
-  // MARK: Pager
-
   private var pagerArea: some View {
     GeometryReader { area in
       let metrics = (0..<count).map { stageMetrics($0, in: area.size) }
@@ -350,13 +299,10 @@ struct StoriesView: View {
     }
   }
 
-  /// The pager's paging, its place, and what its scrolling tells the stories.
   private func paged(_ scroller: some View) -> some View {
     scroller
       .scrollTargetBehavior(.paging)
       .scrollPosition($position)
-      // A scroll position's first id isn't applied while the pages have no width yet, so
-      // the pager goes to the store's page once they are laid out.
       .onScrollGeometryChange(for: Bool.self) { g in
         g.containerSize.width > 0 && g.contentSize.width > g.containerSize.width
       } action: { _, laidOut in
@@ -392,13 +338,10 @@ struct StoriesView: View {
     .scrollIndicators(.hidden)
   }
 
-  /// The story's drawing, scaled to the room the copy leaves, moving at 1.25× the drag.
-  /// A tap on its leading third goes back a story, anywhere else goes on.
   private func stage(_ story: Story, metrics: StageMetrics, width: CGFloat) -> some View {
     let still = motion.isStill
     return StoryArt(
       index: story.id, run: runs[story.id],
-      // Only while someone can see it: under a pushed screen or the sheet nothing moves.
       floating: !still && visible && story.id == page && runs[story.id] != nil)
       .scaleEffect(metrics.scale, anchor: .top)
       .frame(width: width, height: metrics.height, alignment: .top)
@@ -411,9 +354,6 @@ struct StoriesView: View {
       }
   }
 
-  /// How much room a story's drawing has once its copy is laid out, and how far it scales
-  /// to fit. At the largest text sizes the copy needs the screen: the drawing goes and the
-  /// page scrolls.
   private func stageMetrics(_ index: Int, in size: CGSize) -> StageMetrics {
     let room = max(0, size.height - copyHeights[index])
     let scale = min(1, size.width / 402, room / StoryArt.heights[index])
@@ -421,15 +361,12 @@ struct StoriesView: View {
     return StageMetrics(height: shown ? room : 0, scale: shown ? scale : 0, shown: shown)
   }
 
-  // MARK: Moving between stories
-
   private func appeared() {
     onScreen = true
     guard runs.allSatisfy({ $0 == nil }) else {
       if shouldRun { clock.resume(at: .now) }
       return
     }
-    // First appearance: the current story deals in and its copy rises 12 at +160 ms.
     start(page, byUser: false)
     resetOthers(except: page)
     if motion.isStill {
@@ -439,8 +376,6 @@ struct StoriesView: View {
     }
   }
 
-  /// The pager's scroll phase: a drag pauses the story; when the page comes to rest on
-  /// another story, that story starts and the selection haptic plays.
   private func scrollPhaseChanged(_ phase: ScrollPhase) {
     if Self.stopsAutoAdvance(phase) { handStopped = true }
     switch phase {
@@ -461,7 +396,6 @@ struct StoriesView: View {
     }
   }
 
-  /// A tap, the adjustable action or the timer moves to `target`.
   private func go(to target: Int, byUser: Bool) {
     if byUser { handStopped = true }
     guard (0..<count).contains(target), target != page else { return }
@@ -474,7 +408,6 @@ struct StoriesView: View {
       return
     }
     if m.reduceMotion {
-      // Reduce Motion: no slide; the stories cross-fade.
       withAnimation(HMotion.easeOutSoft(HMotion.reduceMotionFade / 2)) {
         fading = true
       } completion: {
@@ -490,7 +423,6 @@ struct StoriesView: View {
       }
       return
     }
-    // The new story deals in as it slides in; the old one clears once it is off screen.
     start(target, byUser: byUser)
     withAnimation(HMotion.snappy) {
       position.scrollTo(id: target)
@@ -500,7 +432,6 @@ struct StoriesView: View {
     }
   }
 
-  /// `index` becomes the current story: its clock starts from nothing and its cards deal in.
   private func start(_ index: Int, byUser: Bool) {
     page = index
     clock.restart(at: .now, running: shouldRun)
@@ -508,13 +439,10 @@ struct StoriesView: View {
     runs[index] = StoryRun(id: runCount, byUser: byUser)
   }
 
-  /// Stories off screen go back to their start, so they deal in again next time.
   private func resetOthers(except index: Int) {
     for i in 0..<count where i != index { runs[i] = nil }
   }
 
-  /// When the playing story ends, the pager moves on (no haptic: the person didn't do it).
-  /// After story 4 it stops, full.
   private func advanceWhenDone() async {
     guard clock.isRunning else { return }
     try? await Task.sleep(for: .seconds(clock.remaining(at: .now)))
@@ -655,16 +583,12 @@ struct CopiedInviteCard: View {
   }
 }
 
-/// How a story's drawing fits its page.
 struct StageMetrics: Equatable {
   var height: CGFloat
   var scale: CGFloat
   var shown: Bool
 }
 
-/// The orbit behind the pager (spec 04 §2.5): it doesn't page. It turns 20° per page as the
-/// pager moves, follows story 4's lower stage, and its dot travels the ring once per story,
-/// with the progress bar. Still with Reduce Motion.
 private struct SharedOrbit: View {
   let pager: StoryPagerMotion
   let metrics: [StageMetrics]
@@ -696,9 +620,6 @@ private struct SharedOrbit: View {
   private func lerp(_ a: CGFloat, _ b: CGFloat, _ t: Double) -> CGFloat { a + (b - a) * CGFloat(t) }
 }
 
-/// A story's words (Paper "Story copy"): kicker, headline, body, and on story 3 the link
-/// to "Who can see what". They rise 12 into place once, on the first appearance; after that
-/// they arrive with their page.
 private struct StoryCopy: View {
   let story: Story
   let shown: Bool
@@ -730,7 +651,6 @@ private struct StoryCopy: View {
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        // Paper's link row is 28 tall; the target keeps 44 without moving what follows.
         .padding(.vertical, -8)
         .accessibilityIdentifier("stories.whoSees")
       }

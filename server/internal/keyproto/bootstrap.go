@@ -7,36 +7,25 @@ import (
 	"github.com/google/uuid"
 )
 
-// BootstrapPayloadVersion is format_version / payload byte 0 (spec 01 §10.3.1).
 const BootstrapPayloadVersion = 0x01
 
-// BootstrapPayload is spec 01 §10.3.1's v1 payload, the bytes the AAK signs
-// (inside BootstrapMessage) at account bootstrap and at password signup. The
-// server never trusts a client's serialization of it: it rebuilds the bytes
-// from the JSON fields of spec 02 §10.1 and the account's own user id, and
-// verifies the AAK signature over what it built.
 type BootstrapPayload struct {
-	UserID          uuid.UUID // the session's user (C1) or the signup's reserved id (C1-P)
-	AMKCommitment   []byte    // 32
-	AuthorityPubkey []byte    // 32
-	RecoveryPubkey  []byte    // 32
-	RecoveryWrap    []byte    // 127, kdf 0x01
-	PhraseBox       []byte    // 45
-	EmailHash       []byte    // 32: SHA256(utf8(email_norm))
-	AuthKind        byte      // 0x00 none, 0x01 passkey, 0x02 password
-	AuthHash        []byte    // 32: 0^32, SHA256(attestationObject) or SHA256(S)
-	WriterPubkey    []byte    // 32: the first writer's DWK
-	WriterDAK       []byte    // 65: its DAK
-	WriterID        string    // 40
-	CredentialID    []byte    // nil, or 16–1023 bytes: the PRF wrap's credential
-	PRFWrap         []byte    // nil, or 127 bytes with kdf 0x02
+	UserID          uuid.UUID
+	AMKCommitment   []byte
+	AuthorityPubkey []byte
+	RecoveryPubkey  []byte
+	RecoveryWrap    []byte
+	PhraseBox       []byte
+	EmailHash       []byte
+	AuthKind        byte
+	AuthHash        []byte
+	WriterPubkey    []byte
+	WriterDAK       []byte
+	WriterID        string
+	CredentialID    []byte
+	PRFWrap         []byte
 }
 
-// Bytes builds the canonical payload: 501 + c + w bytes. It validates every
-// length and header byte the server checks before signatures (spec 01
-// §10.3.2 step 3), so a payload that builds is one whose shape the server
-// accepts; key-level checks (small order, the DAK point, distinctness) are
-// CheckKeys's.
 func (p BootstrapPayload) Bytes() ([]byte, error) {
 	if p.UserID == uuid.Nil {
 		return nil, fmt.Errorf("%w: user_id is zero", ErrShape)
@@ -90,7 +79,7 @@ func (p BootstrapPayload) Bytes() ([]byte, error) {
 	out = append(out, p.AMKCommitment...)
 	out = append(out, p.AuthorityPubkey...)
 	out = append(out, p.RecoveryPubkey...)
-	out = binary.BigEndian.AppendUint32(out, 1) // initial epoch
+	out = binary.BigEndian.AppendUint32(out, 1)
 	out = binary.BigEndian.AppendUint16(out, WrapSize)
 	out = append(out, p.RecoveryWrap...)
 	out = binary.BigEndian.AppendUint16(out, PhraseBoxSize)
@@ -98,7 +87,7 @@ func (p BootstrapPayload) Bytes() ([]byte, error) {
 	out = append(out, p.EmailHash...)
 	out = append(out, p.AuthKind)
 	out = append(out, p.AuthHash...)
-	out = append(out, 0x01) // writer.alg = "ed25519"
+	out = append(out, 0x01)
 	out = append(out, p.WriterPubkey...)
 	out = append(out, p.WriterDAK...)
 	out = append(out, byte(WriterIDSize))
@@ -110,9 +99,6 @@ func (p BootstrapPayload) Bytes() ([]byte, error) {
 	return out, nil
 }
 
-// CheckKeys is the key half of spec 01 §10.3.2 step 3: the authority,
-// recovery and writer keys are not small-order and are pairwise distinct, and
-// the DAK parses as an uncompressed P-256 point.
 func (p BootstrapPayload) CheckKeys() error {
 	for _, k := range []struct {
 		name string

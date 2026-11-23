@@ -1,30 +1,11 @@
 # shellcheck shell=bash
-# release-common.sh: sourced by archive.sh, inspect-ipa.sh and upload.sh (and the
-# script tests). Pure helpers only: nothing here touches the network, a key or the
-# keychain.
-#
-# The scripts also run inside the repository's Nix devShell (.envrc: use flake),
-# where GNU coreutils, grep, sed and findutils come first on PATH. Every tool whose
-# BSD and GNU forms differ (stat, date) or that only macOS has (shasum, plutil,
-# PlistBuddy, codesign, otool, strings) is called by its absolute path; what is left
-# on PATH (grep -E/-q/-c/-a/-r, find, mkdir, tail, ...) behaves the same in both.
 
-# The file archive.sh writes beside summary.txt when the archive is a local trial
-# (--allow-dirty or --allow-branch). upload.sh refuses any build that has it.
 # shellcheck disable=SC2034 # read by the scripts that source this file
 HASALA_TRIAL_MARKER="TRIAL"
 
-# I12: the API endpoint a release talks to, exactly: Info.plist's HasalaAPIBaseURL,
-# which Xcode fills in from HASALA_API_BASE_URL (ios/Config/Shared.xcconfig).
 # shellcheck disable=SC2034
 RELEASE_API_BASE_URL=https://api.hasala.app
 
-# hasala_build_root IOS_DIR: the directory that holds <BUILD>/ (one per archive) and
-# last-build-number: IOS_DIR/build. The offline script tests move it with
-# HASALA_BUILD_DIR, which counts only together with HASALA_TEST_MODE=1 (and is then
-# announced on stderr). A HASALA_BUILD_DIR without HASALA_TEST_MODE=1 is refused: this
-# fails, saying so, and archive.sh and upload.sh exit 2 before they do anything, so a
-# stray variable in a release shell never moves the builds or last-build-number.
 hasala_build_root() {
 	if [[ -z "${HASALA_BUILD_DIR:-}" ]]; then
 		printf '%s\n' "$1/build"
@@ -38,11 +19,6 @@ hasala_build_root() {
 	printf '%s\n' "$HASALA_BUILD_DIR"
 }
 
-# hasala_now: the current UTC time as YYYY-MM-DDTHH:MM:SSZ, which archive.sh turns into
-# the build number. The offline script tests pin it with HASALA_TEST_NOW, which counts
-# only together with HASALA_TEST_MODE=1, so two test archives always fall in one minute.
-# A HASALA_TEST_NOW without HASALA_TEST_MODE=1 is refused: this fails, saying so, and
-# archive.sh exits 2, so a stray variable in a release shell never fakes a build number.
 hasala_now() {
 	if [[ -z "${HASALA_TEST_NOW:-}" ]]; then
 		/bin/date -u +%Y-%m-%dT%H:%M:%SZ
@@ -55,9 +31,6 @@ hasala_now() {
 	printf '%s\n' "$HASALA_TEST_NOW"
 }
 
-# hasala_build_newer NEW LAST: true when build NEW is strictly newer than LAST
-# under version-string comparison, component-wise integer (spec 06 §8). Both are
-# YYMMDD.1HHMM; anything else is refused (false).
 hasala_build_newer() {
 	local new="$1" last="$2"
 	[[ "$new" =~ ^[0-9]{6}\.1[0-9]{4}$ && "$last" =~ ^[0-9]{6}\.1[0-9]{4}$ ]] || return 1
@@ -66,10 +39,6 @@ hasala_build_newer() {
 	((10#$nd == 10#$ld && 10#$nt > 10#$lt))
 }
 
-# hasala_record_build ROOT BUILD: write BUILD to ROOT/last-build-number, atomically
-# (a new file renamed over the old one), so a crash never leaves it half-written, and
-# only when BUILD is newer than what is recorded, under a lock the kernel drops when
-# the holder dies. Refused, saying why, when it is not.
 hasala_record_build() {
 	local root="$1" build="$2"
 	mkdir -p -- "$root" || return 1
@@ -90,10 +59,6 @@ hasala_record_build_locked() {
 		mv -f -- "$root/last-build-number.tmp" "$root/last-build-number"
 }
 
-# hasala_marketing_version CONFIG_DIR: prints MARKETING_VERSION (X.Y.Z) from the one
-# line in CONFIG_DIR/*.xcconfig that sets it. Fails, saying why, when no line or more
-# than one line sets it (a conditional MARKETING_VERSION[config=...] counts), or the
-# value is not X.Y.Z. Plain bash: no grep or sed dialect involved.
 hasala_marketing_version() {
 	local dir="$1" f line found=()
 	for f in "$dir"/*.xcconfig; do
@@ -119,7 +84,6 @@ hasala_marketing_version() {
 	printf '%s\n' "${found[0]}"
 }
 
-# hasala_sha256 FILE: the file's SHA-256 in lower-case hex.
 hasala_sha256() {
 	local out
 	out="$(/usr/bin/shasum -a 256 -- "$1")" || return 1
@@ -162,8 +126,6 @@ hasala_sample_pinned() {
 	fi
 }
 
-# hasala_is_macho FILE: true when FILE starts with a Mach-O or universal-binary magic
-# number (either byte order). od's -An -tx1 -N4 mean the same in BSD and GNU od.
 hasala_is_macho() {
 	local magic
 	magic="$(od -An -tx1 -N4 -- "$1" 2>/dev/null)" || return 1
@@ -174,28 +136,14 @@ hasala_is_macho() {
 	esac
 }
 
-# hasala_absent ERE PATH...: true only when grep read every PATH (a file, or a
-# directory, recursively; binary files are searched as text) and no line matches
-# ERE, i.e. grep exits 1. A match (0) and any error, such as a missing or unreadable
-# PATH (2), are false: an absence check never passes because it had nothing to read.
-#
-# Never pipe a tool into `grep -q` for an absence check: under pipefail, grep -q
-# exits at the first match, the writer dies of SIGPIPE (141), the pipeline fails and
-# `! ...` turns that into a pass. Write the tool's output to a file and pass the file.
 hasala_absent() {
 	hasala_grep_absent -E "$@"
 }
 
-# hasala_absent_i ERE PATH...: as hasala_absent, but a line matches ERE in any case
-# (grep -i; under LC_ALL=C that folds the ASCII letters only). For inspect-ipa.sh's
-# dev-host search (I12), where http://LOCALHOST:8080 is as much a dev host as
-# http://localhost:8080.
 hasala_absent_i() {
 	hasala_grep_absent -iE "$@"
 }
 
-# hasala_grep_absent GREP-FLAGS ERE PATH...: the one grep behind hasala_absent and
-# hasala_absent_i.
 hasala_grep_absent() {
 	(($# > 2)) || return 1
 	local flags="$1" re="$2" rc=0
@@ -204,16 +152,8 @@ hasala_grep_absent() {
 	[[ "$rc" == 1 ]]
 }
 
-# The last line of a summary.txt whose every inspection passed (inspect-ipa.sh):
-#
-#   PASS <n>/<n> sha256=<SHA-256 of the .ipa that was inspected>
 HASALA_PASS_RE='^PASS ([0-9]+)/([0-9]+) sha256=([0-9a-f]{64})$'
 
-# hasala_summary_passed SUMMARY IPA BUILD: true when SUMMARY is inspect-ipa.sh's
-# summary for BUILD (first line "Hasala BUILD (...)"), has no FAIL line, and ends in
-# the PASS line, whose count equals its "ok" lines and whose sha256 is IPA's. A
-# summary cut short (header only, or anything without the PASS line last), one for
-# another build, and one for other bytes are refused, with the reason on stderr.
 hasala_summary_passed() {
 	local summary="$1" ipa="$2" build="$3" first last oks want
 	if [[ ! -f "$summary" ]]; then

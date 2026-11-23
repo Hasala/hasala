@@ -1,17 +1,4 @@
 #!/usr/bin/env bash
-# Lighthouse CI on / of the built site, mobile (Lighthouse's default) and
-# desktop. Needs a built web/dist (`bun run build` in web/), Node (the
-# devShell's) and Chrome: CI uses the runner image's; this does not download
-# a browser. Reports go to the filesystem only (never
-# temporary-public-storage), one folder per preset.
-#
-#   web/lighthouse/run.sh [reports-dir [preset...]]
-#
-# The default reports-dir is web/lighthouse/reports. The presets are mobile and
-# desktop; without one, both run.
-#
-# Exits non-zero if any preset misses an assertion in lighthouserc.json; the
-# reports are written either way.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 out=$(mkdir -p "${1:-$here/reports}" && cd "${1:-$here/reports}" && pwd)

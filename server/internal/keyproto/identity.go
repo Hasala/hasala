@@ -9,20 +9,8 @@ import (
 	"unicode/utf8"
 )
 
-// ErrBadEmail is an address email_norm refuses (spec 02's 400 bad_email).
 var ErrBadEmail = errors.New("keyproto: not an address this beta accepts")
 
-// EmailNorm is spec 01 §4.11's normalization:
-//
-//  1. every byte is 0x09 or in 0x20–0x7E (non-ASCII addresses are refused);
-//  2. strip leading and trailing 0x20 and 0x09;
-//  3. ASCII-lowercase A–Z;
-//  4. valid iff 3 ≤ length ≤ 254, exactly one '@', a local part of 1–64 bytes,
-//     a domain of 1–253 bytes containing a '.' that is at neither end, and no
-//     byte below 0x21.
-//
-// Nothing else is canonicalized: dots and +tags are kept. The users CHECK
-// restates the result's shape.
 func EmailNorm(x string) (string, error) {
 	for i := 0; i < len(x); i++ {
 		c := x[i]
@@ -57,14 +45,8 @@ func EmailNorm(x string) (string, error) {
 	return s, nil
 }
 
-// EmailHash is SHA256(utf8(email_norm)): the address binding inside
-// BootstrapPayload (§10.3.1).
 func EmailHash(emailNorm string) [32]byte { return sha256.Sum256([]byte(emailNorm)) }
 
-// NameOK is spec 01 §4.11's display-name floor: valid UTF-8, 1–64 Unicode
-// scalars, each Go unicode.IsGraphic and not in Zs except U+0020, no leading
-// or trailing U+0020 and no two in a row. Spec 02 §10.7.4's DisplayName is the
-// narrower rule the server enforces; every name it accepts passes this.
 func NameOK(x string) bool {
 	if !utf8.ValidString(x) {
 		return false
@@ -87,10 +69,6 @@ func NameOK(x string) bool {
 	return true
 }
 
-// ResetCode is C9's 80-bit approval code (D37): code80 =
-// SHA256("hasala/v1/reset-code" ‖ 00 ‖ ek_pub32)[0:10], shown as base32
-// without padding (16 characters). hasalad never computes it (spec 02 §3.3);
-// the vectors and the Swift tests do.
 func ResetCode(ekPub []byte) (code80 []byte, code string, err error) {
 	if err := need("ek_pub", ekPub, Ed25519KeySize); err != nil {
 		return nil, "", err

@@ -1,12 +1,6 @@
 import XCTest
 
-/// Mailboxes on the Release surface: Gmail and Outlook (personal Microsoft accounts), one
-/// mailbox (as the live lane reads), a switch of provider only after "Change your email?",
-/// and no copy that promises a work or school account. Each test goes Home › Profile › Bank
-/// alerts through the Profile card, as a person does.
 final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
-  /// Bank alerts with an account's scenario, its hero on screen: through the Profile card,
-  /// a button in Release too.
   @MainActor
   private func bankAlerts(_ scenario: String) -> XCUIApplication {
     let app = launchRelease(scenario)
@@ -18,10 +12,6 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     return app
   }
 
-  /// No mailbox: Bank alerts says so, and Add a mailbox offers Gmail and Outlook, one
-  /// mailbox (no "another email", no second one promised). Gmail's read-only screen says how new
-  /// alerts are really caught. Connecting lands back on Bank alerts with the mailbox, and
-  /// no second one is offered.
   @MainActor
   func testAddAMailboxOffersGmailAndOutlook() throws {
     let app = bankAlerts("noMailbox")
@@ -56,15 +46,11 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     connect.tap()
     answerPastEmail(app)
     assertMailboxAdded(app, "gmail-1")
-    // Live reads one mailbox: no "Add a mailbox" beside it.
     assertAbsent(app, ["bankAlerts.addMailbox"], "Bank alerts")
     assertPersonalAccountsOnly(app, "Bank alerts")
     attach(app, "Release · Bank alerts · Gmail connected")
   }
 
-  /// Setup's bank step was skipped (manual entry), so the account reads no bank: Add a
-  /// mailbox asks for the banks first (the lane reads only their senders), then Gmail's
-  /// screen names the banks picked, never an empty list.
   @MainActor
   func testConnectWithNoBankAsksForTheBanksFirst() throws {
     let app = bankAlerts("noBanks")
@@ -91,8 +77,6 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     assertMailboxAdded(app, "gmail-1")
   }
 
-  /// Google ended Hasala's access: the hero says "Sign in again" with "Continue with
-  /// Google"; signed in again, it says it works.
   @MainActor
   func testSignInAgainFromTheHero() throws {
     let app = bankAlerts("gmailReconnect")
@@ -109,8 +93,6 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     assertNoPlaceholders(app, "Bank alerts")
   }
 
-  /// The Gmail mailbox: its page names Google's settings, and Disconnect's alert Google's
-  /// permissions page; disconnected, Bank alerts offers to add one again.
   @MainActor
   func testMailboxPageAndDisconnect() throws {
     let app = bankAlerts("passkeyUser")
@@ -134,9 +116,6 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     assertPersonalAccountsOnly(app, "Bank alerts")
   }
 
-  /// Profile › Settings › Mailboxes reaches the same Disconnect: the row names the
-  /// mailbox, opens Bank alerts, and the Gmail mailbox's Disconnect says that Google's
-  /// access ends; disconnected, the row says so.
   @MainActor
   func testSettingsMailboxesRowReachesDisconnect() throws {
     let app = launchRelease("passkeyUser")
@@ -160,8 +139,6 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(row.waitForValue("Not connected"), "the row says \(String(describing: row.value))")
   }
 
-  /// Setup's email step was skipped: Add a mailbox › Outlook says only personal Microsoft
-  /// accounts work, and connects the one mailbox.
   @MainActor
   func testConnectOutlookAfterSkipping() throws {
     let app = bankAlerts("gmailSkipped")
@@ -182,10 +159,6 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     assertAbsent(app, ["bankAlerts.addMailbox"], "Bank alerts")
   }
 
-  /// Reading Gmail, Bank alerts offers "Use another email": Outlook's sign-in asks first
-  /// ("Change your email?", main's "Hasala reads your bank alerts from Outlook instead of
-  /// Gmail."). Cancel keeps Gmail; "Use Outlook, keep the 42 transactions" leaves one
-  /// mailbox, Outlook's.
   @MainActor
   func testSwitchFromGmailToOutlook() throws {
     let app = bankAlerts("gmailLinked")
@@ -225,8 +198,6 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     try audit(app)
   }
 
-  /// Microsoft ended Hasala's access to Outlook, the one mailbox: the Profile card and
-  /// Bank alerts say "Sign in again", and the hero's Microsoft button reads it again.
   @MainActor
   func testReconnectOutlook() throws {
     let app = launchRelease("outlookReconnect")

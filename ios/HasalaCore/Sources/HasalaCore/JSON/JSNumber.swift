@@ -1,25 +1,10 @@
 // lint-allow: Double JSON.stringify writes a JavaScript Number, which IS an IEEE-754 double; this file reproduces that rendering for the writer's `.javascript` style and is never on a money path (money is a decimal string, spec 03c §1.3).
-//
-// ECMAScript `Number::toString(x)` (ECMA-262 §6.1.6.1.20), as JSON.stringify
-// applies it to a finite number. The shortest round-tripping digits come from
-// Swift's `Double.description` (shortest, closest: the same digits ECMAScript
-// requires); only the layout is ECMAScript's:
-//
-//   k ≤ n ≤ 21    digits, then n-k zeros            100, 123456789012345680000
-//   0 < n ≤ 21    digits with a point after n       1.5, 123.456
-//   -6 < n ≤ 0    "0." then -n zeros, then digits   0.001, 0.000001
-//   otherwise     d[.ddd]e±(n-1)                    1e+21, 1.5e-7
-//
-// where the value is 0.digits × 10^n and k is the digit count.
 public enum JSNumber {
-  /// The text JSON.stringify writes for the number `literal` denotes:
-  /// `null` for a literal that overflows a double (JSON.stringify(Infinity)).
   public static func stringify(literal: String) -> String {
     guard let d = Double(literal), d.isFinite else { return "null" }
     return format(d)
   }
 
-  /// `Number::toString` of a finite double. Zero (either sign) is `"0"`.
   public static func format(_ d: Double) -> String {
     precondition(d.isFinite, "JSNumber.format takes a finite double")
     if d == 0 { return "0" }
@@ -44,11 +29,8 @@ public enum JSNumber {
     return sign + body
   }
 
-  /// The shortest decimal digit string `s` (no leading or trailing zeros) and
-  /// exponent `n` with `x = 0.s × 10^n`, read off Swift's shortest
-  /// representation, whatever layout Swift chose for it.
   static func shortestDigits(_ x: Double) -> (String, Int) {
-    let text = Array(x.description.utf8)  // e.g. "1.0", "1e-07", "1.2345e+20", "5e-324"
+    let text = Array(x.description.utf8)
     var mantissa = text[...]
     var exponent = 0
     if let e = text.firstIndex(where: { $0 == 0x65 || $0 == 0x45 }) {

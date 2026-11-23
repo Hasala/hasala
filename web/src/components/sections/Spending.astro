@@ -169,8 +169,6 @@ import Icon from '../Icon.astro';
     height: 7px;
   }
   .pace__figure {
-    /* One line, shrinks with the card (global .fig-fit). k = 4.82em number
-       + 0.1667em unit, plus slack; fixed = the unit's 12.67px part + gap. */
     --fig-max: clamp(44px, 21.7px + 5.714vw, 104px);
     --fig-k: 5.35;
     --fig-fixed: 40px;
@@ -180,7 +178,7 @@ import Icon from '../Icon.astro';
   }
   .pace__unit {
     font-family: var(--font-figure);
-    font-size: calc(0.1667em + 12.67px); /* 20px at 44, 30px at 104 */
+    font-size: calc(0.1667em + 12.67px);
     line-height: 24px;
     font-weight: 600;
   }
@@ -474,9 +472,6 @@ import Icon from '../Icon.astro';
     }
   }
 
-  /* The card is a size container (.fig-box). When it is narrow (1024-1180
-     two-column layout), drop the "Today" label before it runs into "For the
-     month", and stack the bill tiles so their amounts never break. */
   @container (width < 380px) {
     .pace__scale .pace__scale-today {
       display: none;
@@ -488,7 +483,6 @@ import Icon from '../Icon.astro';
     }
   }
 
-  /* Motion moment C: set up by the pace script (JS only, motion allowed). */
   .pace[data-armed] .pace__fill {
     transform: scaleX(0);
   }

@@ -18,24 +18,14 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// tamper.json: spec 01 §15.3's T-cases. Each case is a page the reader is
-// served and, where the table has one, the upload the server must refuse or
-// accept. The reader outcome is computed by cryptoref.ReadPage and must equal
-// the table's (the generator refuses to write a disagreement); the server
-// verdict is the table's, and internal/api's TestTamperUploadsGetTheirVerdict
-// posts every upload to the real handler and requires it.
-
-// Tamper actors. W is the anchor writer; W2 a second live writer; R a revoked
-// writer. DWK seeds are patterned (spec 01 §15.5 for W).
 var (
 	TamperW2       = "ios-1b2c3d4e-5f60-4b7c-9d8e-0f1a2b3c4d5e"
 	TamperW2Seed   = Range(0xa0, 0xbf)
 	TamperR        = "ios-2c3d4e5f-6071-4c8d-ae9f-1a2b3c4d5e6f"
 	TamperRSeed    = Range(0xe0, 0xff)
-	TamperOtherKey = bytes.Repeat([]byte{0x22}, 32) // K_1' (T17) and K_2 (T07)
+	TamperOtherKey = bytes.Repeat([]byte{0x22}, 32)
 )
 
-// TamperRow is a row as served, or as uploaded.
 type TamperRow struct {
 	Stream     string `json:"stream"`
 	WriterID   string `json:"writer_id"`
@@ -47,17 +37,12 @@ type TamperRow struct {
 	Blob       H      `json:"blob"`
 }
 
-// ServerVerdict is the upload's expected answer: status 200, or a status, an
-// error code and, for plaintext_refused, the check.
 type ServerVerdict struct {
 	Status int    `json:"status"`
 	Error  string `json:"error,omitempty"`
 	Check  string `json:"check,omitempty"`
 }
 
-// TamperUpload is POST /api/v1/sync's body (hex instead of b64) and the
-// account state it is posted into: the anchor user, writer W bound to the
-// session, the anchor frame at counter 1 already stored, and current_epoch.
 type TamperUpload struct {
 	ServerEpoch   uint32        `json:"server_epoch"`
 	WriterRevoked bool          `json:"writer_revoked"`
@@ -68,10 +53,8 @@ type TamperUpload struct {
 	Verdict       ServerVerdict `json:"verdict"`
 }
 
-// TamperState is the reader state: the defaults of spec 01 §15.3 unless a case
-// changes them.
 type TamperState struct {
-	Keys        map[string]H         `json:"keys"` // epoch (decimal) → K_e
+	Keys        map[string]H         `json:"keys"`
 	EpochHWM    uint32               `json:"epoch_hwm"`
 	ServerEpoch uint32               `json:"server_epoch"`
 	Pinned      map[string]tamperPin `json:"pinned_heads"`
@@ -92,7 +75,6 @@ type rosterRow struct {
 	FinalHead    H      `json:"final_head,omitempty"`
 }
 
-// TamperCase is one case.
 type TamperCase struct {
 	ID     string        `json:"id"`
 	Name   string        `json:"name"`
@@ -100,12 +82,11 @@ type TamperCase struct {
 	Page   []TamperRow   `json:"page"`
 	Reader PageResult    `json:"reader"`
 	Expect string        `json:"reader_expected"`
-	After  *PageResult   `json:"reader_after_unlock,omitempty"` // T07
+	After  *PageResult   `json:"reader_after_unlock,omitempty"`
 	Upload *TamperUpload `json:"upload"`
 	Note   string        `json:"note,omitempty"`
 }
 
-// TamperFile is tamper.json.
 type TamperFile struct {
 	Note       string       `json:"note"`
 	UserID     uuid.UUID    `json:"user_id"`
@@ -137,7 +118,6 @@ func headSig(seed []byte, user uuid.UUID, counter int64, hash []byte, writer str
 	return ed25519.Sign(ed25519.NewKeyFromSeed(seed), m)
 }
 
-// served is a row chained after prev and head-signed by seed (nil: unsigned).
 func served(frame []byte, writer string, counter int64, prev []byte, seed []byte) TamperRow {
 	h := blob.Hash([32]byte(prev), blob.Sealed{Bytes: frame})
 	r := TamperRow{Stream: blob.StreamHot, WriterID: writer, Counter: counter, SizeBucket: len(frame),
@@ -161,8 +141,6 @@ func sealAt(user uuid.UUID, writer string, counter int64, epoch uint32, key []by
 	return f
 }
 
-// regionFor builds R for a payload G in the smallest bucket that holds it at
-// L = 83.
 func regionFor(g []byte) []byte {
 	bucket, err := blob.BucketFor(39 + 83 + len(g))
 	if err != nil {
@@ -209,7 +187,7 @@ func genTamper(f Files, root string) error {
 	base := sealBase(opBlob(4, baseOp))
 	upload := func(r TamperRow, v ServerVerdict) *TamperUpload {
 		sig := r.HeadSig
-		r.HeadSig = nil // the batch's head_sig travels beside the blobs
+		r.HeadSig = nil
 		return &TamperUpload{ServerEpoch: 1, WriterID: r.WriterID, Stream: r.Stream, Row: r, HeadSig: sig, Verdict: v}
 	}
 	accept := ServerVerdict{Status: 200}
@@ -222,7 +200,6 @@ func genTamper(f Files, root string) error {
 		cases = append(cases, TamperCase{ID: id, Name: name, State: st, Page: page, Expect: expect, Upload: up, Note: note})
 		return &cases[len(cases)-1]
 	}
-	// mutate builds a served row from a mutated copy of the base frame.
 	mutate := func(fn func([]byte) []byte) TamperRow {
 		return served(fn(append([]byte(nil), base...)), w, 2, h1[:], wSeed)
 	}
@@ -383,7 +360,7 @@ func genTamper(f Files, root string) error {
 	}
 	{
 		r := served(base, "ingest", 2, h1[:], nil)
-		r.HeadSig = headSig(wSeed, AnchorUser, 2, r.BlobHash, w) // no head message exists for a malformed id
+		r.HeadSig = headSig(wSeed, AnchorUser, 2, r.BlobHash, w)
 		add("T28", "row writer_id ingest", baseState(), one(r), "tampered(rowShape)", upload(r, ServerVerdict{Status: 400, Error: "bad_writer_id"}), "")
 		unk := "ios-3d4e5f60-7182-4d9e-bfa0-2b3c4d5e6f70"
 		fr := sealAt(AnchorUser, unk, 2, 1, k1, h1[:], AnchorFrameNonce2, regionFor(gz(opBlob(4, baseOp))))
@@ -480,7 +457,6 @@ func genTamper(f Files, root string) error {
 		add("M09", "epoch → 2^31, above the largest epoch", baseState(), one(r), "tampered(badHeader)", nil, "")
 	}
 
-	// Run the reference reader and require the table's outcome.
 	for i := range cases {
 		c := &cases[i]
 		c.Reader = ReadPage(readerState(c.State), toRows(c.Page))
@@ -521,7 +497,6 @@ func headSigUser(seed []byte, user uuid.UUID, counter int64, hash []byte, writer
 	return ed25519.Sign(ed25519.NewKeyFromSeed(seed), m)
 }
 
-// ctOffsets is "first, last and every 64th" of a ciphertext of n bytes.
 func ctOffsets(n int) []int {
 	var out []int
 	for j := 0; j < n; j += 64 {
@@ -569,8 +544,6 @@ func toRows(page []TamperRow) []Row {
 	return out
 }
 
-// describe renders a page result as the table's outcome: the hard stop, or
-// the outcome of the page's last row.
 func describe(p PageResult) string {
 	if p.Stop != nil {
 		return p.Stop.Outcome.String()

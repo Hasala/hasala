@@ -2,15 +2,6 @@
   import CoreCrypto
   import Foundation
 
-  /// The in-memory account service for Debug scenarios, previews and UI tests (spec 04
-  /// §15.3: "auth calls answered by an in-memory AuthService mock, never by
-  /// CoreSoftAuth"). It keeps the rules the server enforces that the screens depend on:
-  /// one uniform wrong-password answer, five tries per email code, the last
-  /// authenticator, step-ups that need the right password.
-  ///
-  /// Fixed values (synthetic): email codes are `123456`; the existing account is
-  /// `maya@example.com` with the password `copper lantern quietly 42`; the phrase is
-  /// `MockAccountService.phraseWords`.
   @MainActor
   final class MockAccountService: AccountService {
     static let emailCode = "123456"
@@ -18,9 +9,7 @@
     static var existingEmail: String { identity.person.email }
     static var displayName: String { identity.person.displayName }
     static let existingPassword = "copper lantern quietly 42"
-    /// A valid phrase from fixed entropy 01…10 (synthetic).
     static let phraseWords: [String] = (try? Phrase.words(entropy: Data((1...16).map { UInt8($0) }))) ?? []
-    /// Invite codes that start with this are "not found".
     static let unknownInvitePrefix = "ZZZZ"
 
     enum Account: Equatable {
@@ -29,17 +18,13 @@
       case passwordOnly
     }
 
-    /// The account actions the mock offers: every one, unless a scenario narrows it.
     var capabilities: AccountCapabilities = .all
-    /// Simulated latency per call.
     var delay: Duration = .milliseconds(250)
     var keysOnThisIPhone = true
     var refuseFinish: AuthFailure?
     var refusePhrase: AuthFailure?
     var refuseSecurity: [AuthFailure] = []
-    /// What the existing account has (the sign-in scenarios).
     var existing: Account
-    /// What a successful sign-in leads to.
     var signInOutcome: SignInOutcome = .ready
     private(set) var profile: AccountProfile?
     private var security: SecurityState
@@ -58,8 +43,6 @@
       }
     }
 
-    /// Paper's Sign-in & security boards (HB9, HNJ), synthetic: this iPhone and Maya's iPad;
-    /// a passkey account also has a passkey from another Apple Account ("Work iPad").
     static func securityState(for account: Account) -> SecurityState {
       let id = identity
       switch account {
@@ -86,8 +69,6 @@
       failNext = nil
       throw f
     }
-
-    // MARK: Signup
 
     func beginSignup(code: InviteCode, linkKey: String?, email: String, displayName: String)
       async throws(AuthFailure) -> SignupTicket
@@ -157,8 +138,6 @@
       return p
     }
 
-    // MARK: Sign in
-
     func signInWithPasskey() async throws(AuthFailure) -> SignInOutcome {
       await pause()
       guard existing == .passkey else { throw existing == .none ? .orphanedPasskey : .noCredential }
@@ -189,8 +168,6 @@
       guard words == Self.phraseWords else { throw .phraseMismatch }
     }
 
-    // MARK: Forgot password
-
     func beginPasswordReset(email: String) async throws(AuthFailure) -> ResetTicket {
       await pause()
       try injected()
@@ -214,7 +191,6 @@
     func requestResetApproval(_ ticket: ResetTicket, newPassword: String) async throws(AuthFailure) -> ResetTicket {
       await pause()
       var t = ticket
-      // A synthetic ephemeral key: the code shown is the real 80-bit form of it.
       t.resetCode = Self.resetCode
       password = newPassword
       return t
@@ -231,9 +207,6 @@
       return false
     }
 
-    // MARK: Relaunch
-
-    /// What `resumeSignedIn` answers (the `relaunch*` scenarios).
     var resumeOutcome: SignInOutcome = .needsUnlock(passkeyCanUnlock: false)
 
     func resumeSignedIn() async throws(AuthFailure) -> SignInOutcome {
@@ -250,8 +223,6 @@
       return p
     }
 
-    // MARK: Recovery
-
     func beginRecovery(words: [String]) async throws(AuthFailure) -> RecoveryTicket {
       await pause()
       try injected()
@@ -260,7 +231,6 @@
       return RecoveryTicket(id: "recover-1", emailHint: Self.identity.person.emailHint)
     }
 
-    /// The kind the ceremony was verified with (`02` #48).
     private(set) var recoveryKind: SignInMethod?
     var recoverySurvivesFailure = false
 
@@ -279,7 +249,6 @@
 
     func finishRecovery(_ ticket: RecoveryTicket, credential: NewCredential) async throws(AuthFailure) {
       await pause()
-      // `recover/finish` refuses a kind other than the verified one (uniformly).
       guard recoveryKind == credential.method else { throw .refused }
       if let failure = failNext {
         failNext = nil
@@ -303,8 +272,6 @@
       profile = AccountProfile(displayName: Self.displayName, email: Self.existingEmail, method: credential.method)
     }
 
-    // MARK: Signed in
-
     var securityStateFailure: AuthFailure?
 
     func securityState() async throws(AuthFailure) -> SecurityState {
@@ -317,11 +284,9 @@
     func perform(_ action: SecurityAction, password given: String?) async throws(AuthFailure) {
       await pause()
       if security.frozen != nil, action != .unfreeze { throw .frozen }
-      // As the live service: an operator freeze is refused before any step-up.
       if action == .unfreeze, security.frozen?.by == .operator { throw .frozenByOperator }
       try stepUp(password: given)
       if closesNextSystemSheet {
-        // The system's Face ID or passkey sheet was closed after the step-up was asked for.
         closesNextSystemSheet = false
         throw .cancelled
       }
@@ -346,7 +311,6 @@
       case .removeThisIPhoneLosingUnsent:
         break
       case .signOutEverywhere:
-        // Every session ends, this iPhone's too (`02` §9.3); devices keep their keys.
         profile = nil
       case .freeze:
         security.frozen = FreezeInfo(by: .holder, when: "today", inApp: true)
@@ -359,23 +323,15 @@
       }
     }
 
-    /// The step-up: a passkey account asserts (always succeeds here); a password-only
-    /// account proves the password with this iPhone's key, which a sealed iPhone lacks.
     private func stepUp(password given: String?) throws(AuthFailure) {
       guard !security.hasPasskey else { return }
       if deviceKeyMissing { throw .noDeviceKey }
       guard let given, given == password else { throw .stepUpFailed }
     }
 
-    /// Scenario hook: this iPhone has no key yet (its data is still sealed), so a password
-    /// step-up can't be signed here (Paper IYT "This iPhone can't confirm yet").
     var deviceKeyMissing = false
 
-    /// Test hook: the next change's system sheet (Face ID, or iOS's passkey sheet after a
-    /// password step-up) is closed, so the change answers `.cancelled`.
     var closesNextSystemSheet = false
-
-    // MARK: Change the email address
 
     private var emailChange: EmailChangeTicket?
 
@@ -424,7 +380,6 @@
       emailChange = nil
     }
 
-    /// An address that already has an account.
     static let takenEmail = "taken@example.com"
 
     func viewRecoveryPhrase() async throws(AuthFailure) -> [String] {
@@ -439,10 +394,8 @@
       profile = nil
     }
 
-    /// A reset request waiting for approval (the `resetApproval` scenario).
     var pendingReset: PendingReset?
     private(set) var approvedResets: [String] = []
-    /// The synthetic ephemeral key behind every mock reset code.
     static let resetKey = Data(repeating: 7, count: 32)
     static var resetCode: String { (try? ResetCode.text(ephemeralPublicKey: resetKey)) ?? "" }
 
@@ -460,7 +413,6 @@
       pendingReset = nil
     }
 
-    /// Scenario hook: start frozen.
     func freezeForScenario(by: FreezeInfo.By) {
       freezeForScenario(FreezeInfo(by: by, when: Self.identity.freezeWhen))
     }
@@ -471,18 +423,13 @@
 
     var frozenInfo: FreezeInfo? { security.frozen }
 
-    // MARK: Screen launches
-
-    /// A Debug screen launch's step for a view that owns its model (`ScreenLaunch+SignIn`).
     var launchStep: SignInLaunchStep?
 
-    /// The waiting step, once: the view that takes it drives its model.
     func takeLaunchStep() -> SignInLaunchStep? {
       defer { launchStep = nil }
       return launchStep
     }
 
-    /// Takes the step if it is `step`.
     func takeLaunchStep(_ step: SignInLaunchStep) -> Bool {
       guard launchStep == step else { return false }
       launchStep = nil

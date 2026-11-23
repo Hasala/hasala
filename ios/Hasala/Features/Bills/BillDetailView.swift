@@ -2,7 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// One bill (Paper "Bills · AXA Insurance (late)" 1UD-0), pushed from Bills, Home, Activity's
 struct BillDetailView: View {
   @Bindable var app: AppModel
   let bill: BillID
@@ -247,10 +246,6 @@ struct BillDetailView: View {
     }
   }
 
-  // MARK: Hero
-
-  /// The 56 disc with its white ring and the status pill, then the kind, the figure and how
-  /// often it comes ("every month · usually the 7th · Emirates NBD").
   private func hero(_ d: BillDetail) -> some View {
     VStack(alignment: .leading, spacing: 16) {
       HStack(spacing: 12) {
@@ -293,8 +288,6 @@ struct BillDetailView: View {
     return [d.kind, amount, d.cadence].filter { !$0.isEmpty }.joined(separator: ", ")
   }
 
-  // MARK: What we noticed
-
   private func noticedCard(_ noticed: MoneyPhrase) -> some View {
     VStack(alignment: .leading, spacing: 4) {
       HStack(spacing: 8) {
@@ -316,8 +309,6 @@ struct BillDetailView: View {
     .accessibilityElement(children: .combine)
   }
 
-  // MARK: Payment history
-
   private func history(_ d: BillDetail) -> some View {
     VStack(alignment: .leading, spacing: 12) {
       HSectionHeader("Payment history", trailing: d.historyNote.map { .fact($0) } ?? .none)
@@ -331,8 +322,6 @@ struct BillDetailView: View {
       .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
     }
   }
-
-  // MARK: Actions
 
   @ViewBuilder private func actions(_ d: BillDetail) -> some View {
     VStack(spacing: 16) {
@@ -400,10 +389,6 @@ struct BillDetailView: View {
   }
 }
 
-/// One step of the payment history (1UD-0 · Timeline card): a 24 rail lane with the node (a
-/// red ring and dot for the payment that hasn't come, a tinted ring for one still due, a green
-/// tick for a paid one) on a 2 pt line, then the date, its note and the amount. 64 tall with a
-/// note, 52 without. One VoiceOver stop.
 struct TimelineStep: View {
   let step: BillHistoryStep
   let first: Bool
@@ -480,7 +465,6 @@ struct TimelineStep: View {
     return HColor.textSecondary
   }
 
-  /// "Wed 7 Oct, Expected · no bank email yet, AED 550.00" / "Mon 7 Sep, paid, AED 550.00".
   static func spoken(_ step: BillHistoryStep, approximate: Bool, hidden: Bool) -> String {
     let amount = step.amount.map {
       BillDetailView.spokenAmount($0, about: isEstimate(step, approximate: approximate), hidden: hidden)

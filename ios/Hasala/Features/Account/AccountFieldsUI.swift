@@ -2,14 +2,6 @@ import HasalaDesign
 import SwiftUI
 import UIKit
 
-// The account fields (Paper page 11 "Type it once, see what's wrong." and "One box per
-// character, one cell per word."; spec 02 §11, spec 07 §6): a filled box with its label
-// above, a 2 pt ring outside the box only for focus or a failed check, and one line of help
-// or error below. Codes and the recovery phrase are one field drawn as cells.
-
-// MARK: - Field
-
-/// Where a field sits: white on the grouped grey, grey on a white card or sheet.
 enum FieldSurface {
   case onGrouped, onCard
 
@@ -21,14 +13,6 @@ enum FieldSurface {
   }
 }
 
-/// A labelled field (Paper "TextField"): the 13/18 label 6 above a 52 box (radius 14, 16 in,
-/// 8 on the right when a pill sits inside), a value in 17/22, the blue ring while typing, the
-/// red ring and a 15/20 line after a failed check, otherwise a 13/18 help line.
-///
-/// The whole box takes the tap and focuses the field. `focused` overrides what the field
-/// reports (a UIKit field inside, or a screen that keeps its own focus state). `field` is the
-/// bare control, which takes the label as its VoiceOver name and the help or error as its
-/// hint; a Show / Hide pill or a clear button goes in `trailing`.
 struct AccountField<Field: View, Trailing: View>: View {
   var label: String
   var help: String?
@@ -58,7 +42,6 @@ struct AccountField<Field: View, Trailing: View>: View {
                trailingPill: Trailing.self != EmptyView.self, labelsField: true, onTap: { hasFocus = true }) {
       field()
         .focused($hasFocus)
-        // The label names the field for VoiceOver; help and errors are read after it.
         .accessibilityLabel(Text(label))
         .accessibilityHint(Text(error.map { "Error: \($0)" } ?? help ?? ""))
     } trailing: {
@@ -77,7 +60,6 @@ extension AccountField where Trailing == EmptyView {
   }
 }
 
-/// The drawing every field shares: label, box, ring, and the line below.
 struct FieldFrame<Field: View, Trailing: View>: View {
   var label: String
   var help: String?
@@ -85,7 +67,6 @@ struct FieldFrame<Field: View, Trailing: View>: View {
   var focused: Bool
   var surface: FieldSurface = .onGrouped
   var trailingPill: Bool
-  /// The control carries the label itself, so the drawn one is not read twice.
   var labelsField = false
   var onTap: (() -> Void)?
   @ViewBuilder var field: () -> Field
@@ -125,7 +106,6 @@ struct FieldFrame<Field: View, Trailing: View>: View {
     .hAnimation(.fade, value: ringColor == .clear)
   }
 
-  /// Field values: Inter 17/22 regular.
   static var valueType: HType { HType(size: 17, leading: 22, weight: .regular, textStyle: .body) }
 
   private var ringColor: Color {
@@ -134,8 +114,6 @@ struct FieldFrame<Field: View, Trailing: View>: View {
   }
 }
 
-/// A tap anywhere in a field's box focuses the field. Alongside the field's own tap, never
-/// instead of it, so a tap on the text still places the caret (and UI tests can type).
 private struct BoxTap: ViewModifier {
   let action: (() -> Void)?
 
@@ -150,7 +128,6 @@ private struct BoxTap: ViewModifier {
   }
 }
 
-/// The 2 pt ring drawn outside a box's edge, no gap (box-shadow 0 0 0 2px).
 struct FieldRing: View {
   var color: Color
   var radius: CGFloat = HRadius.field
@@ -163,8 +140,6 @@ struct FieldRing: View {
   }
 }
 
-/// The line under a field or cells that failed a check: a 7 pt dot centred on the first
-/// line, then 15/20 medium in the error (or warning) ink. Colour never works alone.
 struct FieldErrorLine: View {
   var text: String
   var warning = false
@@ -189,12 +164,8 @@ struct FieldErrorLine: View {
   private var ink: Color { warning ? HColor.statusWarningForeground : HColor.statusErrorForeground }
 }
 
-/// Show / Hide inside a password box (Paper "RevealPill"): 36 tall, the chip grey, an 18 eye
-/// (slashed when shown) and 15/20 semibold; a 44 target. At the accessibility sizes it is
-/// the eye alone.
 struct ShowHidePill: View {
   @Binding var visible: Bool
-  /// What it shows, for VoiceOver ("Show password").
   var subject = "password"
 
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -222,8 +193,6 @@ struct ShowHidePill: View {
   }
 }
 
-/// A password field with Show / Hide (Paper "Sign in · Face ID first"). `isNew` picks
-/// `.newPassword` (with Hasala's password rules for AutoFill) over `.password`.
 struct PasswordInput: View {
   var placeholder: String
   @Binding var text: String
@@ -235,7 +204,6 @@ struct PasswordInput: View {
     HStack(spacing: 8) {
       Group {
         if isNew {
-          // SwiftUI's fields can't carry `passwordRules`; a UITextField can.
           RuledNewPasswordField(placeholder: placeholder, text: $text, secure: !visible, identifier: identifier)
         } else if visible {
           TextField("", text: $text, prompt: .fieldPrompt(placeholder))
@@ -253,8 +221,6 @@ struct PasswordInput: View {
   }
 }
 
-/// A new-password field that hands iOS Hasala's strong-password rules (spec 04 §6.1.2:
-/// `minlength: 12; maxlength: 128;`), so AutoFill suggests a password the rules accept.
 struct RuledNewPasswordField: UIViewRepresentable {
   static let rules = "minlength: 12; maxlength: 128;"
 
@@ -309,7 +275,6 @@ struct RuledNewPasswordField: UIViewRepresentable {
   }
 }
 
-/// An email field paired with AutoFill (`.username`), lower-case, no autocorrect.
 struct EmailInput: View {
   var placeholder = "you@example.com"
   @Binding var text: String
@@ -325,11 +290,6 @@ struct EmailInput: View {
   }
 }
 
-// MARK: - Password strength
-
-/// The strength card under a new password (Paper "PasswordStrengthCard", S10a/b): a four-part
-/// meter, the one status line, a hairline, then the three rules that tick as they pass. Only
-/// positive, live feedback while typing (page 11 §05).
 struct PasswordStrengthCard: View {
   var assessment: PasswordAssessment
 
@@ -351,9 +311,6 @@ struct PasswordStrengthCard: View {
       VStack(alignment: .leading, spacing: 10) {
         rule("12 or more characters", assessment.longEnough)
         rule("Not your name or email", assessment.notPersonal)
-        // TODO(WS-14, spec 04 §4.6): the bundled list is a short starter list; the full
-        // one built by ios/tools/passwords from a public breach list replaces it, and the
-        // copy can then say "leaked" again (Paper: "Not a common or leaked password").
         rule("Not on our list of common passwords", assessment.notCommon)
       }
     }
@@ -397,8 +354,6 @@ struct PasswordStrengthCard: View {
   }
 }
 
-/// The new-password block: field, strength card, the repeat field and the notes (Paper
-/// "Create a password"; spec 04 §6.1.2).
 struct NewPasswordBlock: View {
   @Binding var password: String
   @Binding var confirm: String
@@ -411,7 +366,6 @@ struct NewPasswordBlock: View {
         .hType(.subheadline)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
-      // The password field and its pill come as one control, so the field frame draws them.
       LabeledField(label: "Password") {
         PasswordInput(placeholder: "12 characters or more", text: $password, isNew: true, identifier: "password.new")
       }
@@ -438,13 +392,6 @@ struct NewPasswordBlock: View {
   static let scrambledTip = "Our server sees only the scrambled form, which is slow to guess from."
 }
 
-// MARK: - Code cells
-
-/// A one-time code as six cells over one hidden `.oneTimeCode` field (Paper "CodeCells",
-/// S7a–c): two groups of three 52 × 64 cells, digits in SF Pro Rounded 28/34 semibold. The
-/// next empty cell takes the focus ring and the caret. A wrong code rings every cell (the
-/// digits stay so people can compare); an expired one empties the cells onto the wash and
-/// hides the keyboard. iOS may offer the code from Mail; paste fills every cell at once.
 struct CodeCells: View {
   enum State: Equatable { case typing, wrong, expired }
 
@@ -452,7 +399,6 @@ struct CodeCells: View {
   var state: State = .typing
   var length = 6
   var identifier = "code.field"
-  /// What VoiceOver calls the group ("Email code, 3 of 6 digits").
   var label = "Email code"
   var revealTarget: String?
 
@@ -552,7 +498,6 @@ struct CodeCells: View {
                 in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
     .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
     .overlay { FieldRing(color: ring(isNext: isNext)) }
-    // Digits stay one row; at the largest sizes the cells keep their box.
     .dynamicTypeSize(...DynamicTypeSize.accessibility1)
   }
 
@@ -565,8 +510,6 @@ struct CodeCells: View {
   }
 }
 
-/// The first code field's name, kept for the screens drawn with it: the cells above, with
-/// `error` as the wrong state.
 struct CodeBoxes: View {
   @Binding var code: String
   var error = false
@@ -577,19 +520,6 @@ struct CodeBoxes: View {
   }
 }
 
-// MARK: - Recovery phrase
-
-/// The 12 words (Paper "RecoveryPhraseGrid", S12 F6Q/F9O): two columns of six numbered cells
-/// in a white card, radius 24, forced left to right; one column at the accessibility sizes.
-///
-/// Hidden, the words are blurred under a white veil with an eye button, "Tap to show your
-/// words": the whole card is one button ("Show your 12 words", `phrase.reveal`). Revealed, a
-/// header with "Your recovery phrase" and a Hide pill (`phrase.hide`) sits above read-only
-/// cells, each read as "Word 1, orbit". `.privacySensitive()` keeps the words out of
-/// snapshots and redacted contexts; the screen hides them on leaving.
-///
-/// Masked (the screen is recorded or mirrored), every cell holds dots and the veil can't
-/// be lifted: it says why instead, so a tap never counts as the words being shown.
 struct PhraseGrid: View {
   var words: [String]
   @Binding var revealed: Bool
@@ -622,8 +552,6 @@ struct PhraseGrid: View {
   }
 
   private var header: some View {
-    // At the accessibility sizes Hide goes under the heading, so the heading has the width
-    // to wrap as words fit rather than one word a line beside it.
     let layout = typeSize.isAccessibilitySize
       ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
       : AnyLayout(HStackLayout(spacing: 8))
@@ -688,7 +616,6 @@ struct PhraseGrid: View {
   static let maskedNote = "Stop recording or mirroring your screen to see them."
 
   private var grid: some View {
-    // Masked, not even the blurred words are drawn.
     let drawn = masked ? Array(repeating: "•••••", count: words.count) : words
     let columns = typeSize.isAccessibilitySize ? 1 : 2
     let perColumn = (drawn.count + columns - 1) / columns

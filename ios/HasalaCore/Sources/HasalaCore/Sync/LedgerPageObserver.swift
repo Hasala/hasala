@@ -1,27 +1,3 @@
-// The production fold seam (spec 04 §5.2 steps 4-5, §5.3, §4.3): every pulled
-// page is folded (CoreInvariants' `LedgerFold.page`: the fold, then the
-// incremental invariants) onto a copy of the state, the copy's snapshot is
-// written in the page's own transaction, and once the pull ends the state is
-// projected into `projection.sqlite` with the outbox overlay.
-//
-// One actor per bound account, built by the app's AccountRuntime and handed to
-// `SyncEngine(context:observer:)`.
-//
-// Loading (§5.3): the snapshot is used when every check passes (version, fold
-// print, bound tip, digest, decode, cursor). Otherwise the stored rows are
-// folded again from genesis on this device, and each is checked against what
-// the reader decided when it was pulled:
-//   - the chain, per writer from genesis: consecutive counters, each
-//     `prev_hash` the previous row's hash, each `blob_hash` the hash of the
-//     stored bytes, and the result agrees with the pinned heads;
-//   - the blob is opened again with the epoch keys this device holds and
-//     decoded through R10, and the outcome must be the stored `disposition`
-//     (folded = opened, set_aside = set aside, alarm = AEAD failure), except
-//     that a row an older build set aside and this build opens is read now.
-// Any difference (a corrupted blob or key, a row that no longer opens the way
-// it did) records an `integrity_alarm` fold event and halts `inconsistent`;
-// nothing is dropped from the state quietly. Nothing is fetched again and no
-// pinned head is dropped, so the chain's rollback protection is untouched.
 import CoreAuth
 import CoreCategorize
 import CoreCrypto
@@ -36,25 +12,16 @@ import Foundation
 public actor LedgerPageObserver: PageObserver {
   public nonisolated let context: SyncContext
   public nonisolated let projection: ProjectionStore
-  /// This writer's stamp memory, shared by every author of the account (the
-  /// Gmail lane's `MailboxAuthoring` takes the same instance).
   public nonisolated let stamps: AuthorStamps
   public nonisolated let writes = WriteSerial()
   let dictionary: MerchantDictionary
 
-  /// The folded state as committed; nil until loaded.
   private var state: State?
-  /// The page being committed (`fold` → `pageCommitted`).
   private var candidate: State?
-  /// A page committed since the last projection.
   private var dirty = false
-  /// Sample batches were handed out by this observer (the load is one-shot).
   private var sampleIssued = false
-  /// Why the last projection failed, if it did (content-free); nil after a success.
   public private(set) var projectionFailure: String?
 
-  /// `dictionary` is the bundled merchant dictionary (`MerchantDictionary.bundled()`;
-  /// `.empty` when its tier is disabled).
   public init(
     context: SyncContext, projection: ProjectionStore, dictionary: MerchantDictionary, stamps: AuthorStamps = AuthorStamps()
   ) {
@@ -64,20 +31,10 @@ public actor LedgerPageObserver: PageObserver {
     self.stamps = stamps
   }
 
-  /// The reader the screens observe.
   public nonisolated var reader: LedgerReader { projection.reader }
 
-  // MARK: Opening
-
-  /// Protects the projection's files (§4.1), loads the state (snapshot, or a
-  /// cold fold of the stored rows) and projects when the projection is missing,
-  /// stale, from other fold semantics, or written with an outbox overlay. Call
-  /// once when the account opens, before the first sync run.
   public func open() async throws(SyncStop) {
     if let url = projection.url {
-      // The account directory (protection class, out of backup) is the
-      // guarantee for every file in it, journals included; the file marks are
-      // a second layer.
       do {
         try FileHygiene.prepareDirectory(url.deletingLastPathComponent())
         try FileHygiene.excludeDatabaseFiles(at: url)
@@ -94,13 +51,11 @@ public actor LedgerPageObserver: PageObserver {
     }
   }
 
-  /// The committed state, loading it first when needed.
   public func currentState() async throws(SyncStop) -> State { try loaded() }
 
   private func loaded() throws(SyncStop) -> State {
     let cursor = try context.storeCall { () throws(StoreError) in try context.store.syncState().cursorHot }
     if let s = state, s.cursors.hot == cursor { return s }
-    // A page whose transaction committed while its `pageCommitted` is still on the way.
     if let c = candidate, c.cursors.hot == cursor { return c }
     let s = try load(cursor: cursor)
     state = s
@@ -128,11 +83,6 @@ public actor LedgerPageObserver: PageObserver {
     return s
   }
 
-  /// Folds every stored row from genesis up to `cursor` (rows a concurrent
-  /// page adds above it are left for that page): what any snapshot rejection
-  /// falls back to (§5.3). The stored chain is checked first, as R2 comes
-  /// before R3 in the reader; then each row is opened again and its outcome
-  /// compared with its stored disposition before it is folded.
   func coldFold(cursor: Int64, plaintextBudget: Int = PageReader.maxPagePlaintext) throws(SyncStop) -> State {
     let store = context.store
     let sync = try context.storeCall { () throws(StoreError) in try store.syncState() }
@@ -168,11 +118,6 @@ public actor LedgerPageObserver: PageObserver {
     return s
   }
 
-  /// The stored rows up to `cursor` as R2 verified them: per writer from
-  /// genesis, consecutive counters, each `prev_hash` the previous hash, each
-  /// `blob_hash` the hash of the stored bytes, ending at the pinned head (a
-  /// writer may be further on only when a concurrent page stored rows above
-  /// `cursor`).
   private func checkStoredChain(upTo cursor: Int64) throws(SyncStop) {
     let pinned = try context.storeCall { () throws(StoreError) in try context.store.chainHeads() }
     var heads: [WriterID: Chain.Head] = [:]
@@ -191,7 +136,6 @@ public actor LedgerPageObserver: PageObserver {
     }
   }
 
-  /// `wire_rows` from seq 1 to `cursor`, oldest first, a page at a time.
   private func storedPages(upTo cursor: Int64, _ each: ([WireRowRecord]) throws(SyncStop) -> Void) throws(SyncStop) {
     var after: Int64 = 0
     while after < cursor {
@@ -203,7 +147,6 @@ public actor LedgerPageObserver: PageObserver {
     }
   }
 
-  /// The reader's decision for a stored row, taken again (R3-R10).
   private func reopen(_ r: WireRowRecord, _ opener: Opener, setsAsideNewer: Bool = false) throws(SyncStop) -> PageReader.RowOutcome {
     let envelope: Envelope
     do { envelope = try Envelope(userID: context.userID, writerID: r.writerID, counter: r.counter) } catch {
@@ -217,14 +160,10 @@ public actor LedgerPageObserver: PageObserver {
     }
   }
 
-  /// A stored row that no longer checks out: the integrity alarm (04 §5.7
-  /// A-32) as a content-free fold event, and the `inconsistent` halt.
   private func integrityHalt(_ what: String) -> SyncStop {
     try? context.store.recordFoldEvent(kind: "integrity_alarm", detail: what, at: context.clock.nowMs())
     return .halted(.inconsistent(what))
   }
-
-  // MARK: PageObserver
 
   public func fold(_ rows: [PulledRow]) async throws(SyncStop) -> FoldSnapshotChange {
     let base = try loaded()
@@ -302,16 +241,10 @@ public actor LedgerPageObserver: PageObserver {
     return complete || found.count == ids.count
   }
 
-  // MARK: Projection
-
-  /// Re-applies the outbox overlay to the projection (after an `Outbox.enqueue`,
-  /// a Gmail commit, or an acknowledged upload), so the screens show pending
-  /// edits at once.
   public func reproject() async throws(SyncStop) {
     try project(try loaded())
   }
 
-  /// The outbox, one op per overlay blob, in order.
   private func pendingOverlay(over s: State) throws(SyncStop) -> [[Op]] {
     let store = context.store
     let writer = context.writerID
@@ -338,18 +271,10 @@ public actor LedgerPageObserver: PageObserver {
     }
   }
 
-  // MARK: Authoring
-
-  /// The `AuthorContext` for this writer now (03c §1.8.2): `own_last_ms` is the
-  /// largest of the fold's `maxAuthored` for this writer, every pending op, and
-  /// the newest stamp handed out on this device (`stamps`). Build the blob
-  /// inside `stamps.build(context) { a in … }`, which records its stamps under
-  /// the same lock, so two blobs started together never share a stamp.
   public func authorContext() async throws(SyncStop) -> AuthorContext {
     try baseContext().raised(to: stamps.lastMs)
   }
 
-  /// The context from the fold and the outbox alone (`stamps` raise it).
   private func baseContext() throws(SyncStop) -> AuthorContext {
     let s = try loaded()
     let pending = try context.storeCall { () throws(StoreError) in try context.store.latestPendingAuthoredAt() }
@@ -360,8 +285,6 @@ public actor LedgerPageObserver: PageObserver {
       pendingLatest: pending.flatMap { try? parseInstantMs($0) }, noted: nil, random: context.random)
   }
 
-  /// The 03c §1.8.2 inputs, combined: `own_last_ms` is the largest of this
-  /// writer's folded stamp, the newest pending stamp and the last noted blob.
   public static func authorContext(
     writerID: String, nowMs: Int64, maxAuthored: [String: Int64], pendingLatest: Int64?, noted: Int64?,
     random: any RandomSource
@@ -370,28 +293,16 @@ public actor LedgerPageObserver: PageObserver {
     return AuthorContext(writerID: writerID, nowMs: nowMs, ownLastMs: own, maxAuthored: maxAuthored, random: random)
   }
 
-  /// The fold's per-writer newest stamps (03c §1.8.2 `maxAuthored`), for authors
-  /// that build their context synchronously (`MailboxAuthoring`).
   public func seenStamps() async throws(SyncStop) -> [String: Int64] {
     var seen: [String: Int64] = [:]
     for (w, ms) in try loaded().maxAuthored { seen[w] = ms }
     return seen
   }
 
-  /// Records a blob built outside `stamps.build` (with a context from
-  /// `authorContext()`), so the next context stamps after it.
   public func noteAuthored(_ blob: AuthoredBlob) {
     stamps.authoring { _ in ((), blob.lastAuthoredMs) }
   }
 
-  // MARK: Sample data (04 §6.13)
-
-  /// "Use sample data": the bundled seed as blobs for `Outbox.enqueue`, in
-  /// order, when the gate allows it, and nothing otherwise. `account` must be
-  /// this account's `GET /account` (#40), fetched live for this tap; the gate
-  /// also reads the ledger itself (folded and pending): any transaction, or any
-  /// sample row, refuses. The load is one-shot per observer as well, so a
-  /// second tap before the first load is enqueued is refused too.
   public func sampleBatches(account: AccountInfo) async throws(SampleLoadError) -> [AuthoredBlob] {
     try sampleBatches(account: account) { () throws(SampleSeedError) in try SampleSeed.bundled() }
   }
@@ -460,9 +371,6 @@ public actor LedgerPageObserver: PageObserver {
     }
   }
 
-  // MARK: Errors
-
-  /// `LedgerFold.page`, its halts as sync stops.
   static func fold(_ page: [FoldRow], onto s: State) throws(SyncStop) -> State {
     do { return try LedgerFold.page(page, onto: s) } catch { throw stop(error) }
   }
@@ -491,17 +399,13 @@ public struct OpLookup: Sendable, Equatable {
   }
 }
 
-/// Why `LedgerPageObserver.sampleBatches(account:)` authored nothing.
 public enum SampleLoadError: Error, Sendable, Equatable {
-  /// The ledger could not be read (the sync stop says why).
   case sync(SyncStop)
-  /// The gate refused (`.refused`), or the seed did not load or author.
   case seed(SampleSeedError)
   case notSaved
 }
 
 extension WireRowRecord.Disposition {
-  /// How `wire_rows` records a reader outcome.
   init(_ outcome: PageReader.RowOutcome) {
     switch outcome {
     case .opened: self = .folded

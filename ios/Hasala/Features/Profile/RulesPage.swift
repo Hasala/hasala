@@ -3,9 +3,6 @@ import HasalaModels
 import SwiftUI
 import UIKit
 
-/// Profile › Categories and rules (Paper "Profile · Categories and rules" 68S-0): the rules
-/// Hasala learned, most used first, each with a switch that pauses it at once (its
-/// transactions go back to review). No Save: a switch saves the moment it flips.
 struct RulesPage: View {
   enum Segment: Hashable { case categories, rules }
 
@@ -31,7 +28,6 @@ struct RulesPage: View {
         case .categories: CategoriesList(app: app)
         }
         if unfinished && segment == .rules {
-          // TODO(spec 04 §16.2 P6): "Add a rule".
           Button { app.say("Coming in a later build", icon: .rule) } label: {
             HStack(spacing: 6) {
               HIconView(.add, size: HSpacing.iconInline, color: HColor.textLink, strokeWidth: 2.4)
@@ -91,10 +87,6 @@ struct RulesPage: View {
   }
 }
 
-/// One rule (68S-0 · List card · Rules): the category's disc, the pattern in curly quotes
-/// (with "Learned today" when it is new), how it matches over its count, and the switch. The
-/// match line breaks before the count when it doesn't fit, as Paper breaks it. The row is one
-/// stop that flips the switch.
 private struct RuleRow: View {
   let rule: RuleRowModel
   @Binding var enabled: Bool
@@ -132,8 +124,6 @@ private struct RuleRow: View {
       let chip = StatusPillView(StatusPill("Learned today", tone: .accent, showsDot: false), size: .s22,
                                 surface: .tinted)
       let stacked = VStack(alignment: .leading, spacing: 4) { pattern; chip }
-      // Paper's title row: the chip 8 after the pattern, hugging it; under it when the two
-      // don't fit, and always at the accessibility sizes. Never wider than the row.
       if typeSize.isAccessibilitySize {
         stacked
       } else {
@@ -166,8 +156,6 @@ private struct RuleRow: View {
     return rule.patternLine(showing: 1)
   }
 
-  /// "carrefour, learned today, Contains · Groceries · 41 matches": the quotes are drawn,
-  /// not read.
   private var spoken: String {
     let pattern = rule.pattern.replacingOccurrences(of: "\u{201C}", with: "")
       .replacingOccurrences(of: "\u{201D}", with: "")
@@ -176,11 +164,6 @@ private struct RuleRow: View {
   }
 }
 
-/// A rule's match line: "Contains · Groceries · 41 matches" on one line when it fits, else
-/// how it matches over its count ("Exact match · Subscriptions⏎12 matches"), where Paper
-/// breaks it. One text whose words change, never a second one in its place, so it keeps
-/// growing with the text size (the accessibility audit follows the text node); whether the
-/// line fits is measured in the face and size it is drawn in.
 private struct MatchLine: View {
   let rule: RuleRowModel
   @ScaledMetric(relativeTo: HType.footnote.textStyle) private var size = HType.footnote.size

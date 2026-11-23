@@ -2,13 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Review · Pick a need (Paper 3SH-0), and its Want, Save and Transfer equivalents: a white
-/// medium sheet floating 8 from the edges (radius 40), one detent that fits its content. The
-/// project chips (one row that scrolls sideways) and "Always use it for M" come first, then the
-/// bucket's categories in their own order, the suggestion marked "Suggested" in place, then New
-/// category, so the categories sit lowest, in reach of the thumb. A tap on a category files the
-/// card at once. Close, a swipe down or the scrim cancel: nothing is sorted and the card goes
-/// back to the deck. At large text sizes it grows to large and scrolls (page 14).
 struct ReviewPickSheet: View {
   let model: any ReviewDeckModel
   let pick: ReviewPick
@@ -18,7 +11,6 @@ struct ReviewPickSheet: View {
 
   @State private var project: ProjectID?
   @State private var alwaysUse = false
-  /// The content's measured height, which the one detent fits; an estimate until then.
   @State private var contentHeight: CGFloat?
   @State private var formOffer: CountsAsOption?
   @State private var saved = false
@@ -63,8 +55,6 @@ struct ReviewPickSheet: View {
       }
     }
     .scrollBounceBehavior(.basedOnSize)
-    // Paper: "Sort into" sits 28 above the sheet's own bottom edge, which floats over the
-    // home indicator; the detent is exactly the content.
     .ignoresSafeArea(.container, edges: typeSize.isAccessibilitySize ? [] : .bottom)
     .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.height(contentHeight ?? estimatedHeight)])
     .presentationDragIndicator(.hidden)
@@ -90,10 +80,6 @@ struct ReviewPickSheet: View {
 
   private var reach: Int { canAlwaysUse ? model.reach(pick.card.id) : 0 }
 
-  /// The sheet's height before the content is measured, from Paper's parts (header 60, rows
-  /// 56 with 1 dividers, the one-row project block 70 whatever the number of projects, the
-  /// rule row 44, gaps 20, and the 8 / 28 insets), so it opens at its size instead of growing
-  /// into it.
   private var estimatedHeight: CGFloat {
     let n = CGFloat(options.count)
     let projects: CGFloat = showsProjects ? 70 + 20 : 0
@@ -103,7 +89,6 @@ struct ReviewPickSheet: View {
     return 8 + 60 + 20 + 56 * n + max(0, n - 1) + projects + rule + note + add + 28
   }
 
-  /// Close, "Need · which one?", and the empty 48 slot that keeps the title centred.
   @ViewBuilder private var header: some View {
     let close = GlassIconButton(.close, label: "Close") { dismiss() }
       .accessibilityIdentifier("pick.close")
@@ -130,8 +115,6 @@ struct ReviewPickSheet: View {
     }
   }
 
-  /// The bucket's categories, straight on the sheet, in the bucket's order: disc 40, name. The
-  /// suggestion keeps its place, on the review suggestion surface with "Suggested".
   private var list: some View {
     VStack(spacing: 0) {
       ForEach(Array(options.enumerated()), id: \.element.id) { i, o in
@@ -184,9 +167,6 @@ struct ReviewPickSheet: View {
     }
   }
 
-  /// "PROJECT": None, then the open projects in their own order with the suggested one marked
-  /// in place, as choice chips on one row that scrolls sideways to the sheet's edges, so the
-  /// block is one chip tall however many projects there are.
   private var projects: some View {
     VStack(alignment: .leading, spacing: 10) {
       Text("Project").hType(.overline).foregroundStyle(HColor.textSecondary)

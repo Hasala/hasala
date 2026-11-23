@@ -6,11 +6,6 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// Activity · Transaction detail (Paper 3FZ-0): one large sheet with everything about a
-/// transaction. The 56 disc, merchant and amount; the details card (category with this
-/// month's budget beside it, account, note); where it came from (the bank's own words, and
-/// the rule that sorted it); the actions; Archive on its own. Choose a category, Split, the
-/// note and the rename push inside the sheet (a sheet never opens a sheet, page 14).
 struct TransactionSheet: View {
   @Bindable var app: AppModel
   let model: any TransactionModel
@@ -39,10 +34,7 @@ struct TransactionSheet: View {
           ToolbarItem(placement: .topBarTrailing) {
             Menu {
               Button(d.archived ? "Restore" : "Archive") { model.setArchived(!d.archived) }
-              // TODO(03c §3.8 "…" → Edit amount/date): `txn_edited`.
             } label: {
-              // Paper "Glass button · More": the kit's dots in the glass glyph's ink, as on
-              // the deck, not the app tint.
               HIconView(.more, size: HSpacing.iconGlass, color: HColor.iconGlass)
             }
             .accessibilityLabel("More")
@@ -82,7 +74,6 @@ struct TransactionSheet: View {
     }
     .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom) }
     .presentationBackground(HColor.sheetSurfaceLarge)
-    // Paper "Large sheet": the grabber over the header.
     .presentationDragIndicator(.visible)
   }
 
@@ -110,10 +101,6 @@ struct TransactionSheet: View {
     .scrollEdgeEffectStyle(.soft, for: .bottom)
   }
 
-  // MARK: Summary
-
-  /// The 56 disc (or the grey monogram before it is sorted), the merchant 22/28 bold, the
-  /// amount at large size and "Fri 9 Oct, 19:12 · Emirates NBD ···4412".
   private func summary(_ d: TransactionDetail) -> some View {
     VStack(spacing: 12) {
       if let m = d.monogram {
@@ -152,7 +139,6 @@ struct TransactionSheet: View {
       }
       let tags = tags(d)
       if !tags.isEmpty {
-        // One or two short pills, centred; a column at the accessibility sizes.
         let layout = typeSize.isAccessibilitySize
           ? AnyLayout(VStackLayout(spacing: 6)) : AnyLayout(HStackLayout(spacing: 6))
         layout { pills(tags) }
@@ -165,8 +151,6 @@ struct TransactionSheet: View {
     ForEach(tags, id: \.text) { StatusPillView($0, size: .s26, surface: .tinted) }
   }
 
-  /// What the details don't say on their own: still to review, a refund, a transfer,
-  /// archived.
   private func tags(_ d: TransactionDetail) -> [StatusPill] {
     var out: [StatusPill] = []
     if d.needsReview { out.append(StatusPill("To review", tone: .accent)) }
@@ -208,10 +192,6 @@ struct TransactionSheet: View {
     .accessibilityIdentifier("txn.reviewReason.\(reason.rawValue)")
   }
 
-  // MARK: Details
-
-  /// Category (with this month's budget for it), Account and Note, in one white card with
-  /// full-width dividers inside its 16 inset.
   private func details(_ d: TransactionDetail) -> some View {
     VStack(spacing: 0) {
       Button { push(d.splits.isEmpty ? .category : .split) } label: {
@@ -229,8 +209,6 @@ struct TransactionSheet: View {
       }
 
       HDivider(inset: .none)
-      // TODO(spec 04 §16.2 T1 AccountPickerView): `txn_annotated{account_id}`. No chevron
-      // until the account can change.
       KeyValueRow("Account", value: d.account ?? "Not set", placeholder: d.account == nil)
 
       HDivider(inset: .none)
@@ -279,10 +257,6 @@ struct TransactionSheet: View {
     }
   }
 
-  // MARK: Provenance
-
-  /// "FROM YOUR BANK": the alert it was read from, when, the bank's words as written (mono),
-  /// and the rule that sorted it. "View the email" waits for the email view (Debug only).
   private func provenance(_ p: Provenance, _ d: TransactionDetail) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .center) {
@@ -290,7 +264,6 @@ struct TransactionSheet: View {
           .accessibilityAddTraits(.isHeader)
         Spacer(minLength: 8)
         if BuildSurface.showsUnfinished, !p.isText {
-          // TODO(spec 04 §16.2 G7): re-fetch the message on the holder iPhone.
           Button {
             app.say("Coming in a later build", icon: .envelope)
           } label: {
@@ -303,8 +276,6 @@ struct TransactionSheet: View {
             .contentShape(Rectangle())
           }
           .buttonStyle(.plain)
-          // A 44 pt target on a 20 pt header (Paper 4AV-0, 8 pt above the card): the
-          // height is taken back outside the button, so the card does not move down.
           .padding(.vertical, -12)
           .accessibilityIdentifier("txn.viewEmail")
         }
@@ -323,7 +294,6 @@ struct TransactionSheet: View {
                 .font(.system(.footnote, design: .monospaced))
                 .foregroundStyle(HColor.textPrimary)
                 .padding(.horizontal, 12).padding(.vertical, 8)
-                // Paper 4I0-0 spans the text column, not the text.
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(HColor.surfaceSecondary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .padding(.top, 8)
@@ -344,8 +314,6 @@ struct TransactionSheet: View {
     }
   }
 
-  /// The source row is for what Hasala did on its own (a rule, its merchant list, this
-  /// iPhone's suggestion); a category the person picked says nothing new.
   static func showsSource(_ s: SortedBy) -> Bool {
     s.title != "Sorted by you" && s.title != "Added by you"
   }
@@ -369,8 +337,6 @@ struct TransactionSheet: View {
     .contentShape(Rectangle())
 
     if opensRules {
-      // Tapping the rule opens it: the profile's rules, after this sheet closes (one sheet
-      // at a time, `AppRouter.open`).
       Button { app.router.open(.profile, profile: [.rules]) } label: { row }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
@@ -381,8 +347,6 @@ struct TransactionSheet: View {
     }
   }
 
-  /// A row of the App Review sample (its message id is `sample-<n>`): there is no bank
-  /// email to point to, and the sheet says so instead of showing where it was read.
   private var sampleNote: some View {
     HStack(alignment: .top, spacing: 14) {
       HIconView(.info, size: 22, color: HColor.iconPrimary)
@@ -419,8 +383,6 @@ struct TransactionSheet: View {
     .clipShape(RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
   }
 
-  // MARK: Actions
-
   private func actions(_ d: TransactionDetail) -> some View {
     VStack(spacing: 0) {
       if Self.offersSplit(d) {
@@ -431,7 +393,6 @@ struct TransactionSheet: View {
       ActionRow(icon: .pencil, title: "Rename merchant", pushes: true) { push(.rename) }
         .accessibilityIdentifier("txn.rename")
       HDivider(inset: .icon52)
-      // A refund or a transfer happens at once, with Undo in the toast: no chevron.
       ActionRow(icon: .refund, title: d.isRefund ? "Not a refund" : "This is a refund") { model.toggleRefund() }
         .accessibilityIdentifier("txn.refund")
       if !d.isTransfer {
@@ -441,7 +402,6 @@ struct TransactionSheet: View {
       }
     }
     .background(HColor.surfacePrimary)
-    // The card clips a pressed end row to its corners.
     .clipShape(RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
   }
 
@@ -456,8 +416,6 @@ struct TransactionSheet: View {
   }
 }
 
-/// "Groceries this month ……… 1,387.60 left of 2,200", the slim bar (6, the verdict's fill,
-/// no tick), "● Over pace ……… on course for 2,518". The bar fills once per sheet.
 private struct BudgetContext: View {
   let pace: EmbeddedPace
   let hidden: Bool
@@ -499,9 +457,6 @@ private struct BudgetContext: View {
   }
 }
 
-/// A row in the actions card (Paper "ActionRow"): a 22 line icon, the label 16/22 600, and a
-/// chevron when it opens a page. Min 52, 14 from icon to label; highlight on press, never
-/// scale.
 struct ActionRow: View {
   let icon: HIcon
   let title: String

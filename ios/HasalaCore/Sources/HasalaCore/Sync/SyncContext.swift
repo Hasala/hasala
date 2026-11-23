@@ -1,6 +1,3 @@
-// Everything one account's sync needs, and the reads that turn a missing or
-// locked secret into the right stop (spec 04 §4.4 null-vs-throw: a throw is
-// "not now", never "absent").
 import CoreAuth
 import CoreCrypto
 import CorePrimitives
@@ -33,8 +30,6 @@ public final class SyncContext: Sendable {
     self.build = build
   }
 
-  /// The bearer token; no session → `needsSignIn`; a pending logout is
-  /// treated as signed out (§4.7 row 1).
   func bearer() throws(SyncStop) -> String {
     let s: SessionRecord?
     do { s = try secrets.activeSession() } catch { throw .notNow }
@@ -42,7 +37,6 @@ public final class SyncContext: Sendable {
     return s.token
   }
 
-  /// Every `K_e` this device holds for epochs `1...hwm`.
   func epochKeys(upTo hwm: UInt32) throws(SyncStop) -> [EpochKey] {
     var out: [EpochKey] = []
     for e in 1...max(1, hwm) {
@@ -53,7 +47,6 @@ public final class SyncContext: Sendable {
     return out
   }
 
-  /// The DWK seed; absent → the device is unenrolled (§6.5 `unenrolled`).
   func writerSeed() throws(SyncStop) -> SecureBytes {
     let s: SecureBytes?
     do { s = try secrets.writerSeed(userID: userID, writerID: writerID) } catch { throw .notNow }

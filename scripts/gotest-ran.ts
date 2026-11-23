@@ -1,21 +1,3 @@
-// gotest-ran.ts — the Go half of scripts/check.sh's conformance step (6): proves
-// from step 4's own record that every test of the conformance packages ran there,
-// instead of running those packages a second time.
-//
-//   bun scripts/gotest-ran.ts LIST.json RECORD.json...
-//
-// LIST.json is `go test -json -list .` over the conformance packages: every
-// top-level test, fuzz test and example each one has. Each RECORD.json is a
-// `go test -json` stream that step 4 (or the oracle step) teed to a file. Exits 1
-// unless, for every package in LIST: it lists at least one test, a RECORD has the
-// package passing, and every listed test has a result there: a pass, or a skip
-// that says it is a real-corpus test or a TestWrite* fixture writer left switched off.
-// So a package left out of step 4, or a top-level test of one that step 4 did not
-// run (a -run, a -skip, a KNOWN_FAILING entry that matches it), fails here just
-// as a second run of it would have. Subtests are not listed by `go test -list`;
-// check.sh refuses a KNOWN_FAILING pattern that could skip one (a "/" in it).
-// Benchmarks are listed but never run by go test, so they are not counted.
-
 interface Event {
   Action: string;
   Package?: string;
@@ -37,7 +19,6 @@ const events = async (file: string): Promise<Event[]> => {
     .map((line) => JSON.parse(line) as Event);
 };
 
-// package -> its listed tests
 const listed = new Map<string, string[]>();
 for (const event of await events(listFile)) {
   if (!event.Package) {
@@ -51,7 +32,6 @@ for (const event of await events(listFile)) {
   }
 }
 
-// package -> its result, and "package test" -> that test's result
 const pkgResult = new Map<string, string>();
 const testResult = new Map<string, string>();
 const testOutput = new Map<string, string>();

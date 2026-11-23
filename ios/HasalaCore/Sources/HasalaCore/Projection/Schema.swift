@@ -1,17 +1,6 @@
-// `projection.sqlite` (spec 04 §4.3; column layouts 03c §3.9, §4.4, §5.6, §6.3,
-// §7.3 and 03a §5). The projection is DERIVED: a `projection_version`
-// mismatch drops every table and re-projects, never migrates. Money columns
-// are INTEGER (GRDB returns Int64; critic A-19).
-//
-// Additions beyond the owning specs, all derived and display-only:
-// `txn.review_lane` (03c §3.7, computed once here so every reader agrees), the
-// beta's 03b tables (`account`, `card`, `bill`, `bill_resolution`, `checkin`;
-// version 2 added `checkin`), and the fold's notices (`fork_notice`, `anomaly`,
-// `plan_overwrite`).
 import GRDB
 
 public enum ProjectionSchema {
-  /// Bump on any change to a table, a view or a derived column.
   public static let version = 13
 
   static let tables = [
@@ -21,11 +10,6 @@ public enum ProjectionSchema {
   ]
   static let views = ["money_line", "rule_stats"]
 
-  /// Creates every table, after dropping every view and table a different
-  /// version left behind, whatever their names and references. Foreign keys
-  /// are checked at commit (`defer_foreign_keys`, which works inside the
-  /// caller's transaction), and children go before parents anyway, so no
-  /// drop order of any older layout can fail on a reference.
   static func create(_ db: Database) throws {
     try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
     let old = try String.fetchAll(
@@ -40,7 +24,6 @@ public enum ProjectionSchema {
     try db.execute(sql: ddl)
   }
 
-  /// An SQL identifier, double-quoted.
   static func quoted(_ name: String) -> String { "\"" + name.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
 
   static let ddl = """

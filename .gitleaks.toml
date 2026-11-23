@@ -1,26 +1,6 @@
-# gitleaks configuration for the `secrets` CI job (.github/workflows/ci.yml).
-#
-# gitleaks' default rules, plus allowlists for known test vectors and nothing
-# else. Each entry below is scoped three ways, and all three must hold
-# (condition = "AND") for a finding to be dropped:
-#   - targetRules: the one rule that misfires on it (generic-api-key);
-#   - paths:       the exact test files that hold it;
-#   - regexes:     the exact value (matched against the captured secret).
-# A real key added to one of these files, a different value under the same name,
-# or the same value anywhere else is still reported.
-#
-# Adding an entry here needs the same justification as each one below: a value
-# that is public by construction, never a credential that "is only for tests".
-#
-# Paths under reference/ no longer exist in the tree. They stay listed because
-# the `secrets` job scans the full history, where those test files remain.
-
 [extend]
 useDefault = true
 
-# RFC 8032 section 7.1, TEST 1: the published Ed25519 secret key of the first
-# test vector. The tests check the client's Ed25519 against the RFC's own
-# public key and signature, so the value cannot be swapped for a fresh one.
 [[allowlists]]
 description = "RFC 8032 Ed25519 TEST 1 secret key (published test vector)"
 targetRules = ["generic-api-key"]
@@ -31,9 +11,6 @@ paths = [
 ]
 regexes = ['''^9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60$''']
 
-# A deliberately malformed id_token (header {"alg":"RS256"}, empty claims, the
-# literal signature "sig"). The e2e test sends it to /api/v1/auth/exchange and
-# asserts a 401; it is not signed by anyone and cannot be.
 [[allowlists]]
 description = "Fake, unsigned id_token in the auth-exchange rejection test"
 targetRules = ["generic-api-key"]
@@ -41,10 +18,6 @@ condition = "AND"
 paths = ['''^reference/ledgerd-client/test/e2e/roundtrip\.test\.ts$''']
 regexes = ['''^eyJhbGciOiJSUzI1NiJ9\.e30\.sig$''']
 
-# The web-push example application server key (an uncompressed P-256 PUBLIC
-# key, the one the web-push documentation and examples use). It is public by
-# definition: servers hand it to every browser. The tests use it as a
-# syntactically valid VAPID public key / subscription p256dh.
 [[allowlists]]
 description = "web-push example VAPID public key (public key, test value)"
 targetRules = ["generic-api-key"]
@@ -56,9 +29,6 @@ paths = [
 ]
 regexes = ['''^BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U$''']
 
-# The 16-byte auth secret of the example push subscription paired with the key
-# above. It belongs to no browser subscription; webpush-go needs a well-formed
-# one to perform the encryption the tests check.
 [[allowlists]]
 description = "web-push example subscription auth value (test subscription)"
 targetRules = ["generic-api-key"]
@@ -69,10 +39,6 @@ paths = [
 ]
 regexes = ['''^8eDyX_uCN0XRhSbY5hs7Hg$''']
 
-# A patterned, obviously synthetic 32-byte HMAC key (the hex digits counted
-# out: 00112233...99, 00aa...ff, 1122...ff). The dictionary tests fix the key so
-# stored HMACs are reproducible; real keys come from the environment, never
-# from source.
 [[allowlists]]
 description = "Patterned dictionary HMAC test key (0011..eeff)"
 targetRules = ["generic-api-key"]
@@ -84,11 +50,6 @@ paths = [
 ]
 regexes = ['''^0011223344556677889900aabbccddeeff112233445566778899aabbccddeeff$''']
 
-# Spec 01 §15.1: the conformance vectors that carry synthetic key material,
-# allowlisted by exact path and exact value, never by directory. Everything in
-# them is written by server/cmd/gen-crypto-vectors from the anchor inputs of
-# spec 01 §15.5 or from the generator's labelled SHA-256 stream (block i =
-# SHA256(label "|" i)); none of it is, or derives from, a credential.
 [[allowlists]]
 description = "crypto-v3 wraps.json unwrap inputs: anchor E (BIP-39's published vector 9e88..), and E and P of the 'wraps.json' stream"
 targetRules = ["generic-api-key"]

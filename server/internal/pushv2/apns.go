@@ -1,18 +1,5 @@
 package pushv2
 
-// apns.go is the APNs transport (spec 02 §12.2, §12.3): token-based auth with
-// the team's .p8 key, one HTTP/2 client, the pinned header set and the pinned
-// 31-byte body, chosen per token between the production and sandbox gateways.
-//
-// # Signing
-//
-// The provider token is an ES256 JWT. It is signed through the key's
-// crypto.Signer method, never through the package functions ecdsa.Sign or
-// ecdsa.SignASN1 (spec 02 §4.4 fence 3(d) refuses those by name); the
-// DER signature is re-encoded as the raw r ‖ s JWS wants. This is the only
-// signature the server makes with an EC key, and what it signs is the team id
-// and a timestamp — never user data.
-
 import (
 	"bytes"
 	"context"
@@ -36,24 +23,18 @@ import (
 	"time"
 )
 
-// Payload is the one body every wake carries, whatever its reason (spec 02
-// §12.2): a background push with no alert, no badge, no sound and no content.
 const Payload = `{"aps":{"content-available":1}}`
 
-// Gateways (spec 02 §12.2), chosen per token from apns_tokens.environment.
 const (
 	ProductionHost = "https://api.push.apple.com"
 	SandboxHost    = "https://api.sandbox.push.apple.com"
 )
 
-// Environments a token may carry.
 const (
 	EnvProduction = "production"
 	EnvSandbox    = "sandbox"
 )
 
-// JWT lifetimes (spec 02 §12.2): Apple refuses a token older than an hour and
-// throttles one regenerated more often than every 20 minutes.
 const (
 	jwtMaxAge         = 40 * time.Minute
 	jwtRegenerateFrom = 20 * time.Minute
@@ -61,23 +42,14 @@ const (
 	expirationWindow  = time.Hour
 )
 
-// Result classifies one send for the dispatcher (spec 02 §12.3).
 type Result uint8
 
 const (
-	// ResultSent is a 200.
 	ResultSent Result = iota + 1
-	// ResultGone is 400 BadDeviceToken / DeviceTokenNotForTopic or 410
-	// Unregistered: the token row is deleted, the device re-registers.
 	ResultGone
-	// ResultCooldown is a 429: the token rests 60 s.
 	ResultCooldown
-	// ResultConfig is a 403 that no retry fixes (bad key, topic): sending
-	// stops for 5 minutes and an ERROR is logged.
 	ResultConfig
 	ResultEnvironment
-	// ResultTransient is a 5xx, a network error or anything unexpected: no
-	// retry, the app catches up on open.
 	ResultTransient
 )
 
@@ -99,11 +71,8 @@ func (r Result) String() string {
 	return "unknown"
 }
 
-// ErrKeyType is a .p8 that is not a PKCS#8 EC P-256 private key.
 var ErrKeyType = errors.New("pushv2: the APNs key must be a PKCS#8 PEM EC P-256 private key")
 
-// ParseP8 reads an App Store Connect .p8 (PKCS#8 PEM, EC P-256) and refuses any
-// other key type (spec 02 §12.2: refuse at startup).
 func ParseP8(pemBytes []byte) (*ecdsa.PrivateKey, error) {
 	block, rest := pem.Decode(pemBytes)
 	if block == nil || block.Type != "PRIVATE KEY" || len(bytes.TrimSpace(rest)) != 0 {
@@ -120,7 +89,6 @@ func ParseP8(pemBytes []byte) (*ecdsa.PrivateKey, error) {
 	return ec, nil
 }
 
-// Client sends wakes to APNs. Build it with NewClient.
 type Client struct {
 	teamID, keyID, topic string
 	key                  *ecdsa.PrivateKey
@@ -133,18 +101,14 @@ type Client struct {
 	jwtIssue time.Time
 }
 
-// ClientConfig configures NewClient. HTTP and Hosts exist for tests (a fake
-// APNs over TLS); production leaves both nil.
 type ClientConfig struct {
 	TeamID, KeyID, Topic string
 	Key                  *ecdsa.PrivateKey
 	HTTP                 *http.Client
-	Hosts                map[string]string // environment → base URL
+	Hosts                map[string]string
 	Now                  func() time.Time
 }
 
-// NewClient validates cfg and builds the one client (spec 02 §12.2: net/http,
-// h2 negotiated, timeout 10 s, 4 idle connections per host).
 func NewClient(cfg ClientConfig) (*Client, error) {
 	if cfg.Key == nil || cfg.Key.Curve != elliptic.P256() {
 		return nil, ErrKeyType
@@ -163,10 +127,8 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 			Transport: &http.Transport{
 				ForceAttemptHTTP2:   true,
 				MaxIdleConnsPerHost: 4,
-				// No Accept-Encoding: the header set is pinned (spec 02 §12.2).
-				DisableCompression: true,
+				DisableCompression:  true,
 			},
-			// APNs never redirects; a redirect is not followed with the token.
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		}
 	}
@@ -176,8 +138,6 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	return c, nil
 }
 
-// providerToken returns the cached JWT, regenerating it when it is older than
-// 40 minutes, or when it is the one Apple called expired and it is older than 20.
 func (c *Client) providerToken(refused string) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -194,8 +154,6 @@ func (c *Client) providerToken(refused string) (string, error) {
 	return tok, nil
 }
 
-// SignJWT is the APNs provider token: header {"alg":"ES256","kid":<kid>},
-// claims {"iss":<team>,"iat":<unix>}, ES256 over the signing input, raw r ‖ s.
 func SignJWT(key *ecdsa.PrivateKey, kid, team string, iat time.Time) (string, error) {
 	hdr, _ := json.Marshal(struct {
 		Alg string `json:"alg"`
@@ -222,8 +180,6 @@ func SignJWT(key *ecdsa.PrivateKey, kid, team string, iat time.Time) (string, er
 	return input + "." + enc.EncodeToString(raw), nil
 }
 
-// Send delivers the payload to one token and classifies the answer. It retries
-// exactly once, on 403 ExpiredProviderToken, with a regenerated JWT.
 func (c *Client) Send(ctx context.Context, t Target) Result {
 	r, reason, jwt := c.send(ctx, t, "")
 	if reason == "ExpiredProviderToken" {
@@ -251,8 +207,6 @@ func (c *Client) send(ctx context.Context, t Target, refused string) (Result, st
 	if err != nil {
 		return ResultTransient, "", jwt
 	}
-	// The pinned set, nothing else (spec 02 §12.2). Go adds Content-Length
-	// itself; the User-Agent is suppressed with an explicit empty value.
 	h := req.Header
 	h["User-Agent"] = []string{""}
 	h.Set("authorization", "bearer "+jwt)
@@ -274,7 +228,6 @@ func (c *Client) send(ctx context.Context, t Target, refused string) (Result, st
 	return classify(resp.StatusCode, apnsErr.Reason), apnsErr.Reason, jwt
 }
 
-// classify is spec 02 §12.3's table.
 func classify(status int, reason string) Result {
 	switch {
 	case status == http.StatusOK:
@@ -293,8 +246,6 @@ func classify(status int, reason string) Result {
 	return ResultTransient
 }
 
-// ValidTokenHex reports whether s is a token the API accepts: the
-// apns_tokens_token_is_hex CHECK, 32 to 100 lowercase hex bytes.
 func ValidTokenHex(s string) bool {
 	if len(s) < 64 || len(s) > 200 || len(s)%2 != 0 {
 		return false

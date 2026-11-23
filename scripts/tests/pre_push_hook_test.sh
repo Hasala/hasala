@@ -105,6 +105,7 @@ fresh() {
 	cp "$ROOT/scripts/pre-push.sh" "$ROOT/scripts/install-hooks.sh" "$work/t/scripts/"
 	chmod +x "$work/t/.githooks/pre-push" "$work/t/scripts/pre-push.sh" "$work/t/scripts/install-hooks.sh"
 	stub scripts/check.sh
+	stub scripts/check-comments.sh
 	stub ios/scripts/check-imports.sh
 	stub ios/scripts/check-forbidden.sh
 	printf '[extend]\nuseDefault = true\n' >"$work/t/.gitleaks.toml"

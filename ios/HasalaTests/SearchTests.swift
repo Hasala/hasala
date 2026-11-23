@@ -6,8 +6,6 @@ import Testing
 
 @testable import Hasala
 
-/// Search's "Try asking" offers only the rows whose word finds something in this iPhone's
-/// own ledger (what a query finds is `ActivityReviewModelTests`'s).
 @MainActor
 @Suite("Search")
 struct SearchTests {

@@ -1,5 +1,3 @@
-// Unit tests for CoreAuth (owner: WS-11): refusals, the transport's headers,
-// go-webauthn options and PublicKeyCredential JSON.
 import CorePrimitives
 import Foundation
 import Testing

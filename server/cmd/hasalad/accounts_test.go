@@ -20,8 +20,6 @@ func writeKey(t *testing.T, hexKey string) string {
 	return p
 }
 
-// O9: serve records each key's fingerprint the first time and refuses a key
-// file whose fingerprint differs; behind Cloudflare the two keys must differ.
 func TestServeChecksTheServerKeys(t *testing.T) {
 	salt := writeKey(t, strings.Repeat("11", 32))
 	auth := writeKey(t, strings.Repeat("22", 32))

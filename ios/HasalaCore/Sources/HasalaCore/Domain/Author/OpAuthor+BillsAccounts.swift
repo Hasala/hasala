@@ -1,11 +1,3 @@
-// `OpAuthor`'s bills-and-accounts authors (03b §1.4, §3.2-§4.4): `account_set`,
-// `bill_set`, `bill_occurrence_set` and `account_checkin`. Each payload is
-// exactly what `Replay/V4/BillsAccounts.swift` decodes, key for key, and passes
-// that decoder in `build()` like every other op.
-//
-// Ids follow 03b §1.4's author grammar: an account that older builds created
-// from a card is derived from (bank, last4); cash is `ac_cash`; every other
-// account, manual bill and check-in id is 128 random bits.
 import CoreJSON
 import CorePrimitives
 import CoreTime
@@ -13,13 +5,8 @@ import CoreWire
 import Foundation
 
 extension OpAuthor {
-  // MARK: Ids (03b §1.4)
-
-  /// The cash account's constant id.
   public static let cashAccountID = "ac_cash"
 
-  /// `ac_` + the first 32 hex of SHA-256("hasala/v1/account-id" ‖ 0x00 ‖ bank ‖ 0x00 ‖ last4);
-  /// `bank` is `""` when the card names none.
   public static func cardAccountID(bank: String?, last4: String) -> String {
     var b = Array("hasala/v1/account-id".utf8)
     b.append(0)
@@ -29,8 +16,6 @@ extension OpAuthor {
     return "ac_" + String(Hex.encode(sha256(b)).prefix(32))
   }
 
-  /// `bd_` + the first 32 hex of SHA-256("hasala/v1/bill-id" ‖ 0x00 ‖ key ‖ 0x00 ‖ direction ‖ 0x00 ‖
-  /// currency ‖ 0x00 ‖ tail): tail `A` for a Pass A series, `B ‖ 0x00 ‖ first_ingest_id` for Pass B.
   public static func detectedBillID(key: String, direction: String, currency: String, firstIngestID: String? = nil) -> String {
     var b = Array("hasala/v1/bill-id".utf8)
     for part in [key, direction, currency] {
@@ -48,26 +33,19 @@ extension OpAuthor {
     return "bd_" + String(Hex.encode(sha256(b)).prefix(32))
   }
 
-  /// A random `ac_` account id (an account not created from a card, not cash).
   public func newAccountID() throws(AuthorError) -> String { "ac_" + (try randomHex()) }
 
-  /// A random `bm_` id for a bill the person added.
   public func newManualBillID() throws(AuthorError) -> String { "bm_" + (try randomHex()) }
 
-  /// A random `ck_` check-in id.
   public func newCheckinID() throws(AuthorError) -> String { "ck_" + (try randomHex()) }
 
   func randomHex() throws(AuthorError) -> String {
     do { return Hex.encode(try context.random.bytes(16)) } catch { throw .random }
   }
 
-  // MARK: Accounts and cards (03b §4.2-§4.3)
-
   public enum AccountKind: String, Sendable, Equatable, CaseIterable {
     case current, savings, creditCard = "credit_card", cash, loan, investment, property, other
 
-    /// 03b §4.2's default for `in_plan`: everyday money (current, savings,
-    /// credit card, cash) counts in the plan; the rest is tracked only.
     public var inPlanByDefault: Bool {
       switch self {
       case .current, .savings, .creditCard, .cash: true
@@ -76,9 +54,6 @@ extension OpAuthor {
     }
   }
 
-  /// A money account as the editor holds it. `closedOn` is required exactly
-  /// when the account is inactive; `statementDueDay` only on a credit card.
-  /// `inPlan` left nil takes the kind's default (`AccountKind.inPlanByDefault`).
   public struct AccountDraft: Sendable, Equatable {
     public var name: String
     public var institution: String?
@@ -106,7 +81,6 @@ extension OpAuthor {
     }
   }
 
-  /// `account_set` (03b §4.2): the whole record, last write by position wins.
   public mutating func setAccount(id: String, _ d: AccountDraft) throws(AuthorError) {
     if d.active == (d.closedOn != nil) { throw .refused("a closed account needs its closing date, an open one none") }
     if d.statementDueDay != nil && d.kind != .creditCard { throw .refused("only a credit card has a statement day") }
@@ -121,12 +95,8 @@ extension OpAuthor {
       ])
   }
 
-  // MARK: Bills (03b §3.2-§3.3)
-
   public enum AmountMode: Sendable, Equatable {
-    /// A fixed amount; a charge within `toleranceBp` basis points matches.
     case fixed(toleranceBp: Int64)
-    /// A varying amount (the estimate is derived from history).
     case variable
   }
 
@@ -164,10 +134,8 @@ extension OpAuthor {
     }
   }
 
-  /// A bill as the editor holds it (03b §3.2). `end` is required when cancelled.
   public struct BillDraft: Sendable, Equatable {
     public var name: String
-    /// 1-8 merchant keys the matcher compares (`Canon.merchantKey` form).
     public var keys: [String]
     public var direction: String
     public var currency: String
@@ -257,7 +225,6 @@ extension OpAuthor {
     return .array(out)
   }
 
-  /// `bill_set`: create (`parentVersion` nil) or whole-record edit of bill `id`.
   public mutating func setBill(id: String, parentVersion: Int64? = nil, _ d: BillDraft) throws(AuthorError) {
     guard d.amountMinor > 0 else { throw .refused("the amount must be more than 0") }
     if let e = d.end, !(d.start < e) { throw .refused("the end date must be after the start date") }
@@ -285,16 +252,12 @@ extension OpAuthor {
   }
 
   public enum OccurrenceResolution: Sendable, Equatable {
-    /// Paid, optionally by a transaction (a `TxnRef`: the txn's entity id).
     case paid(txn: String?)
     case skipped
-    /// Not expected before `until`.
     case snoozed(until: CivilDate)
-    /// Back to what the matcher decides.
     case clear
   }
 
-  /// `bill_occurrence_set {bill, due, resolution, txn, until}` (03b §3.3).
   public mutating func setBillOccurrence(bill: String, due: CivilDate, _ r: OccurrenceResolution) {
     var resolution = ""
     var txn: JSONValue = .null
@@ -314,24 +277,17 @@ extension OpAuthor {
       [("bill", .string(bill)), ("due", .string(due.wire)), ("resolution", .string(resolution)), ("txn", txn), ("until", until)])
   }
 
-  // MARK: Check-ins (03b §4.4)
-
   public enum CheckinSource: String, Sendable, Equatable {
-    /// A check-in against the derived balance (may carry a resolution).
     case checkin
-    /// A plain balance update (tracking accounts).
     case update
   }
 
   public enum CheckinResolution: Sendable, Equatable {
     case addTxn
-    /// The difference was booked as an adjustment (non-zero, signed minor units).
     case adjusted(Int64)
     case kept
   }
 
-  /// `account_checkin`: the balance of `account` at `asOfMs`. Returns the check-in id
-  /// (minted when `id` is nil; pass an existing id to void or correct it).
   @discardableResult
   public mutating func checkIn(
     id: String? = nil, account: String, asOfMs: Int64, balanceMinor: Int64, source: CheckinSource = .checkin,

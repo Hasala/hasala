@@ -1,14 +1,4 @@
 ---
-/**
- * The pages behind the links in our waitlist emails (Hasala design archive,
- * private):
- *   https://hasala.app/waitlist/confirm#<token>
- *   https://hasala.app/waitlist/leave#<token>
- * The token is in the fragment, which no request carries. The script reads
- * it, removes it from the address bar, and shows one button; only pressing
- * the button POSTs {token}. Opening the page never acts, so mail link
- * scanners can't confirm or leave for anyone.
- */
 import Icon from './Icon.astro';
 import WaitlistCoin from './brand/WaitlistCoin.astro';
 import { SITE } from '../data/site';
@@ -83,7 +73,6 @@ const COPY = {
   import { onPage } from '../scripts/page';
   import { arriveAtLink, markLinkDone } from '../lib/link-page';
 
-  // onPage: it runs again whenever the router brings this page back (Back).
   onPage((signal) => {
     const root = document.querySelector<HTMLElement>('[data-wlink]');
     if (!root) {

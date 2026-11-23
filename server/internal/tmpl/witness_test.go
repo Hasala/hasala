@@ -5,19 +5,14 @@ import (
 	"testing"
 )
 
-// The literal dib.card.v1 gates on, used verbatim so these tests are about the
-// bytes production actually depends on.
 const arabicGate = "إشعار مشتريات"
 
-// The property the whole guardrail rests on: an ASCII-only literal is not
-// evidence of a decode, because every charset a mail decoder accepts agrees
-// with US-ASCII on the low 128 and so leaves it unchanged.
 func TestAnASCIIOnlyGateLiteralIsNotAWitness(t *testing.T) {
 	for _, s := range []string{
 		"Purchase alert",
 		"Transaction Alert",
 		"AED",
-		"", // a template may not declare this, but the predicate must not crash on it
+		"",
 		"~!@#$%^&*()_+-=[]{}|;':\",./<>?",
 	} {
 		d := Definition{Match: Match{BodyContains: []string{s}}}
@@ -31,8 +26,8 @@ func TestANonASCIIGateLiteralIsAWitness(t *testing.T) {
 	for _, s := range []string{
 		arabicGate,
 		"إشعار إيداع",
-		"é",             // one rune is enough: C3 A9 reads as "Ã©" under iso-8859-1
-		"Amount\u00a0x", // a non-breaking space is non-ASCII too
+		"é",
+		"Amount\u00a0x",
 	} {
 		d := Definition{Match: Match{BodyContains: []string{s}}}
 		if got := d.DecodeWitnesses(); !slices.Equal(got, []string{s}) {
@@ -41,8 +36,6 @@ func TestANonASCIIGateLiteralIsAWitness(t *testing.T) {
 	}
 }
 
-// Mixed lists keep only the literals that carry evidence. A fixture with one
-// entry cannot tell "filtered" from "returned everything", so this has three.
 func TestDecodeWitnessesFiltersRatherThanAllOrNothing(t *testing.T) {
 	d := Definition{Match: Match{BodyContains: []string{
 		"Purchase alert", arabicGate, "Card", "إشعار إيداع",
@@ -53,9 +46,6 @@ func TestDecodeWitnessesFiltersRatherThanAllOrNothing(t *testing.T) {
 	}
 }
 
-// Only body_contains is eligible. A subject gate is checked against a DIFFERENT
-// string from the one an extraction reads, and an exclusion is an absence —
-// which is what a mis-decode manufactures.
 func TestOnlyBodyContainsCanWitness(t *testing.T) {
 	subject := Definition{Match: Match{SubjectContains: []string{arabicGate}}}
 	if got := subject.DecodeWitnesses(); len(got) != 0 {
@@ -75,9 +65,6 @@ func TestOnlyBodyContainsCanWitness(t *testing.T) {
 	}
 }
 
-// The witnesses are the definition's own strings, byte for byte, so a caller
-// can check them against the decoded text with strings.Contains and be checking
-// the same thing the gate checked.
 func TestDecodeWitnessesReturnsTheLiteralsVerbatim(t *testing.T) {
 	d := Definition{Match: Match{BodyContains: []string{arabicGate}}}
 	got := d.DecodeWitnesses()

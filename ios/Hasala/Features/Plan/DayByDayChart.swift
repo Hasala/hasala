@@ -3,47 +3,23 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Day by day (Paper "Plan · Dining", chart card): one bar per day of the month so far, 132
-/// tall. A spend day is a 12 wide bar in the hue's deeper step (rounded 4 at the top, 2 at the
-/// foot), today in the hue's ink; a day with nothing is a 3 tall stub on the pace track. A
-/// dashed line marks the daily budget with its label above it; the tallest day is named over
-/// its bar ("Zuma · 412.00"). Day numbers run under the bars, today's in ink.
-///
-/// Heights are drawn against the tallest day (or the daily budget when that is higher), 108
-/// at most, with one label line and 7 over it for the name (Paper: 23 at 12/16). The labels
-/// are placed with their measured sizes, so they keep clear of the bars as the text grows. At
-/// the accessibility sizes they are as wide as half the plot and as tall as its bars, so they
-/// leave it for a key above it, each with its mark (spec 04 §17: layouts reflow). Geometry is
-/// the only place a share becomes a float.
-///
-/// One VoiceOver element (`plan.chart`) with a summary, and an audio graph through
-/// `accessibilityChartDescriptor`; with amounts hidden it says "Amount hidden".
 struct DayByDayChart: View {
   let chart: DayByDay
-  /// The category, for the audio graph's series ("Dining").
   let name: String
-  /// The category's hue: bars in its deeper step (#BBA6E6 for lilac), today in its ink.
   let hue: Hue
   var bucket: Bucket?
   let hidden: Bool
 
   @Environment(\.dynamicTypeSize) private var typeSize
-  /// One line of the chart's 12/16 labels, scaled with them.
   @ScaledMetric(relativeTo: .caption) private var labelLine: CGFloat = 16
-  /// The labels' 12 pt, scaled: it sets where a key's mark sits on the first line.
   @ScaledMetric(relativeTo: .caption) private var labelSize: CGFloat = 12
-  /// The widest day number ("30") in the day numbers' face, scaled with it.
   @ScaledMetric(relativeTo: .caption) private var dayLabelWidth: CGFloat = 15
   @ScaledMetric(relativeTo: .caption) private var dayLabelHeight: CGFloat = 16
 
   private let tallest: CGFloat = 108
 
-  /// The labels sit in a key above the plot rather than over the bars.
   private var keyed: Bool { typeSize.isAccessibilitySize }
-  /// Room over the tallest bar: its name and 7 (2 above it, 5 under it); 8 when the name is
-  /// in the key.
   private var headroom: CGFloat { keyed ? 8 : labelLine + 7 }
-  /// The plot over its 1 pt baseline: 131 at the default size.
   private var plotHeight: CGFloat { headroom + tallest }
 
   var body: some View {
@@ -65,8 +41,6 @@ struct DayByDayChart: View {
     .accessibilityIdentifier("plan.chart")
   }
 
-  // MARK: The plot
-
   private func plot(width: CGFloat) -> some View {
     let slot = width / CGFloat(max(1, chart.days.count))
     let bar = min(12, slot * 0.6)
@@ -74,9 +48,7 @@ struct DayByDayChart: View {
     let lineY = plotHeight - CGFloat(chart.dailyBudget.minor) / top * tallest
     let peak = chart.peak.flatMap { p in chart.days.firstIndex { $0.day == p.day }.map { (p, $0) } }
     return ZStack(alignment: .topLeading) {
-      // The baseline.
       Rectangle().fill(HColor.borderSubtle).frame(width: width, height: 1).offset(y: plotHeight)
-      // The bars, aligned on the baseline.
       HStack(alignment: .bottom, spacing: 0) {
         ForEach(chart.days) { day in
           dayBar(day, width: bar, height: CGFloat(day.spent.minor) / top * tallest)
@@ -84,7 +56,6 @@ struct DayByDayChart: View {
         }
       }
       .frame(width: width, height: plotHeight, alignment: .bottomLeading)
-      // The daily budget: a dashed line.
       if chart.dailyBudget.minor > 0 {
         Path { p in
           p.move(to: CGPoint(x: 0, y: 1))
@@ -94,7 +65,6 @@ struct DayByDayChart: View {
         .frame(width: width, height: 2)
         .offset(y: lineY - 1)
       }
-      // Its label and the tallest day's name, placed with their real sizes.
       if !keyed {
         DayByDayPlotLabels(
           hasPeak: peak != nil,
@@ -112,7 +82,6 @@ struct DayByDayChart: View {
     .frame(width: width, height: plotHeight + 1, alignment: .topLeading)
   }
 
-  /// Each spend day's bar in the plot, for the labels to keep clear of.
   private func barFrames(slot: CGFloat, bar: CGFloat, top: CGFloat) -> [CGRect] {
     chart.days.enumerated().compactMap { i, day in
       guard day.spent.minor > 0 else { return nil }
@@ -135,13 +104,7 @@ struct DayByDayChart: View {
     day == chart.today ? hue.ink : (bucket?.splitColor ?? Color(hue.dotDeep))
   }
 
-  // MARK: The key (accessibility sizes)
-
-  /// "▮ Zuma · 412.00" and "- - Daily budget 51.61", one under the other, each wrapping
-  /// beside its mark: the tallest day's bar and the dashed line.
   private var key: some View {
-    // The marks grow with the words: the bar as tall as a capital (Inter's are 0.73 em),
-    // the dashes a little longer, in one column.
     let cap = labelSize * 0.73
     let slot = cap * 1.2
     return VStack(alignment: .leading, spacing: 8) {
@@ -164,7 +127,6 @@ struct DayByDayChart: View {
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 
-  /// A mark centred in a `slot` wide column, on the middle of its words' first line.
   private func keyLine<Words: View, Mark: View>(
     _ words: Words, slot: CGFloat, @ViewBuilder mark: () -> Mark
   ) -> some View {
@@ -177,10 +139,6 @@ struct DayByDayChart: View {
     }
   }
 
-  // MARK: Day numbers
-
-  /// The days whose numbers fit under the bars (`labelledDays`), today's in ink, each under
-  /// its bar and kept inside the plot's ends (`labelCentre`).
   private func dayLabels(width: CGFloat) -> some View {
     let days = chart.days.map(\.day)
     let slot = width / CGFloat(max(1, days.count))
@@ -199,12 +157,6 @@ struct DayByDayChart: View {
     }
   }
 
-  /// Which day numbers to draw: today first, then every day while there are ten or fewer
-  /// (the 1st and every fifth past that), each kept only when it stands clear of every
-  /// number already drawn by 0.4 of a two-digit number (6 at the default size), so they
-  /// never read as one long number. At the default size ten days all fit (Paper); at AX5
-  /// they thin out, and a late month never puts "30" against "31". `labelWidth` is a
-  /// two-digit number's width; one digit is taken as half of it.
   static func labelledDays(_ days: [Int], today: Int, slot: CGFloat, labelWidth: CGFloat) -> Set<Int> {
     func width(_ day: Int) -> CGFloat { day < 10 ? labelWidth / 2 : labelWidth }
     let gap = labelWidth * 0.4
@@ -220,17 +172,12 @@ struct DayByDayChart: View {
     return Set(shown.map(\.day))
   }
 
-  /// Where the number of the day at `index` is centred: under its bar, moved in from the
-  /// plot's ends when it is wider than its slot, so it never runs past them.
   static func labelCentre(_ index: Int, day: Int, count: Int, slot: CGFloat, labelWidth: CGFloat) -> CGFloat {
     let half = (day < 10 ? labelWidth / 2 : labelWidth) / 2
     let end = slot * CGFloat(count)
     return min(max(half, slot * (CGFloat(index) + 0.5)), max(half, end - half))
   }
 
-  // MARK: VoiceOver
-
-  /// "Largest day Wed 7 Oct, Zuma, AED 412.00. Daily budget AED 51.61."
   private var summary: String {
     var parts: [String] = []
     if let peak = chart.peak, let day = chart.days.first(where: { $0.day == peak.day }) {
@@ -238,7 +185,6 @@ struct DayByDayChart: View {
     } else {
       parts.append("Nothing spent yet")
     }
-    // A category without a pace (a bill, savings) has no daily budget to say.
     if chart.dailyBudget.minor > 0 { parts.append("Daily budget \(spoken(chart.dailyBudget))") }
     return parts.joined(separator: ". ") + "."
   }
@@ -248,7 +194,6 @@ struct DayByDayChart: View {
   }
 }
 
-/// A spend day's bar: rounded 4 at the top, 2 at the foot.
 nonisolated private struct BarShape: Shape {
   func path(in rect: CGRect) -> Path {
     UnevenRoundedRectangle(topLeadingRadius: 4, bottomLeadingRadius: 2, bottomTrailingRadius: 2,
@@ -257,20 +202,11 @@ nonisolated private struct BarShape: Shape {
   }
 }
 
-/// Places the plot's labels at their measured sizes: the tallest day's name (the first
-/// subview, when `hasPeak`) centred over its bar, 5 above it, inside the plot; the daily
-/// budget's (the next) at the leading edge 4 above its line, or 4 under it when there is no
-/// room above, or the name or a bar is in the way there and not under it. Where a bar rises
-/// through both (Groceries' day 3), it stays above the line, on its halo
-/// (`DailyBudgetLabel`), so its figure reads over the bar.
 struct DayByDayPlotLabels: Layout {
   let hasPeak: Bool
   let peakCentre: CGFloat
-  /// The top of the tallest day's bar.
   let peakTop: CGFloat
-  /// The daily budget line, or nil when it is not drawn.
   let lineY: CGFloat?
-  /// The spend days' bars, in the plot.
   var bars: [CGRect] = []
 
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -291,7 +227,6 @@ struct DayByDayPlotLabels: Layout {
     }
   }
 
-  /// Where the labels of these sizes go in a plot `width` wide.
   func frames(peak: CGSize?, budget: CGSize?, width: CGFloat) -> (peak: CGRect?, budget: CGRect?) {
     let peakFrame = peak.map { size in
       let w = min(size.width, width)
@@ -309,14 +244,11 @@ struct DayByDayPlotLabels: Layout {
     return (peakFrame, budgetFrame)
   }
 
-  /// A bar runs through `frame` (2 pt of air around the words).
   private func crossesABar(_ frame: CGRect) -> Bool {
     bars.contains { $0.intersects(frame.insetBy(dx: -2, dy: -2)) }
   }
 }
 
-/// "Zuma · 412.00" over the tallest bar: 12/16, the name 600, the figure rounded 700. In the
-/// plot it is one line and a long name gives way to the figure; in the key it wraps.
 private struct PeakLabel: View {
   let peak: DayByDay.Peak
   let hidden: Bool
@@ -344,9 +276,6 @@ private struct PeakLabel: View {
   }
 }
 
-/// "Daily budget 51.61" by its line: the words 400, the figure rounded 600, both secondary.
-/// In the plot it sits on a halo of the card's white, 3 past its edges, which shows only
-/// where a bar runs behind it (`DayByDayPlotLabels`).
 private struct DailyBudgetLabel: View {
   let amount: Money
   let hidden: Bool
@@ -378,8 +307,6 @@ private struct DailyBudgetLabel: View {
   }
 }
 
-/// The audio graph behind the chart: one bar per day, heights as a share of the tallest day
-/// (the pitch only), each point labelled with its exact amount, or "Amount hidden".
 struct DayByDayDescriptor: AXChartDescriptorRepresentable {
   let chart: DayByDay
   let name: String

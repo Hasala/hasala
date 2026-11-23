@@ -14,9 +14,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// routes_freeze.go: freeze by link, freeze in app, unfreeze, and the
-// session-free device freeze (spec 02 §10.13, routes #64–#66, #77, #78).
-// Owner: WS-3.
 func (s *Server) mountFreeze(mux *http.ServeMux) {
 	if s.Accounts == nil {
 		return
@@ -28,7 +25,6 @@ func (s *Server) mountFreeze(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/device-freeze", s.handleDeviceFreeze)
 }
 
-// freezeLinkMax is how much of #64's body is read.
 const freezeLinkMax = 256
 
 func (s *Server) freezeOrigin(h http.HandlerFunc) http.HandlerFunc {
@@ -41,10 +37,6 @@ func (s *Server) freezeOrigin(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// handleFreezeLink is #64: the static freeze page posts {"token"} as a
-// text/plain request. The answer is 204 with an empty body for any token,
-// known or not (D-13); a live token that could not be tried, or a lookup
-// that failed, is a 503. Only a live token spends freeze-global.
 func (s *Server) handleFreezeLink(w http.ResponseWriter, r *http.Request) {
 	raw, _ := io.ReadAll(io.LimitReader(r.Body, freezeLinkMax+1))
 	var body struct {
@@ -96,8 +88,6 @@ func (s *Server) handleUnfreeze(w http.ResponseWriter, r *http.Request, _ uuid.U
 	s.stepUpRoute(w, r, s.Accounts.Unfreeze)
 }
 
-// devFreezeLimited runs devfreeze-ip, then (for a well-formed writer id only)
-// devfreeze-global. It reports whether it answered.
 func (s *Server) devFreezeLimited(w http.ResponseWriter, r *http.Request, writerID string) bool {
 	if !s.DevFreezeIP.Allow(clientKey(r)) || (keyproto.ValidWriterID(writerID) && !s.globalAllow(r, s.DevFreezePerPrefix, s.DevFreezeGlobal)) {
 		writeTooManyAttempts(w)
@@ -106,15 +96,12 @@ func (s *Server) devFreezeLimited(w http.ResponseWriter, r *http.Request, writer
 	return false
 }
 
-// DeviceFreezeChallengeRequest is #77's body.
 type DeviceFreezeChallengeRequest struct {
 	WriterID string `json:"writer_id"`
 }
 
-// DeviceFreezeChallengeResponse is #77's answer, the same for every
-// well-formed writer id.
 type DeviceFreezeChallengeResponse struct {
-	Nonce     string    `json:"nonce"` // b64
+	Nonce     string    `json:"nonce"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
@@ -134,11 +121,10 @@ func (s *Server) handleDeviceFreezeChallenge(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, DeviceFreezeChallengeResponse{Nonce: b64(nonce), ExpiresAt: exp.UTC()})
 }
 
-// DeviceFreezeRequest is #78's body.
 type DeviceFreezeRequest struct {
 	WriterID string `json:"writer_id"`
-	Nonce    string `json:"nonce"` // b64
-	Sig      string `json:"sig"`   // b64, 64 bytes: the DAK over DeviceFreezeMessage
+	Nonce    string `json:"nonce"`
+	Sig      string `json:"sig"`
 }
 
 func (s *Server) handleDeviceFreeze(w http.ResponseWriter, r *http.Request) {

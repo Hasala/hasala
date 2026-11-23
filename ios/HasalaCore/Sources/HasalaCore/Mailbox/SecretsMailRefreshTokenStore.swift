@@ -1,15 +1,3 @@
-// A mail provider's refresh token's custody (spec 04 §7.3, §4.4): the Keychain item
-// `.mailRefresh(provider, userID)` behind CoreStore's `SecretStore`, the same store, access
-// group and accessibility as every other item of the account, so
-// `Secrets.wipeAccount` (sign-out, deletion, a foreign-data reset) always takes
-// it with the rest.
-//
-// The null-vs-throw contract carries through: an absent item reads nil; any
-// failure to read it (before first unlock) throws `SecretUnavailable`, which
-// the token provider maps to "not now", never to "disconnected". An item that
-// reads but holds no token (empty, or not UTF-8) can never refresh, so it is
-// deleted and read as absent: the account shows "disconnected" and can be
-// linked again, instead of "not now" on every cycle.
 import CorePrimitives
 import CoreStore
 import Foundation
@@ -23,7 +11,6 @@ public struct SecretsMailRefreshTokenStore: MailRefreshTokenStore {
     item = .mailRefresh(provider: provider.secretProvider, userID: userID)
   }
 
-  /// The Gmail item (`app.hasala.gmail.refresh`).
   public init(secrets: Secrets, userID: UserID) {
     self.init(secrets: secrets, userID: userID, provider: .gmail)
   }
@@ -39,7 +26,6 @@ public struct SecretsMailRefreshTokenStore: MailRefreshTokenStore {
     return s
   }
 
-  /// Writes, then reads back: a mismatch throws (§4.4).
   public func write(_ token: String) throws(SecretUnavailable) {
     let bytes = Data(token.utf8)
     do {
@@ -58,7 +44,6 @@ public struct SecretsMailRefreshTokenStore: MailRefreshTokenStore {
 public typealias SecretsGmailRefreshTokenStore = SecretsMailRefreshTokenStore
 
 extension MailProviderID {
-  /// The provider's Keychain items (CoreStore names them without depending on CoreMailbox).
   public var secretProvider: MailSecretProvider {
     switch self {
     case .gmail: .gmail

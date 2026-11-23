@@ -6,23 +6,12 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// Your profile (Paper "Profile · Your profile (sheet)" 5DE-0 and its page-14 variant with
-/// Sign-in & security, HI3-0): who you are, whether bank alerts are working, your money
-/// things, settings, sign out and delete. One large sheet from the avatar: every row pushes
-/// inside its stack (`router.profile`), never a sheet over it, and Close returns to the tab
-/// as it was.
-///
-/// A Release build shows only rows that work (`BuildSurface`): the settings with nothing
-/// behind them yet (Notifications, Appearance, Swipe directions) are left out, Accounts shows once the
-/// ledger has balances, and account actions follow `capabilities`.
 struct ProfileSheet: View {
   @Bindable var app: AppModel
   @State private var model: ProfileViewModel
   @State private var confirmSignOut = false
-  /// Sign-in & security's state, for its row's status; nil until read.
   @State private var security: SecurityState?
   @Environment(\.dismiss) private var dismiss
-  /// Present once the account gate runs; sign out, delete and Sign-in & security need it.
   @Environment(AccountSession.self) private var session: AccountSession?
 
   private var unfinished: Bool { BuildSurface.showsUnfinished }
@@ -59,7 +48,6 @@ struct ProfileSheet: View {
           footer
         }
         .padding(.horizontal, HSpacing.sheetPadding)
-        // 18 under the header (Paper's sheet gap), with the identity's own 4.
         .padding(.top, 8)
         .padding(.bottom, 48)
       }
@@ -71,8 +59,6 @@ struct ProfileSheet: View {
       .navigationDestination(for: ProfileRoute.self) { route in
         ProfilePage(app: app, model: model, route: route)
       }
-      // Read when the sheet opens and again each time it is back at its first page, so a
-      // passkey added on Sign-in & security shows on the way back.
       .task(id: app.router.profile.isEmpty) {
         guard app.router.profile.isEmpty else { return }
         security = try? await session?.account.securityState()
@@ -81,13 +67,10 @@ struct ProfileSheet: View {
         Button("Sign out", role: .destructive) { signOut() }
         Button("Cancel", role: .cancel) {}
       } message: {
-        // The words Sign-in & security says for the same action, whichever page it starts from.
         Text(AccountCopy.signOutMessage)
       }
     }
     .environment(\.inProfileSheet, true)
-    // Delete your account's "Keep a copy first" (Paper IAM), on Profile › Delete and on
-    // Sign-in & security › Delete: the same CSV as "Export your data" (requests/p4.md 2).
     .environment(\.accountExport, CSVFile(rows: model.exportRows, name: CSVExport.fileName(model.today)))
     .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom) }
     .sheet(item: Bindable(app.router).overProfile) { route in
@@ -105,28 +88,21 @@ struct ProfileSheet: View {
     .presentationCornerRadius(HRadius.sheetLarge)
   }
 
-  /// Signs out of this iPhone (S-26): the session ends, local data stays. The account gate
-  /// then shows the welcome screens in place of the app, this sheet with it.
   private func signOut() {
     guard let session else { return }
     Task { await session.signOut() }
   }
 
-  /// What the card says: `MailboxesSummary`, which Bank alerts' hero and the bell's mail
-  /// row also draw from.
   private var summary: MailboxesSummary {
     MailboxesSummary(
       app.mailbox?.mailboxes ?? [], health: snap.mailbox, offer: app.mailOffer, known: app.mailbox?.mailboxesKnown ?? true,
       reading: app.store.state.reading)
   }
 
-  // MARK: Your money
-
   private var money: some View {
     VStack(alignment: .leading, spacing: 12) {
       HSectionHeader("Your money")
       ProfileListCard(inset: .disc68) {
-        // Balances come from check-ins: with none, Accounts would say 0.00 for each.
         if unfinished || snap.accountsKnown {
           row(.accounts, id: "profile.accounts") {
             MoneyThingRow(plate: Self.tile(.bank, square: true), title: "Accounts",
@@ -176,8 +152,6 @@ struct ProfileSheet: View {
       .accessibilityIdentifier(id)
   }
 
-  // MARK: Settings
-
   private var settings: some View {
     VStack(alignment: .leading, spacing: 12) {
       HSectionHeader("Settings")
@@ -194,8 +168,6 @@ struct ProfileSheet: View {
                          ?? .none)
           }
         }
-        // The mailbox, its sign-in and Disconnect, under Settings as well as behind the
-        // card above: where a person looks to stop Hasala reading their email.
         if let lane = app.mailbox {
           let value = Self.mailboxesValue(lane.mailboxes, known: lane.mailboxesKnown)
           row(.bankAlerts, id: "profile.mailboxes") {
@@ -206,8 +178,6 @@ struct ProfileSheet: View {
         row(.exchangeRates, id: "profile.currency") {
           SettingRow(icon: .globe, title: Self.exchangeRatesTitle, trailing: Self.currencyTrailing(app.store.state))
         }
-        // TODO(spec 04 §9): local notifications are not in this build, so a Release build
-        // doesn't offer their settings yet.
         if unfinished {
           row(.notifications, id: "profile.notifications") {
             SettingRow(icon: .bell, title: "Notifications", trailing: .value(snap.prefs.notifications.label))
@@ -234,9 +204,6 @@ struct ProfileSheet: View {
   static let bankAlertsTitle = "Bank alerts"
   static let exchangeRatesTitle = "Exchange rates"
 
-  /// The Bank alerts row's value: "Checking" while the mailbox state is read, "Not
-  /// connected" with none, "Sign in again" when one needs it, else the providers read
-  /// ("Gmail").
   static func mailboxesValue(_ mailboxes: [MailboxSnapshot], known: Bool) -> (text: String, tone: StatusTone?) {
     guard known else { return ("Checking", nil) }
     let live = mailboxes.filter { $0.state != .disconnected }
@@ -254,16 +221,11 @@ struct ProfileSheet: View {
     return missing > 0 ? .status(ExchangeRatesPage.notCountedLine(missing), .warning) : .value(Money.home)
   }
 
-  /// Sign-in & security's own status (its hero): frozen, a passkey, or a password only.
   static func securityStatus(_ s: SecurityState) -> (text: String, tone: StatusTone) {
     if s.frozen != nil { return ("Frozen", .accent) }
     return s.hasPasskey ? ("Protected", .success) : ("Password only", .warning)
   }
 
-  // MARK: Sign out, delete, version
-
-  /// Sign out (quiet, 54: Paper draws 52, off the pill ladder), "Delete your account" (a 44
-  /// link), and the build line.
   private var footer: some View {
     VStack(spacing: 8) {
       if can(.signOut) {
@@ -302,19 +264,15 @@ struct ProfileSheet: View {
     .padding(.top, 4)
   }
 
-  /// "Hasala QA · 0.2.0 (1) · unset · End‑to‑end encrypted, never sold": the build first (the
-  /// tests read its prefix), then Paper's promise. The hyphens don't break (U+2011).
   static func footer(_ build: BuildInfo) -> String {
     "\(build.footer) · End\u{2011}to\u{2011}end encrypted, never sold"
   }
 }
 
-/// A page pushed inside the profile sheet.
 private struct ProfilePage: View {
   @Bindable var app: AppModel
   let model: any ProfileModel
   let route: ProfileRoute
-  /// Present once the account gate runs; Sign-in & security needs it.
   @Environment(AccountSession.self) private var session: AccountSession?
 
   var body: some View {

@@ -11,12 +11,6 @@ import (
 
 func ingestID() string { return strings.Repeat("a", 64) }
 
-// newerVersion is one past whatever this build understands. Written as
-// arithmetic on SchemaVersion rather than as a literal: these tests assert
-// "a version this build does not know is a hard stop", and a literal silently
-// becomes an assertion about a version the build DOES know the moment
-// SchemaVersion is bumped -- which is exactly how the v1->v2 bump left three of
-// them testing the opposite of their names.
 func newerVersion() string { return strconv.Itoa(SchemaVersion + 1) }
 
 func TestDuplicateDispositionRequiresSchemaV2AndClosedPayload(t *testing.T) {
@@ -41,16 +35,6 @@ func TestDuplicateDispositionRequiresSchemaV2AndClosedPayload(t *testing.T) {
 	}
 }
 
-// TestConfigurationOpsAreParentFreeV3Facts pins the three schema-v3
-// configuration ops against the shape they were chosen for: parent-free
-// append-only facts, folded by position, at a version an older client cannot
-// mistake for one of its own.
-//
-// The v3 minimum is the load-bearing half. Without it a v3 writer could stamp
-// bank_declared v1, and a v2 reader would then see a v1-legal op of an unknown
-// type -- refusing that ONE op and folding the rest of the log -- instead of
-// meeting ErrUnknownNewerVersion and stopping. The bump only buys a hard stop
-// if the new ops actually declare v3.
 func TestConfigurationOpsAreParentFreeV3Facts(t *testing.T) {
 	for _, o := range configOps() {
 		if err := o.Validate(); err != nil {
@@ -84,15 +68,7 @@ func TestConfigurationOpsAreParentFreeV3Facts(t *testing.T) {
 	}
 }
 
-// TestConfigurationOpsHardStopAnOlderReader is the property the version bump
-// trades on, from the Go side: a blob a newer build wrote is refused WHOLE, with
-// ErrUnknownNewerVersion, rather than having its unreadable ops skipped.
 func TestConfigurationOpsHardStopAnOlderReader(t *testing.T) {
-	// The HEADER is at SchemaVersion, deliberately. With the header itself set
-	// newer, DecodeBlob short-circuits at `h.V > SchemaVersion` and never reaches
-	// the per-op loop -- so the "understood op followed by a newer one" case goes
-	// unexercised and the test passes even if that loop learns to SKIP. This is
-	// the same shape as the six version-literal tests the v2 -> v3 bump disarmed.
 	body := []byte(`{"v":` + strconv.Itoa(SchemaVersion) + `,"kind":"ops","ops":[` +
 		`{"v":` + strconv.Itoa(SchemaVersion) + `,"type":"bank_declared","op_id":"01J000000000000000000000B1",` +
 		`"authored_at":"2026-06-05T10:00:00Z","parent_version":null,"payload":{"bank":"dib","active":true}},` +
@@ -140,9 +116,6 @@ func TestDecodeBlobRejectsUnknownNewerVersion(t *testing.T) {
 }
 
 func TestDecodeBlobRejectsANewerOpInsideAKnownBlob(t *testing.T) {
-	// The hard stop has to reach the op, not just the envelope: a v1 blob may
-	// carry an op the client cannot interpret, and guessing is worse than
-	// stopping (spec §3.3:68).
 	b := []byte(`{"v":` + strconv.Itoa(SchemaVersion) + `,"kind":"ops","ops":[{"v":` + newerVersion() +
 		`,"type":"txn_ingested","op_id":"x",` +
 		`"authored_at":"2026-06-05T10:00:00Z","parent_version":null,"payload":{}}]}`)
@@ -273,9 +246,6 @@ func TestEncodeCanonicalisesAuthoredAtToUTC(t *testing.T) {
 }
 
 func TestEncodeTruncatesAuthoredAtToMilliseconds(t *testing.T) {
-	// Fork resolution compares authored_at and only then falls through to
-	// writer_id. A JS Date holds milliseconds, so anything finer would let the
-	// Go and TypeScript executors disagree about which of two ops is a tie.
 	o := txnOp()
 	o.AuthoredAt = o.AuthoredAt.Add(1500 * time.Microsecond)
 	b, err := EncodeBlob([]Op{o})
@@ -331,8 +301,6 @@ func TestRawBodyIsNotAnOpBlob(t *testing.T) {
 }
 
 func TestCheckpointHeadsAreSortedAndStreamed(t *testing.T) {
-	// canonical encoding of a writer_checkpoint payload sorts by (writer_id, stream)
-	// and every entry names a stream — chains are per (writer_id, stream).
 	heads := []CheckpointHead{
 		{WriterID: "ingest", Stream: "hot", Counter: "9", Hash: strings.Repeat("b", 64)},
 		{WriterID: "dev-a", Stream: "hot", Counter: "12", Hash: strings.Repeat("c", 64)},
@@ -349,8 +317,6 @@ func TestCheckpointHeadsAreSortedAndStreamed(t *testing.T) {
 	if string(p) != want {
 		t.Fatalf("canonical checkpoint payload:\n got %s\nwant %s", p, want)
 	}
-	// The counter is a JSON string, not a number: a JS JSON.parse of a 2^53+
-	// counter would be silently lossy.
 	if strings.Contains(string(p), `"counter":12`) {
 		t.Fatal("counters must be decimal strings on the wire")
 	}
@@ -381,13 +347,6 @@ func TestCheckpointHeadsAreSortedAndStreamed(t *testing.T) {
 	}
 }
 
-// TestDecodeTruncatesAuthoredAtToMilliseconds covers the half of the rule that
-// matters most: the encoder is not the only writer. Task 10's writer is
-// TypeScript, and a blob from anywhere can carry sub-millisecond precision that
-// a JS Date cannot represent — Go would read 1500ns where JS reads 0ms, the two
-// executors would disagree about whether two ops are an exact tie, and fork
-// resolution would hand the same log to different winners. Enforcing it on the
-// READ side is the only place it holds against a writer we do not control.
 func TestDecodeTruncatesAuthoredAtToMilliseconds(t *testing.T) {
 	for _, tc := range []struct {
 		wire string
@@ -405,7 +364,6 @@ func TestDecodeTruncatesAuthoredAtToMilliseconds(t *testing.T) {
 		}
 		got := ops[0].AuthoredAt
 		if !got.Equal(tc.want) {
-			// tc.want is exactly what Date.parse(wire) yields, to the millisecond.
 			t.Fatalf("decoded %s as %v, want %v — Go and JS must read the same instant",
 				tc.wire, got, tc.want)
 		}
@@ -415,15 +373,7 @@ func TestDecodeTruncatesAuthoredAtToMilliseconds(t *testing.T) {
 	}
 }
 
-// TestGoldenOpBytes pins the literal wire encoding. TestEncodeDecodeRoundTrip
-// cannot: it passes through the same encoder in both directions, so a field
-// rename, an added omitempty, or parent_version moving between present-null and
-// absent would round-trip perfectly and silently break Task 10's mirror.
 func TestGoldenOpBytes(t *testing.T) {
-	// The op set lives in conformance_test.go's goldenOps, because these exact
-	// three ops are also the plaintext of the hot conformance fixture the
-	// TypeScript executor reads. One literal, or the fixture and the golden can
-	// drift apart while both keep passing.
 	got, err := EncodeBlob(goldenOps())
 	if err != nil {
 		t.Fatal(err)
@@ -443,9 +393,6 @@ func TestGoldenOpBytes(t *testing.T) {
 		t.Fatalf("op wire encoding changed — Task 10's TypeScript mirror is written against these bytes:\n got %s\nwant %s", got, want)
 	}
 
-	// entity is omitted entirely on a parent-free op, but parent_version is
-	// PRESENT and null on both: a create and a parent-free op are distinguished
-	// by the type, never by the field's absence.
 	if strings.Count(string(got), `"parent_version"`) != 3 {
 		t.Fatalf("parent_version must be present on every op, null included: %s", got)
 	}
@@ -471,8 +418,6 @@ func TestGoldenRawBodyBytes(t *testing.T) {
 }
 
 func TestValidateRejectsIngestIDOnNonIngestOps(t *testing.T) {
-	// ingest_id is omitempty, so an unchecked value rides into a frozen wire
-	// model and joins to nothing.
 	o := rateOp()
 	o.IngestID = "junk"
 	if err := o.Validate(); err == nil {
@@ -513,31 +458,21 @@ func TestKindOfRejectsNonBlobs(t *testing.T) {
 	}
 }
 
-// TestWireTimeAcceptsExactlyWhatTypeScriptAccepts pins the timestamp grammar
-// against the table of disagreements that motivated it. Every row here was
-// MEASURED against both runtimes, not assumed: time.Time's unmarshaller and
-// JavaScript's Date.parse are lenient in different directions, and a timestamp
-// either executor reads differently is a blob that lands in one log and not the
-// other. Since authored_at is the fork tiebreak, that is two devices
-// materialising different money.
 func TestWireTimeAcceptsExactlyWhatTypeScriptAccepts(t *testing.T) {
-	// Rejected here AND by the TypeScript parseInstantMs. The first two are the
-	// ones stock Go already refused and Date.parse silently ROLLED OVER —
-	// 2026-02-30 became March 2nd, an instant no legal reading produces.
 	for _, s := range []string{
-		"2026-06-05T24:00:00Z",      // hour 24: Date.parse rolls to the next day
-		"2026-02-30T10:00:00Z",      // Date.parse rolls to March 2nd
-		"2026-02-29T00:00:00Z",      // 2026 is not a leap year
-		"2026-13-05T10:00:00Z",      // month 13
-		"2026-06-05T10:60:00Z",      // minute 60
-		"2026-06-05T10:00:60Z",      // second 60 (no leap seconds)
-		"2026-06-05T10:00:00+24:00", // stock Go ACCEPTED this; Date.parse refuses it
-		"2026-06-05T10:00:00+24:60", // stock Go read this as -25h
-		"2026-06-05T10:00:00+00:60", // stock Go read this as -1h
-		"2026-06-05t10:00:00z",      // lowercase: Date.parse accepts, RFC3339 layout does not
-		"2026-06-05 10:00:00Z",      // space separator
-		"2026-06-05T10:00:00",       // no zone
-		"2026-06-05T10:00:00.Z",     // empty fraction
+		"2026-06-05T24:00:00Z",
+		"2026-02-30T10:00:00Z",
+		"2026-02-29T00:00:00Z",
+		"2026-13-05T10:00:00Z",
+		"2026-06-05T10:60:00Z",
+		"2026-06-05T10:00:60Z",
+		"2026-06-05T10:00:00+24:00",
+		"2026-06-05T10:00:00+24:60",
+		"2026-06-05T10:00:00+00:60",
+		"2026-06-05t10:00:00z",
+		"2026-06-05 10:00:00Z",
+		"2026-06-05T10:00:00",
+		"2026-06-05T10:00:00.Z",
 		"2026-06-05",
 		"June 5 2026",
 		"",
@@ -547,7 +482,6 @@ func TestWireTimeAcceptsExactlyWhatTypeScriptAccepts(t *testing.T) {
 		}
 	}
 
-	// Accepted by both, and at the same instant.
 	for _, tc := range []struct {
 		wire string
 		want time.Time
@@ -558,7 +492,7 @@ func TestWireTimeAcceptsExactlyWhatTypeScriptAccepts(t *testing.T) {
 		{"2026-06-05T10:00:00-00:00", time.Date(2026, 6, 5, 10, 0, 0, 0, time.UTC)},
 		{"2026-06-05T10:00:00+23:59", time.Date(2026, 6, 4, 10, 1, 0, 0, time.UTC)},
 		{"2024-02-29T00:00:00Z", time.Date(2024, 2, 29, 0, 0, 0, 0, time.UTC)},
-		{"2000-02-29T00:00:00Z", time.Date(2000, 2, 29, 0, 0, 0, 0, time.UTC)}, // divisible by 400
+		{"2000-02-29T00:00:00Z", time.Date(2000, 2, 29, 0, 0, 0, 0, time.UTC)},
 	} {
 		got, err := parseWireTime(tc.wire)
 		if err != nil {
@@ -571,14 +505,11 @@ func TestWireTimeAcceptsExactlyWhatTypeScriptAccepts(t *testing.T) {
 	}
 }
 
-// TestDecodeRejectsOutOfRangeTimestampsInABlob checks the strictness is wired
-// into the DECODE path and not merely available as a helper.
 func TestDecodeRejectsOutOfRangeTimestampsInABlob(t *testing.T) {
 	for _, wire := range []string{"2026-02-30T10:00:00Z", "2026-06-05T24:00:00Z", "2026-06-05T10:00:00+24:00"} {
 		if _, err := DecodeBlob(timeProbeBlob(wire)); err == nil {
 			t.Errorf("an op carrying authored_at %q must not decode", wire)
 		} else if errors.Is(err, ErrUnknownNewerVersion) {
-			// A malformed timestamp is a set-aside, never the sync hard stop.
 			t.Errorf("authored_at %q must not be reported as an unknown newer version", wire)
 		}
 	}
@@ -594,20 +525,16 @@ func TestDecodeRejectsOutOfRangeTimestampsInABlob(t *testing.T) {
 	}
 }
 
-// TestDecodeRawBodyValidatesItsPayload covers the gap that let a base64url
-// payload cross the executor boundary green: this decoder returned RawBase64 as
-// an unexamined string, so records the TypeScript side refused decoded happily
-// here — and the conformance fixtures only ever called this function.
 func TestDecodeRawBodyValidatesItsPayload(t *testing.T) {
 	body := func(raw string) []byte {
 		return []byte(`{"v":1,"kind":"raw_body","ingest_id":"` + ingestID() +
 			`","received_at":"2026-06-05T10:00:00Z","raw_base64":"` + raw + `"}`)
 	}
 	for _, raw := range []string{
-		"a GK=", // whitespace
-		"aGk",   // unpadded standard base64
-		"aG!=",  // outside the alphabet
-		"-_8=",  // base64URL, which StdEncoding must not accept
+		"a GK=",
+		"aGk",
+		"aG!=",
+		"-_8=",
 		"not b64",
 	} {
 		if _, err := DecodeRawBody(body(raw)); err == nil {
@@ -621,8 +548,6 @@ func TestDecodeRawBodyValidatesItsPayload(t *testing.T) {
 	if r.RawBase64 != "aGk=" {
 		t.Fatalf("raw_base64 round trip lost data: %q", r.RawBase64)
 	}
-	// received_at is required: it used to be absent-tolerant, so a record with no
-	// timestamp at all decoded to the zero time and looked like 0001-01-01.
 	if _, err := DecodeRawBody([]byte(`{"v":1,"kind":"raw_body","ingest_id":"` + ingestID() +
 		`","raw_base64":"aGk="}`)); err == nil {
 		t.Error("a cold record with no received_at must be refused")

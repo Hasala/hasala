@@ -7,7 +7,6 @@ import Testing
 
 @testable import Hasala
 
-/// Activity, the transaction sheet and the review session over the Maya ledger.
 @MainActor
 @Suite("Activity and review models")
 struct ActivityReviewModelTests {
@@ -27,15 +26,12 @@ struct ActivityReviewModelTests {
     #expect(deck.sorted.map(\.merchant) == ["ADCB ATM withdrawal", "Apple.com", "Lulu Hypermarket"])
     #expect(deck.sorted.filter(\.learnedRule).count == 1)
     #expect(deck.sorted.reduce(0) { $0 + $1.counted } == 14_99 + 214_30)
-    // Undo from the toast takes the last sort out of the tally.
     app.toastAction()
     #expect(deck.sorted.count == 2)
     deck.close(goToActivity: true)
     #expect(app.cover == nil && app.tab == .activity)
   }
 
-  /// A To sort row opens the deck at its own card, then reads on down the list; Start opens
-  /// it at the top of the list.
   @Test func aRowStartsTheSessionAtItsCard() {
     let app = AppModel(store: InMemoryLedger())
     ReviewEntry.open(app, at: "lulu")
@@ -43,9 +39,7 @@ struct ActivityReviewModelTests {
     let deck = ReviewViewModel(app: app)
     #expect(deck.cards.map(\.id) == ["lulu", "apple", "transfer-in", "atm", "steam", "dubai-taxi"])
     #expect(deck.position == 1 && deck.total == 6)
-    // The request is used once: the next session starts at the top again.
     #expect(ReviewViewModel(app: app).cards.first?.id == "steam")
-    // A request for another account's model is not taken by this one.
     let other = AppModel(store: InMemoryLedger())
     ReviewEntry.request(other, at: "atm")
     #expect(ReviewViewModel(app: app).cards.first?.id == "steam")
@@ -67,9 +61,6 @@ struct ActivityReviewModelTests {
     #expect(ReviewViewModel(app: app).cards.first?.id == "lulu")
   }
 
-  /// A swipe or a pill asks which category; the bucket's list keeps its own order with the
-  /// suggestion in its place, and so do the projects; the sheet's sort files it and VoiceOver
-  /// hears where the deck stands.
   @Test func aPickKeepsTheSuggestionInPlaceAndAnnouncesTheFiling() {
     let app = AppModel(store: InMemoryLedger())
     ReviewEntry.request(app, at: "lulu")
@@ -90,11 +81,9 @@ struct ActivityReviewModelTests {
     #expect(deck.filedAnnouncement("Need") == "Filed as Need. 2 of 6.")
     #expect(deck.sorted.first?.learnedRule == true)
     #expect(app.toast?.title == "Sorted into Groceries" && app.toast?.actionTitle == "Undo")
-    // A card without a guess has nothing to use.
     #expect(!deck.useSuggestion("transfer-in"))
   }
 
-  /// The last card filed: the announcement says so, and All caught up counts the session.
   @Test func theLastFilingIsAllCaughtUp() {
     let app = AppModel(store: InMemoryLedger())
     let deck = ReviewViewModel(app: app)
@@ -358,8 +347,6 @@ struct ActivityReviewModelTests {
     #expect(app.sheet == .transaction("talabat"))
   }
 
-  /// A category filter: the summary and its rows in one card, exported as shown; clearing it
-  /// goes back to the overview.
   @Test func aCategoryFilterListsItsRowsAndClears() {
     let app = AppModel(store: InMemoryLedger())
     let activity = ActivityViewModel(app: app)
@@ -371,7 +358,6 @@ struct ActivityReviewModelTests {
     #expect(activity.snapshot.summary == nil && activity.snapshot.review != nil)
   }
 
-  /// Coming up pushes the bill inside the tab; "Start review" opens the deck.
   @Test func activityOpensBillsAndTheDeck() {
     let app = AppModel(store: InMemoryLedger())
     let activity = ActivityViewModel(app: app)
@@ -381,8 +367,6 @@ struct ActivityReviewModelTests {
     #expect(app.cover == .review)
   }
 
-  /// Search's "Open in Activity" switches to Activity at its root and leaves the filter for
-  /// that account's Activity screen, once.
   @Test func aRequestFromSearchOpensActivityFiltered() {
     let app = AppModel(store: InMemoryLedger())
     app.router.activity = [.bill("dewa")]
@@ -411,8 +395,6 @@ struct ActivityReviewModelTests {
     #expect(txn.detail?.archived == true)
   }
 
-  /// Choose a category on a row still in review: it carries the suggestion, and Save with
-  /// the rule on sorts it and teaches the rule.
   @Test func choosingACategoryTeachesARule() {
     let app = AppModel(store: InMemoryLedger())
     let txn = TransactionViewModel(app: app, id: "lulu")
@@ -426,8 +408,6 @@ struct ActivityReviewModelTests {
     #expect(app.reviewCount == 5)
   }
 
-  /// Search: the transactions it finds (merchant matches first), the categories by
-  /// name, and the rules whose words hold the query.
   @Test func searchFindsTransactionsCategoriesAndRules() {
     let s = MayaLedger.state
     let now = InMemoryLedger().now
@@ -440,8 +420,6 @@ struct ActivityReviewModelTests {
     #expect(SearchResults("zzzz", s, now: now).isEmpty)
   }
 
-  /// Chips wrap at the width offered, with half a point for the pixel grid, so a row that
-  /// fits exactly never wraps when it is placed.
   @Test func chipsWrapOnlyWhenTheyDoNotFit() {
     let sizes = [CGSize(width: 77.4, height: 40), CGSize(width: 120.3, height: 40), CGSize(width: 90, height: 40)]
     let all = FlowLayout.rows(sizes, width: nil, spacing: 8)
@@ -449,7 +427,6 @@ struct ActivityReviewModelTests {
     let exact = 77.4 + 8 + 120.3
     #expect(FlowLayout.rows(sizes, width: exact - 0.3, spacing: 8).map(\.indices) == [[0, 1], [2]])
     #expect(FlowLayout.rows(sizes, width: 150, spacing: 8).map(\.indices) == [[0], [1], [2]])
-    // A chip wider than the row takes a row of its own.
     #expect(FlowLayout.rows([CGSize(width: 400, height: 40)], width: 300, spacing: 8).count == 1)
   }
 }

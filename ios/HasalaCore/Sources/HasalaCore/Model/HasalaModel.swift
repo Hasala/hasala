@@ -1,15 +1,3 @@
-// HasalaModel (Model/), spec 04 §2.2. Owner: WS-10 / WS-16. The only code
-// importing FoundationModels: `CategoryModel` over the on-device
-// `SystemLanguageModel` (spec 03c §8.6). Linked by the app only; nothing in
-// L0-L4 depends on it.
-//
-// Only `SystemLanguageModel` (on device). The cloud model type the iOS 27 SDK
-// also ships is never referenced (03c §8.6.1).
-//
-// Off by default when unavailable: `availability()` maps the SDK's answer, and
-// the pipeline skips the tier for anything but `.available` (rows stay in
-// review). One session per suggestion keeps calls independent and sequential;
-// the pipeline (`ModelTier.run`) owns budgets, the Latin gate and dedup.
 import CoreCategorize
 import Foundation
 
@@ -19,14 +7,10 @@ import Foundation
   public struct FoundationModelsCategoryModel: CategoryModel {
     public let modelTag: String
 
-    /// `modelTag` defaults to the running OS's `apple-fm/<major>.<minor>`
-    /// (03c §8.6.6): the on-device model ships with the OS, and the tag is
-    /// part of the `fm_cache` key, so an OS update invalidates the cache.
     public init(modelTag: String = HasalaModelFactory.osModelTag()) {
       self.modelTag = modelTag
     }
 
-    /// Greedy, at most 24 tokens (03c §8.6.4).
     static var options: GenerationOptions { .greedy(maximumResponseTokens: 24) }
 
     public func availability() -> ModelAvailability {
@@ -69,9 +53,6 @@ import Foundation
   }
 
   extension GenerationOptions {
-    /// The iOS 27 SDK renamed the label to `samplingMode:` and deprecated
-    /// `sampling:`; the iOS 26 SDK (Xcode 26, Swift 6.3, which CI builds with)
-    /// has only `sampling:`.
     static func greedy(maximumResponseTokens: Int) -> GenerationOptions {
       #if compiler(>=6.4)
         GenerationOptions(samplingMode: .greedy, maximumResponseTokens: maximumResponseTokens)
@@ -98,8 +79,6 @@ import Foundation
   }
 #endif
 
-/// The model when FoundationModels cannot be used: always unavailable, so the
-/// tier is skipped and rows stay in review.
 public struct UnavailableCategoryModel: CategoryModel {
   public let modelTag = "none"
   public init() {}
@@ -108,12 +87,10 @@ public struct UnavailableCategoryModel: CategoryModel {
 }
 
 public enum HasalaModelFactory {
-  /// `apple-fm/<major>.<minor>` of the running OS (03c §8.6.6).
   public static func osModelTag(_ v: OperatingSystemVersion = ProcessInfo.processInfo.operatingSystemVersion) -> String {
     "apple-fm/\(v.majorVersion).\(v.minorVersion)"
   }
 
-  /// The device's model, or the unavailable stand-in.
   public static func make() -> any CategoryModel {
     #if canImport(FoundationModels)
       return FoundationModelsCategoryModel()

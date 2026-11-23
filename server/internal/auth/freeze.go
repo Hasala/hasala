@@ -1,18 +1,5 @@
 package auth
 
-// Freeze and unfreeze (spec 02 §9.8, §10.13; spec 01 §10.18). A freeze only
-// removes access: every session is revoked, and sign-ins mint restricted
-// sessions until a full sign-in proves a factor older than the event that
-// triggered the freeze. Four ways in:
-//   - the freeze link (#64) from a new-sign-in or recovery-used alert, dated
-//     to that event;
-//   - the in-app lockdown (#65), step-up account.freeze, dated now;
-//   - the device freeze (#77, #78, D42): an enrolled iPhone with no session
-//     signs DeviceFreezeMessage with its DAK, dated back to when something
-//     else signed it out;
-//   - the operator (OperatorFreeze), which outranks a holder's freeze.
-// Only the operator lifts an operator freeze (review 2 F-03).
-
 import (
 	"context"
 	"crypto/sha256"
@@ -31,10 +18,8 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// DeviceFreezeTTL is a device-freeze nonce's lifetime.
 const DeviceFreezeTTL = 5 * time.Minute
 
-// deviceFreezeBackdate bounds how far a device freeze is dated back.
 const deviceFreezeBackdate = 7 * 24 * time.Hour
 
 var stepUpSignOutKinds = []string{
@@ -48,18 +33,11 @@ var stepUpSignOutKinds = []string{
 	EventPasskeyRemoved,
 }
 
-// Who froze an account.
 const (
 	FrozenByHolder   = "holder"
 	FrozenByOperator = "operator"
 )
 
-// freezeTx freezes the account with trigger time t: frozen_at is the first
-// freeze's time, freeze_trigger_at the earliest trigger; a holder's freeze on
-// an operator-frozen account is remembered in holder_also_froze and changes
-// nothing else about who may lift it. Every session except keep is revoked
-// and account_frozen recorded (with its alert). It answers the revoked
-// sessions' APNs tokens, to be woken after the commit.
 func freezeTx(ctx context.Context, tx pgx.Tx, m *Mailer, userID uuid.UUID, by string, trigger, now time.Time, keep [][]byte, writer string) ([]pushv2.Target, error) {
 	if _, err := readAccount(ctx, tx, userID, true); err != nil {
 		return nil, err
@@ -114,9 +92,6 @@ func (a *Accounts) FreezeTokenLive(ctx context.Context, token string) (bool, err
 	return live, err
 }
 
-// FreezeByLink is #64. An invalid, used or expired token changes nothing (and
-// wakes nobody), and the route answers it as it answers a freeze; a freeze
-// wakes every device of the account (spec 02 §12.5).
 func (a *Accounts) FreezeByLink(ctx context.Context, token string) (Wake, error) {
 	if !WellFormedFreezeToken(token) {
 		return Wake{}, nil
@@ -166,9 +141,6 @@ func (a *Accounts) FreezeByLink(ctx context.Context, token string) (Wake, error)
 	return wakeFor(userID, "", revoked), nil
 }
 
-// FreezeNow is #65: step-up account.freeze, dated now, revoking every session
-// including this one. The caller's own session is revoked like the others
-// ('others'), but its device is not woken: it asked.
 func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepUpObject) (Wake, error) {
 	g, err := guardFor(session, keyproto.ActionAccountFreeze, su)
 	if err != nil {
@@ -208,11 +180,6 @@ func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepU
 	return wakeFor(session.UserID, session.WriterID, revoked), nil
 }
 
-// Unfreeze is #66: refused while frozen_by = 'operator' (nothing consumed),
-// then step-up account.unfreeze whose factor predates freeze_trigger_at: the
-// asserting passkey's created_at, or (device) the writer's registered_at and
-// the password's password_set_at. The session stops being restricted and every
-// other session is revoked.
 func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUpObject) (Wake, error) {
 	st, err := readAccount(ctx, a.Pool, session.UserID, false)
 	if err != nil {
@@ -333,8 +300,6 @@ func HolderCanLift(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, wr
 	return devicePredatesFreeze(ctx, pool, st, writerID)
 }
 
-// DeviceFreezeChallenge is #77: a nonce for any well-formed writer id, with no
-// account lookup, so the answer says nothing about writers.
 func (a *Accounts) DeviceFreezeChallenge(ctx context.Context, writerID string) ([]byte, time.Time, error) {
 	if !keyproto.ValidWriterID(writerID) {
 		return nil, time.Time{}, ErrBadWriterID
@@ -353,11 +318,6 @@ func (a *Accounts) DeviceFreezeChallenge(ctx context.Context, writerID string) (
 	return nonce, exp, nil
 }
 
-// DeviceFreeze is #78: the nonce is spent by the attempt in its own statement;
-// exactly one live writer with that id must have signed DeviceFreezeMessage
-// with its DAK. The freeze is dated back to the writer's latest session
-// revocation caused by something else, when that is within seven days. Every
-// failure is ErrFreezeRefused.
 func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig []byte, admit func(uuid.UUID) bool) (Wake, error) {
 	if !keyproto.ValidWriterID(writerID) || len(nonce) != keyproto.NonceSize {
 		return Wake{}, fmt.Errorf("%w: malformed", ErrFreezeRefused)
@@ -441,16 +401,10 @@ func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig
 	return wakeFor(c.user, writerID, revoked), nil
 }
 
-// OperatorFreeze is the console's freeze (C36, O-18): spec 01 §10.18's freeze
-// with trigger now and frozen_by 'operator' (a holder's freeze in place is
-// kept in holder_also_froze), every session revoked, account_frozen recorded
-// and its alert queued. It needs no key, no mail token and no network.
 func OperatorFreeze(ctx context.Context, tx pgx.Tx, userID uuid.UUID, now time.Time, m *Mailer) error {
 	if err := lockUser(ctx, tx, userID); err != nil {
 		return err
 	}
-	// The console and the CLI hold no APNs key: the devices learn of the
-	// freeze at their next request (401), and the alert email goes out.
 	_, err := freezeTx(ctx, tx, m, userID, FrozenByOperator, now, now, nil, "")
 	return err
 }
@@ -465,25 +419,15 @@ func clearFreezeTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, now time.Ti
 	return err
 }
 
-// UnfreezeScope is who an operator unfreeze may lift.
 type UnfreezeScope int
 
-// Scopes.
 const (
-	// ScopeOperatorOnly is the console's C37: it lifts only an operator
-	// freeze, and hands one that also carries a holder's freeze back to the
-	// holder instead of lifting it.
 	ScopeOperatorOnly UnfreezeScope = iota
-	// ScopeAny is the CLI's `account unfreeze`, after the out-of-band check:
-	// it lifts any freeze.
 	ScopeAny
 )
 
-// ErrHolderFreeze is C37 meeting a holder's freeze, which it never lifts.
 var ErrHolderFreeze = errors.New("auth: the holder froze this account; the console does not lift it")
 
-// OperatorUnfreeze is the operator's unfreeze. It answers whether the account
-// is unfrozen afterwards (false when C37 handed it back to the holder).
 func OperatorUnfreeze(ctx context.Context, tx pgx.Tx, userID uuid.UUID, scope UnfreezeScope, now time.Time, m *Mailer) (bool, error) {
 	st, err := readAccount(ctx, tx, userID, true)
 	if err != nil {

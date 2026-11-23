@@ -12,8 +12,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// registerPasskey runs register/begin and finish for a signup and answers the
-// account.
 func (f *acctFixture) registerPasskey(signupID string) (Registered, *authtest.Authenticator, error) {
 	f.t.Helper()
 	id, opts, _, err := f.passkeys.BeginRegistration(bgctx, signupID, authtest.AuthorityPub(f.t))
@@ -29,7 +27,6 @@ func TestAProvenSignupSendsNoCodeAndCreatesTheAccount(t *testing.T) {
 	t.Parallel()
 	f := newAcctFixture(t)
 	addr := f.newAddr()
-	// A waitlist entry for the address, as 07's approval leaves it.
 	if _, err := f.pool.Exec(bgctx,
 		`INSERT INTO waitlist_entries (email_tag, email_norm, state, source, created_at, updated_at, confirmed_at, invited_at)
 		 VALUES ($1, $2, 'invited', 'web', now(), now(), now(), now())`, f.keys.EmailTag(addr), addr); err != nil {
@@ -66,7 +63,6 @@ func TestAProvenSignupSendsNoCodeAndCreatesTheAccount(t *testing.T) {
 	if n := f.count(`SELECT count(*) FROM invite_codes WHERE state = 'redeemed' AND redeemed_by = $1`, r.UserID); n != 1 {
 		t.Fatal("the invite was not redeemed by the account")
 	}
-	// 07's join hook: the entry joined and forgot its address.
 	var (
 		state string
 		norm  *string
@@ -118,7 +114,6 @@ func TestACodeSignupVerifiesTheAddressWithAnEmailedCode(t *testing.T) {
 	if _, _, err := f.registerPasskey(s.SignupID); err != nil {
 		t.Fatal(err)
 	}
-	// The code row stores a MAC, never the code.
 	var mac []byte
 	if err := f.pool.QueryRow(bgctx, `SELECT code_mac FROM email_codes`).Scan(&mac); err != nil {
 		t.Fatal(err)
@@ -236,15 +231,11 @@ func TestCodeSendsAreCountedPerAddressAndHour(t *testing.T) {
 	if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: addr, DisplayName: "Maya"}); !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("the sixth code in an hour: %v", err)
 	}
-	// Another address is unaffected.
 	if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: f.newAddr(), DisplayName: "Maya"}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// An addressed invite opens only its address, with the same bytes as an
-// unknown code (07 Q6); a wrong link key is not an error, it only leaves the
-// address unproven.
 func TestAnAddressedInviteIsBoundToItsAddress(t *testing.T) {
 	t.Parallel()
 	f := newAcctFixture(t)
@@ -289,8 +280,6 @@ func TestOnlyAnActiveUnexpiredInviteIsRedeemable(t *testing.T) {
 	}
 }
 
-// Two signups begun on one invite: the redemption in the account transaction
-// is the gate, and only the first account exists.
 func TestTwoSignupsOnOneInviteYieldOneAccount(t *testing.T) {
 	t.Parallel()
 	f := newAcctFixture(t)
@@ -317,9 +306,6 @@ func TestTwoSignupsOnOneInviteYieldOneAccount(t *testing.T) {
 	}
 }
 
-// signup/begin answers the same for an address that already has an account,
-// and emails a notice in place of a code; a proven address in use is the one
-// distinguishable case (409 email_in_use, only to the invite's holder).
 func TestAnAddressInUseGetsTheSameAnswerAndANotice(t *testing.T) {
 	t.Parallel()
 	f := newAcctFixture(t)
@@ -414,9 +400,6 @@ func TestDisplayNameRule(t *testing.T) {
 	}
 }
 
-// C1-P: one request creates the account with its keys, its first writer, its
-// password and a session bound to that writer; the bootstrap is bound to the
-// signup's reserved id, address, SHA256(S) and nonce.
 func TestPasswordSignupIsOneAtomicRequest(t *testing.T) {
 	t.Parallel()
 	f := newAcctFixture(t)
@@ -442,7 +425,6 @@ func TestPasswordSignupIsOneAtomicRequest(t *testing.T) {
 		t.Fatal("keys or the first writer are missing")
 	}
 
-	// The checks, each against a fresh proven signup.
 	for name, mutate := range map[string]func(*Bootstrap, *[]byte){
 		"auth_hash is not SHA256(S)": func(b *Bootstrap, s *[]byte) { (*s)[0] ^= 1 },
 		"another address":            func(b *Bootstrap, _ *[]byte) { h := keyproto.EmailHash("x@example.com"); b.EmailHash = h[:] },
@@ -460,7 +442,6 @@ func TestPasswordSignupIsOneAtomicRequest(t *testing.T) {
 		if _, err := f.acct.PasswordSignup(bgctx, s.SignupID, v, b); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
-		// The attempt spent the signup.
 		if _, err := f.acct.PasswordSignup(bgctx, s.SignupID, mm.s, f.passwordBootstrap(mm, s)); !errors.Is(err, ErrCodeRejected) {
 			t.Errorf("%s: the signup was not spent: %v", name, err)
 		}
@@ -471,9 +452,6 @@ func TestPasswordSignupIsOneAtomicRequest(t *testing.T) {
 	_ = uuid.Nil
 }
 
-// #45 with an invite another signup already redeemed answers code_rejected
-// (spec 02 §10.7.3 step 1), before the PBKDF2 it would waste, and spends the
-// signup.
 func TestAPasswordSignupOnASpentInviteIsCodeRejected(t *testing.T) {
 	t.Parallel()
 	f := newAcctFixture(t)

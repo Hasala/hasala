@@ -1,28 +1,4 @@
 ---
-/**
- * hasala.app/i/<code>: the invite page ("Invite · hasala.app/i/<code>").
- * One static page serves every code (public/_redirects rewrites /i/* here);
- * a few lines of script read the code from the address bar. On an iPhone
- * with Hasala installed the link opens the app instead (universal link).
- *
- * The invite email links to /i/<CODE>#<LINK_KEY>. The page may show the
- * code, never calls the API and sends no referrer. It runs only its own
- * code: Cloudflare's edge adds its Web Analytics beacon to every HTML page,
- * and Web Analytics records paths, so this page's CSP header
- * (public/_headers) does not admit it, and the router always loads the page
- * in full (src/scripts/router.ts) so that header applies. Once read, the
- * code and link key leave the address bar and the history entry. It shows
- * the external-TestFlight steps (testers are invited by email or link, need
- * no App Store Connect account and never see each other). The page never
- * calls the API, so it cannot know an invite's expiry and shows no date.
- * The older /i#<CODE> form works too.
- *
- * Without a code (the nav's "Have a code?", a reload after the code left the
- * address bar, no JavaScript) the page is "Have an invite code?": where the
- * code is, the same steps with typing the code in the app, and a way to
- * request an invite. .for-code and .no-code hold each view's parts;
- * html.has-code (INVITE_CODE in src/lib/inline-scripts.mjs) picks one.
- */
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
 import AppIcon from '../components/brand/AppIcon.astro';
@@ -30,7 +6,6 @@ import HomePhone from '../components/HomePhone.astro';
 import { SITE } from '../data/site';
 import { INVITE_CODE } from '../lib/inline-scripts.mjs';
 
-// Opens the TestFlight app on an iPhone (Apple's own address); the invite itself arrives by Apple's email.
 const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
 ---
 
@@ -151,8 +126,6 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
   import { onPage, pageTimer } from '../scripts/page';
   import { inviteCopy } from '../lib/invite-copy';
 
-  // The code: 24 base32 characters, from /i/<code> or, in the
-  // older form, from /i#<code>. Hyphens and spaces are ignored, as in the app.
   const norm = (value: string): string => value.toUpperCase().replaceAll(/[\s-]/gu, '');
   const isCode = (value: string): boolean => /^[A-Z2-7]{24}$/u.test(value);
   const LINK_KEY = /^[A-Za-z0-9_-]{43}$/u;
@@ -263,7 +236,6 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     }
   };
 
-  // Through onPage, like every page script, though the router always loads this page in full.
   onPage((signal) => {
     if (!document.querySelector('[data-code]')) {
       return;
@@ -280,15 +252,12 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     );
     const fragment = location.hash.slice(1);
     const fromPath = pathCode();
-    // The code and the link key leave the address bar and the history entry
-    // (the router's state stays, so Back and Forward still work).
     if (location.pathname !== '/i' || location.search || location.hash) {
       history.replaceState(history.state, '', '/i');
     }
     let code = fromPath;
     let linkKey = '';
     if (isCode(code)) {
-      // The link key proves the address; only the email carries it.
       if (LINK_KEY.test(fragment)) {
         linkKey = fragment;
       }
@@ -312,7 +281,6 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     const idle = linkKey ? 'Copy invite link' : 'Copy code';
     wireCopy(copied, idle, signal);
 
-    // A QR code of this link, link key included, for people reading on a computer.
     if (matchMedia('(min-width: 1024px) and (pointer: fine)').matches) {
       void drawQr(link, signal);
     }
@@ -343,7 +311,6 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
   .is-wide {
     display: none;
   }
-  /* One view at a time: the invited page, or "Have an invite code?". */
   :global(html:not(.has-code)) .for-code,
   :global(html.has-code) .no-code {
     display: none !important;
@@ -638,7 +605,6 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     .isteps__btn[data-copy-code]:not([hidden]) {
       grid-column: auto;
     }
-    /* Shown only once the script has a code to copy. */
     .isteps__btn[hidden] {
       display: none;
     }
@@ -665,7 +631,6 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
       position: absolute;
       inset: 0 auto auto 0;
       width: 418px;
-      /* The phone fades into the page wash at the bottom, as in Paper. */
       -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 92%);
       mask-image: linear-gradient(to bottom, #000 62%, transparent 92%);
     }
@@ -713,9 +678,6 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     }
   }
 
-  /* The hero's coin drops into the tile (keyframes in global.css); on large
-     screens the "place is saved" pill settles instead. Once per page load:
-     not after a client-side navigation (html.routed, scripts/router.ts). */
   @media (prefers-reduced-motion: no-preference) {
     :global(html:not(.routed)) .invite__tile :global(.ai-tile) {
       animation: hero-fade 160ms linear both;

@@ -7,9 +7,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/auth"
 )
 
-// routes_signup.go: signup begin and verify and password signup (spec 02
-// §10.7, routes #43–#45). Owner: WS-3. Mounted only with the account
-// ceremonies enabled (EnableAccounts): they need the server's key files.
 func (s *Server) mountSignup(mux *http.ServeMux) {
 	if s.Accounts == nil {
 		return
@@ -19,21 +16,19 @@ func (s *Server) mountSignup(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/password/register", s.limited(s.handlePasswordRegister, s.PasskeyPerIP, s.PasskeyGlobal))
 }
 
-// SignupBeginRequest is #43's body.
 type SignupBeginRequest struct {
 	InviteCode    string `json:"invite_code"`
 	Email         string `json:"email"`
 	DisplayName   string `json:"display_name"`
-	InviteLinkKey string `json:"invite_link_key,omitempty"` // 43 b64url, only from the invite link's fragment
+	InviteLinkKey string `json:"invite_link_key,omitempty"`
 }
 
-// SignupBeginResponse is #43's answer.
 type SignupBeginResponse struct {
 	SignupID    string    `json:"signup_id"`
 	UserID      string    `json:"user_id"`
 	EmailProven bool      `json:"email_proven"`
-	Salt        string    `json:"salt"`  // b64
-	Nonce       string    `json:"nonce"` // b64
+	Salt        string    `json:"salt"`
+	Nonce       string    `json:"nonce"`
 	ExpiresAt   time.Time `json:"expires_at"`
 }
 
@@ -52,7 +47,6 @@ func (s *Server) handleSignupBegin(w http.ResponseWriter, r *http.Request) {
 		EmailProven: out.EmailProven, Salt: b64(out.Salt), Nonce: b64(out.Nonce), ExpiresAt: out.ExpiresAt.UTC()})
 }
 
-// SignupVerifyRequest is #44's body.
 type SignupVerifyRequest struct {
 	SignupID string `json:"signup_id"`
 	Code     string `json:"code"`
@@ -70,23 +64,18 @@ func (s *Server) handleSignupVerify(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// PasswordRegisterRequest is #45's body: the signup, S, and the §10.1 fields
-// with auth_kind 2, auth_hash = SHA256(S) and nonce = the signup nonce.
 type PasswordRegisterRequest struct {
 	SignupID  string           `json:"signup_id"`
-	Verifier  string           `json:"verifier"` // b64, 32 bytes
+	Verifier  string           `json:"verifier"`
 	Bootstrap BootstrapRequest `json:"bootstrap"`
 }
 
-// SessionMintResponse is #4's and #54's answer.
 type SessionMintResponse struct {
 	SessionToken string    `json:"session_token"`
 	UserID       string    `json:"user_id"`
 	ExpiresAt    time.Time `json:"expires_at"`
 }
 
-// WriterSessionResponse is #8's and #45's answer: the session is bound to the
-// writer the same request registered.
 type WriterSessionResponse struct {
 	SessionToken string    `json:"session_token"`
 	UserID       string    `json:"user_id"`
@@ -94,7 +83,6 @@ type WriterSessionResponse struct {
 	WriterID     string    `json:"writer_id"`
 }
 
-// SignInResponse is #6's and #47's answer.
 type SignInResponse struct {
 	SessionToken string    `json:"session_token"`
 	UserID       string    `json:"user_id"`

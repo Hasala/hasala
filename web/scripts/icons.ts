@@ -1,20 +1,3 @@
-/**
- * Builds the web icons from the Paper board "Favicon & touch icon usage"
- * (page 13) and the brand files in src/assets/brand. Run with `bun run icons`
- * after the mark changes; the outputs are committed to public/.
- *
- *   favicon.svg            light tile, and the ink tile in dark browser chrome
- *   favicon.ico            hand-tuned 16 and 32 drawings + 48 from the SVG
- *   apple-touch-icon.png   180, downscaled hasala-icon-1024-light.png
- *   icon-192/512.png       web manifest, purpose "any"
- *   icon-maskable-512.png  mark scaled to 0.86 inside the safe zone
- *   mask-icon.svg          one colour, slot navy
- *   brand/hasala-wordmark.svg  the lockup with coordinates rounded (smaller)
- *   brand/hasala-mark-email.png  the mark in the transactional emails' header
- *                          (Paper P2 row 14.7), 120 x 72 for 40 x 24 at 3x;
- *                          a PNG because Gmail and Outlook do not show SVG
- *   og-image.png           re-encoded smaller, same pixels
- */
 import sharp from 'sharp';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 
@@ -34,7 +17,6 @@ const markSvg = (plate: string): string => `
     <line x1="442.1" y1="552.9" x2="581.9" y2="552.9" stroke="#8A5A05" stroke-width="25.8" stroke-linecap="round"/>
   </g>`;
 
-// 48 px and up. The plate is dropped (as on the board) so the slot reads at tab size.
 const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
 <defs><linearGradient id="t" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#5479FF"/><stop offset="1" stop-color="#2B4AD2"/></linearGradient><linearGradient id="d" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2C2C30"/><stop offset="1" stop-color="#121214"/></linearGradient>${COIN}<clipPath id="k"><rect x="-200" y="-200" width="1424" height="832"/></clipPath></defs>
 <style>.ink{display:none}@media (prefers-color-scheme:dark){.ink{display:inline}.blue{display:none}}</style>
@@ -43,7 +25,6 @@ const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 10
 <g transform="translate(512 512) scale(1.1) translate(-512 -512)">${markSvg('none').replace('<rect x="212" y="576" width="600" height="112" rx="56" fill="none"/>', '')}</g>
 </svg>`;
 
-// Hand-tuned 32 and 16 drawings from the board.
 const TILE32 =
   '<linearGradient id="t" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#5479FF"/><stop offset="1" stop-color="#2B4AD2"/></linearGradient>';
 const svg32 = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><defs>${TILE32}<clipPath id="k"><rect width="32" height="20.5"/></clipPath></defs><rect width="32" height="32" rx="7.5" fill="url(#t)"/><rect x="5" y="18.5" width="22" height="4.5" rx="2.25" fill="#142659"/><g clip-path="url(#k)"><circle cx="16" cy="16.6" r="7.6" fill="#F1C66E"/><path d="M13 14.6h6M13 17.4h6" stroke="#8A5A05" stroke-width="1.3" stroke-linecap="round"/></g></svg>`;
@@ -53,8 +34,6 @@ const maskableSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height=
 
 const maskIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="204 328 616 368"><defs><clipPath id="k"><rect x="-200" y="-200" width="1424" height="784"/></clipPath><mask id="m"><rect x="204" y="328" width="616" height="368" fill="#fff"/><line x1="442.1" y1="486.7" x2="581.9" y2="486.7" stroke="#000" stroke-width="25.8" stroke-linecap="round"/><line x1="442.1" y1="552.9" x2="581.9" y2="552.9" stroke="#000" stroke-width="25.8" stroke-linecap="round"/></mask></defs><g fill="#142659" mask="url(#m)"><rect x="244" y="600" width="536" height="64" rx="32"/><circle cx="512" cy="519.8" r="184" clip-path="url(#k)"/></g></svg>`;
 
-// The email header's mark, as drawn on the P2 row 14.7 email boards: the
-// plate, the slot with its highlight, and the coin with its inner ring.
 const emailMarkSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="72" viewBox="204 328 616 368"><defs>${COIN}<clipPath id="k"><rect x="-200" y="-200" width="1424" height="832"/></clipPath></defs>
   <rect x="212" y="576" width="600" height="112" rx="56" fill="#1426591F"/>
   <rect x="244" y="600" width="536" height="64" rx="32" fill="#142659"/>
@@ -73,7 +52,6 @@ const png = (svg: string, size: number): Promise<Buffer<ArrayBuffer>> =>
     .png()
     .toBuffer();
 
-/** An ICO file whose entries are PNGs (supported everywhere that matters). */
 function ico(images: { size: number; data: Buffer }[]): Buffer {
   const header = Buffer.alloc(6);
   header.writeUInt16LE(0, 0);
@@ -96,7 +74,6 @@ function ico(images: { size: number; data: Buffer }[]): Buffer {
   return Buffer.concat([header, dir, ...images.map((image) => image.data)]);
 }
 
-/** Round every number in path data and attributes to two decimals. */
 const roundSvg = (svg: string): string =>
   svg.replaceAll(/-?\d+\.\d{3,}/gu, (digits) => String(Math.round(Number(digits) * 100) / 100));
 

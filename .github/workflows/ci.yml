@@ -1,46 +1,3 @@
-# CI for the public tree. It runs WITHOUT the private fixtures
-# (HASALA_PRIVATE_FIXTURES is never set here and no private repository is
-# fetched), so the real-corpus tests skip by name and scripts/check.sh says how
-# many; that is expected. See CLAUDE.md, "Build and test".
-#
-# The required jobs' ids are also their check names (no `name:` override, no
-# matrix): required status checks match `ci-ok` (and, until the ruleset drops
-# them, `gate`, `vuln` and `secrets`) by name, so renaming a job silently drops
-# it from the requirement. `swift` (the Swift
-# client core on a Mac), `ios-tools` (HasalaKit, the iOS
-# project, token and release-script checks on a Mac), `web` (the website) and
-# `nixos-vm` (the QA module booted in a NixOS VM) are not required checks.
-#
-# Path-aware, failing closed: the first job, `changes`, lists the files the
-# pull request (or the push to main) changes, and `gate`, `vuln`, `swift`,
-# `ios-tools`, `web` and `nixos-vm` are skipped only when
-# every one of them is on that job's list of paths it does not read. Any other
-# path runs the job, a path nobody anticipated included. `secrets` always runs.
-# Jobs are skipped with a job-level `if:`, never a workflow-level `paths:`
-# filter: a skipped job still reports its check, as "skipped", which a required
-# check counts as passing, whereas a workflow that never starts leaves its
-# required checks pending forever. If `changes` does not succeed, every job
-# runs. A push to main is path-aware the same way, against the commit main was
-# at before the push: the pull request already ran every job on exactly what
-# merged (main requires a branch to be up to date), so a push that does not
-# touch a job's paths skips it. A manual run (workflow_dispatch) runs every
-# job. A newer push to main cancels an older push's Mac jobs (see
-# "concurrency" below). The weekly govulncheck of main is a separate workflow,
-# vuln-weekly.yml, so that its run never records checks on main's head.
-#
-# Every action is pinned to a full commit SHA, with its release in a comment.
-#
-# Caches (actions/cache): Go's module and build caches in `gate` (`vuln` reads
-# them), Bun's package cache in `gate` and `web`, and SwiftPM's repository
-# cache in `swift`. Each is keyed on the files that pin its
-# contents (flake.lock pins Go; go.sum, bun.lock and Package.resolved the
-# dependencies) and saved only when that exact key was missing. Scoping is
-# what keeps a cache trustworthy: a pull request's run saves only into its own
-# scope and reads main's, never another pull request's, and main reads only its
-# own. Go's build cache is content-addressed (an entry is reused only for
-# byte-identical inputs and toolchain); SwiftPM checks out the revision
-# Package.resolved pins, from the cached clone or the network alike; and
-# check.sh still runs every Go test with -count=1, so no test result is cached.
 name: CI
 
 on:
@@ -54,15 +11,6 @@ on:
 permissions:
   contents: read
 
-# One run per pull request (a new push cancels the superseded run); every other
-# run (a push to main, a manual run) is its own group, so no run is cancelled or
-# dropped as a whole. The Mac jobs (`swift` and `ios-tools`) also have a job-level
-# group: on a push to main it is one group per job with cancel-in-progress, so a
-# newer push to main cancels an older push's Mac job that is still queued or
-# running. The newest push to main still
-# runs its Mac jobs (some pull requests merge before theirs finish); a push
-# that skips a Mac job by path leaves the older push's job running. Any other
-# run's job-level group is its own run id, so it changes nothing there.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -261,8 +209,6 @@ jobs:
           printf '%s\n' "${checks[@]}"
           nix build --no-link --print-build-logs "${checks[@]/#/.#checks.x86_64-linux.}"
 
-  # A skipped required job reports "skipped", which passes. Each job below is
-  # skipped only when `changes` succeeded and said "false".
   gate:
     needs: [changes, nix-cache]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.gate != 'false') }}
@@ -274,9 +220,6 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
-      # No separate real-mail fence step here: `secrets` runs it alone on every
-      # push and pull request, without waiting for `changes` or a toolchain, and
-      # check.sh below runs it again as its own first step.
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         with:
           diagnostic-endpoint: ""
@@ -299,9 +242,6 @@ jobs:
       - name: Install the assist worker's dependencies
         run: nix develop --command bash -c 'cd infra/assist && bun install --frozen-lockfile'
 
-      # Modules and compiled packages of server/ and server/oracle/ (see
-      # "Caches" above): without it check.sh compiles every dependency first.
-      # Only this job saves it; `vuln` reads it.
       - name: Go module and build caches
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -311,16 +251,9 @@ jobs:
           key: go-gate-${{ runner.os }}-${{ hashFiles('flake.lock', 'server/go.sum', 'server/oracle/go.sum') }}
           restore-keys: go-gate-${{ runner.os }}-
 
-      # The throwaway Postgres runs as the (unprivileged) runner user, inside the
-      # devShell's TMPDIR, on a unix socket only: no service container, no TCP.
       - name: scripts/check.sh
         run: nix develop --command scripts/check.sh
 
-  # Spec 05 §14 AT-V*: services.hasala booted in a NixOS VM (own Postgres,
-  # migrations, the API on loopback, nothing on 0.0.0.0, the console's kernel
-  # rule and header refusals, encrypted backups). Informational: it is not a
-  # required check, so a slow or flaky runner never blocks a merge. Skipped,
-  # like the jobs above, only when `changes` succeeded and said "false".
   selftest:
     needs: [changes, nix-cache]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.gate != 'false') }}
@@ -370,7 +303,6 @@ jobs:
       - name: qa-vm
         run: nix build --no-link --print-build-logs .#checks.x86_64-linux.qa-vm
 
-  # vuln-weekly.yml runs the same scan on main every week.
   vuln:
     needs: [changes, nix-cache]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.gate != 'false') }}
@@ -389,9 +321,6 @@ jobs:
           primary-key: nix-${{ runner.os }}-devshell-${{ hashFiles('flake.lock', 'flake.nix') }}
           save: false
 
-      # The modules govulncheck loads, and their compiled export data: `gate`'s
-      # cache (see "Caches" above), read only. Saving here would race `gate`
-      # for the key with a smaller cache.
       - name: Go module and build caches (gate's, read only)
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -401,34 +330,21 @@ jobs:
           key: go-gate-${{ runner.os }}-${{ hashFiles('flake.lock', 'server/go.sum', 'server/oracle/go.sum') }}
           restore-keys: go-gate-${{ runner.os }}-
 
-      # govulncheck exits non-zero when any vulnerability is reachable from the
-      # code (symbol-level, its default); imported-but-unreachable ones are
-      # reported without failing.
       - name: govulncheck ./... (server)
         run: nix develop --command bash -c 'cd server && govulncheck ./...'
 
-      # server/oracle is a separate Go module (spec 02 §4.3) that the scan above
-      # never reaches; excelize and modernc.org/sqlite live only there.
       - name: govulncheck ./... (server/oracle)
         run: nix develop --command bash -c 'cd server/oracle && govulncheck ./...'
 
-  # Runs on every pull request and push, whatever changed: it does not wait
-  # for `changes`.
   secrets:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Every commit, not just the tip: a secret added and then deleted in a
-          # later commit is still published.
           fetch-depth: 0
           persist-credentials: false
 
-      # `gate` runs the fence and the HasalaCore lints too, but `gate` is
-      # skipped when nothing it reads changed (an ios/-only pull request, for
-      # one), and `swift` is not a required check; here they run on every pull
-      # request. Bash, grep and awk only: no toolchain, a few seconds.
       - name: Real-mail fence
         run: scripts/check.sh --fence-only
 
@@ -441,18 +357,6 @@ jobs:
         with:
           diagnostic-endpoint: ""
 
-      # gitleaks from the flake's pinned nixpkgs (flake.lock), so its version
-      # moves only with the lock. --redact: this log is public.
-      # --log-opts=HEAD: every commit reachable from the checked-out commit (on
-      # a pull request, the merge of the branch into main; on a push, main),
-      # judged by that commit's .gitleaks.toml. Without it gitleaks runs
-      # `git log --all`, and fetch-depth 0 fetches every branch, so one open
-      # branch's allowlisted test vectors failed every other run against a
-      # .gitleaks.toml that had not seen them yet. Every branch with a pull
-      # request is still scanned in full by that pull request's run; a branch
-      # with none is not scanned here (GitHub secret scanning still covers
-      # provider patterns). Keep the revision one that cannot fail to resolve:
-      # gitleaks 8.30.1 exits 0 with "0 commits scanned" when git log fails.
       - name: gitleaks
         run: >-
           nix shell --inputs-from . nixpkgs#gitleaks --command
@@ -469,15 +373,9 @@ jobs:
           nix shell --inputs-from . nixpkgs#bun nixpkgs#typescript-go --command
           bash -c '(cd infra/assist && bun install --frozen-lockfile) && tsgo --noEmit -p scripts'
 
-  # The iOS checks that need neither the app build nor a simulator: the
-  # HasalaKit package tests (macOS, the newest Xcode), token generator
-  # freshness, the project against ios/project.yml, the release-script tests
-  # (with the system's tools, and again inside the Nix devShell, where GNU
-  # coreutils come first on PATH, when ios/scripts/ or the flake changed) and
-  # shellcheck. Nothing is signed for distribution here (the script tests
-  # sign a synthetic app ad hoc) and no Apple credential exists in CI; archives,
-  # signing and uploads happen only on the owner's Mac (ios/scripts/archive.sh,
-  # ios/scripts/upload.sh). Not a required check.
+      - name: Comment lint
+        run: nix shell --inputs-from . nixpkgs#bun --command scripts/check-comments.sh
+
   ios-tools:
     needs: [changes, nix-cache-mac]
     if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
@@ -514,10 +412,6 @@ jobs:
             exit 1
           fi
 
-      # XcodeGen 2.46.0 from the flake (packages.aarch64-darwin.xcodegen, pinned
-      # by hash). A missing or different XcodeGen fails the step
-      # (generate-project.sh exits 2). The darwin devShell is built too, for the
-      # release-script tests below.
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         with:
           diagnostic-endpoint: ""
@@ -532,14 +426,9 @@ jobs:
           xcodegen="$(nix build .#xcodegen --no-link --print-out-paths)/bin/xcodegen"
           XCODEGEN="$xcodegen" ios/scripts/generate-project.sh --check
 
-      # Offline: fake keys, a stub xcodebuild and a stub xcrun (altool never
-      # runs), synthetic .ipa files, and a temporary build directory.
       - name: Release script tests (build numbers, keys, prechecks, inspection; offline)
         run: ios/scripts/tests/run.sh
 
-      # The owner's shell is the devShell (.envrc: use flake), where GNU stat and
-      # date come first on PATH; the scripts must work there too. Only when
-      # `changes` says ios/scripts/ or the flake changed, or did not succeed.
       - name: Release script tests in the Nix devShell (GNU coreutils first)
         if: ${{ needs.changes.result != 'success' || needs.changes.outputs.ios_scripts != 'false' }}
         run: ios/scripts/tests/devshell_test.sh
@@ -549,14 +438,6 @@ jobs:
           nix shell --inputs-from . nixpkgs#shellcheck --command
           shellcheck -S warning ios/scripts/*.sh ios/scripts/tests/*.sh
 
-  # HasalaCore (ios/HasalaCore): every module builds for macOS and iOS and
-  # `swift test` passes (unit tests and the conformance suite, reading
-  # conformance/ in place). No private fixtures here either: the real-corpus
-  # test skips by name. The package's platforms are iOS 26 / macOS 26 and its
-  # tools version is 6.2, so the image is pinned to macOS 26 and the Xcode is
-  # chosen by path, never by whatever the image's default is that week.
-  # --disable-automatic-resolution: Package.resolved is the pin, and a
-  # manifest that disagrees with it fails instead of resolving afresh.
   swift:
     needs: changes
     if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.swift != 'false') }}
@@ -582,9 +463,6 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('ios/HasalaCore/Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
-      # Each test target declares what it imports (Package.swift links
-      # CoreTestSupport only where a test uses it), and the import check makes an
-      # undeclared import an error here too, not only under explicit module builds.
       - name: swift test
         working-directory: ios/HasalaCore
         run: swift test --disable-automatic-resolution --explicit-target-dependency-import-check error
@@ -593,11 +471,6 @@ jobs:
         working-directory: ios/HasalaCore/Tools/OutlookTrustCheck
         run: swift test --disable-automatic-resolution --explicit-target-dependency-import-check error
 
-      # `swift test` builds for macOS only. The iOS build is what catches a
-      # module that shadows an Apple framework (the reason `CoreText` is
-      # `HasalaText`) or code that only compiles on the Mac. One xcodebuild for
-      # both destinations: the same products as one run per destination, with
-      # one package resolution and build description instead of two.
       - name: Build for iOS (simulator and device)
         working-directory: ios/HasalaCore
         run: >-
@@ -606,15 +479,9 @@ jobs:
           -derivedDataPath "$RUNNER_TEMP/dd" -disableAutomaticPackageResolution
           -quiet build
 
-      # The import allowlist, AT-C11 and the grep lints run in `gate` and `secrets` too; here
-      # check-imports.sh also compares imports.allow with Package.swift.
       - name: Import rules and grep lints
         run: ios/scripts/check-imports.sh && ios/scripts/check-forbidden.sh
 
-  # The hasala.app website in web/ (Astro + Bun). Not a required check: the
-  # ruleset is the owner's. Lighthouse uses the devShell's Node and the Chrome
-  # that comes with the runner image, and keeps its reports in a workflow
-  # artifact only (never temporary-public-storage). Nothing here deploys.
   web:
     needs: [changes, nix-cache]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.web != 'false') }}
@@ -661,9 +528,6 @@ jobs:
       - name: Unit tests
         run: nix develop --command bash -c 'cd web && bun run test'
 
-      # `bun run build` is astro build followed by scripts/check-dist.ts: one
-      # CSP covering every inline script and style, no style="" attributes,
-      # and the JS budget on / (15 KB gzip).
       - name: Build, CSP and JS-budget checks
         run: nix develop --command bash -c 'cd web && bun run build'
 

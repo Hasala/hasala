@@ -1,5 +1,3 @@
-// Display names (spec 03c §3.6): `merchantNames[key]` → the matching dictionary
-// entry's `d` → `prettify(merchant_raw)`. Device-local and deterministic.
 import CoreCategorize
 import HasalaText
 
@@ -9,9 +7,6 @@ public enum MerchantDisplay {
     "fab", "rak", "uk", "us",
   ]
 
-  /// `prettify(raw)`: collapse whitespace; when the raw has no lower-case letter
-  /// and at least one ASCII upper-case letter, rewrite each token (digits kept,
-  /// `ACRONYMS_V1` upper-cased, others ASCII title-cased). Otherwise unchanged.
   public static func prettify(_ raw: String) -> String {
     let s = raw.collapsingGoSpace
     let hasLower = s.unicodeScalars.contains { $0.properties.isLowercase }
@@ -27,7 +22,6 @@ public enum MerchantDisplay {
     }.joined(separator: " ")
   }
 
-  /// The §3.6 precedence.
   public static func name(raw: String, renamed: String?, dictionary: String?) -> String {
     if let renamed, !renamed.isEmpty { return renamed }
     if let dictionary, !dictionary.isEmpty { return dictionary }

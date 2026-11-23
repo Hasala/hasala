@@ -2,7 +2,6 @@ import HasalaMocks
 import HasalaModels
 import Testing
 
-/// The Plan engine over MayaLedger reproduces Plan · October. Owned by P7 from Stage P.
 @Suite("Maya ledger · Plan parity")
 struct PlanEngineParityTests {
   let s = MayaLedger.state
@@ -53,7 +52,6 @@ struct PlanEngineParityTests {
     #expect(japan.left == .aed(7_140_00))
   }
 
-  /// Rows hide their figures as three dots; the words and the verdict stay (spec 03 §16.16).
   @Test func hiddenRowsKeepTheirWords() {
     let plan = PlanEngine.snapshot(s, now: now)
     func hidden(_ id: CategoryID) -> String {
@@ -70,7 +68,6 @@ struct PlanEngineParityTests {
     #expect(hidden("insurance") == "● AXA · 3 days past usual · usually the 7th")
   }
 
-  /// A bill's short name leads a row's one fact.
   @Test func billsAreNamedShortInRows() {
     #expect(PlanEngine.shortName("AXA Insurance") == "AXA")
     #expect(PlanEngine.shortName("Rent · Al Habtoor") == "Rent")
@@ -79,7 +76,6 @@ struct PlanEngineParityTests {
   }
 }
 
-/// Plan · Dining and Plan · Japan trip over MayaLedger.
 @Suite("Maya ledger · Plan details")
 struct PlanDetailParityTests {
   let s = MayaLedger.state
@@ -89,7 +85,6 @@ struct PlanDetailParityTests {
     let d = try #require(PlanEngine.category("dining", s, now: now))
     #expect(d.name == "Dining" && d.hue == .lilac && d.bucket == .wants)
     #expect(d.left == .aed(957_25) && d.budget == .aed(1_600_00) && d.spent == .aed(642_75))
-    // 642.75 of 1,600 is 145 of Paper's 362; the tick at day 10 of 31 is 116.
     #expect(d.progress == Permille(401))
     #expect(d.tick == Permille(320))
     #expect(d.verdict == .onTrack && d.verdictWord == "On track")
@@ -126,15 +121,12 @@ struct PlanDetailParityTests {
     let transport = try #require(PlanEngine.category("transport", s, now: now))
     #expect(transport.verdict == .onTrack && transport.verdictWord == "On track")
 
-    // A bill has no pace: no tick, no projection, no daily budget line, and paid reads
-    // "Paid". Its one payment is all of the month, so no caption says so.
     let rent = try #require(PlanEngine.category("rent", s, now: now))
     #expect(rent.tick == nil && rent.verdictWord == "Paid" && rent.verdictFact == nil && rent.advice == nil)
     #expect(rent.chart.dailyBudget == .aed(0))
     #expect(rent.chart.peak?.day == 1)
     #expect(rent.chart.caption == nil)
 
-    // Nothing spent yet: an empty chart with no peak and no caption.
     let travel = try #require(PlanEngine.category("travel", s, now: now))
     #expect(travel.chart.peak == nil && travel.chart.caption == nil && travel.transactions.isEmpty)
 
@@ -171,8 +163,6 @@ struct PlanDetailParityTests {
     #expect(PlanEngine.project("no-such-project", s, now: now) == nil)
   }
 
-  /// Paper's "Trip spending" is the kind of project, not its name; any other project says
-  /// "Project spending", and one counted in the plan says so.
   @Test func aProjectExplainerNamesItsKind() throws {
     var state = s
     let i = try #require(state.projects.firstIndex { $0.id == "japan" })

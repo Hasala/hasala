@@ -14,13 +14,8 @@ import (
 	"github.com/salehtl/hasala/server/internal/config"
 )
 
-// ceremonySweepInterval is spec 02 §9.7's five-minute sweep of the ceremonies
-// that hold a plaintext address.
 const ceremonySweepInterval = 5 * time.Minute
 
-// loadAuthKeys reads salt_key and auth_key (generation 1, spec 01 §4.11). Both
-// files or neither; behind Cloudflare both are required (config) and the two
-// keys must differ.
 func loadAuthKeys(cfg config.Config) (*authkeys.Keys, error) {
 	if cfg.Auth.AuthKeyFile == "" || cfg.Auth.SaltKeyFile == "" {
 		return nil, nil
@@ -51,9 +46,6 @@ func readKeyFile(name, path string) ([]byte, error) {
 	return k, nil
 }
 
-// checkKeyIDs is O9's fingerprint check: the first start records each key's
-// D41 id in server_meta, and every later start refuses a key whose id differs
-// (a wrong salt_key would make every password fail silently).
 func checkKeyIDs(ctx context.Context, pool *pgxpool.Pool, keys *authkeys.Keys) error {
 	if err := pinKeyID(ctx, pool, "salt_key_id", keys.SaltKeyID); err != nil {
 		return err

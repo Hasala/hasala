@@ -37,13 +37,10 @@ func testKey(t *testing.T) (*ecdsa.PrivateKey, []byte) {
 	return k, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
 }
 
-// fakeAPNs is an APNs stand-in over TLS with HTTP/2. It records every request
-// and answers from a script keyed by token.
 type fakeAPNs struct {
-	srv *httptest.Server
-	mu  sync.Mutex
-	got []seen
-	// answer returns (status, reason) for a token; nil = 200.
+	srv    *httptest.Server
+	mu     sync.Mutex
+	got    []seen
 	answer func(token string, n int) (int, string)
 }
 
@@ -106,7 +103,6 @@ func (f *fakeAPNs) client(t *testing.T, key *ecdsa.PrivateKey, now func() time.T
 
 func tokenHex(b byte) string { return strings.Repeat(string("0123456789abcdef"[b%16]), 64) }
 
-// AT-APNS-1: the body and the header set are pinned, and identical for every reason.
 func TestPayloadAndHeadersArePinned(t *testing.T) {
 	if len(Payload) != 31 {
 		t.Fatalf("payload is %d bytes, want 31", len(Payload))
@@ -152,7 +148,6 @@ func TestPayloadAndHeadersArePinned(t *testing.T) {
 	}
 }
 
-// AT-APNS-2: each token goes to its environment's gateway.
 func TestTokensRouteToTheirEnvironment(t *testing.T) {
 	key, _ := testKey(t)
 	prod, sand := newFakeAPNs(t), newFakeAPNs(t)
@@ -180,8 +175,6 @@ func TestTokensRouteToTheirEnvironment(t *testing.T) {
 	}
 }
 
-// AT-APNS-3 (the transport half): answers classify per spec 02 §12.3, and an
-// ExpiredProviderToken regenerates the JWT once and retries once.
 func TestResponsesClassifyAndExpiredTokenRetriesOnce(t *testing.T) {
 	cases := []struct {
 		status int
@@ -324,7 +317,6 @@ func TestAnExpiredAnswerThatNoNewTokenFixesStopsAsConfiguration(t *testing.T) {
 	})
 }
 
-// AT-APNS-4: the JWT verifies under the .p8's public key with kid and iss.
 func TestProviderTokenVerifiesUnderTheKey(t *testing.T) {
 	key, p8 := testKey(t)
 	parsed, err := ParseP8(p8)
@@ -356,7 +348,6 @@ func TestProviderTokenVerifiesUnderTheKey(t *testing.T) {
 		t.Fatal("the JWT does not verify under the key")
 	}
 
-	// Any other key type is refused at startup.
 	rk, _ := rsa.GenerateKey(rand.Reader, 2048)
 	der, _ := x509.MarshalPKCS8PrivateKey(rk)
 	if _, err := ParseP8(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})); !errors.Is(err, ErrKeyType) {

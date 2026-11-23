@@ -1,16 +1,3 @@
-// A software `ApprovalKeySigner` for tests (spec 04 §2.2 `CoreSoftAuth`; spec 01
-// §4.9 "Tests"): `SecureEnclave.isAvailable` is false in the simulator, so the
-// core's tests sign with a `P256.Signing.PrivateKey` that has the Secure Enclave
-// key's byte formats (65-byte X9.63 public key, 64-byte raw `r ‖ s`). There is
-// no user presence; `nextFailure` simulates a cancelled or unavailable prompt.
-//
-// Test support only: never linked by the app target.
-//
-// Spec conflict, recorded: 04 §2.2 (and 01 §12.1) give this module a software
-// signer "over `P256.Signing.PrivateKey`", which needs CryptoKit, while 04 §2.3's
-// import table does not list CryptoKit for CoreSoftAuth. `imports.allow` follows
-// §2.2. Only P-256 signing is used here; the AT-C11 primitives (AES.GCM, HKDF,
-// Curve25519.Signing) are not, and `SecureEnclave` never is.
 import CoreAuth
 import CorePrimitives
 import CryptoKit
@@ -29,17 +16,13 @@ public final class SoftwareApprovalKeySigner: ApprovalKeySigner {
 
   public init() {}
 
-  /// Installs a key with a fixed 32-byte private scalar (deterministic vectors,
-  /// e.g. spec 01 A13's `01..20`).
   public func install(privateScalar: Data, userID: UserID, writerID: WriterID) throws(ApprovalKeyError) {
     guard let k = try? P256.Signing.PrivateKey(rawRepresentation: privateScalar) else { throw .unavailable }
     keys.withLock { $0[Slot(user: userID, writer: writerID)] = k }
   }
 
-  /// The next `create` or `sign` fails with `error`, once.
   public func failNext(_ error: ApprovalKeyError) { failure.withLock { $0 = error } }
 
-  /// How many signatures were made (the "zero prompts" assertions).
   public var signatureCount: Int { count.withLock { $0 } }
 
   public func create(userID: UserID, writerID: WriterID) async throws(ApprovalKeyError) -> Data {
@@ -64,7 +47,6 @@ public final class SoftwareApprovalKeySigner: ApprovalKeySigner {
     return sig.rawRepresentation
   }
 
-  /// Forgets a writer's key (iOS deleting it when the passcode is removed).
   public func remove(userID: UserID, writerID: WriterID) {
     _ = keys.withLock { $0.removeValue(forKey: Slot(user: userID, writer: writerID)) }
   }

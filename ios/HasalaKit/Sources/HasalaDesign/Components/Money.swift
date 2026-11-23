@@ -1,25 +1,10 @@
 import HasalaModels
 import SwiftUI
 
-/// An amount in the rounded figure face, optionally with its "AED" unit before it.
-///
-/// One rule set for every figure (spec 01 §6): money out is plain ink with no sign, money in is
-/// "+" and green, money owed is "−" (U+2212); VoiceOver reads "plus AED 25,000" / "minus AED
-/// 4,210.50". Hidden amounts become a fixed count of dots (6 for totals and the hero, 4 for
-/// figures and stats, 3 for bills and rows) and read "Amount hidden". The dots draw at 55% of
-/// a large figure's size with 2 pt tracking, unless the caller states the size Paper draws
-/// them at in its place (`hiddenDots`, `hiddenTracking`: the Home hero's 38 with 3 pt).
-///
-/// A long figure never cuts or wraps: it scales down to its figure's floor (`minimumScale`),
-/// and the unit scales with it by the same factor so both stay on one baseline. The unit and
-/// the figure are one text for that reason.
 public struct MoneyText: View {
   public enum Sign: Sendable {
-    /// Money out, or a balance: no sign.
     case none
-    /// Money in: "+".
     case income
-    /// Money owed: "−".
     case debt
 
     var glyph: String {
@@ -74,7 +59,6 @@ public struct MoneyText: View {
     self.approx = approx
   }
 
-  /// The sign leads the whole amount: "+AED 25,000", or "+25,000.00" without a unit.
   private var shownSign: String { hidden ? "" : (approx ? "\u{2248} " : "") + sign.glyph }
 
   private var digits: String {
@@ -104,9 +88,6 @@ public struct MoneyText: View {
 }
 
 extension HFigure {
-  /// Bullets at a large figure's full size read far heavier than the digits they replace;
-  /// Paper draws them at about half size on the same baseline, or at `dots` points where a
-  /// board states it. The figure's line height stays.
   func forHiddenGlyphs(_ dots: CGFloat? = nil) -> HFigure {
     var f = self
     if let dots {
@@ -120,23 +101,17 @@ extension HFigure {
   }
 }
 
-/// One line of figure text: an optional unit run, then the digits, scaled with Dynamic Type up
-/// to the figure's cap and shrinking together to the figure's floor. Internal: `MoneyText` and
-/// `AmountFigure` draw through it.
 struct FigureLine: View {
   let unit: (text: String, figure: HFigure, color: Color)?
   let digits: String
   let figure: HFigure
   let color: Color
   let gap: CGFloat
-  /// The dots' tracking when the digits are hidden dots; nil for digits.
   let hiddenTracking: CGFloat?
-  /// The value the digits show, for the numeric roll; nil when they show no number.
   let numericValue: Double?
 
   var body: some View {
     FigureLineBody(line: self)
-      // Outside the body, so its @ScaledMetric reads the capped size.
       .cappedDynamicType(figure)
   }
 }
@@ -159,8 +134,6 @@ private struct FigureLineBody: View {
     let extra = max(0, (line.figure.leading - line.figure.size * roundedLineRatio) * scale)
     Text(attributed(scale: scale))
       .lineLimit(1)
-      // A row or compact figure never scales by design: its row reflows instead. If a container
-      // squeezes it anyway, shrinking a little is still better than cutting the amount.
       .minimumScaleFactor(line.figure.minimumScale < 1 ? line.figure.minimumScale : 0.75)
       .padding(.vertical, extra / 2)
       .contentTransition(motion.isStill || line.numericValue == nil
@@ -174,8 +147,6 @@ private struct FigureLineBody: View {
       u.font = unit.figure.font(size: unitSize)
       u.foregroundColor = unit.color
       u.tracking = unit.figure.tracking * scale
-      // The gap between "AED" and the figure rides on the unit's last letter, so it scales
-      // with the line when it shrinks.
       if let last = u.characters.indices.last {
         u[last...].kern = line.gap * scale
       }
@@ -190,11 +161,6 @@ private struct FigureLineBody: View {
   }
 }
 
-/// The amount being typed, as the field it is (page 11 · Amount keypad): "AED", the figure at
-/// display size (56/58 bold, −1.2) and a 3 × 46 accent caret after the last digit. Docked (one
-/// amount on a screen): "AED" 20/24 secondary, 8 to the figure, the caret 3 after it. Inline (a
-/// sheet with other rows): "AED" 22/28 primary, 6 to the figure, the caret 8 after. The figure
-/// shrinks to fit before it would wrap; it never wraps. VoiceOver reads one element.
 public struct AmountFigure: View {
   public enum Layout: Sendable { case docked, inline }
 
@@ -233,7 +199,6 @@ public struct AmountFigure: View {
                                                maxDynamicTypeSize: .accessibility3)
   }
 
-  /// The display figure, shrinking to half before it would wrap (page 11: no floor is set).
   static let figure: HFigure = {
     var f = HFigure.display
     f.minimumScale = 0.5

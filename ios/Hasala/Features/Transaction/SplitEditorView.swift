@@ -2,12 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Split (Paper 6N5-0; page 16 · 08 Split editor): the total stays fixed at the top, a bar
-/// shows each line in its bucket's hue, and one sentence says whether the lines add up. Each
-/// line is a card with its category and an amount field; tapping the field focuses it (the 2
-/// pt ring) and the inline amount keypad opens under the list. "Add a category", "Split
-/// evenly" and "Put the rest in …" help; "Save split" works only when the lines add up.
-/// Amounts show even with Hide amounts on: the editor was opened to change them.
 struct SplitEditorView: View {
   let model: any TransactionModel
   let done: () -> Void
@@ -17,12 +11,10 @@ struct SplitEditorView: View {
     var category: CategoryID?
     var entry: AmountEntry
     var note: String
-    /// The note row shows once there is a note or the person asked for one.
     var showsNote: Bool
   }
 
   @State private var lines: [Draft] = []
-  /// The line whose amount the keypad types into.
   @State private var editing: Int?
   @State private var firstTouched = false
   @FocusState private var noteFocus: Int?
@@ -84,9 +76,6 @@ struct SplitEditorView: View {
     }
   }
 
-  // MARK: Header
-
-  /// "Carrefour · Fri 9 Oct, 19:12", the fixed total, the split bar, the status.
   private func header(_ d: TransactionDetail) -> some View {
     VStack(spacing: 4) {
       Text(Self.headerLine(d))
@@ -105,14 +94,12 @@ struct SplitEditorView: View {
     .padding(.vertical, 4)
   }
 
-  /// "● Adds up exactly" (green), "12.00 left to place" (amber), "12.00 too much" (red).
   private var status: some View {
     let (words, tone) = Self.status(verdict, lines: lines)
     return HStack(spacing: 6) {
       Circle().fill(tone == .warning ? HColor.paceFillOverPace : tone.foreground).frame(width: 7, height: 7)
       Text(words).hType(.subheadline.weight(.semibold)).foregroundStyle(tone.foreground)
     }
-    // Words, not a control: without the trait the audit takes the element for a small target.
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(spokenVerdict)
     .accessibilityAddTraits(.isStaticText)
@@ -164,17 +151,12 @@ struct SplitEditorView: View {
     Draft(id: (lines.map(\.id).max() ?? 0) + 1, category: nil, entry: AmountEntry(), note: "", showsNote: false)
   }
 
-  /// "12 dirhams" / "12 dirhams 50", as VoiceOver should say a figure (page 16 · 08).
   static func dirhams(_ m: Money) -> String {
     let whole = m.minor / 100, fils = m.minor % 100
     if m.currency != Money.home { return "\(m.currency) \(MoneyFormat.string(m.minor))" }
     return fils == 0 ? "\(MoneyFormat.grouped(UInt64(whole))) dirhams" : "\(MoneyFormat.grouped(UInt64(whole))) dirhams \(fils)"
   }
 
-  // MARK: Lines
-
-  /// A line: its category (a menu to change it, add a note, or remove the line), the bucket
-  /// under the name, and the amount field; the note row under it when there is one.
   private func lineCard(_ line: Binding<Draft>) -> some View {
     let draft = line.wrappedValue
     let option = options.first { $0.id == draft.category }
@@ -258,8 +240,6 @@ struct SplitEditorView: View {
     .clipShape(RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
   }
 
-  /// 112 × 44, radius 12, the field grey, the figure 17/22 600 on the right. Focused, it
-  /// takes the 2 pt ring and shows a caret; the keypad types into it.
   private func amountField(_ line: Draft, name: String, fullWidth: Bool) -> some View {
     let focused = editing == line.id
     let shown = focused ? line.entry.display : (line.entry.minor.map { MoneyFormat.string($0) } ?? "")
@@ -299,7 +279,6 @@ struct SplitEditorView: View {
     .accessibilityIdentifier("split.amount.\(line.id)")
   }
 
-  /// "Add a category": a dashed card with a white 40 disc and the accent label.
   private var addCard: some View {
     Button(action: addLine) {
       HStack(spacing: 12) {
@@ -320,7 +299,6 @@ struct SplitEditorView: View {
     .accessibilityIdentifier("split.add")
   }
 
-  /// The keypad while a line's amount is being typed, then "Save split".
   private var dock: some View {
     VStack(spacing: 10) {
       if let editing, let i = lines.firstIndex(where: { $0.id == editing }) {
@@ -348,8 +326,6 @@ struct SplitEditorView: View {
     .padding(.bottom, 8)
     .background(HColor.sheetSurfaceLarge.opacity(0.96).ignoresSafeArea(edges: .bottom))
   }
-
-  // MARK: Edits
 
   private func name(_ id: CategoryID?) -> String? { options.first { $0.id == id }?.name }
   private func hue(_ id: CategoryID?) -> Hue { options.first { $0.id == id }?.hue ?? .other }
@@ -395,7 +371,6 @@ struct SplitEditorView: View {
     if model.saveSplit(parsed) { done() }
   }
 
-  /// After an edit, VoiceOver hears where the split stands ("Adds up exactly").
   private func announceStatus() {
     AccessibilityNotification.Announcement(spokenVerdict).post()
   }
@@ -411,9 +386,6 @@ struct SplitEditorView: View {
   }
 }
 
-/// The split bar (220 × 8, gap 3, radius 4): one segment per line in its bucket's hue, as wide
-/// as its share. Short, a grey gap stays at the end; over, the last segment turns red. Hidden
-/// from VoiceOver: the status says it in words.
 private struct SplitBar: View {
   let lines: [(hue: Hue, minor: Int64)]
   let total: Int64

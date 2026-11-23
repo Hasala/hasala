@@ -1,10 +1,5 @@
 package tmpl_test
 
-// The corpus-reading half of internal/tmpl's conformance suite, moved to the
-// oracle module with the corpus reader (spec 02 §4.3): the corpus fixture
-// writer. The fixture types are internal/tmpl's exported TemplateFixture and
-// friends (fixtures.go).
-
 import (
 	"encoding/base64"
 	"fmt"
@@ -19,39 +14,14 @@ import (
 	"github.com/salehtl/hasala/server/oracle/corpus"
 )
 
-// writeFixturesEnv gates the writer: a test that rewrites its own reference
-// on every run pins nothing.
 const writeFixturesEnv = "HASALA_WRITE_CONFORMANCE"
 
-// seedDir is internal/tmpl/testdata, where the seed templates live.
 const seedDir = "../../../internal/tmpl/testdata"
 
-// templateFixtureCap bounds the cases written per template. The cap exists
-// so the committed set stays reviewable, NOT because it is the whole check:
-// crossexec_test.go exports every message the corpus holds, and Task 21's
-// gate is the full corpus. Sampling is by even stride over the corpus in id
-// order, which is chronological, so the three years are represented in
-// proportion rather than the fixture being three months of whatever sorted
-// first.
 const templateFixtureCap = 500
 
-// templateFilterEnv narrows a regeneration to the named templates (comma
-// separated ids, e.g. "enbd.transfer.v1,enbd.alert.v1").
-//
-// It exists because the four corpus files are cut from DIFFERENT snapshots and
-// a regeneration resamples: the two DIB files hold 500 sampled cases each out
-// of ~6,900 eligible messages, so re-running them against a corpus that has
-// grown by a day of ingest moves the even stride and rewrites ~10,500 lines of
-// fixture — a diff nobody reads, carrying a bulk re-import of the operator's
-// real mail, for a change that touched neither DIB template. The two ENBD files
-// are ~60 cases each and rewrite cleanly.
-//
-// It narrows the WRITER only. [TestTemplateFixturesAreWhatThisBuildProduces]
-// re-executes every committed file on every run regardless, so a file left
-// unregenerated is still checked — it is not excused, only not resampled.
 const templateFilterEnv = "HASALA_TEMPLATE_FIXTURE_ONLY"
 
-// templateFilter reports whether a template id is in scope for a regeneration.
 func templateFilter(id string) bool {
 	only := os.Getenv(templateFilterEnv)
 	if only == "" {
@@ -65,13 +35,6 @@ func templateFilter(id string) bool {
 	return false
 }
 
-// senderDomain pulls the domain out of a v1 ingest_log from_addr.
-//
-// This is NOT the trusted-lane check: v1 stored the From header, which is
-// content. It is only used here to decide which template a corpus message is
-// worth running, and running the wrong template merely produces a no-match
-// case. The real gate is MatchesSenderDomain over the DKIM/ARC-verified domain,
-// and TestMatchesSenderDomainIsASuffixMatchOnLabelBoundaries covers it.
 func senderDomain(fromAddr string) string {
 	at := strings.LastIndex(fromAddr, "@")
 	if at < 0 {
@@ -82,16 +45,11 @@ func senderDomain(fromAddr string) string {
 	return ASCIILower(d)
 }
 
-// sampleEvenly picks at most limit values from ids by an even stride, always
-// keeping the first and last so the fixture spans the whole corpus rather than
-// its middle.
 func sampleEvenly(ids []int64, limit int) []int64 {
 	if len(ids) <= limit || limit <= 0 {
 		return ids
 	}
 	out := make([]int64, 0, limit)
-	// Fixed-point stride so the picks are spread across the whole range and the
-	// result is exactly cap long regardless of len(ids).
 	for i := 0; i < limit; i++ {
 		j := int(int64(i) * int64(len(ids)-1) / int64(limit-1))
 		out = append(out, ids[j])
@@ -99,16 +57,6 @@ func sampleEvenly(ids []int64, limit int) []int64 {
 	return out
 }
 
-// TestWriteTemplateFixtures regenerates conformance/templates/corpus-*.json
-// from a scratch .backup copy of the v1 corpus. The files are real mail, so
-// they are written into the PRIVATE fixtures checkout and committed there.
-//
-//	HASALA_WRITE_CONFORMANCE=1 HASALA_CORPUS_DB=/scratch/corpus.db \
-//	HASALA_PRIVATE_FIXTURES=/path/to/hasala-fixtures \
-//	  go test ./gates/tmpl/ -run TestWriteTemplateFixtures -timeout 20m -v   # in server/oracle
-//
-// Add HASALA_TEMPLATE_FIXTURE_ONLY=<id>[,<id>] to rewrite only the named
-// templates' files; see [templateFilterEnv] for why that is worth having.
 func TestWriteTemplateFixtures(t *testing.T) {
 	if os.Getenv(writeFixturesEnv) == "" {
 		t.Skipf("%s is unset; fixtures are committed and regenerated deliberately", writeFixturesEnv)
@@ -138,8 +86,6 @@ func TestWriteTemplateFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Pass 1: which corpus ids each template is worth running, decided on the
-	// sender domain alone so nothing is decompressed twice.
 	eligible := make([][]int64, len(defs))
 	if err := db.Each(func(m corpus.Message) error {
 		dom := senderDomain(m.FromAddr)
@@ -165,8 +111,6 @@ func TestWriteTemplateFixtures(t *testing.T) {
 		}
 	}
 
-	// Pass 2: normalize the sampled messages once each, whatever templates want
-	// them.
 	type msg struct {
 		subject string
 		body    string
@@ -215,8 +159,6 @@ func TestWriteTemplateFixtures(t *testing.T) {
 		for _, id := range picked[i] {
 			m := byID[id]
 			if m.normErr != nil {
-				// A message the normalizer refuses never reaches a template, so
-				// it is not a template conformance case.
 				skipped++
 				continue
 			}

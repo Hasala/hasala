@@ -15,10 +15,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// passkeys attaches a relying party to this harness and rebuilds the router, so
-// the six routes are mounted. It is opt-in for the same reason the server makes
-// them conditional: a deployment with no rp_id does not serve them at all, and
-// every other test in this package must keep exercising that server.
 func (h *harness) passkeys() *harness {
 	h.t.Helper()
 	p, err := auth.NewPasskeys(h.pool, authtest.RPID, authtest.RPDisplayName, []string{authtest.RPOrigin})
@@ -30,7 +26,6 @@ func (h *harness) passkeys() *harness {
 	return h
 }
 
-// beginCreate runs a begin step that answers with creation options.
 func (h *harness) beginCreate(path, token string, body any) (string, *protocol.CredentialCreation) {
 	h.t.Helper()
 	w := h.req("POST", path, token, body)
@@ -58,8 +53,6 @@ func (h *harness) beginAssert(path, token string) (string, *protocol.CredentialA
 	return out.CeremonyID, &opts
 }
 
-// register runs a whole passkey sign-up over HTTP for a proven signup id and
-// returns the session it minted.
 func (h *harness) register(signupID string) (*authtest.Authenticator, SessionResponse) {
 	h.t.Helper()
 	id, opts := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
@@ -71,10 +64,6 @@ func (h *harness) register(signupID string) (*authtest.Authenticator, SessionRes
 	wantStatus(h.t, w, http.StatusCreated)
 	return a, decodeJSON[SessionResponse](h.t, w)
 }
-
-// ---------------------------------------------------------------------------
-// Mounting
-// ---------------------------------------------------------------------------
 
 func TestPasskeyRoutesAreNotMountedWithoutARelyingParty(t *testing.T) {
 	t.Parallel()
@@ -95,10 +84,6 @@ func TestPasskeyRoutesAreNotMountedWithoutARelyingParty(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
-
 func TestPasskeyRegistrationOverHTTPMintsASessionForANewAccount(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t).passkeys()
@@ -113,13 +98,9 @@ func TestPasskeyRegistrationOverHTTPMintsASessionForANewAccount(t *testing.T) {
 	if n := h.countUsers(t); n != 1 {
 		t.Fatalf("%d accounts, want 1", n)
 	}
-	// The session is a real one and the account is whole (counter row, ingest
-	// writer), which is the same thing the ID-token exchange's test asserts.
 	wantStatus(t, h.req("GET", "/api/v1/sync?stream=hot", out.SessionToken, nil), http.StatusOK)
 }
 
-// register/begin needs a signup that an invite opened and an address proved
-// (spec 02 #3): an unknown one is the uniform code_rejected.
 func TestPasskeyRegistrationWithoutASignupIsRefused(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t).passkeys()
@@ -137,8 +118,6 @@ func TestPasskeyRegistrationWithoutASignupIsRefused(t *testing.T) {
 func TestPasskeyRegistrationFinishWithAMismatchedCeremonyIsRefused(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t).passkeys()
-	// Two ceremonies begun against two codes; the credential built for one is
-	// presented against the other's id.
 	idA, optsA := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
 		PasskeyRegisterBeginRequest{SignupID: h.invite("a"), AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
 	idB, _ := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
@@ -150,7 +129,6 @@ func TestPasskeyRegistrationFinishWithAMismatchedCeremonyIsRefused(t *testing.T)
 	w := h.req("POST", "/api/v1/auth/passkey/register/finish", "", PasskeyFinishRequest{
 		CeremonyID: idB, Credential: a.Create(t, optsA),
 	})
-	// The challenge in ceremony B is not the one the authenticator signed.
 	wantStatus(t, w, http.StatusForbidden)
 	if n := h.countUsers(t); n != 0 {
 		t.Fatalf("%d accounts, want 0", n)
@@ -168,10 +146,6 @@ func TestPasskeyFinishWithAnUnknownCeremonyIsRefused(t *testing.T) {
 		t.Fatalf("body = %s, want the uniform passkey_rejected (spec 02 §6.3)", got)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Login
-// ---------------------------------------------------------------------------
 
 func TestPasskeyLoginOverHTTPReturnsASessionForTheSameAccount(t *testing.T) {
 	t.Parallel()
@@ -207,10 +181,6 @@ func TestPasskeyLoginBeginNeedsNoSessionAndNamesNobody(t *testing.T) {
 		t.Fatalf("rpId = %q, want %q", opts.Response.RelyingPartyID, authtest.RPID)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Adding a passkey
-// ---------------------------------------------------------------------------
 
 func TestAddPasskeyNeedsASession(t *testing.T) {
 	t.Parallel()
@@ -250,11 +220,9 @@ func TestAddPasskeyStoresASecondCredentialForTheSameAccount(t *testing.T) {
 	if n != 2 {
 		t.Fatalf("credentials = %d, want 2", n)
 	}
-	// The PRF wrap came in the same transaction.
 	if got := h.countWraps(k.user); got != 2 {
 		t.Fatalf("wraps = %d, want the bootstrap's and the new credential's", got)
 	}
-	// And it signs in as the same account.
 	lid, lopts := h.beginAssert("/api/v1/auth/passkey/login/begin", "")
 	lw := h.req("POST", "/api/v1/auth/passkey/login/finish", "", PasskeyFinishRequest{
 		CeremonyID: lid, Credential: second.Assert(t, lopts, k.counter.Add(1)),
@@ -265,15 +233,11 @@ func TestAddPasskeyStoresASecondCredentialForTheSameAccount(t *testing.T) {
 	}
 }
 
-// TestAddPasskeyNeedsMoreThanASession is the review's blocker over HTTP: a
-// stolen session, bound or not, cannot enrol a passkey of its own.
 func TestAddPasskeyNeedsMoreThanASession(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t).passkeys()
 	h.srv.PasskeyPerIP = NewLimiter(passkeyPerIPRate, 64, passkeyMaxKeys, h.srv.now)
 
-	// Before bootstrap the session has no writer: 403 writer_unbound, even
-	// with a genuine passkey.add step-up.
 	pre := h.onboard(false)
 	w := h.req("POST", "/api/v1/auth/passkey/add/begin", pre.token,
 		PasskeyAddBeginRequest{StepUp: pre.stepUp(pre.token, keyproto.ActionPasskeyAdd)})
@@ -283,13 +247,11 @@ func TestAddPasskeyNeedsMoreThanASession(t *testing.T) {
 	}
 
 	k := h.onboard(true)
-	// A bound session with no step-up.
 	w = h.req("POST", "/api/v1/auth/passkey/add/begin", k.token, map[string]any{})
 	wantStatus(t, w, http.StatusForbidden)
 	if got := decodeJSON[errorBody](t, w).Error; got != "step_up_required" {
 		t.Fatalf("add/begin with no step-up: %q, want step_up_required", got)
 	}
-	// A step-up proved by a passkey that is not the account's.
 	su := k.stepUpWith(k.token, authtest.New(t), keyproto.ActionPasskeyAdd)
 	w = h.req("POST", "/api/v1/auth/passkey/add/begin", k.token, PasskeyAddBeginRequest{StepUp: su})
 	wantStatus(t, w, http.StatusForbidden)
@@ -297,8 +259,6 @@ func TestAddPasskeyNeedsMoreThanASession(t *testing.T) {
 		t.Fatalf("add/begin proved by a stranger's passkey: %q, want step_up_failed", got)
 	}
 
-	// A good step-up, but add/finish signed by a DWK the account never
-	// registered: 400 bad_signature, nothing stored (R-01).
 	su = k.stepUp(k.token, keyproto.ActionPasskeyAdd)
 	id, opts := h.beginCreate("/api/v1/auth/passkey/add/begin", k.token, PasskeyAddBeginRequest{StepUp: su})
 	a := authtest.New(t)
@@ -321,14 +281,9 @@ func TestAddPasskeyNeedsMoreThanASession(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Rate limiting
-// ---------------------------------------------------------------------------
-
 func TestEveryPasskeyRouteIsRateLimited(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t).passkeys()
-	// A limiter with no refill, so the budget is exactly the burst.
 	h.srv.PasskeyPerIP = NewLimiter(0, 1, 16, h.srv.now)
 	h.srv.PasskeyGlobal = NewLimiter(0, 1000, 1, h.srv.now)
 	h.h = h.srv.Handler()
@@ -344,8 +299,6 @@ func TestEveryPasskeyRouteIsRateLimited(t *testing.T) {
 	} {
 		h.srv.PasskeyPerIP = NewLimiter(0, 1, 16, h.srv.now)
 		h.h = h.srv.Handler()
-		// The first call spends the only token; whether it succeeds or is
-		// refused for some other reason is irrelevant.
 		h.req("POST", path, tok, map[string]any{})
 		w := h.req("POST", path, tok, map[string]any{})
 		wantStatus(t, w, http.StatusTooManyRequests)
@@ -357,15 +310,9 @@ func TestEveryPasskeyRouteIsRateLimited(t *testing.T) {
 
 func TestThePasskeyLimiterIsCheckedBeforeTheSession(t *testing.T) {
 	t.Parallel()
-	// Same ordering argument handleExchange makes: a limiter that runs after
-	// authentication does not bound what an unauthenticated caller can spend.
 	h := newHarness(t).passkeys()
-	// NewLimiter floors burst at 1, so the budget is one request.
 	h.srv.PasskeyPerIP = NewLimiter(0, 1, 16, h.srv.now)
 	h.h = h.srv.Handler()
-	// Both calls carry NO session at all. The first spends the only token and is
-	// refused as unauthorized; the second must be refused as rate limited, which
-	// is only true if the limiter ran first.
 	wantStatus(t, h.req("POST", "/api/v1/auth/passkey/add/begin", "", map[string]any{}),
 		http.StatusUnauthorized)
 	wantStatus(t, h.req("POST", "/api/v1/auth/passkey/add/begin", "", map[string]any{}),

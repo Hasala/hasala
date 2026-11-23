@@ -1,9 +1,5 @@
 import XCTest
 
-/// The shell on the Release surface: the tab bar holds Home, Projects, Review and Activity, and
-/// the add button beside them; Search, in the header, finds in this iPhone's own ledger. Each area's own checks are
-/// in its `ReleaseSurface*Tests` class (plan B7.4); the shared assertions are
-/// `ReleaseSurfaceTestCase`'s.
 final class ReleaseSurfaceTests: ReleaseSurfaceTestCase {
   @MainActor
   func testTheTabBarShowsOnlyWhatWorks() throws {
@@ -18,8 +14,6 @@ final class ReleaseSurfaceTests: ReleaseSurfaceTestCase {
     assertPersonalAccountsOnly(app, "Home")
   }
 
-  /// Search on the Release surface: "Try asking" offers what the ledger can answer, the
-  /// first letters ("carre") find Carrefour, and its row opens the transaction sheet.
   @MainActor
   func testSearchFindsAndOpensATransaction() throws {
     let app = launchRelease()

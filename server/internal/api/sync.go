@@ -19,14 +19,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// ---------------------------------------------------------------------------
-// Wire types
-// ---------------------------------------------------------------------------
-//
-// These are the shapes the TypeScript client codes against. int64 fields are
-// decimal STRINGS and chain hashes are hex; see the package doc for why.
-
-// Row is one op-log row on the wire.
 type Row struct {
 	Seq           string    `json:"seq"`
 	Stream        string    `json:"stream"`
@@ -34,24 +26,13 @@ type Row struct {
 	WriterCounter string    `json:"writer_counter"`
 	TypeFlag      string    `json:"type_flag"`
 	SizeBucket    int       `json:"size_bucket"`
-	BlobHash      string    `json:"blob_hash"` // hex
-	PrevHash      string    `json:"prev_hash"` // hex
+	BlobHash      string    `json:"blob_hash"`
+	PrevHash      string    `json:"prev_hash"`
 	CreatedAt     time.Time `json:"created_at"`
-	Blob          string    `json:"blob"` // base64
-	// HeadSig is the batch's DWK signature over HeadMessage (spec 01 §7.1), b64
-	// on the last row of each upload batch and null on the others. A page
-	// never ends inside a batch, so every writer's last row in a page has one.
-	HeadSig *string `json:"head_sig"`
+	Blob          string    `json:"blob"`
+	HeadSig       *string   `json:"head_sig"`
 }
 
-// PullResponse answers GET /api/v1/sync.
-//
-// Next is the largest seq returned FOR THIS STREAM and is what the caller sends
-// back as `after`. Complete answers "is this client caught up on this stream",
-// and it is computed against the stream's committed maximum rather than
-// inferred from the page size — a page can end early because of the byte
-// budget, and a client that read "short page, therefore done" would stop
-// syncing with rows outstanding.
 type PullResponse struct {
 	Stream   string `json:"stream"`
 	Rows     []Row  `json:"rows"`
@@ -59,16 +40,14 @@ type PullResponse struct {
 	Complete bool   `json:"complete"`
 }
 
-// HashEntry is one entry of the per-blob hash list (spec §3.3:72).
 type HashEntry struct {
 	Seq           string `json:"seq"`
 	WriterID      string `json:"writer_id"`
 	WriterCounter string `json:"writer_counter"`
-	BlobHash      string `json:"blob_hash"` // hex
-	PrevHash      string `json:"prev_hash"` // hex
+	BlobHash      string `json:"blob_hash"`
+	PrevHash      string `json:"prev_hash"`
 }
 
-// HashesResponse answers GET /api/v1/sync/hashes.
 type HashesResponse struct {
 	Stream   string      `json:"stream"`
 	Hashes   []HashEntry `json:"hashes"`
@@ -76,40 +55,26 @@ type HashesResponse struct {
 	Complete bool        `json:"complete"`
 }
 
-// UploadBlob is one blob a device submits, already sealed for the position it
-// declares and already chained by its author.
 type UploadBlob struct {
 	WriterCounter string `json:"writer_counter"`
-	PrevHash      string `json:"prev_hash"` // hex
-	BlobHash      string `json:"blob_hash"` // hex
+	PrevHash      string `json:"prev_hash"`
+	BlobHash      string `json:"blob_hash"`
 	TypeFlag      string `json:"type_flag"`
 	SizeBucket    int    `json:"size_bucket"`
-	Blob          string `json:"blob"` // base64
+	Blob          string `json:"blob"`
 }
 
-// UploadRequest is POST /api/v1/sync. It carries no user id: the account is the
-// one the session resolves to, always.
 type UploadRequest struct {
 	WriterID string       `json:"writer_id"`
 	Stream   string       `json:"stream"`
 	Blobs    []UploadBlob `json:"blobs"`
-	// HeadSig is the writer's DWK signature over HeadMessage(user_id, c_last,
-	// blob_hash_last, writer_id) for the batch's last blob (spec 01 §7.1, b64).
-	HeadSig string `json:"head_sig"`
+	HeadSig  string       `json:"head_sig"`
 }
 
-// UploadResponse returns the assigned seqs, in submission order.
 type UploadResponse struct {
 	Seqs []string `json:"seqs"`
 }
 
-// ---------------------------------------------------------------------------
-// Pull
-// ---------------------------------------------------------------------------
-
-// accountSlots bounds the requests of one kind in flight per account (spec 02
-// §11.3: at most 2 pulls; the third gets 429). The map holds one counter per
-// account only while a request runs.
 type accountSlots struct {
 	mu    sync.Mutex
 	inUse map[uuid.UUID]int
@@ -136,10 +101,6 @@ func (p *accountSlots) release(u uuid.UUID) {
 	}
 }
 
-// pullAdmitted applies the concurrency bound and then pull-user; the caller
-// releases the slot when it returns true. The slot comes first so a pull
-// refused for being the third in flight spends no pull-user token, and a
-// slot the limiter then refuses is given back.
 func (s *Server) pullAdmitted(w http.ResponseWriter, userID uuid.UUID) bool {
 	if !s.pulls.acquire(userID, maxConcurrentPulls) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many pulls; try again shortly")
@@ -170,8 +131,6 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request, userID uuid.
 		return
 	}
 	out := PullResponse{Stream: stream, Rows: make([]Row, 0, len(rows))}
-	// An empty page leaves the cursor exactly where the caller had it, so a
-	// client that keeps sending `next` back never rewinds.
 	next := after
 	for _, row := range rows {
 		next = row.Seq
@@ -196,9 +155,6 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request, userID uuid.
 	}
 	out.Next = strconv.FormatInt(next, 10)
 
-	// Asked AFTER the page, never before: rows committed in between make this
-	// report "not complete", which costs one empty round trip. The other order
-	// can report complete while rows exist, which costs the client its data.
 	if out.Complete, ok = s.pageComplete(w, r, userID, "pull", stream, after, next); !ok {
 		return
 	}
@@ -270,8 +226,6 @@ func (s *Server) pageComplete(w http.ResponseWriter, r *http.Request, userID uui
 	return next >= maxSeq, true
 }
 
-// checkStream validates a requested stream. There is one stream: absent means
-// hot, and anything else is 400 bad_stream (spec 02 §11.3).
 func checkStream(w http.ResponseWriter, stream string) (string, bool) {
 	if stream == "" {
 		return blob.StreamHot, true
@@ -283,34 +237,7 @@ func checkStream(w http.ResponseWriter, stream string) (string, bool) {
 	return stream, true
 }
 
-// ---------------------------------------------------------------------------
-// Upload
-// ---------------------------------------------------------------------------
-
-// handleUpload appends a device's own blobs (spec 02 #30, §11.1).
-//
-// Order matters and is not arbitrary:
-//
-//  1. the session resolves the account — there is no user field on the wire;
-//  2. the body's shape: the stream, the batch size, a 64-byte head_sig;
-//  3. the writer: the §4.8 grammar, then the session must be bound to exactly
-//     that writer (spec 02 §9.4), and it must be live;
-//  4. the account has keys;
-//  5. every blob is validated structurally — size, the plaintext predicate,
-//     and the embedded AAD of the exact position it is being stored at;
-//  6. only then does the append transaction open, where the writer row is
-//     read FOR SHARE, the chain joined to the stored head, the epoch checked
-//     for rows above the head, and the head signature verified over the last
-//     row as the server recomputed it.
-//
-// Nothing is stored unless the whole batch is: oplog.AppendClient rolls back as
-// a unit, so a rejected batch consumes neither a seq nor a counter.
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
-	// The request budget, spent before anything is read. It is the POOL
-	// fairness control — one account cannot occupy the 16-connection pool with
-	// back-to-back append transactions — and it is explicitly NOT the storage
-	// control; see the syncRate block in api.go for the arithmetic that shows
-	// why no request rate could be.
 	if !s.uploads.acquire(userID, maxConcurrentUploads) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many uploads; try again shortly")
 		return
@@ -378,8 +305,6 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 		row, refusal := decodeUploadBlob(userID, req.WriterID, req.Stream, b)
 		if refusal != nil {
 			if refusal.code == "plaintext_refused" {
-				// Logged with the check name only: what a client sent in a
-				// refused frame is never echoed into an operator log.
 				s.logf("api: upload for %s: blob %d refused as plaintext (%s)", userID, i, refusal.detail)
 			}
 			writeErr(w, refusal.status, refusal.code, "blobs["+strconv.Itoa(i)+"]: "+refusal.detail)
@@ -388,13 +313,6 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 		rows = append(rows, row)
 	}
 
-	// The batch's INTERNAL consistency is checked here, before the append, so
-	// that its failure is answered as what it is: a client-side arithmetic
-	// error. oplog.AppendClient runs the same check and reports ErrChainBreak,
-	// a sync hard stop; nothing the server did can make the blobs of one
-	// request fail to link to each other, so a client bug must never tell a
-	// user their operator may have tampered with their log. What is left for
-	// AppendClient's ErrChainBreak is the HEAD-relative case.
 	var claimedPrev [32]byte
 	copy(claimedPrev[:], rows[0].PrevHash)
 	if err := oplog.VerifyChain(rows, rows[0].WriterCounter-1, claimedPrev); err != nil {
@@ -406,15 +324,11 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 		return
 	}
 
-	// The byte budget, spent immediately before the append and charged in the
-	// bytes that are about to become durable, after validation (a malformed
-	// batch costs no budget), all-or-nothing per batch like the append.
 	var uploadBytes int
 	for _, row := range rows {
 		uploadBytes += len(row.Blob)
 	}
 	if !s.SyncUploadBytes.AllowN(userID.String(), float64(uploadBytes)) {
-		// 429 rather than 413: the batch is not too large, it is too soon.
 		s.logf("api: upload for %s: %d bytes over the upload byte budget", userID, uploadBytes)
 		w.Header().Set("Retry-After", "60")
 		writeErr(w, http.StatusTooManyRequests, "upload_bytes",
@@ -435,14 +349,10 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 	for i, q := range seqs {
 		out.Seqs[i] = strconv.FormatInt(q, 10)
 	}
-	// Every other device of the account pulls (spec 02 §12.5): a content-free
-	// sync wake, enqueued, never blocking this answer.
 	s.wakeOthers(r.Context(), userID, req.WriterID, pushv2.ReasonSync)
 	writeJSON(w, http.StatusOK, out)
 }
 
-// uploadRefusal is why one blob of an upload cannot be stored: the HTTP status,
-// the spec 02 §6.3 error code, and a detail about the caller's own submission.
 type uploadRefusal struct {
 	status       int
 	code, detail string
@@ -452,23 +362,6 @@ func refuseBlob(status int, code, detail string) *uploadRefusal {
 	return &uploadRefusal{status: status, code: code, detail: detail}
 }
 
-// decodeUploadBlob turns one wire blob into an oplog.Row, or says why it
-// cannot be one. The order is spec 02 §11.1 step 5: the size checks first
-// (spec 01 T18), then the plaintext predicate, then the position.
-//
-// The predicate is the server half of F1: a blob that does not look like a
-// sealed frame v3 — a ledgerd v1 or v2 frame, a zero nonce or tag, zero
-// padding or a cleartext gzip header where ciphertext should be — is refused
-// with 400 plaintext_refused naming the check, before anything is stored.
-// oplog.Row.validate runs it again inside the append and the
-// op_log_blob_is_sealed CHECK is the database's guarantee behind both.
-//
-// The AAD check stops a blob being stored at a position it was not sealed for,
-// including a blob sealed for ANOTHER USER. It reads the cleartext header, so
-// the server needs no key. The key-epoch check against the account's current
-// epoch (409 stale_epoch) runs inside oplog.AppendClient after the head read,
-// for rows above the stored head only (spec 01 §8.3), so a replayed batch is
-// never refused for its epoch.
 func decodeUploadBlob(userID uuid.UUID, writerID, stream string, b UploadBlob) (oplog.Row, *uploadRefusal) {
 	counter, err := strconv.ParseInt(b.WriterCounter, 10, 64)
 	if err != nil || counter < 1 {
@@ -478,8 +371,6 @@ func decodeUploadBlob(userID uuid.UUID, writerID, stream string, b UploadBlob) (
 	if err != nil {
 		return oplog.Row{}, refuseBlob(http.StatusBadRequest, "bad_request", "blob is not base64")
 	}
-	// Checked before the bucket check so an oversize blob is a 413 and not a
-	// confusing "not a size bucket" 400.
 	if len(raw) > blob.MaxBucket {
 		return oplog.Row{}, refuseBlob(http.StatusRequestEntityTooLarge, "too_large",
 			"blob is "+strconv.Itoa(len(raw))+" bytes, cap is "+strconv.Itoa(blob.MaxBucket))
@@ -532,13 +423,6 @@ func decodeUploadBlob(userID uuid.UUID, writerID, stream string, b UploadBlob) (
 	}, nil
 }
 
-// writeAppendErr maps the append's outcomes onto statuses a client can act on.
-//
-// The three conflict cases are deliberately distinguished in the DETAIL and not
-// in the status, because a client's remedy differs: a chain break is a sync
-// hard stop (spec §3.3:68), a partial resend has a trivial fix, and a taken
-// position is a server-side invariant violation the client cannot repair. All
-// three describe the caller's own log, so the detail discloses nothing.
 func (s *Server) writeAppendErr(w http.ResponseWriter, r *http.Request, userID uuid.UUID, err error) {
 	var stale *oplog.StaleEpochError
 	switch {
@@ -552,24 +436,11 @@ func (s *Server) writeAppendErr(w http.ResponseWriter, r *http.Request, userID u
 		s.logf("api: upload for %s: refused, the account froze during the upload", userID)
 		writeErr(w, http.StatusForbidden, "account_frozen", "")
 	case errors.Is(err, oplog.ErrPartiallyApplied):
-		// The client contract, quoted verbatim from oplog/chain.go: the server
-		// refuses a straddling batch rather than trimming it.
 		writeErr(w, http.StatusConflict, "conflict",
 			"read the chain head and resend only the rows above it")
 	case errors.Is(err, oplog.ErrChainBreak):
 		writeErr(w, http.StatusConflict, "chain_break", err.Error())
 	case errors.Is(err, budget.ErrRefused):
-		// The account is at its cumulative op-log ceiling. This is a POLICY
-		// outcome, not a fault, and it used to fall through to the 500 below —
-		// so an account that had filled its budget was told the server was
-		// broken, which is both untrue and unactionable.
-		//
-		// 413 rather than 429, and the pair has to stay distinguishable: the
-		// 429 upload_bytes above is the byte-weighted LIMITER, charged before
-		// the append, and it means "too soon — the same batch will be accepted
-		// shortly". This means "too much — the same batch will never be
-		// accepted until something is deleted or the ceiling is raised". A
-		// client that retried this on a timer would retry forever.
 		var refused *budget.RefusedError
 		if errors.As(err, &refused) {
 			s.logf("api: upload for %s: over the account ceiling: %v", userID, err)
@@ -577,16 +448,10 @@ func (s *Server) writeAppendErr(w http.ResponseWriter, r *http.Request, userID u
 				Error: "account_full",
 				Detail: "this account is at its storage ceiling; nothing in this upload was stored, " +
 					"and it stays queued on this device",
-				// The account's own numbers, so the app can say something true
-				// instead of "sync failed": how much it holds, how much this
-				// upload asked for, and what the ceiling is.
 				Budget: &BudgetInfo{Resource: refused.Resource, Have: refused.Have, Delta: refused.Delta, Limit: refused.Limit},
 			})
 			return
 		}
-		// ErrRefused without the concrete error is not reachable from
-		// budget.Admit, but answering a 500 because the DETAIL is missing would
-		// throw away the one thing this case exists to get right.
 		s.logf("api: upload for %s: over the account ceiling, without detail: %v", userID, err)
 		writeErr(w, http.StatusRequestEntityTooLarge, "account_full",
 			"this account is at its storage ceiling; nothing in this upload was stored")
@@ -594,9 +459,6 @@ func (s *Server) writeAppendErr(w http.ResponseWriter, r *http.Request, userID u
 		s.logf("api: upload for %s: %v", userID, err)
 		writeErr(w, http.StatusConflict, "conflict", "that chain position is already held")
 	default:
-		// Everything reachable here has already been screened by
-		// decodeUploadBlob, so this is a server-side failure and gets no
-		// detail.
 		s.logf("api: upload for %s: %v", userID, err)
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 	}

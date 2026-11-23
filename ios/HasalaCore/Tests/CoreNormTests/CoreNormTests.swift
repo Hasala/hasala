@@ -1,7 +1,3 @@
-// Unit vectors for CoreNorm: the clauses of the normalizer contract no end-to-end fixture can
-// reach (a port of the ledgerd TypeScript client's src/norm/norm.test.ts, each of which pins a
-// mutation that survived the whole corpus), plus the freshness check of the generated
-// charset tables against conformance/normalizer/charset-tables.ts, which they are generated from.
 import Foundation
 import Testing
 
@@ -10,7 +6,7 @@ import Testing
 private func bytes(_ b: UInt8...) -> [UInt8] { b }
 private func utf8(_ s: String) -> [UInt8] { Array(s.utf8) }
 private func cps(_ s: String) -> [UInt32] { s.unicodeScalars.map(\.value) }
-private let at: Int64 = 1_785_542_400_000  // 2026-08-01T00:00:00Z
+private let at: Int64 = 1_785_542_400_000
 
 @Suite("stage 3: WHATWG UTF-8 substitution")
 struct UTF8Tests {
@@ -67,7 +63,6 @@ struct CharsetTests {
     #expect(Charset.classify("never-heard-of-it") == .unresolved)
     #expect(Charset.classify("utf-16") == .unsupported)
     #expect(Charset.classify("shift_jis") == .unsupported)
-    // A non-ASCII label never matches an ASCII one, even where `String ==` would say so.
     #expect(Charset.classify("utf\u{2010}8") == .unresolved)
     let raw = utf8("From: a@b.c\r\nContent-Type: text/plain; charset=utf-16\r\n\r\nhi\r\n")
     #expect(throws: NormalizeError.unsupportedCharset("utf-16")) {
@@ -150,7 +145,6 @@ struct HeaderTests {
     #expect(mt.type == utf8("text/html"))
     #expect(mt.params == ["charset": "utf-8"])
     #expect(try MIME.parseMediaType(utf8("text/html (html); charset=utf-8")) == nil)
-    // RFC 2231 continuations, and a duplicate parameter with a different value.
     let cont = try #require(try MIME.parseMediaType(utf8("text/plain; name*0=\"ab\"; name*1=cd; title*=utf-8''x%41y")))
     #expect(cont.params["name"] == "abcd")
     #expect(cont.params["title"] == "xAy")
@@ -192,13 +186,11 @@ struct StageTests {
 
   @Test("hostile plain text and headers stay linear: many short lines, many failing words")
   func hostileLinear() throws {
-    // 500,000 one-character lines: the line join once re-scanned its output per line.
     let lines = utf8("Content-Type: text/plain\r\n\r\n" + String(repeating: "x\n", count: 500_000))
     var start = ContinuousClock.now
     let text = try Normalizer.normalize(version: 1, raw: lines, receivedAtMs: at).text
     #expect(ContinuousClock.now - start < .seconds(5))
     #expect(text.utf8.count == 999_999)
-    // 250,000 encoded-word openers that never complete: each failure once copied the rest.
     let words = utf8(String(repeating: "=?utf-8?B?", count: 250_000))
     start = ContinuousClock.now
     let decoded = try MIME.decodeWords(words)
@@ -223,7 +215,6 @@ struct StageTests {
     #expect(apple.from == "i@a.b")
     #expect(apple.subject == "Inner")
     #expect(apple.body == "BODY")
-    // A header value holding CR or U+2028 is not a header line (`.` excludes them).
     let cr = Unwrap.unwrapForward(from: "o@x.y", subject: "S", body: "Begin forwarded message:\nFrom: i@a\rb\nBODY")
     #expect(cr.from == "o@x.y")
   }
@@ -248,7 +239,6 @@ struct StageTests {
     #expect(iso("8 February 2026 at 15:61") == nil)
     #expect(iso("Xyz 8, 2026 at 12:52 PM") == nil)
     #expect(iso("Feb 8, 2026 at 13:52 PM") == nil)
-    // Years are literal, as in Go (the JavaScript twin's Date.UTC would read 0050 as 1950).
     #expect(iso("8 February 0050 at 15:36") == "0050-02-08T15:36:00Z")
   }
 
@@ -277,7 +267,6 @@ struct StageTests {
 
 @Suite("CharsetTables.swift is current")
 struct CharsetTablesFreshnessTests {
-  /// conformance/normalizer/charset-tables.ts, found by walking up from this file.
   static func tsSource() throws -> String {
     var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
     while dir.path != "/" {
@@ -298,12 +287,10 @@ struct CharsetTablesFreshnessTests {
     return out
   }
 
-  /// A decoder for the JavaScript string literals the Go writer emits, written independently of
-  /// ios/tools/charset-tables/generate.swift so the two can disagree.
   static func decodeLiteral(_ line: String) -> [UInt16] {
     var s = Substring(line.trimmingCharacters(in: .whitespaces))
     if s.hasSuffix(",") { s = s.dropLast() }
-    s = s.dropFirst().dropLast()  // the quotes
+    s = s.dropFirst().dropLast()
     var out: [UInt16] = []
     var i = s.unicodeScalars.startIndex
     let u = s.unicodeScalars
@@ -330,7 +317,7 @@ struct CharsetTablesFreshnessTests {
         }
         i = u.index(after: i)
         out.append(UInt16(hex, radix: 16)!)
-      default: out.append(UInt16(e.value))  // \" and \\
+      default: out.append(UInt16(e.value))
       }
     }
     return out

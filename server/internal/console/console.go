@@ -1,14 +1,3 @@
-// Package console is the operator console (spec 07 §8), built minimal for the
-// beta: the waitlist with approve, the invites with mint, resend and revoke,
-// and the email log with masked recipients. It runs as its own process
-// (`hasalad console`) on its own loopback port, behind the LAN proxy that
-// sets the tailnet identity; it holds no mail token and no auth key, so every
-// email it causes is a queued mail_log row that serve's worker sends.
-//
-// Not built yet (TODO for full parity, spec 07 §8.7–§8.8): entry detail and
-// deletion, the TestFlight screens, the broadcast, the account list
-// and its actions, reveal and retry in the email log, the audit screen and
-// the Prometheus metrics (/metrics is a 404; /healthz is served, health.go).
 package console
 
 import (
@@ -45,15 +34,13 @@ var assets embed.FS
 
 var pages = template.Must(template.ParseFS(assets, "templates/*.html"))
 
-// CSRF lifetimes (spec 07 §4.6).
 const csrfTTL = 2 * time.Hour
 
-// Console is the operator console. Build it with New.
 type Console struct {
 	Pool    *pgxpool.Pool
-	Host    string   // HASALA_CONSOLE_HOST
-	Tailnet string   // HASALA_CONSOLE_TAILNET
-	Logins  []string // HASALA_CONSOLE_LOGINS
+	Host    string
+	Tailnet string
+	Logins  []string
 	TTL     time.Duration
 	Now     func() time.Time
 	Record  func(purgeledger.Entry) error
@@ -65,8 +52,6 @@ type Console struct {
 	spent  spentTokens
 }
 
-// New builds a console with a fresh CSRF key (a restart invalidates open
-// forms).
 func New(pool *pgxpool.Pool, host, tailnet string, logins []string, ttl time.Duration) *Console {
 	k := make([]byte, 32)
 	if _, err := rand.Read(k); err != nil {
@@ -85,8 +70,6 @@ func (c *Console) now() time.Time {
 	return time.Now()
 }
 
-// Handler is the console's router. Every pattern starts with "/" and none
-// with /api/ or /hooks/ (spec 07 F7-2).
 func (c *Console) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", c.page(c.dashboard))
@@ -114,10 +97,6 @@ func headers(next http.Handler) http.Handler {
 		h.Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("X-Content-Type-Options", "nosniff")
-		// same-origin, not no-referrer: under no-referrer a browser sends
-		// "Origin: null" on the console's own form POSTs (Fetch, "append a
-		// request Origin header"), and action refuses every one of them.
-		// Nothing leaves the console with a referrer either way.
 		h.Set("Referrer-Policy", "same-origin")
 		h.Set("Cache-Control", "no-store")
 		h.Set("Cross-Origin-Opener-Policy", "same-origin")
@@ -138,7 +117,6 @@ func refuse(w http.ResponseWriter, reason string) {
 	_, _ = w.Write([]byte("Not allowed.\n"))
 }
 
-// identify is spec 07 §8.3's eight checks, on every request.
 func (c *Console) identify(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -187,7 +165,6 @@ func (c *Console) identify(next http.Handler) http.Handler {
 	})
 }
 
-// csrf mints spec 07 §4.6's token for login, the POST path and its target.
 func (c *Console) csrf(login, path, target string, issued time.Time) string {
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(issued.Unix()))
@@ -242,7 +219,6 @@ func (s *spentTokens) release(token string) {
 	delete(s.until, token)
 }
 
-// view is what every page template gets.
 type view struct {
 	Login   string
 	Flash   string
@@ -277,7 +253,6 @@ type mailRow struct {
 	Error                       string
 }
 
-// page runs a GET handler in a read-only transaction (spec 07 §8.5).
 func (c *Console) page(f func(ctx context.Context, tx pgx.Tx, login string, v *view) (string, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tx, err := c.Pool.BeginTx(r.Context(), pgx.TxOptions{AccessMode: pgx.ReadOnly})
@@ -391,16 +366,10 @@ func (c *Console) mailPage(ctx context.Context, tx pgx.Tx, _ string, v *view) (s
 	return "mail.html", rows.Err()
 }
 
-// errRefused is an action the state of the target does not allow.
 var errRefused = errors.New("console: refused")
 
-// actionFunc does one POST's work inside tx and returns the audit target id,
-// the page to go back to, and (for a printed code) what to show once.
 type actionFunc func(ctx context.Context, tx pgx.Tx, r *http.Request) (target, back, show string, err error)
 
-// action is spec 07 §8.5–§8.6 around one POST: same-origin evidence, the
-// CSRF token, the action and its audit row in one transaction (a refusal or
-// error is audited in its own).
 func (c *Console) action(name, kind string, f actionFunc) http.HandlerFunc {
 	return c.actionThen(name, kind, f, nil)
 }
@@ -469,7 +438,6 @@ func (c *Console) actionThen(name, kind string, f actionFunc, then func(target s
 			}
 		}
 		if show != "" {
-			// A printed code is shown once, never stored, never in a URL.
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_ = pages.ExecuteTemplate(w, "code.html", &view{Login: login, Code: show})
 			return

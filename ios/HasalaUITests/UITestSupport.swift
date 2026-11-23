@@ -1,22 +1,9 @@
 import UIKit
 import XCTest
 
-/// How long a UI test waits for the app to show what a step expects. Not 5 s: on a
-/// loaded CI runner one snapshot of the hierarchy can take seconds, so a 5 s wait can
-/// end after one or two looks at a screen that is still on its way (seen: a sheet's
-/// saved note, the split sheet's verdict).
 let uiWait: TimeInterval = 15
 
-/// Helpers every UI test shares: launching a mock scenario, finding, tapping and typing
-/// into elements by identifier, scrolling an element into view, the accessibility audit
-/// (spec 04 §17) and screenshot attachments. Every class uses these, so a package's test
-/// file holds its flows only (plan B7.4).
 extension XCTestCase {
-  /// The Debug app on a mock: `-HasalaScenario <scenario>`, and optionally straight to a
-  /// screen (`-HasalaScreen <screen>`, which picks its own scenario unless one is given),
-  /// on the Release surface (`-HasalaReleaseSurface`), with motion settled or reduced
-  /// (`-HasalaMotion off|reduce`), with the Review order (`-HasalaReviewOrder newest|oldest`;
-  /// the scripted deck flows read oldest first), and any further launch arguments.
   @MainActor
   func launch(
     scenario: String? = "maya", screen: String? = nil, release: Bool = false, motion: String? = nil,
@@ -39,14 +26,11 @@ extension XCTestCase {
     return app
   }
 
-  /// The first element with this identifier (or label), of any type.
   @MainActor
   func el(_ app: XCUIApplication, _ id: String) -> XCUIElement {
     app.descendants(matching: .any)[id].firstMatch
   }
 
-  /// Waits for `id`, drags it into reach, then taps it; fails at the caller's line when
-  /// it never appears.
   @MainActor
   func tap(
     _ app: XCUIApplication, _ id: String, timeout: TimeInterval = 15, file: StaticString = #filePath,
@@ -63,10 +47,6 @@ extension XCTestCase {
     tap(app, id, timeout: uiWait)
   }
 
-  /// Taps `id` and waits for `next`, the element the tap brings up. A tap that a slow CI
-  /// runner swallows (one that lands as the keyboard goes or the page settles) gets one
-  /// more try, while `id` is still on screen; fails at the caller's line when `next`
-  /// never appears.
   @MainActor
   func tap(
     _ app: XCUIApplication, _ id: String, opening next: String, file: StaticString = #filePath, line: UInt = #line
@@ -79,7 +59,6 @@ extension XCTestCase {
     XCTAssertTrue(shown.waitForExistence(timeout: uiWait), "\(id) did not open \(next)", file: file, line: line)
   }
 
-  /// Taps the field `id`, then types `text` into it.
   @MainActor
   func type(
     _ app: XCUIApplication, _ id: String, _ text: String, file: StaticString = #filePath, line: UInt = #line
@@ -89,8 +68,6 @@ extension XCTestCase {
     type(text, into: e, file: file, line: line)
   }
 
-  /// Replaces a text field's whole contents: the cursor goes to the end (a tap can land
-  /// mid-text), then one delete per character.
   @MainActor
   func replaceText(
     _ app: XCUIApplication, _ id: String, _ text: String, file: StaticString = #filePath, line: UInt = #line
@@ -116,19 +93,15 @@ extension XCTestCase {
                   file: file, line: line)
   }
 
-  /// Back on a pushed screen: the first button of the navigation bar.
   @MainActor
   func back(_ app: XCUIApplication) {
     app.navigationBars.buttons.firstMatch.tap()
   }
 
-  /// Drags the page up until `element` can be tapped, for rows near the end of a page
-  /// that can never reach the upper half. Returns whether it got there.
   @MainActor
   func reveal(_ app: XCUIApplication, _ element: XCUIElement) -> Bool {
     for _ in 0..<12 {
       if element.exists, element.isHittable, element.frame.maxY < app.frame.height - 120 { return true }
-      // Overshot: the element went up under the header, so drag back down.
       let down = element.exists && element.frame.maxY < 160
       let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.4 : 0.75))
       let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.65 : 0.45))
@@ -138,9 +111,6 @@ extension XCTestCase {
     return element.exists && element.isHittable
   }
 
-  /// Drags the page until the top of `element` sits in the upper part of the screen,
-  /// below the header. Each drag rests before the finger lifts, so the page does not
-  /// coast on past the measured distance. Returns whether it got there.
   @MainActor
   func scroll(_ app: XCUIApplication, toShow element: XCUIElement) -> Bool {
     let height = app.frame.height
@@ -156,16 +126,6 @@ extension XCTestCase {
     return false
   }
 
-  /// Drags the page up until `element` is hittable, at most `limit` times; for a tap on
-  /// a row below the fold. Not `swipeUp()`: a fling leaves the page coasting after the
-  /// gesture, and a tap that lands while it still moves can only stop the scroll, leaving
-  /// the row unopened (seen at large text sizes on a slow CI runner). Each drag rests
-  /// before the finger lifts, so the page stops where it was dragged, and starts
-  /// mid-screen, above where a keyboard sits. Fails the test, at the caller's line, when
-  /// the element never becomes hittable, so the tap that follows isn't blamed for it.
-  /// Returns whether the element is hittable. After a drag it waits for the page to come
-  /// to rest: a drag past the end springs back once the finger lifts, and a tap during
-  /// that bounce only stops it (seen: "about.continue" at large text, on a CI runner).
   @MainActor
   @discardableResult
   func dragUntilHittable(
@@ -193,43 +153,6 @@ extension XCTestCase {
     return element.frame.midY > keyboard.frame.minY
   }
 
-  /// Runs the system accessibility audit on what is on screen and reports every issue
-  /// it finds there in one failure, naming the element. Not counted:
-  ///
-  /// - Clipping at the default size. There the audit can only predict that text "may
-  ///   be clipped at larger Dynamic Type sizes" (Paper sets one-line text that the
-  ///   layouts let wrap above the default size); `testAccessibilityAtLargeTextSizes`
-  ///   checks clipping at `.accessibility3` itself, where it is decided. The system
-  ///   search field is not ours to lay out and is not counted at any size.
-  /// - Contrast. The audit samples rendered pixels and fails ink on the grey canvas
-  ///   (over 14:1) under the scroll-edge blur and the glass bars, so it cannot gate;
-  ///   HasalaKit's ContrastTests checks every text/surface token pair exactly instead.
-  /// - "Dynamic Type partially unsupported" on the figures that stop growing at
-  ///   `.accessibility3` on purpose (spec 04 §14.4; marked `hasala.cappedFigure`), and
-  ///   on text inside the navigation and tab bars, which keep their size and offer
-  ///   the Large Content Viewer instead, as system bars do.
-  /// - The keyboard and its prediction bar (system UI, laid out by iOS).
-  /// - An issue with no element while content is scrolled under the header. Labelled
-  ///   text there shows faintly through the bar's scroll-edge blur, and the audit reads
-  ///   those pixels as text it cannot match to an element ("Potentially inaccessible
-  ///   text: no element"), depending on which glyphs the blur lets through. Every screen
-  ///   is also audited at the top, where nothing sits under the header, so text drawn
-  ///   without an element is still caught there.
-  /// - With `overSheet`, an issue with no element while a sheet that fits its content is up
-  ///   (setup's "Choose your email"). The page behind shows above the sheet, dimmed and,
-  ///   rightly, out of the accessibility tree, so the audit reads its text as text with no
-  ///   element. That page is audited on its own before the sheet opens; an issue that names
-  ///   an element of the sheet still fails.
-  ///
-  /// The audit runs once the screen stands still (`waitForStill`), and again when it
-  /// reports issues or does not finish in time; only issues that a second audit of the
-  /// same still screen reports again fail the test. An audit of content that is still
-  /// moving (a tab's or a sheet's transition, a scroll coasting, a figure's animation)
-  /// sees text change place while it changes the text size, and reports Dynamic Type as
-  /// "partially unsupported" on text that does scale, the page's title included (seen
-  /// on a slow CI runner); a real defect reports again on a still screen. On a slow
-  /// runner the audit can also stop with "Audit failed to complete in time" (code -56);
-  /// it gets three tries.
   @MainActor
   func audit(
     _ app: XCUIApplication, atLargeText: Bool = false, overSheet: Bool = false, file: StaticString = #filePath,
@@ -243,7 +166,6 @@ extension XCTestCase {
         if issues.isEmpty { return }
         reported.append(issues)
         if reported.count == 2 { break }
-        // In the log, so a run shows how often the retry was needed and for what.
         print("audit attempt \(attempt) reported, auditing again:\n" + issues.joined(separator: "\n"))
       } catch let error as NSError where error.domain == "com.apple.xcode.xctest.accessibilityAudit"
         && error.code == -56 && attempt < 3
@@ -256,30 +178,22 @@ extension XCTestCase {
     }
   }
 
-  /// One run of the system accessibility audit; the issues that count, described.
   @MainActor
   private func auditIssues(_ app: XCUIApplication, atLargeText: Bool, overSheet: Bool) throws -> [String] {
     let bars = [app.navigationBars.firstMatch, app.tabBars.firstMatch].filter(\.exists).map(\.frame)
     let underHeader = contentUnderHeader(app)
-    // The keyboard's top edge, when it is up: its prediction bar sits on it.
     let keyboard = app.keyboards.firstMatch
     let keyboardTop = keyboard.exists ? keyboard.frame.minY : nil
     var types = XCUIAccessibilityAuditType.all.subtracting(.contrast)
     if !atLargeText { types.remove(.textClipped) }
     var issues: [String] = []
     try app.performAccessibilityAudit(for: types) { issue in
-      // The keyboard is the system's, not ours.
       if let e = issue.element, e.elementType == .key || e.elementType == .keyboard { return true }
-      // So is its prediction bar: three empty cells (TUIPredictionViewCell, "Element has no
-      // description") along the keyboard's top edge, which turning autocorrection off on the
-      // field does not remove on iOS 27. Only unlabelled elements in that band are skipped, so
-      // the app's own controls just above the keyboard (a dock, the word list) are still audited.
       if issue.auditType == .sufficientElementDescription, let e = issue.element, e.label.isEmpty,
         let keyboardTop, e.frame.minY >= keyboardTop - 44
       {
         return true
       }
-      // The system search field (UISearchBarTextField) sizes its own text.
       if issue.auditType == .textClipped, issue.element?.elementType == .searchField { return true }
       if issue.auditType == .dynamicType, let element = issue.element {
         if element.identifier == "hasala.cappedFigure" { return true }
@@ -294,10 +208,6 @@ extension XCTestCase {
     return issues
   }
 
-  /// Waits, up to `timeout`, until nothing on screen moves: two snapshots of the
-  /// hierarchy in a row put every element in the same place. For the end of a
-  /// transition, a scroll's coast or an animation, before an audit or a drag that
-  /// measures where things are.
   @MainActor
   func waitForStill(_ app: XCUIApplication, timeout: TimeInterval = 10) {
     let deadline = Date(timeIntervalSinceNow: timeout)
@@ -316,10 +226,6 @@ extension XCTestCase {
     }
   }
 
-  /// Taps `field` until it has the keyboard focus, then types `text` into it. One tap
-  /// is not always enough on a slow CI runner: a tap that lands while a sheet still
-  /// settles, or while the app is busy, can leave the field without focus, and
-  /// `typeText` then fails ("Neither element nor any descendant has keyboard focus").
   @MainActor
   func type(_ text: String, into field: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
     for _ in 0..<3 {
@@ -332,8 +238,6 @@ extension XCTestCase {
     XCTFail("\(field) did not get the keyboard focus after 3 taps", file: file, line: line)
   }
 
-  /// Whether any labelled element outside the bars lies under the navigation bar (or
-  /// the blur just below it), from one snapshot of the hierarchy.
   @MainActor
   func contentUnderHeader(_ app: XCUIApplication) -> Bool {
     let header = app.navigationBars.firstMatch
@@ -352,10 +256,6 @@ extension XCTestCase {
     return false
   }
 
-  /// A mailbox a connect just added, on Bank alerts: its row is listed and reads Syncing
-  /// (checking for alerts) or, once checked, Connected. The row, not the toast that says
-  /// "… connected. Checking for alerts.": the toast leaves after 4 s, which a slow CI
-  /// runner's waits can outlast (AppModelTests checks its words).
   @MainActor
   func assertMailboxAdded(_ app: XCUIApplication, _ id: String, file: StaticString = #filePath, line: UInt = #line) {
     let row = el(app, "bankAlerts.mailbox.\(id)")
@@ -366,9 +266,6 @@ extension XCTestCase {
                    "\(id) reads \(row.value ?? "nothing"), not Syncing or Connected", file: file, line: line)
   }
 
-  /// The keyboard is up: each of `shown` is on screen above it (and above the dock's
-  /// `button`, when there is one), and none of `hidden` (the dock's links) is there to
-  /// cover a field. Attaches a screenshot.
   @MainActor
   func assertClearOfKeyboard(
     _ app: XCUIApplication, shown: [String], button: String? = nil, hidden: [String], _ name: String,
@@ -406,15 +303,11 @@ extension XCTestCase {
     add(shot)
   }
 
-  // MARK: Setup's keypad and split, for the setup and the journey tests
-
-  /// Types digits on the app's keypad, key by key.
   @MainActor
   func typeOnKeypad(_ app: XCUIApplication, _ digits: String, file: StaticString = #filePath, line: UInt = #line) {
     for d in digits { tap(app, "keypad.\(d)", file: file, line: line) }
   }
 
-  /// What setup's salary figure reads ("Amount", "25,000 dirhams").
   @MainActor
   func incomeFigure(_ app: XCUIApplication) -> String {
     let e = el(app, "income.figure")
@@ -422,8 +315,6 @@ extension XCTestCase {
     return [e.label, e.value as? String].compactMap { $0 }.joined(separator: " ")
   }
 
-  /// Drags a split handle sideways by `steps` of 5% (a step is a twentieth of the bar
-  /// between the two 20 pt handle slots, 322 pt on a 402 pt screen), as a finger does.
   @MainActor
   func nudge(_ handle: XCUIElement, steps: Int) {
     let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
@@ -433,28 +324,24 @@ extension XCTestCase {
 }
 
 extension XCUIElement {
-  /// Waits until the element has the keyboard focus.
   func waitForKeyboardFocus(timeout: TimeInterval = 5) -> Bool {
     let predicate = NSPredicate(format: "hasKeyboardFocus == true")
     return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout)
       == .completed
   }
 
-  /// Waits until the element's value reads `value` (an adjustable's "55%").
   func waitForValue(_ value: String, timeout: TimeInterval = 5) -> Bool {
     let predicate = NSPredicate(format: "value == %@", value)
     return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout)
       == .completed
   }
 
-  /// Waits until the element's label reads `label`.
   func waitForLabel(_ label: String, timeout: TimeInterval = uiWait) -> Bool {
     let predicate = NSPredicate(format: "label == %@", label)
     return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout)
       == .completed
   }
 
-  /// Waits until the element's label contains `text`.
   func waitForLabel(containing text: String, timeout: TimeInterval = uiWait) -> Bool {
     let predicate = NSPredicate(format: "label CONTAINS %@", text)
     return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout)

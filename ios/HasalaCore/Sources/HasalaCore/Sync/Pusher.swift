@@ -1,18 +1,3 @@
-// Push (spec 04 §5.5; spec 01 §7.1, §8.4 R-OUT-1…6).
-//
-//   0  latched → nothing
-//   1  an in-flight batch exists → resend THOSE bytes and THAT head_sig (never re-seal, never re-sign)
-//   4  pending ops → blobs (≤ 64 KiB of ops each, ≤ 8 blobs, ≤ 12 MiB), each sealed at the next
-//      counter after the previous blob (LooksSealed inside the Sealer; a second hit = sealer_fault),
-//      head_sig = Ed25519(DWK, HeadMessage(last row)), all persisted in ONE transaction
-//   5  POST /api/v1/sync
-//   6  200 → one transaction: inflight + their pending ops gone, authored head moved
-//   7  loop while ops remain
-//
-// Steps 2 (pre-push pull) and the self-pull are the engine's. Step 3 (the
-// writer checkpoint op) needs CoreDomain's `OpAuthor.writerCheckpoint`:
-// TODO(WS-10/WS-16) — until it exists no checkpoint is authored, and I11 is
-// not checked (CoreInvariants is not built either).
 import CoreAuth
 import CoreCrypto
 import CoreJSON
@@ -40,9 +25,6 @@ enum Pusher {
   static let maxBlobPlaintext = 64 * 1024
   static let maxResends = 3
 
-  /// Step 1 alone: resends the in-flight batch, if any, byte-identical. The
-  /// engine's reconcile stage runs this before its pre-push pull; it never
-  /// seals anything new.
   static func reconcile(_ ctx: SyncContext) async throws(SyncStop) -> PushSummary {
     var summary = PushSummary()
     let state = try ctx.storeCall { () throws(StoreError) in try ctx.store.syncState() }
@@ -56,13 +38,10 @@ enum Pusher {
     return summary
   }
 
-  /// Steps 1 and 4-7. Only `SyncEngine` calls this (one run at a time): two
-  /// concurrent flushes could seal the same pending op twice.
   static func flush(
     _ ctx: SyncContext, deadline: ContinuousClock.Instant?, beforeBatch: @Sendable () async -> Void = {}
   ) async throws(SyncStop) -> PushSummary {
     var summary = try await reconcile(ctx)
-    // 4-7
     while true {
       if let deadline, ContinuousClock.now >= deadline { return summary }
       try Task.checkCancellation(or: .cancelled)
@@ -77,10 +56,6 @@ enum Pusher {
     }
   }
 
-  // MARK: Build (step 4)
-
-  /// Decodes a stored op (its canonical JSON object) back into an `Op`,
-  /// re-validating it on the way.
   static func decodeStored(_ p: PendingOp) throws(SyncStop) -> Op {
     var blob = Data(#"{"v":4,"kind":"ops","ops":["#.utf8)
     blob.append(p.opJSON)
@@ -101,7 +76,6 @@ enum Pusher {
     let seed = try ctx.writerSeed()
     defer { seed.wipe() }
 
-    // Pack ops into blob plaintexts.
     var groups: [[PendingOp]] = []
     var current: [PendingOp] = []
     var currentOps: [Op] = []
@@ -116,9 +90,6 @@ enum Pusher {
       current = []
       currentOps = []
     }
-    // A blob's plaintext is `{"v":N,"kind":"ops","ops":[` + the ops' canonical
-    // JSON joined by commas + `]}`: its size is known from the stored JSON
-    // without re-encoding the growing blob for every op.
     let wrapper = 30
     var size = wrapper
     for p in pending {
@@ -135,7 +106,6 @@ enum Pusher {
     }
     if groups.count < maxUploadBlobs { try close() }
 
-    // Seal, chain, sign.
     let batchID = ULID.make(clock: ctx.clock, random: ctx.random)
     let now = ctx.clock.nowMs()
     var prev = state.authoredHead.hash
@@ -153,7 +123,6 @@ enum Pusher {
       } catch {
         switch error {
         case .sealerFault:
-          // Persisted, so later runs of this build do not seal (and fault) again (§5.5).
           throw latch(ctx, .sealerFault, alarm: true)
         default: throw .latched(.hardStop)
         }
@@ -179,10 +148,6 @@ enum Pusher {
     }
   }
 
-  // MARK: Send (steps 5-6 and the response table)
-
-  /// Uploads `batch` (the stored bytes and head_sig) and applies §5.5's table.
-  /// Returns how many ops were acknowledged.
   static func send(_ batch: [InflightBlob], ctx: SyncContext) async throws(SyncStop) -> Int {
     var remaining = batch
     var acked = 0
@@ -221,9 +186,6 @@ enum Pusher {
       case (409, "chain_break"):
         throw latch(ctx, .chainBreak, reportedAs: .halted(.tampered(.ownChainConflict)))
       case (409, "stale_epoch"):
-        // TODO(post-beta, 01 R-OUT-4): obtain the new epoch key, check the own
-        // head shows these counters unapplied, re-seal from pending_ops and re-sign.
-        // Epoch rotation is not mounted in the beta (`02` §10.6).
         let e = UInt32(f.detail.split(separator: " ").last.flatMap { UInt32($0) } ?? 0)
         throw .needsUnlock(epoch: e)
       case (400, "bad_signature"):
@@ -241,7 +203,6 @@ enum Pusher {
     throw .protocolError("upload: too many partial resends")
   }
 
-  /// Acknowledges `blobs` (oldest first) and returns how many ops they carried.
   static func acknowledge(_ blobs: [InflightBlob], ctx: SyncContext) throws(SyncStop) -> Int {
     guard let last = blobs.last else { return 0 }
     try ctx.storeCall { () throws(StoreError) in
@@ -252,7 +213,6 @@ enum Pusher {
     return blobs.reduce(0) { $0 + $1.opIDs.count }
   }
 
-  /// Persists `latch` and returns the stop that reports it, or the store's failure.
   static func latch(
     _ ctx: SyncContext, _ latch: OutboxLatch, alarm: Bool = false, reportedAs stop: SyncStop? = nil
   ) -> SyncStop {
@@ -260,9 +220,6 @@ enum Pusher {
     return stop ?? .latched(latch, alarm: alarm)
   }
 
-  /// The own writer's stored head, by scanning `GET /sync/hashes` (spec 04
-  /// §5.5 "as `readChainHead` does"; OQ-3 keeps the scan). Also returns every
-  /// own counter's stored hash, for the resend check.
   static func readOwnHead(_ ctx: SyncContext, bearer: String) async throws(SyncStop)
     -> (counter: Int64, hashes: [Int64: Hash32])
   {
@@ -287,7 +244,6 @@ enum Pusher {
   }
 }
 
-/// A ULID (26 Crockford base32 characters: 48-bit ms time, 80 random bits).
 public enum ULID {
   static let alphabet = Array("0123456789ABCDEFGHJKMNPQRSTVWXYZ".utf8)
 
@@ -297,10 +253,9 @@ public enum ULID {
     for i in 0..<6 { bytes[i] = UInt8(ms >> (40 - 8 * UInt64(i)) & 0xff) }
     let r = (try? random.bytes(10)) ?? Data(count: 10)
     for i in 0..<10 { bytes[6 + i] = r[r.startIndex + i] }
-    // 128 bits → 26 characters, most significant first (2 leading pad bits).
     var out: [UInt8] = []
     var acc: UInt32 = 0
-    var bits = 2  // pad: 130 bits = 26 × 5
+    var bits = 2
     for b in bytes {
       acc = acc << 8 | UInt32(b)
       bits += 8

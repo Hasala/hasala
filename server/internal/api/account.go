@@ -1,9 +1,5 @@
 package api
 
-// account.go: GET /api/v1/account (#40), the display name (#76) and the
-// recovery phrase view (#67). It is the one file of this package that reads
-// the review flag (spec 02 fence 6): #40 reports it and nothing else does.
-
 import (
 	"net/http"
 	"time"
@@ -14,14 +10,11 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// AccountUsage is #40's usage object.
 type AccountUsage struct {
 	OplogHotBytes int64 `json:"oplog_hot_bytes"`
 	Limit         int64 `json:"limit"`
 }
 
-// AccountResponse is GET /api/v1/account (#40). The address and the display
-// name are returned only to a session of this account (spec 02 §9.9).
 type AccountResponse struct {
 	UserID                 string       `json:"user_id"`
 	CreatedAt              time.Time    `json:"created_at"`
@@ -35,7 +28,7 @@ type AccountResponse struct {
 	DisplayName            string       `json:"display_name"`
 	HasPassword            bool         `json:"has_password"`
 	PasswordSetAt          *time.Time   `json:"password_set_at"`
-	PasswordSalt           string       `json:"password_salt"` // b64 s_srv(email_norm)
+	PasswordSalt           string       `json:"password_salt"`
 	HasPasskey             bool         `json:"has_passkey"`
 	Frozen                 bool         `json:"frozen"`
 	FreezeTriggerAt        *time.Time   `json:"freeze_trigger_at"`
@@ -94,7 +87,6 @@ func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request, userID
 	writeJSON(w, http.StatusOK, out)
 }
 
-// DisplayNameRequest is #76's body.
 type DisplayNameRequest struct {
 	DisplayName string `json:"display_name"`
 }
@@ -111,9 +103,8 @@ func (s *Server) handleSetDisplayName(w http.ResponseWriter, r *http.Request, us
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// PhraseViewResponse is #67's answer.
 type PhraseViewResponse struct {
-	PhraseBox string `json:"phrase_box"` // b64, 45 bytes
+	PhraseBox string `json:"phrase_box"`
 }
 
 func (s *Server) handlePhraseView(w http.ResponseWriter, r *http.Request, _ uuid.UUID) {
@@ -134,7 +125,6 @@ func (s *Server) handlePhraseView(w http.ResponseWriter, r *http.Request, _ uuid
 		s.writeKeyErr(w, r, err)
 		return
 	}
-	// Every other device hears that the phrase was shown (spec 02 §12.5).
 	s.wakeOthers(r.Context(), info.UserID, info.WriterID, pushv2.ReasonSecurity)
 	writeJSON(w, http.StatusOK, PhraseViewResponse{PhraseBox: b64(box)})
 }

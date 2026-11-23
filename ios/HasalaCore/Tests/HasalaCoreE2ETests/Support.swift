@@ -1,6 +1,3 @@
-// Test worlds for the protocol suites: one FakeServer (or, with
-// HASALA_E2E_URL, a local hasalad), and one AccountEnvironment per simulated
-// iPhone (its own Keychain, DAK and passkeys).
 import CoreAuth
 import CoreCrypto
 import CoreSoftAuth
@@ -39,7 +36,6 @@ struct World {
     Phone(transport: server, clock: clock, seed: seed, passkeys: passkeys)
   }
 
-  /// Signup + C1-P on `phone`; returns the account, its keys' phrase and a context.
   func passwordAccount(_ phone: Phone, email: String = "maya@example.com") async throws -> (
     EnrolledAccount, [String], SyncContext
   ) {
@@ -53,14 +49,12 @@ struct World {
   }
 }
 
-/// A valid parent-free op (home_currency_set) with a distinct id.
 func op(_ i: Int, currency: String = "AED") -> Op {
   Op(
     v: 4, type: .homeCurrencySet, opID: "01J000000000000000000000\(String(format: "%02d", i % 100))",
     authoredAt: "2026-10-11T08:00:00.000Z", payload: .object(JSONObject([("currency", .string(currency))])))
 }
 
-/// Enqueues ops straight into the store (the Outbox's own tests cover it).
 func enqueue(_ ctx: SyncContext, _ ops: [Op]) throws {
   try ctx.store.enqueue(
     ops.map {
@@ -76,7 +70,6 @@ func canonical(_ op: Op) throws -> Data {
   return Data(JSONWriter().bytes(doc["ops"]!.arrayValue![0]))
 }
 
-/// Every op the store holds, opened (what a fold would read).
 func storedOps(_ ctx: SyncContext) throws -> [Op] {
   let key = try EpochKey(epoch: 1, key: try #require(try ctx.secrets.epochKey(userID: ctx.userID, epoch: 1)))
   let opener = Opener(epochHWM: 1, keys: [key])

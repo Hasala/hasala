@@ -2,12 +2,6 @@
 import HasalaModels
 import SwiftUI
 
-// The kit's catalogue (Debug only): every component in its states, one page per area, with the
-// synthetic sample month (spec 01 §6.8). It is how a package checks a part against its Paper
-// board before using it, at the default size and at AX3. Nothing here ships: the file compiles
-// only into Debug builds.
-
-/// Every component, page by page.
 public struct ComponentCatalog: View {
   public enum Page: String, CaseIterable, Identifiable, Sendable {
     case foundations, icons, buttons, selection, lists, pace, feedback, cards, keypad
@@ -32,8 +26,6 @@ public struct ComponentCatalog: View {
   let page: Page?
   let scrollTo: Int?
 
-  /// One page, or the index of pages when `page` is nil. `scrollTo` opens a page at one of its
-  /// specimens (for screenshots of a long page).
   public init(page: Page? = nil, scrollTo: Int? = nil) {
     self.page = page
     self.scrollTo = scrollTo
@@ -102,7 +94,6 @@ struct CatalogPage: View {
   }
 }
 
-/// A titled specimen with an index to scroll to.
 struct Specimen<Content: View>: View {
   let index: Int
   let title: String
@@ -123,7 +114,6 @@ struct Specimen<Content: View>: View {
   }
 }
 
-/// The sample month (synthetic Maya, spec 01 §6.8).
 enum Sample {
   static let spent = Money.aed(10_288_34)
   static let plan = Money.aed(19_000_00)
@@ -157,8 +147,6 @@ enum Sample {
                     meta: "Off since 2 Oct"),
   ]
 }
-
-// MARK: - Pages
 
 struct FoundationsPage: View {
   let hidden: Bool
@@ -470,7 +458,6 @@ struct SelectionPage: View {
   }
 }
 
-/// A wrapping row for chips in the catalogue.
 struct FlowRow: Layout {
   var spacing: CGFloat = 6
 
@@ -602,7 +589,6 @@ struct PacePage: View {
           .opacity(phase.verdictVisible ? 1 : 0)
         Button("Replay the reveal") { replay += 1 }.buttonStyle(.pill(.secondary, size: .small))
       }
-      // The reveal belongs to the specimen, so a new id replays it.
       .paceFillSequence($phase, target: Sample.spent.fraction(of: Sample.plan), policy: motion)
       .id(replay)
     }
@@ -651,7 +637,6 @@ struct PacePage: View {
 }
 
 extension Money {
-  /// This amount as a share of `plan`, for drawing (geometry only).
   func fraction(of plan: Money) -> Double {
     plan.minor > 0 ? Double(minor) / Double(plan.minor) : 0
   }

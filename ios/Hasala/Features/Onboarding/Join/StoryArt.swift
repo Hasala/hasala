@@ -2,59 +2,29 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-// The four story stages (Paper row 10: "Story hero" on Welcome · Story 1–4 of 4; spec 04
-// §4–§8) and their choreography (Welcome · Motion and haptics, spec 04 §3): each story's
-// cards deal in, hero first, then its key moment plays, with one haptic as it lands. The
-// welcome stories are a first-time moment, so they keep Paper's spring-deal choreography
-// (motion policy, "delight"); with Reduce Motion every piece cross-fades in place, nothing
-// turns, nothing counts, and the haptics stay.
-//
-// Each stage is drawn at Paper's coordinates in a 402-wide box (every piece at its top-left,
-// tilted about that corner, as CSS `rotate` with `transform-origin: 0 0` draws it); the pager
-// scales the box down when the copy needs the room. VoiceOver reads each drawing as one
-// picture, in a sentence, then the story's copy.
-
-/// A run of a story's choreography: a new id each time the story becomes the current one,
-/// and whether the person (not the timer) brought it there. Key-moment haptics play only
-/// for a story the person reached (plan B1.4); auto-advance never buzzes.
 struct StoryRun: Equatable, Sendable {
   var id: Int
   var byUser: Bool
 }
 
-/// The Welcome stories' own timings, on the design system's curves (spec 04 §3.2). They
-/// are longer than the app's UI motion on purpose: the owner's motion policy lets a
-/// first-time moment keep Paper's choreography.
 enum StoryTiming {
-  /// Story 1: the figure counts up on the fill's curve (spec 04 §3.3 `--motion-duration-count`).
   static let count = 0.8
-  /// Story 1: the pace bar fills on the same curve, from 500 ms.
   static let fill = 0.8
-  /// Story 1: the caption arrow draws itself.
   static let arrow = 0.35
-  /// Story 2: the bank alert line types out.
   static let typing = 0.32
-  /// Story 2 and 3: the dots run down a connector.
   static let connector = 0.35
-  /// Story 3: the hex line settles from a scramble.
   static let scramble = 0.4
-  /// Story 4: the card leans toward Need, holds, then springs back.
   static let lean = 0.22
   static let leanHold = 0.18
-  /// Story 4: the learned rule's check draws.
   static let check = 0.25
 }
 
-/// The stage of story `index` (0…3) at Paper's size.
 struct StoryArt: View {
   let index: Int
   let run: StoryRun?
-  /// The cards float while their story is the one shown (the one loop, spec 04 §3.1).
   let floating: Bool
 
-  /// How tall each stage is drawn (Paper's hero heights, down to the orbit's last pixel).
   static let heights: [CGFloat] = [341, 341, 329, 405]
-  /// Where the orbit sits in each stage: 24 lower on story 4, whose stage is taller.
   static let orbitTop: [CGFloat] = [16, 16, 16, 40]
 
   var body: some View {
@@ -67,13 +37,11 @@ struct StoryArt: View {
       }
     }
     .frame(width: 402, height: Self.heights[min(max(index, 0), 3)], alignment: .topLeading)
-    // One picture with what it shows, so the words drawn in it are not text nobody can reach.
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(Self.descriptions[min(max(index, 0), 3)])
     .accessibilityAddTraits(.isImage)
   }
 
-  /// What each drawing shows, for VoiceOver (synthetic figures, as drawn).
   static let descriptions = [
     "A budget card: AED 8,711.66 left, on track. Rent counts when due.",
     "An Emirates NBD alert email becomes a Carrefour grocery transaction.",
@@ -82,20 +50,12 @@ struct StoryArt: View {
   ]
 }
 
-// MARK: - Placement and entrances
-
-/// How a piece arrives.
 enum ArtEntrance {
-  /// A card: spring-deal from its offset, scale 0.94 and a ±10° extra turn (spec 04 §3.1).
   case deal(from: CGSize, swing: Double)
-  /// A chip: pops last, `.bouncy`, from 0.8.
   case pop
-  /// In place, a fade (a connector's tray, a pill that is already "there").
   case fade
 }
 
-/// A piece of a stage: at Paper's top-left `x`, `y`, tilted `tilt`° about that corner, in
-/// once `shown`. Reduce Motion: a 150 ms fade, no travel, no turn; settled: at once.
 struct ArtPiece: ViewModifier {
   let x: CGFloat
   let y: CGFloat
@@ -131,7 +91,7 @@ struct ArtPiece: ViewModifier {
   }
 
   private var animation: Animation? {
-    guard shown else { return nil }  // Going back to the start is never animated.
+    guard shown else { return nil }
     if motion.settled { return nil }
     if motion.reduceMotion { return HMotion.reduceMotionCurve.animation }
     switch entrance {
@@ -142,9 +102,6 @@ struct ArtPiece: ViewModifier {
   }
 }
 
-/// The idle float (spec 04 §3.1 "Never fully still"): ±4 pt on a 4 s loop, each card out of
-/// phase with the next. The app's one loop; off with Reduce Motion (the caller passes
-/// `active` false then).
 struct IdleFloat: ViewModifier {
   let active: Bool
   let phase: Int
@@ -182,8 +139,6 @@ extension View {
   }
 }
 
-/// A line of text in a drawing, at Paper's fixed size and line height (the art never grows
-/// with Dynamic Type; the story copy does).
 struct ArtText: View {
   let text: String
   let size: CGFloat
@@ -207,7 +162,6 @@ struct ArtText: View {
   }
 }
 
-/// A figure in a drawing (SF Pro Rounded at a fixed size).
 struct ArtFigure: View {
   let text: String
   let size: CGFloat
@@ -225,8 +179,6 @@ struct ArtFigure: View {
   }
 }
 
-/// The resolved motion policy (the root's, plus the system's Reduce Motion), read once per
-/// run, never per frame.
 @MainActor @propertyWrapper
 struct StageMotion: DynamicProperty {
   @Environment(\.hMotion) private var policy
@@ -239,8 +191,6 @@ struct StageMotion: DynamicProperty {
   }
 }
 
-/// A story's steps in time: waits until `t` seconds after the run began. False once the run
-/// was cancelled (the story is no longer the current one).
 private struct StageClock {
   let start = ContinuousClock.now
 
@@ -250,15 +200,12 @@ private struct StageClock {
   }
 }
 
-/// Runs `body` with no animation, whatever the views around ask for.
 @MainActor
 func instantly(_ body: () -> Void) {
   var t = Transaction()
   t.disablesAnimations = true
   withTransaction(t, body)
 }
-
-// MARK: - Story 1 · Know what's left (spec 04 §4)
 
 private struct SpendStage: View {
   let run: StoryRun?
@@ -390,27 +337,20 @@ private struct SpendStage: View {
       return
     }
     let clock = StageClock()
-    // 0 ms: the spending card deals in at −2° and the figure counts up (numeric text).
     hero = true
     withAnimation(m.reduceMotion ? nil : HMotion.easeInOut(StoryTiming.count)) { counted = true }
-    // 500 ms: the pace bar fills from 0 on the same curve.
     guard await clock.at(0.5) else { return }
     withAnimation(m.reduceMotion ? nil : HMotion.easeInOut(StoryTiming.fill)) { filled = true }
-    // 600 ms: Rent slides in from the right and settles at 7°.
     guard await clock.at(0.6) else { return }
     rent = true
-    // 750 ms: the caption arrow draws itself.
     guard await clock.at(0.75) else { return }
     withAnimation(m.reduceMotion ? HMotion.reduceMotionCurve.animation : HMotion.easeOutSoft(StoryTiming.arrow)) {
       arrow = true
     }
-    // 800 ms: the count lands (light impact, when the person brought the story here).
     guard await clock.at(StoryTiming.count) else { return }
     if run.byUser { landed += 1 }
-    // Chips pop last.
     guard await clock.at(0.9) else { return }
     chip = true
-    // The today marker drops in once the fill ends, then the verdict fades in.
     guard await clock.at(0.5 + StoryTiming.fill) else { return }
     withAnimation(m.reduceMotion ? nil : HMotion.easeOutSoft(HMotion.marker)) { marker = true }
     guard await clock.at(0.5 + StoryTiming.fill + HMotion.marker) else { return }
@@ -418,7 +358,6 @@ private struct SpendStage: View {
   }
 }
 
-/// The curved arrow from "Rent counted on its due date" to the Rent card (64 × 40).
 private nonisolated struct CaptionArrow: Shape {
   func path(in rect: CGRect) -> Path {
     let sx = rect.width / 64, sy = rect.height / 40
@@ -432,8 +371,6 @@ private nonisolated struct CaptionArrow: Shape {
     return p
   }
 }
-
-// MARK: - Story 2 · Bank emails do the typing (spec 04 §5)
 
 private struct EmailStage: View {
   let run: StoryRun?
@@ -484,12 +421,10 @@ private struct EmailStage: View {
     .task(id: run) { await play() }
   }
 
-  /// Where a disc starts as it orbits in: a quarter turn back along the ring through it,
-  /// around the orbit's centre (201, 180 in the stage).
   static func orbitFrom(_ x: CGFloat, _ y: CGFloat, _ size: CGFloat) -> CGSize {
     let c = CGPoint(x: 201, y: 180)
     let p = CGPoint(x: x + size / 2 - c.x, y: y + size / 2 - c.y)
-    let a = -0.5  // radians back along the ring
+    let a = -0.5
     let q = CGPoint(x: p.x * cos(a) - p.y * sin(a), y: p.x * sin(a) + p.y * cos(a))
     return CGSize(width: q.x - p.x, height: q.y - p.y)
   }
@@ -509,7 +444,6 @@ private struct EmailStage: View {
           .overlay { HIconView(.envelope, size: 16, color: HColor.hueSkyInk, strokeWidth: 2) }
         ArtText(text: "Emirates NBD · Transaction alert", size: 13, leading: 18, weight: .semibold)
       }
-      // The raw alert types out; the whole line holds its place so nothing reflows.
       ZStack(alignment: .topLeading) {
         ArtText(text: Self.alert, size: 12, leading: 17, color: .clear, mono: true)
         ArtText(text: String(Self.alert.prefix(typed)), size: 12, leading: 17, color: HColor.textSecondary, mono: true)
@@ -571,20 +505,15 @@ private struct EmailStage: View {
       return
     }
     let clock = StageClock()
-    // 0 ms: the bank email drops in from above to −3°; the raw alert line types out.
     email = true
     async let typing: Void = typeAlert(clock, all: m.reduceMotion)
-    // The "Read on this iPhone" chip arrives with it, between the email and the row.
     guard await clock.at(HMotion.stagger) else { return }
     source = true
-    // 450 ms: dots run down the connector; the chip pulses once.
     guard await clock.at(0.45) else { return }
     withAnimation(m.reduceMotion ? HMotion.reduceMotionCurve.animation : HMotion.easeOutSoft(StoryTiming.connector)) {
       connector = true
     }
     if !m.reduceMotion { withAnimation(HMotion.snappy) { pulse = true } }
-    // 650 ms: the Carrefour row lifts out of the email and settles at 2°; the category discs
-    // orbit in, one by one.
     guard await clock.at(0.65) else { return }
     row = true
     guard await clock.at(0.45 + HMotion.snappyResponse) else { return }
@@ -593,13 +522,11 @@ private struct EmailStage: View {
       guard await clock.at(0.65 + HMotion.stagger * Double(i)) else { return }
       discs = i
     }
-    // The row has landed: a light impact, when the person brought the story here.
     guard await clock.at(0.65 + HMotion.dealResponse * 0.8) else { return }
     if run.byUser { landed += 1 }
     await typing
   }
 
-  /// Types the raw alert out, a character at a time; with Reduce Motion it is simply there.
   private func typeAlert(_ clock: StageClock, all: Bool) async {
     let count = Self.alert.count
     if all {
@@ -613,7 +540,6 @@ private struct EmailStage: View {
   }
 }
 
-/// A dotted connector between two cards (Paper "Connector · dotted").
 private nonisolated struct Connector: Shape {
   let from: CGPoint
   let c1: CGPoint
@@ -627,8 +553,6 @@ private nonisolated struct Connector: Shape {
     return p
   }
 }
-
-// MARK: - Story 3 · Your phone holds the key (spec 04 §6)
 
 private struct KeyStage: View {
   let run: StoryRun?
@@ -660,8 +584,6 @@ private struct KeyStage: View {
         .trim(from: 0, to: connector ? 1 : 0)
         .stroke(HColor.blue400, style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [0, 7]))
         .frame(width: 402, height: 329)
-      // The coin drops into the slot with a small bounce (spring-drop, page 04).
-      // The mark's frame reaches 90 above the drawing, so the coin falls in from there.
       SlotMark(plate: .onWash, coinShadow: true, drop: coinIn || motion.isStill ? 0 : 220)
         .frame(width: 240, height: 143 + 90)
         .opacity(tray ? 1 : 0)
@@ -760,8 +682,6 @@ private struct KeyStage: View {
       return
     }
     let clock = StageClock()
-    // 0 ms: the Carrefour card is readable on this iPhone; the coin drops into the slot with
-    // a small bounce.
     card = true
     withAnimation(m.reduceMotion ? HMotion.reduceMotionCurve.animation : HMotion.easeOutSoft(HMotion.fade)) {
       tray = true
@@ -771,12 +691,9 @@ private struct KeyStage: View {
     withAnimation(m.reduceMotion ? HMotion.reduceMotionCurve.animation : HMotion.easeOutSoft(StoryTiming.connector)) {
       connector = true
     }
-    // 300 ms: the sealed line arrives under the slot, still a scramble.
     guard await clock.at(0.3) else { return }
     if !m.reduceMotion { hex = Self.scrambled(seed: 0) }
     pill = true
-    // 350 ms: the lock badge snaps shut (rigid impact), and the row above scrambles into the
-    // hex line below.
     guard await clock.at(0.35) else { return }
     withAnimation(m.reduceMotion ? HMotion.reduceMotionCurve.animation : HMotion.springDrop) { badge = true }
     async let scramble: Void = settleHex(clock, at: 0.35, all: m.reduceMotion)
@@ -784,13 +701,11 @@ private struct KeyStage: View {
     withAnimation(m.reduceMotion ? nil : HMotion.springDrop) { shut = true }
     guard await clock.at(0.5) else { return }
     if run.byUser { snapped += 1 }
-    // 600 ms: "Your key" slides in and stays.
     guard await clock.at(0.6) else { return }
     key = true
     await scramble
   }
 
-  /// The hex line cycles, then settles left to right on the sealed copy.
   private func settleHex(_ clock: StageClock, at start: Double, all: Bool) async {
     if all {
       hex = Self.sealed
@@ -803,8 +718,6 @@ private struct KeyStage: View {
     }
   }
 
-  /// The sealed line part-way through its scramble: the first `settled` characters are the
-  /// real ones, the rest cycle through hex digits (spaces stay put).
   static func scrambled(seed: Int, settled: Int = 0) -> String {
     let digits = Array("0123456789abcdef")
     return String(sealed.enumerated().map { i, c in
@@ -814,8 +727,6 @@ private struct KeyStage: View {
   }
 }
 
-/// The seal's padlock (Paper "Seal · lock badge"): a filled blue body, its shackle, and an
-/// amber keyhole. Open, the shackle sits higher; it snaps shut onto the body.
 private struct SealLock: View {
   let shut: Bool
 
@@ -837,8 +748,6 @@ private struct SealLock: View {
     }
   }
 }
-
-// MARK: - Story 4 · Sort a week in a minute (spec 04 §8)
 
 private struct SortStage: View {
   let run: StoryRun?
@@ -864,8 +773,6 @@ private struct SortStage: View {
                   motion: motion)
       reviewCard
         .frame(width: 196)
-        // The lean: the card follows an imagined finger toward Need (+54, 6° more), then
-        // springs back, as a real review swipe does.
         .rotationEffect(.degrees(leaning ? 6 : 0), anchor: .bottom)
         .offset(x: leaning ? 54 : 0)
         .idleFloat(floating && card && !leaning, phase: 0)
@@ -964,7 +871,6 @@ private struct SortStage: View {
       return
     }
     let clock = StageClock()
-    // 0 ms: the cards deal in as a fanned stack, then the bucket chips pop.
     ghost = true
     guard await clock.at(HMotion.stagger) else { return }
     card = true
@@ -972,8 +878,6 @@ private struct SortStage: View {
       guard await clock.at(HMotion.stagger * Double(i + 2)) else { return }
       chips = i
     }
-    // 700 ms: the top card leans toward Need, the Need chip glows, then it springs back.
-    // Plays once; a light impact at the lean, the same feel as a real review swipe.
     guard await clock.at(0.7) else { return }
     if !m.reduceMotion {
       withAnimation(HMotion.easeOutSoft(StoryTiming.lean)) { leaning = true }
@@ -984,7 +888,6 @@ private struct SortStage: View {
     if !m.reduceMotion {
       withAnimation(HMotion.cardReturn) { leaning = false }
     }
-    // 1100 ms: "Always Groceries for Lulu" checks itself.
     guard await clock.at(1.1) else { return }
     rule = true
     guard await clock.at(1.1 + HMotion.snappyResponse) else { return }
@@ -992,7 +895,6 @@ private struct SortStage: View {
   }
 }
 
-/// The learned rule's check (`m5 12.5 4.5 4.5L19 7.5`), drawn so it can draw itself.
 private nonisolated struct RuleCheck: Shape {
   func path(in rect: CGRect) -> Path {
     let s = rect.width / 24

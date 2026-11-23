@@ -11,10 +11,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// routes_writers.go: the writer challenge, AAK-only registration, revocation
-// with a pinned final head, and the roster (spec 02 #23–#26, §9.5, §10.2;
-// spec 01 §10.5, §10.6).
-
 func (s *Server) mountWriters(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/writers/challenge", s.requireSession(s.handleChallenge))
 	mux.HandleFunc("POST /api/v1/writers/register", s.requireSession(s.handleRegister))
@@ -22,52 +18,44 @@ func (s *Server) mountWriters(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/writers", s.requireSession(s.handleRoster))
 }
 
-// ChallengeResponse carries a single-use writer-challenge nonce (#23).
 type ChallengeResponse struct {
-	Nonce     string    `json:"nonce"` // b64
+	Nonce     string    `json:"nonce"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// RegisterRequest is #24 (spec 02 §10.2): AAK-only, so there is no
-// authorizer and no step_up (unknown fields are a 400).
 type RegisterRequest struct {
 	WriterID  string `json:"writer_id"`
 	Alg       string `json:"alg"`
-	PubKey    string `json:"pubkey"`     // b64, 32
-	DAKPubkey string `json:"dak_pubkey"` // b64, 65
-	Nonce     string `json:"nonce"`      // b64, 32
-	Sig       string `json:"sig"`        // b64, AAK over RegistrationMessage
+	PubKey    string `json:"pubkey"`
+	DAKPubkey string `json:"dak_pubkey"`
+	Nonce     string `json:"nonce"`
+	Sig       string `json:"sig"`
 }
 
-// RegisterResponse is #24's 201.
 type RegisterResponse struct {
 	WriterID string `json:"writer_id"`
 }
 
-// RevokeRequest is #25 (spec 02 §9.5).
 type RevokeRequest struct {
 	WriterID       string      `json:"writer_id"`
 	SignerWriterID string      `json:"signer_writer_id"`
-	Nonce          string      `json:"nonce"`         // b64
-	FinalCounter   string      `json:"final_counter"` // decimal
-	FinalHead      string      `json:"final_head"`    // b64, 32
-	Sig            string      `json:"sig"`           // b64, DWK of the signer over RevocationMessage
+	Nonce          string      `json:"nonce"`
+	FinalCounter   string      `json:"final_counter"`
+	FinalHead      string      `json:"final_head"`
+	Sig            string      `json:"sig"`
 	StepUp         *StepUpWire `json:"step_up"`
 }
 
-// WriterEntry is one roster row (#26). RevokedAt is null while live; Current
-// marks the calling session's own writer.
 type WriterEntry struct {
 	WriterID     string     `json:"writer_id"`
 	Alg          string     `json:"alg"`
-	PubKey       string     `json:"pubkey"`     // b64
-	DAKPubkey    string     `json:"dak_pubkey"` // b64
+	PubKey       string     `json:"pubkey"`
+	DAKPubkey    string     `json:"dak_pubkey"`
 	RegisteredAt time.Time  `json:"registered_at"`
 	RevokedAt    *time.Time `json:"revoked_at"`
 	Current      bool       `json:"current"`
 }
 
-// WritersResponse answers GET /api/v1/writers, revoked writers included.
 type WritersResponse struct {
 	Writers []WriterEntry `json:"writers"`
 }
@@ -125,7 +113,6 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request, userID u
 		s.writeKeyErr(w, r, err)
 		return
 	}
-	// A new device is a security event for every other one (spec 02 §12.5).
 	s.wakeOthers(r.Context(), userID, req.WriterID, pushv2.ReasonSecurity)
 	writeJSON(w, http.StatusCreated, RegisterResponse{WriterID: req.WriterID})
 }

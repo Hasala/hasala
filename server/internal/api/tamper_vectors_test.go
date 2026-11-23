@@ -20,12 +20,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// TestTamperUploadsGetTheirVerdict posts every upload of conformance/crypto-v3/
-// tamper.json (spec 01 §15.3) to the real handler and requires the verdict the
-// file states. The file is Go-written and Swift-read; this is where the server
-// half of each verdict is held to it. Each case runs in a fresh account under
-// the anchor user id (the frames' AAD names it): writer W with the anchor DWK,
-// bound to the session, and the anchor frame A09 already stored at counter 1.
 func TestTamperUploadsGetTheirVerdict(t *testing.T) {
 	t.Parallel()
 	raw, err := os.ReadFile("../../../conformance/crypto-v3/tamper.json")
@@ -38,12 +32,11 @@ func TestTamperUploadsGetTheirVerdict(t *testing.T) {
 	}
 	pool, owner := pgtest.NewWithOwner(t)
 	srv := &Server{
-		Pool:     pool,
-		Sessions: &auth.Sessions{Pool: pool, TTL: time.Hour},
-		Writers:  &auth.Writers{Pool: pool},
-		Appender: &oplog.Appender{Pool: pool},
-		Logf:     func(string, ...any) {},
-		// Every case uploads as the same user: the limiters are not the subject.
+		Pool:            pool,
+		Sessions:        &auth.Sessions{Pool: pool, TTL: time.Hour},
+		Writers:         &auth.Writers{Pool: pool},
+		Appender:        &oplog.Appender{Pool: pool},
+		Logf:            func(string, ...any) {},
 		SyncPerUser:     NewLimiter(0, 1e6, 16, time.Now),
 		SyncUploadBytes: NewLimiter(0, 1e12, 16, time.Now),
 	}
@@ -78,7 +71,6 @@ func TestTamperUploadsGetTheirVerdict(t *testing.T) {
 		if _, err := h.srv.Appender.AppendClient(bg, u, file.WriterID, blob.StreamHot, []oplog.Row{frame1}, file.Frame1Sig); err != nil {
 			t.Fatalf("%s: storing the anchor frame at counter 1: %v", c.ID, err)
 		}
-		// The epoch rose after counter 1 was written (T07's server epoch 2).
 		if c.Upload.ServerEpoch != 1 {
 			if _, err := pool.Exec(bg, `UPDATE account_keys SET current_epoch = $2 WHERE user_id = $1`, u, c.Upload.ServerEpoch); err != nil {
 				t.Fatal(err)

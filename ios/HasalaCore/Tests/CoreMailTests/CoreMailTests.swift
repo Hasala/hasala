@@ -1,7 +1,3 @@
-// CoreMail: the Gmail Authentication-Results trust rule (every adversarial golden of
-// the ledgerd TypeScript client's src/mail/authres.test.ts, plus the non-ASCII whitespace and
-// case-folding behaviour pinned explicitly), the header block slicer and the forwarder list.
-// Every fixture is synthetic.
 import Testing
 
 @testable import CoreMail
@@ -210,34 +206,23 @@ struct AuthResultsTests {
     #expect(verdict("") == (false, .noAR))
     let junk = verdict("\u{0}\u{1} not a header at all \n\n more junk")
     #expect(!junk.0)
-    // A body A-R after the blank line is not a header.
     let body = "From: x\r\n\r\nAuthentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\n"
     #expect(verdict(body) == (false, .noAR))
-    // The bound is in UTF-16 code units, as in the twin: 100,000 astral scalars are 200,000.
     #expect(verdict("X: " + String(repeating: "🏦", count: 140_000)) == (false, .parseError))
   }
 
-  /// Pinned rather than inherited (inventory client-core-b §3): JavaScript's `trim` removes
-  /// U+00A0 and U+FEFF, and its `toLowerCase` maps U+212A KELVIN SIGN to `k`. The port keeps
-  /// both, so its verdict is the twin's on every input.
   @Test("non-ASCII whitespace and case folding behave as in the TypeScript twin")
   func jsSemantics() {
-    // A field name padded with NBSP still names an A-R (so a forged one below Gmail's is
-    // counted, and the result fails closed as multiple_ar).
     let nbspName = block(
       "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example",
       "\u{A0}Authentication-Results: mx.google.com; dkim=pass header.d=evil.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(nbspName) == (false, .multipleAR))
-    // A BOM before the value is trimmed like a space.
     let bom = block("Authentication-Results:\u{FEFF} mx.google.com; dkim=pass header.d=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(bom) == (true, .pass))
-    // NBSP around a domain value is trimmed.
     let nbspDomain = block("Authentication-Results: mx.google.com; dkim=pass header.d=\"\u{A0}bank.example\u{A0}\"", "From: Bank <alerts@bank.example>")
     #expect(AuthResults.verifiedDomain(nbspDomain) == "bank.example")
-    // U+212A lower-cases to `k`, so "d\u{212A}im" is dkim, as it is to the twin.
     let kelvin = block("Authentication-Results: mx.google.com; d\u{212A}im=pass header.d=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(kelvin) == (true, .pass))
-    // NBSP is NOT a token separator: "dkim=pass\u{A0}header.d=..." is one token.
     let glued = block("Authentication-Results: mx.google.com; dkim=pass\u{A0}header.d=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(glued) == (false, .fail))
   }
@@ -261,13 +246,10 @@ struct MailHeaderTests {
     #expect(MailHeaders.headerBlock("A: 1\r\nB: 2") == "A: 1\r\nB: 2")
     #expect(MailHeaders.headerBlock("") == "")
     #expect(MailHeaders.headerBlock(rawMessage: Array("A: 1\r\n\r\nbody".utf8)) == "A: 1")
-    // One leading BOM is dropped, as TextDecoder drops it: a BOM then a blank line is an
-    // empty header block, not a block that runs on into the body.
     let bom: [UInt8] = [0xEF, 0xBB, 0xBF]
     #expect(MailHeaders.headerBlock(rawMessage: bom + Array("\r\n\r\nA: 1\r\n\r\n".utf8)) == "")
     #expect(MailHeaders.headerBlock(rawMessage: bom + Array("A: 1\r\n\r\nbody".utf8)) == "A: 1")
     #expect(MailHeaders.headerBlock(rawMessage: bom + bom + Array("A: 1\r\n\r\nbody".utf8)) == "\u{FEFF}A: 1")
-    // A large body no longer counts against the A-R bound.
     let big = "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: a@bank.example\r\n\r\n"
       + String(repeating: "x", count: 900_000)
     #expect(AuthResults.gmailVerdict(MailHeaders.headerBlock(big)).trusted)
@@ -286,7 +268,6 @@ struct MailHeaderTests {
   }
 }
 
-// The Outlook.com rule (docs/decisions/outlook-mailbox.md §3); conformance/authres pins the rest.
 private let msAR =
   "Authentication-Results: spf=pass (sender IP is 192.0.2.1) smtp.mailfrom=bank.example; dkim=pass header.d=bank.example; dmarc=pass action=none header.from=bank.example;compauth=pass reason=100"
 private let authAs = "X-MS-Exchange-Organization-AuthAs: Anonymous"

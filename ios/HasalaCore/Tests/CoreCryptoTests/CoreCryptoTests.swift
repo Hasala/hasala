@@ -1,6 +1,3 @@
-// Unit tests for CoreCrypto: the registry, the wordlist and phrase, the
-// predicate, accounts and passwords, step-up, DAK checks. The seal/open tamper
-// suite is in TamperSuiteTests.swift, the wrap cases in WrapTests.swift.
 import CorePrimitives
 import CoreWire
 import CryptoKit
@@ -10,7 +7,6 @@ import Testing
 
 @testable import CoreCrypto
 
-/// A deterministic `RandomSource`: SHA-256 of (seed, block counter), streamed.
 final class StreamRandom: RandomSource {
   private let state: Mutex<(block: UInt64, buffer: [UInt8])>
   private let seed: Data
@@ -46,7 +42,6 @@ struct RegistryAndWordlistTests {
     #expect(Domain.allCases.allSatisfy { $0.rawValue.hasPrefix("hasala/v1/") })
     #expect(Domain.allCases.first == .register && Domain.allCases.last == .serverInviteMint)
     #expect(Domain.writerHead.prefix == Data("hasala/v1/writer-head".utf8) + [0])
-    // No retired string survives in the registry.
     #expect(!Domain.allCases.contains { $0.rawValue.contains("ledger") })
   }
 
@@ -61,7 +56,6 @@ struct RegistryAndWordlistTests {
 
 @Suite("CoreCrypto: phrase")
 struct PhraseTests {
-  // BIP-39's published English vectors (entropy → mnemonic), 128-bit ones.
   static let published: [(String, String)] = [
     (
       "00000000000000000000000000000000",
@@ -128,7 +122,6 @@ struct PhraseTests {
 
 @Suite("CoreCrypto: LooksSealed")
 struct PredicateTests {
-  /// A frame of `n` bytes with `L` = 83 that passes every check.
   static func passing(_ n: Int = 1024, aadLength l: Int = 83) -> [UInt8] {
     var b = [UInt8](repeating: 0x5a, count: n)
     b[0] = 3
@@ -156,7 +149,6 @@ struct PredicateTests {
     #expect(LooksSealed.check(b) == .epoch)
     b[1] = 0x7f; b[2] = 0xff; b[3] = 0xff; b[4] = 0xff
     #expect(LooksSealed.check(b) == nil)
-    // L + 67 = n passes, one more is refused.
     #expect(LooksSealed.check(Self.passing(1024, aadLength: 957)) == nil)
     #expect(LooksSealed.check(Self.passing(1024, aadLength: 958)) == .aadLen)
     #expect(LooksSealed.check(Self.passing(1024, aadLength: 0xffff)) == .aadLen)
@@ -249,7 +241,7 @@ struct PasswordTests {
 
   @Test("scalars, not characters: an emoji sequence counts each scalar")
   func scalars() {
-    let family = "👨‍👩‍👧‍👦"  // 7 scalars, 1 Character
+    let family = "👨‍👩‍👧‍👦"
     #expect(PasswordPolicy.check(family + "abcde", blocklist: Self.list) == nil)
     #expect(PasswordPolicy.check(family + "abcd", blocklist: Self.list) == .tooShort)
   }
@@ -306,7 +298,6 @@ struct StepUpTests {
     #expect(!StepUp.serverChallengeMatches(c, nonce: n, params: .mailboxUnlink))
     #expect(!StepUp.serverChallengeMatches(c, nonce: Data(repeating: 8, count: 32), params: .sessionLogoutAll))
     #expect(throws: SigningMessageError.self) { try StepUp.challenge(nonce: Data(count: 31), params: .phraseView) }
-    // The 32-byte tuple fields are length-checked before C is computed.
     for p: StepUpParams in [
       .keysBootstrap(authorityPublicKey: Data(count: 31)), .keysRecoveryRotate(newRecoveryPublicKey: Data(count: 33)),
       .passwordSet(newVerifierHash: Data()), .passwordChange(newVerifierHash: Data(count: 31)),

@@ -1,5 +1,3 @@
-// Unit tests for CoreOutbox (owner: WS-11): durable, validated enqueue and
-// the debounced `authored` trigger (spec 04 §5.4).
 import CoreSync
 import CoreTestSupport
 import Foundation
@@ -27,7 +25,6 @@ struct OutboxTests {
     try await box.enqueue([op("a"), op("b")])
     let rows = try store.pendingOps()
     #expect(rows.map(\.opID) == ["a", "b"])
-    // authored_at canonicalized; Go's field order; parent_version present.
     #expect(
       String(decoding: rows[0].opJSON, as: UTF8.self)
         == #"{"v":4,"type":"home_currency_set","op_id":"a","authored_at":"2026-10-11T08:00:00.000Z","parent_version":null,"payload":{"currency":"AED"}}"#
@@ -129,9 +126,6 @@ struct OutboxTests {
   func debounce() async throws {
     let store = try LedgerStore.inMemory()
     let fired = Counter()
-    // A wide window, so a slow, busy CI runner still makes both enqueues
-    // inside it; then wait (bounded) for the one trigger, and a while longer
-    // for a second one that must not come.
     let box = Outbox(store: store, clock: FakeClock(), debounce: .milliseconds(400), onAuthored: { fired.bump() })
     try await box.enqueue([op("a")])
     try await box.enqueue([op("b")])

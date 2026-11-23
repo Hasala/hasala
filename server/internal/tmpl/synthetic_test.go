@@ -1,35 +1,5 @@
 package tmpl
 
-// synthetic_test.go writes the hand-built half of conformance/templates/.
-//
-// The corpus half (corpus_test.go) is 1,062 cases of the operator's real bank
-// mail, and it is the only evidence that the two executors agree about mail
-// that actually arrives. It is also blind in three ways that matter, and each
-// one was MEASURED on the corpus rather than assumed:
-//
-//  1. The corpus holds 64 ENBD messages and only TWO are the alert format
-//     `enbd.alert.v1` was ported from — the other 62 are "Local Bank Transfer"
-//     / "Telegraphic Transfer" advices with a `Debit Amount:` block, and both
-//     alerts are debits, so the alert template's credit path has zero corpus
-//     coverage. Neither ENBD template's foreign-currency path has any either:
-//     no corpus amount block writes a currency other than AED.
-//  2. Zero corpus cases produce an empty capture group, so the EmptyGroups
-//     diagnostic — the thing the whole diagnostics ledger is built on — is
-//     never compared.
-//  3. Real mail is well-formed. The conversion rules are mostly about
-//     malformed input: an amount with three decimals, a date with a two-digit
-//     year, a capture surrounded by U+00A0.
-//
-// That last class is where two hand-written implementations differ, and the
-// difference is silent. `String.prototype.trim()` removes U+00A0 and U+FEFF
-// and Go's trim set does not; `toUpperCase()` maps U+00DF to "SS" and Go's
-// does not; `Number("")` is 0 and `parseInt` stops at the first non-digit;
-// `Date.parse` is implementation-defined for every shape in this format. Every
-// one of those is a case below, and every expectation is what GO produced —
-// never what the case's name says it should produce, so a case whose name is
-// wrong is harmless and a case whose expectation is recomputed by the reader
-// is impossible.
-
 import (
 	"bytes"
 	"encoding/base64"
@@ -42,7 +12,6 @@ import (
 	"testing"
 )
 
-// syntheticGroup is one output file: a definition and the inputs run against it.
 type syntheticGroup struct {
 	file       string
 	template   string
@@ -57,9 +26,6 @@ type syntheticCase struct {
 	body    string
 }
 
-// The ENBD alert format, which the corpus has none of. The definition is the
-// PUBLISHED SEED, read from testdata rather than retyped, so these cases
-// exercise the template that actually ships.
 func syntheticENBD(t *testing.T) syntheticGroup {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("testdata", "enbd.alert.v1.json"))
@@ -146,22 +112,12 @@ func syntheticENBD(t *testing.T) syntheticGroup {
 	}
 }
 
-// The ENBD transfer advice — the format 62 of the corpus's 64 ENBD messages
-// have, and until now the least-covered template in the repository: no testdata
-// mirror, no synthetic group, no row in the dialect fixture, and therefore
-// nothing at all comparing its Go and TypeScript executions. The corpus fixture
-// added alongside this group covers the shapes real ENBD mail has; these are the
-// ones it does not.
-//
-// The definition is the PUBLISHED SEED, read from testdata rather than retyped.
 func syntheticENBDTransfer(t *testing.T) syntheticGroup {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("testdata", "enbd.transfer.v1.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// body composes the advice in the order ENBD writes it. Any block may be
-	// omitted by passing "".
 	body := func(date, amount, beneficiary string) string {
 		s := ""
 		if date != "" {
@@ -351,9 +307,6 @@ func syntheticADIBAccount(t *testing.T) syntheticGroup {
 	}
 }
 
-// dates: the mail layouts and every semantic Go's time.Parse decides for us.
-// Mirrors TestDateParsingSemanticsTheTypeScriptMirrorMustReproduce, but as a
-// fixture the TypeScript executor is checked against rather than a Go-only test.
 func syntheticDates() syntheticGroup {
 	def := `{
 	  "id":"synth.dates","version":1,"bank":"t","normalizer_version":1,
@@ -409,7 +362,6 @@ func syntheticDates() syntheticGroup {
 	return g
 }
 
-// amounts: rule 5, including the two int64 boundaries and the trim set.
 func syntheticAmounts() syntheticGroup {
 	def := `{
 	  "id":"synth.amounts","version":1,"bank":"t","normalizer_version":1,
@@ -452,16 +404,6 @@ func syntheticAmounts() syntheticGroup {
 	return g
 }
 
-// currency: rule 5's ccy group and the ASCII-ONLY upper-casing.
-//
-// The load-bearing case is dotless-i. Go's asciiUpper leaves U+0131 alone and
-// the result fails the three-upper-case-letters check, so the amount does not
-// convert. JavaScript's toUpperCase maps "ıed" to "IED", which passes — a
-// mirror that reached for the built-in would extract an amount in a currency
-// that was never written, and nothing would error. The class is [^ \n]{3} and
-// the entry carries no flags on purpose: this case is about the CONVERSION, and
-// a case-insensitive class would drag Go's and JavaScript's differing fold
-// orbits for U+0131 into it as well.
 func syntheticCurrency() syntheticGroup {
 	def := `{
 	  "id":"synth.currency","version":1,"bank":"t","normalizer_version":1,
@@ -495,13 +437,6 @@ func syntheticCurrency() syntheticGroup {
 	return syntheticGroup{file: "synthetic-currency.json", template: "synth.currency", definition: def, cases: rows}
 }
 
-// fallthrough: rule 3, which says a CONVERSION FAILURE moves to the next
-// pattern and then to the next entry, and never writes a zero value.
-//
-// The distinction only becomes visible when something later would have
-// succeeded: an executor that treats an empty capture as a merchant and one
-// that falls through both leave the field empty when there is nothing else to
-// try, so a fixture without a second pattern cannot tell them apart.
 func syntheticFallthrough() syntheticGroup {
 	def := `{
 	  "id":"synth.fallthrough","version":1,"bank":"t","normalizer_version":1,
@@ -540,7 +475,6 @@ func syntheticFallthrough() syntheticGroup {
 	return syntheticGroup{file: "synthetic-fallthrough.json", template: "synth.fallthrough", definition: def, cases: rows}
 }
 
-// last4 and merchant text: rules 3 and 7, plus the capture bound.
 func syntheticTextAndLast4() syntheticGroup {
 	def := `{
 	  "id":"synth.text","version":1,"bank":"t","normalizer_version":1,
@@ -585,7 +519,6 @@ func syntheticTextAndLast4() syntheticGroup {
 	return g
 }
 
-// empty capture groups: the diagnostic the corpus never exercises.
 func syntheticEmptyGroups() syntheticGroup {
 	def := `{
 	  "id":"synth.groups","version":1,"bank":"t","normalizer_version":1,
@@ -616,8 +549,6 @@ func syntheticEmptyGroups() syntheticGroup {
 	return g
 }
 
-// The DIB cascade: override, on_match, the unconditional const default, and
-// the two gates that separate the two DIB layouts. Uses the PUBLISHED seeds.
 func syntheticDIB(t *testing.T) []syntheticGroup {
 	t.Helper()
 	read := func(name string) string {
@@ -1026,9 +957,6 @@ func buildSyntheticFixture(t *testing.T, g syntheticGroup) ([]byte, templateFixt
 	if err != nil {
 		t.Fatalf("%s: %v", g.file, err)
 	}
-	// A synthetic definition must be one the store would really accept.
-	// Otherwise the fixture pins behaviour on a template that could never be
-	// published, which is a fact about nothing.
 	if err := ValidateForPublish(d); err != nil {
 		t.Fatalf("%s: definition is not publishable: %v", g.file, err)
 	}
@@ -1083,10 +1011,6 @@ func buildSyntheticFixture(t *testing.T, g syntheticGroup) ([]byte, templateFixt
 	return b, f
 }
 
-// TestWriteSyntheticTemplateFixtures regenerates the synthetic half. It needs
-// no corpus, so any checkout can reproduce it:
-//
-//	HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures -v
 func TestWriteSyntheticTemplateFixtures(t *testing.T) {
 	if os.Getenv(writeFixturesEnv) == "" {
 		t.Skipf("%s is unset; fixtures are committed and regenerated deliberately", writeFixturesEnv)
@@ -1110,10 +1034,6 @@ func TestWriteSyntheticTemplateFixtures(t *testing.T) {
 	}
 }
 
-// TestSyntheticFixturesAreWhatThisBuildProduces is the staleness guard for the
-// synthetic half. Unlike the corpus half's guard it regenerates from the case
-// TABLE rather than from the committed inputs, so it also catches a case that
-// was added to the table and never written to disk.
 func TestSyntheticFixturesAreWhatThisBuildProduces(t *testing.T) {
 	for _, d := range syntheticFixtureDrift(t, templateConformanceDir) {
 		t.Error(d)

@@ -1,5 +1,3 @@
-// CoreTime unit tests. The wire timestamp tables (15 accepted, 23 refused)
-// run against conformance/op/manifest.json in HasalaCoreConformanceTests.
 import Testing
 
 @testable import CoreTime
@@ -15,7 +13,6 @@ struct CivilTests {
     while d < end {
       let c = Civil.civilFromDays(d)
       if Civil.daysFromCivil(year: c.year, month: c.month, day: c.day) != d { mismatches += 1 }
-      // Consecutive days are consecutive dates.
       let next =
         c.day == 1
         ? previous.day == Civil.daysInMonth(year: previous.year, month: previous.month)
@@ -33,7 +30,7 @@ struct CivilTests {
     #expect(Civil.daysFromCivil(year: 1, month: 1, day: 1) * Civil.msPerDay == Instant.goZeroTimeMs)
     #expect(Civil.daysFromCivil(year: 0, month: 1, day: 1) * Civil.msPerDay == -62_167_219_200_000)
     #expect(Civil.isLeapYear(2000) && Civil.isLeapYear(2024) && !Civil.isLeapYear(1900) && !Civil.isLeapYear(2026))
-    #expect(Civil.isLeapYear(0))  // proleptic: year 0 is a leap year
+    #expect(Civil.isLeapYear(0))
   }
 
   @Test("utcDay as replay/state.ts writes it, expanded years included")
@@ -54,7 +51,7 @@ struct InstantTests {
   func canonical() throws {
     #expect(try parseInstantMs("1970-01-01T00:00:00Z") == 0)
     #expect(try canonicalTime("2026-06-05T14:00:00.5+04:00") == "2026-06-05T10:00:00.500Z")
-    #expect(try canonicalTime("2026-06-05T10:00:00.0019Z") == "2026-06-05T10:00:00.001Z")  // truncated
+    #expect(try canonicalTime("2026-06-05T10:00:00.0019Z") == "2026-06-05T10:00:00.001Z")
     #expect(try canonicalTime("1969-12-31T23:59:59.999Z") == "1969-12-31T23:59:59.999Z")
     #expect(try canonicalTime("0000-01-01T00:00:00Z") == "0000-01-01T00:00:00.000Z")
     #expect(Instant.iso(-1) == "1969-12-31T23:59:59.999Z")
@@ -134,9 +131,9 @@ struct LocalTests {
 
   @Test("ISO weekdays, Monday first")
   func weekdays() {
-    #expect(CivilDate(year: 1970, month: 1, day: 1)!.isoWeekday == 4)  // Thursday
-    #expect(CivilDate(wire: "2026-10-12")!.isoWeekday == 1)  // Monday
-    #expect(CivilDate(wire: "2026-10-11")!.isoWeekday == 7)  // Sunday
+    #expect(CivilDate(year: 1970, month: 1, day: 1)!.isoWeekday == 4)
+    #expect(CivilDate(wire: "2026-10-12")!.isoWeekday == 1)
+    #expect(CivilDate(wire: "2026-10-11")!.isoWeekday == 7)
     #expect(CivilDate(year: 1969, month: 12, day: 29)!.isoWeekday == 1)
   }
 

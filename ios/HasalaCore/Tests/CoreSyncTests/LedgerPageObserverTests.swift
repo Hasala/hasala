@@ -1,8 +1,3 @@
-// LedgerPageObserver alone (spec 04 §5.2 steps 4-5, §5.3): pages folded on a
-// copy and committed with their snapshot, projection once per pull, warm
-// starts from the snapshot, abandoned and refused pages, the outbox overlay and
-// the author context. The full pull path (real sealed rows, the cold re-fold,
-// two iPhones) runs in HasalaCoreE2ETests against FakeServer.
 import CoreAuth
 import CoreDomain
 import CoreJSON
@@ -22,7 +17,6 @@ struct LedgerPageObserverTests {
   static let peer = WriterID("ios-1a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d")!
   static let now: Int64 = 1_791_625_200_000
 
-  /// No server: these tests never reach the network.
   struct Unreachable: Transport {
     func send(_ request: APIRequest) async throws(TransportError) -> APIResponse { throw .offline(.notConnectedToInternet) }
   }
@@ -50,8 +44,6 @@ struct LedgerPageObserverTests {
       observer = LedgerPageObserver(context: context, projection: self.projection, dictionary: .empty)
     }
 
-    /// A decided page as the Puller stores it: rows chained per writer from the
-    /// pinned head (the bytes are not a sealed frame: they never open).
     func decided(_ blobs: [(seq: Int64, ops: [Op])], counterBase: Int64) throws -> ([PulledRow], [WireRowRecord], [WriterID: Chain.Head]) {
       var rows: [PulledRow] = []
       var records: [WireRowRecord] = []
@@ -70,7 +62,6 @@ struct LedgerPageObserverTests {
       return (rows, records, [peer: head])
     }
 
-    /// What the Puller does with one decided page: fold, persist with the snapshot, commit, end the pull.
     func page(_ blobs: [(seq: Int64, ops: [Op])], counterBase: Int64) async throws {
       let (rows, records, heads) = try decided(blobs, counterBase: counterBase)
       let change = try await observer.fold(rows)
@@ -253,14 +244,12 @@ struct LedgerPageObserverTests {
       let (r, stop) = try await rig(damage)
       #expect(stop == .halted(.inconsistent(want)), "\(want)")
       #expect(try r.store.foldEvents().contains { $0.kind == "integrity_alarm" && $0.detail == want })
-      #expect(try r.store.foldSnapshot() == nil)  // nothing smaller was saved in its place
+      #expect(try r.store.foldSnapshot() == nil)
     }
   }
 
   @Test("a stored disposition is the Puller's reading of its outcome")
   func dispositions() {
-    // The cold fold compares these with what it reopens (two iPhones, real
-    // sealed rows: HasalaCoreE2ETests' ObserverSyncTests).
     #expect(WireRowRecord.Disposition(.opened(plaintext: Data(), ops: [])) == .folded)
     #expect(WireRowRecord.Disposition(.setAside(.aeadFailed, alarm: true)) == .alarm)
     #expect(WireRowRecord.Disposition(.setAside(.payloadInvalid, alarm: false)) == .setAside)
@@ -272,9 +261,8 @@ struct LedgerPageObserverTests {
     try await r.page([(1, try Self.setup())], counterBase: 1)
     let (rows, records, heads) = try r.decided([(2, try Self.ingest("CARREFOUR", 34_215))], counterBase: 2)
     _ = try await r.observer.fold(rows)
-    // The state outgrew the budget: the page commits with no snapshot.
     try r.store.persistPage(rows: records, heads: heads, cursor: 2, at: 1, snapshot: .delete)
-    try await r.observer.reproject()  // before `pageCommitted` arrives
+    try await r.observer.reproject()
     #expect(try r.projection.reader.activity().map(\.merchantRaw) == ["CARREFOUR"])
     #expect(try !r.store.foldEvents().contains { $0.kind == "cold_fold" || $0.kind == "snapshot_rejected" })
     await r.observer.pageCommitted()
@@ -290,7 +278,6 @@ struct LedgerPageObserverTests {
       try mine.map { PendingOp(opID: $0.opID, opJSON: try Self.canonical($0), opType: $0.type.rawValue, entityKind: "txn", entityID: $0.entity?.id, enqueuedAt: 1) })
     try await r.observer.reproject()
     #expect(try r.projection.reader.meta()?.pendingOps == 1 && r.projection.reader.activity().count == 1)
-    // Acknowledged, and the self-pull never ran: the outbox is empty, the cursor unchanged.
     try await r.store.db.write { db in try db.execute(sql: "DELETE FROM pending_ops") }
     let again = try Rig(store: r.store, projection: r.projection)
     try await again.observer.open()
@@ -328,7 +315,6 @@ struct LedgerPageObserverTests {
     ctx = try await r.observer.authorContext()
     #expect(ctx.ownLastMs == blob.lastAuthoredMs && ctx.baseMs > blob.lastAuthoredMs)
     #expect(r.observer.stamps.lastMs == blob.lastAuthoredMs)
-    // Two contexts minted before either blob exists: built under the stamps, they never share a stamp.
     let c1 = try await r.observer.authorContext()
     let c2 = try await r.observer.authorContext()
     let b1 = try #require(try r.observer.stamps.build(c1) { a in a.setHomeCurrency("AED") })
@@ -336,8 +322,6 @@ struct LedgerPageObserverTests {
     #expect(try parseInstantMs(b2.ops[0].authoredAt) > b1.lastAuthoredMs)
     #expect(try await r.observer.authorContext().ownLastMs == b2.lastAuthoredMs)
   }
-
-  // MARK: Sample data
 
   static func account(review: Bool?, user: UserID = user) -> AccountInfo {
     AccountInfo(user_id: user.string, review_account: review)
@@ -398,10 +382,8 @@ struct LedgerPageObserverTests {
     let blobs = try await r.observer.sampleBatches(account: Self.account(review: true))
     #expect(blobs.count > 0 && blobs.allSatisfy { $0.ops.count <= SampleSeed.maxOpsPerBatch })
     #expect(r.observer.stamps.lastMs == blobs.last?.lastAuthoredMs)
-    // A second tap before the first load is enqueued: refused.
     #expect(await refusal(r, Self.account(review: true)) == .alreadyLoaded)
 
-    // A ledger that already holds a transaction (folded, or still in the outbox).
     let folded = try Rig()
     try await folded.page([(1, try Self.setup()), (2, try Self.ingest("CARREFOUR", 34_215))], counterBase: 1)
     #expect(await refusal(folded, Self.account(review: true)) == .hasTransactions)

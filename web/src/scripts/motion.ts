@@ -1,10 +1,3 @@
-/**
- * The page's small dynamic layer ("13 · Dynamic layer"): scroll-linked
- * reveals (B), the pace bar (C) and phone parallax.
- * Nothing loops, nothing moves while text is being read, and everything has
- * a still version: with reduced motion the page is simply shown in its final
- * state.
- */
 import { observe, onPage } from './page';
 
 export const reducedMotion = (): boolean =>
@@ -43,7 +36,6 @@ const inView = (el: Element): boolean => {
   return rect.top < innerHeight && rect.bottom > 0;
 };
 
-/** B: each section enters once, when 15% of it is in view. Stagger 60 ms, max 4. */
 function reveals(signal: AbortSignal): void {
   const els = [...document.querySelectorAll<HTMLElement>('[data-reveal]')];
   if (els.length === 0) {
@@ -59,12 +51,6 @@ function reveals(signal: AbortSignal): void {
     counts.set(el.parentElement, count + 1);
     el.style.setProperty('--i', String(Math.min(count, 3)));
   });
-  // Already on screen (a deep link, a restored scroll, a client-side
-  // navigation): shown as is, with no transition. The hidden state is in
-  // force from the first paint (.js, set in <head>), so measuring has already
-  // resolved it; switching to is-in under .reveal-instant (transitions off)
-  // and flushing styles before lifting it means nothing animates, including
-  // the step stories and the plan bar keyed on is-in. Read first, then write.
   const vis = els.filter((el) => inView(el));
   if (vis.length > 0) {
     const root = document.documentElement;
@@ -73,9 +59,6 @@ function reveals(signal: AbortSignal): void {
     void root.offsetHeight;
     root.classList.remove('reveal-instant');
   }
-  // is-scrolled-in marks what entered while being watched, so a one-off
-  // keyframe moment (the invite coin) never plays on content that was
-  // already on screen when the page arrived.
   once(
     signal,
     els.filter((el) => !el.classList.contains('is-in')),
@@ -88,7 +71,6 @@ const fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFr
 const easeInOut = (progress: number): number =>
   progress < 0.5 ? 4 * progress * progress * progress : 1 - (-2 * progress + 2) ** 3 / 2;
 
-/** C: the figure counts up with the bar (900 ms, ease-in-out), the today marker drops in, the verdict lands last. */
 function pace(signal: AbortSignal): void {
   const card = document.querySelector<HTMLElement>('[data-pace]');
   if (!card || reducedMotion()) {
@@ -102,7 +84,6 @@ function pace(signal: AbortSignal): void {
     return;
   }
   const target = Number(value.dataset.count);
-  // Only arm it if it starts out of view, so nobody sees it reset.
   if (card.getBoundingClientRect().top < innerHeight) {
     return;
   }
@@ -141,7 +122,6 @@ function pace(signal: AbortSignal): void {
   });
 }
 
-/** Phones drift at 0.94× scroll speed, at most 40 px. */
 function parallax(signal: AbortSignal): void {
   if (reducedMotion()) {
     return;
@@ -176,11 +156,6 @@ function parallax(signal: AbortSignal): void {
   update();
 }
 
-/**
- * Once per document: the footer calls it on every page (its top reveals), and
- * the pages with sections of their own call it too. onPage re-runs it after
- * each client-side navigation, so a second registration would run it twice.
- */
 let started = false;
 export function initMotion(): void {
   if (started) {

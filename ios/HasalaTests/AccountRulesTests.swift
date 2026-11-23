@@ -5,18 +5,14 @@ import Testing
 
 @Suite("Account rules")
 struct AccountRulesTests {
-  // MARK: Invite code (spec 04 §6.1.4)
-
   @Test func inviteCodesNormalizeAndGroup() throws {
     let code = try #require(InviteCode("abcd efgh-ijkl mnop qrst uvwx"))
     #expect(code.value == "ABCDEFGHIJKLMNOPQRSTUVWX")
     #expect(code.grouped == "ABCD-EFGH-IJKL-MNOP-QRST-UVWX")
-    #expect(InviteCode("ABCDEFGHIJKLMNOPQRSTUVW") == nil)  // 23
-    #expect(InviteCode("ABCDEFGHIJKLMNOPQRSTUVW1") == nil)  // 1 is not base32
-    #expect(InviteCode("HSL-7Q4M") == nil)  // the withdrawn short form
+    #expect(InviteCode("ABCDEFGHIJKLMNOPQRSTUVW") == nil)
+    #expect(InviteCode("ABCDEFGHIJKLMNOPQRSTUVW1") == nil)
+    #expect(InviteCode("HSL-7Q4M") == nil)
   }
-
-  // MARK: Universal link (spec 04 §13.5's four rules)
 
   static let key = String(repeating: "a", count: 40) + "_-9"
 
@@ -53,8 +49,6 @@ struct AccountRulesTests {
     #expect(InviteLink.parse(URL(string: s)!) == nil)
   }
 
-  // MARK: Address and name (spec 04 §6.8)
-
   @Test func addressesNormalize() {
     #expect(AccountFields.email("  Maya.R+bills@Example.COM ") == "maya.r+bills@example.com")
     #expect(AccountFields.email("maya@example") == nil)
@@ -70,12 +64,9 @@ struct AccountRulesTests {
     #expect(AccountFields.displayName("   ") == nil)
   }
 
-  // MARK: Passwords (spec 04 §6.1.2)
-
   @Test func shortPasswordsAreRefusedFirst() {
     let a = PasswordRules.assess("short pw")
     #expect(a.strength == .tooShort)
-    // Paper EQ6: "Too short. 8 of 12 characters." (one scalar per composed character).
     #expect(a.message == "Too short. 8 of 12 characters.")
     #expect(!a.acceptable)
     #expect(PasswordRules.assess("cafe\u{301} latte").message == "Too short. 10 of 12 characters.")
@@ -104,8 +95,6 @@ struct AccountRulesTests {
     #expect(a.strength == .strong)
   }
 
-  // MARK: Phrase (spec 04 §6.7)
-
   @Test func generatedPhrasesValidate() throws {
     let p = try PhraseRules.generate()
     #expect(p.words.count == 12)
@@ -123,7 +112,6 @@ struct AccountRulesTests {
     #expect(c.hasPrefix("These aren't a Hasala phrase"))
   }
 
-  /// What happened, then what to do (spec 01 §7.4, spec 07 S4 and S7, spec 08 FWD), verbatim.
   @Test func failuresSayWhatHappenedThenWhatToDo() {
     #expect(AuthFailure.codeWrong(triesLeft: 4).message
       == "Wrong code. Check our newest email or get a new one. 4 tries left.")

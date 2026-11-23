@@ -1,7 +1,3 @@
-// Spec 01 §15.5: every anchor vector A01-A26 (A14-P and A19-K included),
-// reproduced by CoreCrypto from the spec's inputs. Go's Ed25519 signatures are
-// deterministic and are VERIFIED here; P-256 signatures are randomized samples
-// that must verify under A13's DAK public key. No signature bytes are compared.
 import CoreCrypto
 import CorePrimitives
 import CoreWire
@@ -109,7 +105,6 @@ struct AnchorVectorTests {
     #expect(opened.amk.data == A.amk)
   }
 
-  /// A09/A10's frame at `counter` with `nonce` after `prev`.
   static func frame(counter: Int64, nonce: Data, prev: Hash32) throws -> (frame: Data, ad: Data, header: Data) {
     let env = try Envelope(userID: A.userID, writerID: A.writerID, counter: counter)
     let header = FrameV3.header(epoch: 1, aad: env.aad)
@@ -338,7 +333,6 @@ struct AnchorVectorTests {
     #expect(hx(tag) == "c213f4c1a7877e8ae1d5b83f69a59c28363d320dbb149eb3c9487737bca17b8a")
     let sSrv = ServerKeys.serverSalt(A.saltKey, emailNorm: emailNorm)
     #expect(hx(sSrv) == "44b6d3bbf924d4988797f591a3532a88455b2a75ea88d9ad647f736e100e5db6")
-    // The input is NFD; NFC is what is stretched.
     #expect(
       Hex.encode(Array(A.passwordNFD.precomposedStringWithCanonicalMapping.utf8))
         == "486173616c6120636166c3a9203230323621")

@@ -1,10 +1,4 @@
-// The JSON of `02` §7's auth, account, key and writer routes, field for field.
-// Byte fields are strings: standard base64 (`b64`) unless the route says
-// base64url (`b64url`); hashes in hex; counters and seqs as decimal strings.
-// Building the bytes is CoreCrypto's (the caller's); this file only carries them.
 import Foundation
-
-// MARK: - Signup and creation (#43, #44, #3, #4, #45)
 
 public struct SignupBeginRequest: Codable, Sendable, Hashable {
   public let invite_code: String
@@ -23,9 +17,7 @@ public struct SignupBeginResponse: Codable, Sendable, Hashable {
   public let signup_id: String
   public let user_id: String
   public let email_proven: Bool
-  /// `s_srv`, b64 32.
   public let salt: String
-  /// The signup nonce, b64 32 (signs C1-P's bootstrap).
   public let nonce: String
   public let expires_at: String?
 
@@ -78,11 +70,9 @@ public struct RegisterFinishRequest: Codable, Sendable, Hashable {
   }
 }
 
-/// The session a sign-in or creation route mints (#4, #6, #8, #45, #47, #54).
 public struct SessionGrant: Codable, Sendable, Hashable {
   public let session_token: String
   public let user_id: String
-  /// The 90-day cap (RFC 3339).
   public let expires_at: String?
   public let writer_id: String?
   public let has_keys: Bool?
@@ -100,11 +90,9 @@ public struct SessionGrant: Codable, Sendable, Hashable {
   }
 }
 
-// MARK: - Bootstrap (#18, and inside #45)
-
 public struct BootstrapPRFWrapJSON: Codable, Sendable, Hashable {
-  public let credential_id: String  // b64url
-  public let wrap: String  // b64, 127 bytes
+  public let credential_id: String
+  public let wrap: String
   public let wrap_version: Int
   public init(credentialIDB64URL: String, wrapB64: String) {
     credential_id = credentialIDB64URL
@@ -126,8 +114,6 @@ public struct WriterJSON: Codable, Sendable, Hashable {
   }
 }
 
-/// `02` §10.1's body. In #45 the same fields travel as `bootstrap`, without
-/// `step_up`, with `auth_kind` 2 and the signup nonce.
 public struct BootstrapBody: Codable, Sendable, Hashable {
   public let format_version: Int
   public let amk_commitment: String
@@ -190,8 +176,6 @@ public struct PasswordRegisterRequest: Codable, Sendable, Hashable {
   }
 }
 
-// MARK: - Sign-in (#5, #6, #46, #47)
-
 public struct DeviceBindingJSON: Codable, Sendable, Hashable {
   public let writer_id: String
   public let sig: String
@@ -250,11 +234,9 @@ public struct PasswordLoginFinishRequest: Codable, Sendable, Hashable {
   }
 }
 
-// MARK: - Step-up (#9, and the `step_up` object of every SU route)
-
 public struct StepUpBeginRequest: Codable, Sendable, Hashable {
   public let action: String
-  public let params_hash: String  // hex
+  public let params_hash: String
   public let proof_kind: String
   public init(action: String, paramsHashHex: String, proofKind: String) {
     self.action = action
@@ -264,8 +246,8 @@ public struct StepUpBeginRequest: Codable, Sendable, Hashable {
 }
 
 public struct StepUpBeginResponse: Codable, Sendable, Hashable {
-  public let nonce: String  // b64url
-  public let challenge: String  // b64url
+  public let nonce: String
+  public let challenge: String
   public let expires_at: String?
   public let rp_id: String?
   public let allow_credentials: [String]?
@@ -279,7 +261,6 @@ public struct StepUpBeginResponse: Codable, Sendable, Hashable {
   }
 }
 
-/// `{"nonce", "proof": {...}}` (`02` §7, "The `step_up` object").
 public struct StepUpJSON: Codable, Sendable, Hashable {
   public struct Proof: Codable, Sendable, Hashable {
     public let kind: String
@@ -333,8 +314,6 @@ public struct StepUpJSON: Codable, Sendable, Hashable {
     self.proof = proof
   }
 }
-
-// MARK: - Session and account (#14, #40)
 
 public struct SessionInfo: Codable, Sendable, Hashable {
   public let user_id: String
@@ -394,8 +373,6 @@ public struct AccountInfo: Codable, Sendable, Hashable {
   }
 }
 
-// MARK: - Keys and writers (#17, #19, #23, #24, #26, #27)
-
 public struct KeysResponse: Codable, Sendable, Hashable {
   public let format_version: Int
   public let amk_commitment: String
@@ -416,8 +393,8 @@ public struct KeysResponse: Codable, Sendable, Hashable {
 
 public struct KeyWrapsResponse: Codable, Sendable, Hashable {
   public struct Wrap: Codable, Sendable, Hashable {
-    public let credential_id: String  // b64url
-    public let wrap: String  // b64
+    public let credential_id: String
+    public let wrap: String
     public let wrap_version: Int
 
     public init(credential_id: String, wrap: String, wrap_version: Int) {
@@ -434,7 +411,7 @@ public struct KeyWrapsResponse: Codable, Sendable, Hashable {
 }
 
 public struct WriterChallengeResponse: Codable, Sendable, Hashable {
-  public let nonce: String  // b64
+  public let nonce: String
   public let expires_at: String?
 
   public init(nonce: String, expires_at: String? = nil) {
@@ -495,7 +472,6 @@ public struct WritersResponse: Codable, Sendable, Hashable {
 
 public struct KeyHistoryResponse: Codable, Sendable, Hashable {
   public struct Entry: Codable, Sendable, Hashable {
-    /// Decimal; Go sends a string.
     public let id: FlexibleDecimal
     public let writer_id: String
     public let alg: String
@@ -531,7 +507,6 @@ public struct KeyHistoryResponse: Codable, Sendable, Hashable {
   }
 }
 
-/// A decimal that arrives as a JSON string (Go's `"id":"12"`) or a number.
 public struct FlexibleDecimal: Codable, Sendable, Hashable {
   public let value: Int64
   public init(_ v: Int64) { value = v }
@@ -549,14 +524,11 @@ public struct FlexibleDecimal: Codable, Sendable, Hashable {
   }
 }
 
-/// `GET /api/v1/meta` (#2).
 public struct MetaResponse: Codable, Sendable, Hashable {
   public let rp_id: String?
   public let min_ios_build: Int?
   public let op_version_ceiling: Int?
   public let gmail_watch_topic: String?
-  /// The Graph subscription's `notificationUrl` and `lifecycleNotificationUrl`; both null when
-  /// the server relays no Outlook push.
   public let outlook_notification_url: String?
   public let outlook_lifecycle_url: String?
   public let log_generation: Int64?
@@ -578,15 +550,13 @@ public struct MetaResponse: Codable, Sendable, Hashable {
   }
 }
 
-// MARK: - Device removal (#25) and account deletion (#41)
-
 public struct WriterRevokeRequest: Codable, Sendable, Hashable {
   public let writer_id: String
   public let signer_writer_id: String
-  public let nonce: String  // b64
-  public let final_counter: String  // decimal
-  public let final_head: String  // b64 32
-  public let sig: String  // b64
+  public let nonce: String
+  public let final_counter: String
+  public let final_head: String
+  public let sig: String
   public let step_up: StepUpJSON
 
   public init(
@@ -606,7 +576,7 @@ public struct WriterRevokeRequest: Codable, Sendable, Hashable {
 public struct DeleteAccountRequest: Codable, Sendable, Hashable {
   public let step_up: StepUpJSON
   public let writer_id: String
-  public let sig: String  // b64, DWK over DeletionMessage(step_up.nonce, user_id)
+  public let sig: String
 
   public init(step_up: StepUpJSON, writer_id: String, sig: String) {
     self.step_up = step_up

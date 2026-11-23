@@ -1,5 +1,3 @@
-// The Lane A scenarios against FakeServer (their live twins run against a
-// local hasalad in LiveScenarioTests).
 import CoreDomain
 import CoreSync
 import CoreTestSupport
@@ -15,7 +13,7 @@ struct ScenarioTests {
     w.clock.advance(ms: Scenarios.anchor - w.clock.nowMs())
     let (_, a, b) = try await twoRuntimes(w)
     try await Scenarios.sampleOnSecondDevice(a, b) { review in
-      w.server.setReviewAccount(user: a.context.userID, review)  // `account review <uuid> on|off`
+      w.server.setReviewAccount(user: a.context.userID, review)
       return try await a.context.client.account(bearer: try #require(try a.context.secrets.session()).token)
     }
   }
@@ -33,7 +31,6 @@ struct ScenarioTests {
     }
     w.server.setReviewAccount(user: a.context.userID, true)
     let pending = try a.context.store.pendingCount()
-    // Pending (not yet uploaded) counts: the outbox is part of the ledger.
     await #expect(throws: SampleLoadError.seed(.refused(.hasTransactions))) { _ = try await a.loadSample() }
     #expect(await a.run(.authored).stop == nil)
     await #expect(throws: SampleLoadError.seed(.refused(.hasTransactions))) { _ = try await a.loadSample() }

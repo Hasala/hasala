@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# release-common.sh's helpers: MARKETING_VERSION from the xcconfigs (inspection I3),
-# hasala_absent (every absence check in inspect-ipa.sh), hasala_record_build and
-# hasala_build_root (HASALA_BUILD_DIR counts only with HASALA_TEST_MODE=1).
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ios="$(cd "$here/.." && pwd)"
@@ -16,9 +13,8 @@ bad() {
 	fail=1
 }
 
-# hasala_marketing_version
 if v="$(hasala_marketing_version "$ios/Config")"; then ok "ios/Config sets MARKETING_VERSION = $v"; else bad "ios/Config: MARKETING_VERSION is not set once as X.Y.Z"; fi
-version() { # version NAME WANT-OUTPUT-OR-REFUSED XCCONFIG-LINE...
+version() {
 	local name="$1" want="$2" got
 	shift 2
 	rm -rf "$work/cfg"
@@ -35,11 +31,10 @@ version "set per configuration" refused 'MARKETING_VERSION = 1.2.3' 'MARKETING_V
 version "a build setting reference" refused 'MARKETING_VERSION = $(VERSION)'
 version "two components" refused 'MARKETING_VERSION = 1.2'
 
-# hasala_absent: true only for "searched everything, found nothing".
 printf 'alpha\nbeta\n' >"$work/text"
 printf 'head\0\1\2 localhost \0tail' >"$work/binary"
 printf 'head\0\1\2 LocalHost \0tail' >"$work/binary-capitals"
-absent_with() { # absent_with FUNCTION NAME WANT(true|false) ERE PATH...
+absent_with() {
 	local fn="$1" name="$2" want="$3" got=false
 	shift 3
 	if "$fn" "$@" 2>/dev/null; then got=true; fi
@@ -54,7 +49,6 @@ absent "a missing file" false 'gamma' "$work/missing"
 absent "a missing file beside a clean one" false 'gamma' "$work/text" "$work/missing"
 absent "no path at all" false 'gamma'
 absent "matches case: LocalHost is not localhost" true 'localhost' "$work/binary-capitals"
-# hasala_absent_i: the same, in any case (I12's dev-host search).
 absent_i() { absent_with hasala_absent_i "$@"; }
 absent_i "no match" true 'gamma' "$work/text"
 absent_i "a match in another case" false 'localhost' "$work/binary-capitals"
@@ -63,7 +57,6 @@ absent_i "a missing file" false 'gamma' "$work/missing"
 absent_i "a missing file beside a clean one" false 'gamma' "$work/text" "$work/missing"
 absent_i "no path at all" false 'gamma'
 
-# hasala_record_build and hasala_build_root
 hasala_record_build "$work/root" 991231.12359
 if [[ "$(cat "$work/root/last-build-number")" == 991231.12359 && ! -e "$work/root/last-build-number.tmp" ]]; then
 	ok "hasala_record_build writes last-build-number"
@@ -96,8 +89,6 @@ else
 	bad "twenty recorders at once left $(cat "$work/root/last-build-number")"
 fi
 
-# root NAME WANT(path|refused) [VAR=value...]: hasala_build_root /x/ios with only the
-# given HASALA_BUILD_DIR and HASALA_TEST_MODE.
 root() {
 	local name="$1" want="$2" got
 	shift 2

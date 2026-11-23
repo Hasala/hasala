@@ -1,28 +1,4 @@
 #!/usr/bin/env bash
-# check-bundle.sh: what a built Hasala.app may carry (spec 04 §1's bundle content check,
-# AT-PROJ-5 and AT-REV-4; spec 06 I6b). inspect-ipa.sh runs it on every exported .ipa
-# (I6b); run it by hand, or in CI, on a build product.
-#
-#   ios/scripts/check-bundle.sh <Hasala.app | Hasala.xcarchive | Hasala.ipa>
-#
-# It fails when the app holds:
-#   - a path with a `conformance` component, an .eml file, or a corpus-* or
-#     manifest.synthetic* file (test and private data);
-#   - a file larger than 5 MB (5,000,000 bytes) that is not code (a Mach-O), a font or
-#     the merchant dictionary;
-#   - anywhere in its files, a string shaped like an Outlook message id: Graph's default
-#     REST id (`A[AQ]MkAD` + 40 or more base64url characters) or its immutable id
-#     (`AAkALgAA` + 40 or more), real mail's ids leaking into a resource;
-#   - a sample seed that is not the committed one: HasalaCore's CoreResources bundle
-#     must hold sample/maya-v1.json, whose SHA-256 must be golden/maya-v1.sha256's,
-#     which must be SampleManifest.sha256 (the digest the generator wrote and the app
-#     checks before it loads the seed), and the seed must be synthetic: no email
-#     address but review@hasala.app, and no message id but the generator's placeholders
-#     (@message:<name>, rewritten to sample-<n> at load), so no Gmail or Outlook message id.
-#
-# Exit 0 when the bundle passes, 1 when a check fails (each failure is named on stderr),
-# 2 on bad arguments. Fails closed: a file that is missing or a tool that fails is a
-# failure. Offline; macOS tools by absolute path, so it also runs in the Nix devShell.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -69,7 +45,6 @@ fail() {
 	failed=1
 }
 
-# --- test and private data ---------------------------------------------------------------
 if ! find "$app" \( -name conformance -o -path '*/conformance/*' -o -iname '*.eml' -o -name 'corpus-*' \
 	-o -name 'manifest.synthetic*' \) -print >"$work/forbidden.txt"; then
 	fail "cannot list $app"
@@ -78,7 +53,6 @@ elif [[ -s "$work/forbidden.txt" ]]; then
 	sed "s|^$app/|    |" "$work/forbidden.txt" >&2
 fi
 
-# --- large files -------------------------------------------------------------------------
 if ! find "$app" -type f -size +"$limit"c -print0 >"$work/large.bin"; then
 	fail "cannot list the large files in $app"
 else
@@ -91,7 +65,6 @@ else
 	done <"$work/large.bin"
 fi
 
-# --- Outlook message ids -----------------------------------------------------------------
 outlook_id='A[AQ]MkAD[A-Za-z0-9_=-]{40,}|AAkALgAA[A-Za-z0-9_=-]{40,}'
 rc=0
 grep -rlaE -- "$outlook_id" "$app" >"$work/outlook.txt" 2>"$work/outlook.err" || rc=$?
@@ -102,7 +75,6 @@ elif ((rc != 1)); then
 	fail "cannot search $app for Outlook message ids"
 fi
 
-# --- the sample seed (I6b) ---------------------------------------------------------------
 seed="$app/$seed_path"
 want=""
 if [[ ! -f "$golden" ]] || ! want="$(head -n 1 -- "$golden")" || [[ ! "$want" =~ ^[0-9a-f]{64}$ ]]; then

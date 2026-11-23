@@ -1,12 +1,3 @@
-/**
- * Page lifecycle under Astro's <ClientRouter />. A bundled module runs once
- * per full load, but the router swaps pages without reloading, so every
- * per-page setup goes through onPage(): it runs now (the module runs after
- * the document is parsed, or right after a swap when the router first adds
- * it), and again after every later swap. The AbortSignal fires when the page
- * is swapped out: pass it to addEventListener and use it to disconnect
- * observers, so nothing from the old page keeps running.
- */
 export function onPage(init: (signal: AbortSignal) => void): void {
   let ctrl: AbortController | undefined = undefined;
   let stale = false;
@@ -52,7 +43,6 @@ export function pageTimer(signal: AbortSignal): PageTimer {
   };
 }
 
-/** An IntersectionObserver that disconnects when the page is swapped out. */
 export function observe(
   signal: AbortSignal,
   cb: IntersectionObserverCallback,

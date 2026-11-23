@@ -1,12 +1,5 @@
 package auth
 
-// Access recovery: an email code plus the phrase (C4; spec 02 §10.4, spec 01
-// §10.9, routes #7, #48, #8). Never email alone: the code proves the mailbox,
-// the recovery key (derived from the phrase) signs the new authenticator's
-// raw bytes, and one transaction registers it with a new writer and a bound
-// session while every other session, every other passkey, the old password
-// and every outstanding ceremony of the account are revoked.
-
 import (
 	"context"
 	"encoding/json"
@@ -26,17 +19,10 @@ import (
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
-// RecoveryTTL is a recovery ceremony's lifetime, from creation and again from
-// verification.
 const RecoveryTTL = 10 * time.Minute
 
-// recoveriesPerDay is recover-account: successful recoveries per account per
-// 24 hours, counted from sessions minted by recovery.
 const recoveriesPerDay = 3
 
-// EmailHint is spec 02 §9.9's masked address: the first character of the local
-// part, "•••", "@", the first character of the domain, "•••", and the last
-// label (m•••@g•••.com).
 func EmailHint(addr string) string {
 	at := strings.LastIndexByte(addr, '@')
 	if at < 1 || at == len(addr)-1 {
@@ -47,15 +33,11 @@ func EmailHint(addr string) string {
 	return local[:1] + "•••@" + domain[:1] + "•••." + last
 }
 
-// RecoverBegun is #7's answer.
 type RecoverBegun struct {
 	CeremonyID string
 	EmailHint  string
 }
 
-// RecoverBegin is #7: the account by its recovery key (unknown, suspended,
-// frozen, or with an address a replay put in doubt: ErrNoSuchAccount, 404), a
-// ceremony, and a recovery code to the account's address.
 func (a *Accounts) RecoverBegin(ctx context.Context, recoveryPub []byte) (RecoverBegun, error) {
 	if len(recoveryPub) != keyproto.Ed25519KeySize {
 		return RecoverBegun{}, fmt.Errorf("%w: recovery_pubkey is not 32 bytes", ErrBadRequest)
@@ -99,8 +81,6 @@ func (a *Accounts) RecoverBegin(ctx context.Context, recoveryPub []byte) (Recove
 	return RecoverBegun{CeremonyID: id, EmailHint: EmailHint(st.EmailNorm)}, nil
 }
 
-// RecoverVerified is #48's answer: what the device needs to unwrap and check
-// the commitments before any prompt.
 type RecoverVerified struct {
 	Nonce           []byte
 	UserID          uuid.UUID
@@ -108,13 +88,10 @@ type RecoverVerified struct {
 	AuthorityPubkey []byte
 	RecoveryWrap    []byte
 	CurrentEpoch    int
-	Options         *protocol.CredentialCreation // passkey
-	Salt            []byte                       // password
+	Options         *protocol.CredentialCreation
+	Salt            []byte
 }
 
-// RecoverVerify is #48: the code; then the kind is fixed, the expiry restarts,
-// and a passkey recovery gets its registration options (the account's handle,
-// existing credentials excluded, UV required).
 func (a *Accounts) RecoverVerify(ctx context.Context, ceremonyID, code, kind string) (RecoverVerified, error) {
 	if kind != MethodPasskey && kind != MethodPassword {
 		return RecoverVerified{}, fmt.Errorf("%w: kind", ErrBadRequest)
@@ -184,31 +161,25 @@ func (a *Accounts) RecoverVerify(ctx context.Context, ceremonyID, code, kind str
 	return out, err
 }
 
-// RecoverFinishRequest is #8's body, decoded.
 type RecoverFinishRequest struct {
 	CeremonyID      string
 	Kind            string
-	Credential      []byte // passkey: the PublicKeyCredential JSON
-	PRFCredentialID []byte // passkey: nil, or the new credential's id
+	Credential      []byte
+	PRFCredentialID []byte
 	PRFWrap         []byte
 	PRFWrapVersion  int
-	Verifier        []byte // password: S_new
+	Verifier        []byte
 	RKSig           []byte
-	Writer          Registration // Nonce is ignored: the recover nonce signs
+	Writer          Registration
 }
 
-// RecoverFinished is #8's answer.
 type RecoverFinished struct {
 	Session  Minted
 	UserID   uuid.UUID
 	WriterID string
-	// Wake is every other device and every signed-out session (spec 02
-	// §12.5), sent once the recovery has committed.
-	Wake Wake
+	Wake     Wake
 }
 
-// RecoverFinish is #8. Every failure is ErrRecoveryRefused, except the
-// recover-account limit (ErrRateLimited) and the gate (ErrUnavailable).
 func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (RecoverFinished, error) {
 	refuse := func(why string, args ...any) error {
 		return fmt.Errorf("%w: "+why, append([]any{ErrRecoveryRefused}, args...)...)
@@ -227,7 +198,6 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	if recent >= recoveriesPerDay {
 		return RecoverFinished{}, fmt.Errorf("%w: recoveries for this account", ErrRateLimited)
 	}
-	// Claim once: spent by the attempt.
 	var (
 		nonce   []byte
 		kind    string
@@ -240,9 +210,6 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	if err != nil {
 		return RecoverFinished{}, refuse("not claimable")
 	}
-	// A busy gate or a server fault is not the attempt's failure: the verified
-	// ceremony goes back unclaimed, so the retry (under recover-ip's 3 an hour)
-	// is not refused for the server's sake.
 	var tx pgx.Tx
 	release := func(err error) (RecoverFinished, error) {
 		if tx != nil {
@@ -289,7 +256,6 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 		}
 		return release(err)
 	}
-	// The new authenticator, its RK signature, and (passkey) its attestation.
 	var (
 		made    created
 		handle  []byte
@@ -367,8 +333,6 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 		return release(err)
 	}
 	defer pgtx.Rollback(ctx, tx)
-	// The account's state again, under the lock: a freeze or a suspension
-	// that landed since the check above refuses.
 	if st, err = readAccount(ctx, tx, userID, true); errors.Is(err, ErrNoSuchAccount) {
 		return refuseUnusable()
 	}

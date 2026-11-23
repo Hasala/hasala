@@ -2,14 +2,8 @@ import HasalaModels
 import SwiftUI
 import WidgetKit
 
-// The Home canvas widgets (Paper "Home · Default" 14O7-0, page 18 "Widgets & Lock Screen"): one
-// money fact each, r26, Small 175², Medium 362 wide. Widgets show whole dirhams ("AED 489",
-// "3,309 left"; page 06 rule 5) and hide every amount with the eye (page 18 §18.7: percentages,
-// counts, names and dates stay). The same views will draw the WidgetKit extension's cards
-// (spec 04 DV-8).
-
-private let widgetShadowNear = Color(HRGBA(0, 0, 0, 0.0588))  // #0000000F
-private let widgetShadowFar = Color(HRGBA(0, 0, 0, 0.0784))  // #00000014
+private let widgetShadowNear = Color(HRGBA(0, 0, 0, 0.0588))
+private let widgetShadowFar = Color(HRGBA(0, 0, 0, 0.0784))
 
 public enum WidgetHost: Sendable, Hashable {
   case canvas
@@ -58,15 +52,10 @@ extension View {
     widgetChrome(fill, padding: padding, minHeight: minHeight) { EmptyView() }
   }
 
-  /// A Small widget's content: it fills the height it is offered, so a canvas row that
-  /// settles its height with `.fixedSize(horizontal: false, vertical: true)` gets two cards
-  /// of equal height with their figures on the bottom edge. The card itself is the 175 pt
-  /// unit, padding included (`smallWidgetChrome`), and taller when its text needs it.
   func smallWidget() -> some View {
     frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }
 
-  /// A Small widget's card: Paper's 12 / 16 / 16 / `trailing` padding inside the 175 pt unit.
   func smallWidgetChrome<S: ShapeStyle, B: View>(
     _ fill: S, trailing: CGFloat, @ViewBuilder backdrop: () -> B
   ) -> some View {
@@ -80,27 +69,16 @@ extension View {
 }
 
 extension HFigure {
-  /// A widget's small heroes: 34/40 bold, −0.5 (Next bill, Project).
   static let widgetSmall = HFigure.large
-  /// Net worth: 30/36 bold, −0.5.
   static let widgetNetWorth = HFigure(size: 30, leading: 36, weight: .bold, tracking: -0.5, textStyle: .title,
                                       minimumScale: 0.6)
-  /// The unit and the word beside a widget figure ("AED", "left"): 15/20 semibold.
   static let widgetUnit = HFigure.compact.weight(.semibold)
 }
 
-/// A row's whole-dirham figure with what it means: "3,309 left", "770 over", "5,000 to save";
-/// 3 dots when hidden.
 private func wholeDirhams(_ m: Money, _ word: String) -> MoneyPhrase {
   MoneyPhrase([.amount(m, .rounded, hidden: 3), .text(" " + word)])
 }
 
-// MARK: - Budget pace (Medium)
-
-/// Budget pace (Medium, page 16 §02 W1/W2): one row per bucket, the name, "spent of plan", what
-/// is left on the right, and a 6 pt bar with no tick. Over: the bar is full rose and the right
-/// says "x over" in rose. Savings: "saved of plan", "x to save", then a check and "Done" once the
-/// plan is saved, with a full green bar. Widget bars stay blue (no amber).
 public struct BudgetPaceWidgetView: View {
   let model: BudgetPaceWidget
   let hidden: Bool
@@ -243,7 +221,6 @@ public struct BudgetPaceWidgetView: View {
     verdict == .overPace ? "over pace" : nil
   }
 
-  /// "9,041 of 12,350"; hidden "•••• of •••".
   private func spentOfPlan(_ row: BucketPaceRow) -> String {
     Self.spentOfPlanPhrase(row).rendered(hidden: hidden)
   }
@@ -252,7 +229,6 @@ public struct BudgetPaceWidgetView: View {
     MoneyPhrase([.amount(row.spent, .rounded), .text(" of "), .amount(row.budget, .rounded, hidden: 3)])
   }
 
-  /// The right of a row that is not done: "770 over", "5,000 to save" or "3,309 left".
   private nonisolated static func leftPhrase(_ row: BucketPaceRow) -> MoneyPhrase {
     if row.verdict == .overBudget { return wholeDirhams(Money(minor: row.left.minor.negated), "over") }
     if row.bucket == .savings { return wholeDirhams(row.left, "to save") }
@@ -272,7 +248,6 @@ public struct BudgetPaceWidgetView: View {
     }
   }
 
-  /// "Needs, 9,041 of 12,350, 3,309 left" (page 18 §15); hidden "Needs, amount hidden".
   nonisolated static func rowSummary(_ row: BucketPaceRow, hidden: Bool) -> String {
     let pace = paceWord(row.verdict).map { ", \($0)" } ?? ""
     if hidden { return row.verdict == .done ? "Amount hidden, done" : "Amount hidden\(pace)" }
@@ -282,9 +257,6 @@ public struct BudgetPaceWidgetView: View {
   }
 }
 
-// MARK: - Small widgets
-
-/// Next bill (Small): the bill's hue disc and when it is due, "AED 489", the payee line.
 public struct NextBillWidgetView: View {
   let model: NextBillWidget
   let hidden: Bool
@@ -307,15 +279,12 @@ public struct NextBillWidgetView: View {
         MoneyText(model.amount, figure: .widgetSmall, unit: .widgetUnit, style: .rounded, hidden: hidden,
                   hiddenGlyphs: 3, hiddenDots: 24, color: WidgetInk.primary(showsBackground), unitGap: 4)
           .widgetAccentable()
-        // Two lines: a 169 pt card (a 390 pt-wide phone) cannot always fit it in one.
         Text(model.caption).hType(.footnote).foregroundStyle(WidgetInk.secondary(showsBackground))
           .lineLimitAtDefaultTextSize(2)
       }
     }
     .smallWidget()
     .smallWidgetChrome(HColor.widgetSurface, trailing: 12)
-    // "Next bill" first, then what the card shows (pill, amount, payee), so nothing drawn is
-    // left out of what VoiceOver reads ("Next bill, In 4 days, AED 489, DEWA · expected Wed").
     .accessibilityElement(children: .combine)
     .accessibilityLabel { label in
       Text("Next bill")
@@ -324,7 +293,6 @@ public struct NextBillWidgetView: View {
   }
 }
 
-/// Net worth (Small, inverse): the sparkline behind the total and this month's change.
 public struct NetWorthWidgetView: View {
   let model: NetWorthWidget
   let hidden: Bool
@@ -335,7 +303,6 @@ public struct NetWorthWidgetView: View {
     self.hidden = hidden
   }
 
-  /// Up this month in green-300; down in the on-ink secondary (never red on a total).
   private var changeColor: Color {
     model.change.parts.contains { part in
       if case .signedMoney(let m, _, _) = part { return m.minor < 0 }
@@ -368,9 +335,6 @@ public struct NetWorthWidgetView: View {
       }
     }
     .smallWidget()
-    // Paper: the 70 pt band from 44 down, across the whole card, behind the words. At the
-    // accessibility sizes the title and the figure grow into the band, so the line would run
-    // through the figure; it is decoration, and the change line says the trend in words.
     .smallWidgetChrome(HColor.widgetSurfaceInverse, trailing: 12) {
       if !typeSize.isAccessibilitySize {
         Sparkline(points: model.spark)
@@ -378,13 +342,10 @@ public struct NetWorthWidgetView: View {
           .padding(.top, 44)
       }
     }
-    // Its own title, total and change, read together; a fixed label would drop the figures.
     .accessibilityElement(children: .combine)
   }
 }
 
-/// The net-worth sparkline: a soft line over a faint area, edge to edge of the card, the
-/// points evenly apart (Paper: 11 points, 18 apart, the last at the edge). Geometry only.
 struct Sparkline: View {
   let points: [Permille]
 
@@ -423,7 +384,6 @@ private extension Path {
   }
 }
 
-/// A project (Small): the peach disc and its name, what's left, the target line and progress.
 public struct ProjectWidgetView: View {
   let model: ProjectWidget
   let hidden: Bool
@@ -475,8 +435,6 @@ public struct ProjectWidgetView: View {
   }
 }
 
-/// A savings goal (Small, the mint wash): the jar and its name, the percent funded, the
-/// amounts and the progress. The percent stays when amounts hide.
 public struct GoalWidgetView: View {
   let model: GoalWidget
   let hidden: Bool
@@ -517,10 +475,6 @@ public struct GoalWidgetView: View {
   private var ink: Color { WidgetInk.primary(showsBackground, Hue.mint.ink) }
 }
 
-// MARK: - Today (Medium)
-
-/// Today (Medium): the day's transactions as they arrive, 48 pt rows with a 32 disc, the name
-/// 15/20 600 over "Dining · 13:20", and the whole-dirham amount on the right.
 public struct TodayWidgetView: View {
   let model: TodayWidget
   let hidden: Bool
@@ -550,7 +504,6 @@ public struct TodayWidgetView: View {
   }
 }
 
-/// One Today row (Paper "Mini row"): at the accessibility sizes the amount moves under the words.
 struct TodayRow: View {
   let row: MiniTxnRow
   let hidden: Bool
@@ -616,10 +569,6 @@ struct TodayRow: View {
   }
 }
 
-// MARK: - Canvas end
-
-/// The dashed "Add widget" slot at the end of the canvas: 96 tall, r26, 1.5 dashed neutral-300,
-/// a white 44 disc with an accent plus and "Add widget" 17 600 in the link blue.
 public struct AddWidgetTile: View {
   let action: () -> Void
 
@@ -645,7 +594,6 @@ public struct AddWidgetTile: View {
   }
 }
 
-/// Draws any Home widget model with its view.
 public struct HomeWidgetView: View {
   let widget: HomeWidget
   let hidden: Bool

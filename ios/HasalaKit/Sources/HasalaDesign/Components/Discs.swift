@@ -5,10 +5,6 @@ import SwiftUI
   import UIKit
 #endif
 
-// Discs and plates (page 16 §03, page 15 §01): a round hue disc with a line icon names a
-// category; a grey monogram stands in for a merchant with no category yet; a rounded-square
-// plate is a bank, so a bank never reads as a category. All decorative: the row names them.
-
 public enum DiscScale {
   public static let cap: CGFloat = 1.5
 
@@ -17,9 +13,6 @@ public enum DiscScale {
   }
 }
 
-/// A category disc: the bucket's 160° gradient with its ink icon at half the disc. Three sizes:
-/// 32 (the review suggestion strip, 16 pt icon at 2.0), 40 (rows, 20 at 1.9), 56 (detail heroes
-/// and the review card, 28 at 1.7). `ring` adds the 3 pt white ring a hero disc wears.
 public struct CategoryDisc: View {
   public enum Size: Sendable {
     case s32, s40, s56
@@ -61,8 +54,6 @@ public struct CategoryDisc: View {
   }
 }
 
-/// A gradient disc with a glyph in the hue's ink, at any size (the original API; it now draws
-/// the custom icons of page 05).
 public struct HueDisc: View {
   let hue: Hue
   let glyph: Glyph
@@ -87,9 +78,6 @@ public struct HueDisc: View {
   }
 }
 
-/// A grey disc with a merchant's first letter, for a merchant not sorted yet (Paper "L" for
-/// Lulu): `--color-list-row-monogram` with a 1 pt inset `--color-border-subtle` ring, the letter
-/// 17/22 600 at 40 and 24/28 at 56. No hue: there is no bucket yet.
 public struct MonogramDisc: View {
   let letter: String
   let size: CGFloat
@@ -115,14 +103,6 @@ public struct MonogramDisc: View {
   }
 }
 
-/// A bank's plate: a 40 pt rounded square (radius 12) in a hue, with its initials in the hue's
-/// ink ("ENBD", "DIB"). One line always: a four-letter code too wide for the plate is drawn a
-/// little smaller rather than wrapped (Paper's own drift note on "ENBD").
-///
-/// The initials are a picture of the bank's mark, drawn in a canvas, not set as text: the
-/// plate keeps its size at every text size, as the glyph plates do, and a shrunk text node
-/// inside it read as "Dynamic Type partially unsupported" to the accessibility audit even in a
-/// row that hides it (requests/p8.md 1). The row beside it names the bank in text that grows.
 public struct BankPlate: View {
   let initials: String
   let hue: Hue
@@ -144,7 +124,6 @@ public struct BankPlate: View {
       .overlay {
         Canvas { context, size in
           let text = context.resolve(mark)
-          // 3 pt clear on each side, as the text had.
           let room = size.width - 6
           let measured = text.measure(in: CGSize(width: CGFloat.infinity, height: size.height))
           let scale = measured.width > room ? room / measured.width : 1
@@ -157,8 +136,6 @@ public struct BankPlate: View {
   }
 }
 
-/// A glyph on a translucent white plate, on a hue poster or card (brief card 32 with an 18 icon,
-/// project card 40 with a 20 icon, recap tiles 28). The plate is `--color-poster-glyph`.
 public struct GlyphPlate: View {
   let icon: HIcon
   let hue: Hue
@@ -182,8 +159,6 @@ public struct GlyphPlate: View {
   }
 }
 
-/// The gradient avatar with the person's initial: 36 in the header glass, 96 on Your profile
-/// (with a 4 pt white ring and the far shadow).
 public struct AvatarDisc: View {
   let initial: String
   let size: CGFloat
@@ -207,8 +182,6 @@ public struct AvatarDisc: View {
   public var body: some View {
     Circle()
       .fill(
-        // Paper: linear-gradient(in oklab 145deg, oklab(82.1% .042 .111) 0%, oklab(75.6% .086 .050) 55%,
-        // oklab(59.2% .064 −.100) 100%); converted, as no token holds an avatar gradient.
         LinearGradient(
           gradient: Gradient(stops: [
             .init(color: Color(HRGBA(246, 182, 107, 1)), location: 0),

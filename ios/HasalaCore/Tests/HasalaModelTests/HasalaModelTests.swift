@@ -1,6 +1,3 @@
-// Unit tests for HasalaModel. The model itself only runs on a device with Apple
-// Intelligence; these pin what holds everywhere: the factory answers, and an
-// unavailable model keeps the tier off (rows stay in review).
 import CoreCategorize
 import Foundation
 import Testing

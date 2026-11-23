@@ -1,19 +1,3 @@
-// The Gmail REST surface the lane uses (spec 04 §7.1, port of the PWA's gmail.ts, narrowed by
-// PO G):
-//
-//   users.getProfile   fields=historyId only: the cheap "did anything change?" test
-//   messages.list      ALWAYS with a sender query (`{from:a from:b} after:N -in:trash`), ids only
-//   messages.get       format=metadata (From and Authentication-Results only, no snippet, no
-//                      Subject; R-07) and format=raw, for listed ids only
-//   users.watch / users.stop
-//
-// There is deliberately no `history.list` (it lists every new message id in the mailbox, PO G)
-// and no unfiltered `messages.list`: the rest of the inbox, its ids and its headers included,
-// never reaches the phone. `messagesList` refuses an empty query rather than send one.
-//
-// This client never retries and never interprets: a non-2xx answer is a typed `MailAPIError`
-// carrying the status, and the engine decides what it means (`gone`, `retry`, `fatal`). It is the
-// Gmail provider's `MailSource` (the extension at the end).
 import CoreJSON
 import Foundation
 
@@ -21,7 +5,6 @@ public typealias GmailAPIError = MailAPIError
 
 public struct GmailWatchResponse: Sendable, Equatable {
   public let historyID: String
-  /// Epoch ms.
   public let expirationMs: Int64
 }
 
@@ -52,10 +35,6 @@ public struct GmailClient: Sendable {
     let res: HTTPResponse
     do { res = try await http.send(req) } catch .tooLarge { throw .tooLarge(op: op) } catch { throw .offline }
     guard res.ok else {
-      // Gmail answers per-user and per-project quota with 403 as well as 429. Those are a
-      // back-off, not a lost grant: report them as 429 so the engine retries and narrows instead
-      // of asking the user to reconnect. Every other 403 (insufficientPermissions, forbidden)
-      // stays 403.
       if res.status == 403, Self.isRateLimit(errorBody: res.body) { throw .status(429, op: op) }
       if res.status == 400, Self.isMailServiceNotEnabled(errorBody: res.body) { throw .noMailbox }
       throw .status(res.status, op: op)
@@ -67,7 +46,6 @@ public struct GmailClient: Sendable {
     return o
   }
 
-  /// The mailbox's current historyId (a change detector only, spec 04 §7.5 step 6).
   public func profileHistoryID() async throws(GmailAPIError) -> String {
     let o = try await get("/profile", [("fields", "historyId")], op: "profile")
     if let s = o["historyId"]?.stringValue, !s.isEmpty { return s }
@@ -75,8 +53,6 @@ public struct GmailClient: Sendable {
     throw .status(200, op: "profile")
   }
 
-  /// One page of ids matching a sender query. `includeSpamTrash=true` (bank mail forwarded or
-  /// mis-filed lands in Spam); Trash is excluded by `-in:trash` in the query itself.
   public func messagesList(query: String, pageToken: String?, maxResults: Int = 100)
     async throws(GmailAPIError) -> MailListPage
   {
@@ -95,7 +71,6 @@ public struct GmailClient: Sendable {
     return MailListPage(ids: ids, nextPageToken: (next?.isEmpty ?? true) ? nil : next)
   }
 
-  /// From, Authentication-Results, internalDate and sizeEstimate; nothing else of the message.
   public func messageMetadata(id: String) async throws(GmailAPIError) -> MailMessageMetadata {
     let o = try await get(
       "/messages/\(FormEncoding.escape(id))",
@@ -112,8 +87,6 @@ public struct GmailClient: Sendable {
       sizeEstimate: o["sizeEstimate"]?.numberValue?.int64Value, headers: headers)
   }
 
-  /// The RFC 822 message. A 2xx without `raw` is reported as that status (the engine treats it
-  /// as `gone`).
   public func messageRaw(id: String) async throws(GmailAPIError) -> MailRawMessage {
     let o = try await get("/messages/\(FormEncoding.escape(id))", [("format", "raw")], op: "raw")
     guard let raw = o["raw"]?.stringValue, !raw.isEmpty else { throw .status(200, op: "raw") }
@@ -121,7 +94,6 @@ public struct GmailClient: Sendable {
     return MailRawMessage(id: id, rawBase64URL: raw, internalDate: Self.decimal(o["internalDate"]), spam: spam)
   }
 
-  /// `users.watch` on INBOX only (spec 04 §7.5 step 5).
   public func watch(topicName: String) async throws(GmailAPIError) -> GmailWatchResponse {
     let body = JSONValue.object(
       JSONObject([
@@ -138,20 +110,15 @@ public struct GmailClient: Sendable {
     _ = try await call(.post, "/stop", [], body: nil, op: "stop")
   }
 
-  /// `{from:a from:b} after:<sinceSec> -in:trash` (spec 04 §7.5). The domains are query-safe
-  /// (`BankDomains.isQuerySafe`, enforced by `BankDomains.effectiveTrusted`).
   public static func senderQuery(_ group: [String], sinceSec: Int64) -> String {
     "{" + group.map { "from:" + $0 }.joined(separator: " ") + "} after:\(sinceSec) -in:trash"
   }
 
-  /// The Google API error reasons that mean "slow down" (`error.errors[].reason`, the legacy
-  /// shape Gmail still sends, or `error.details[].reason` / `error.status` in the AIP-193 shape).
   static let rateLimitReasons: Set<String> = [
     "ratelimitexceeded", "userratelimitexceeded", "dailylimitexceeded", "quotaexceeded",
     "rate_limit_exceeded", "resource_exhausted",
   ]
 
-  /// Whether a non-2xx body names a rate or quota limit. Reads only the error's reason codes.
   public static func isRateLimit(errorBody: Data) -> Bool {
     guard !errorBody.isEmpty, let e = (try? JSONParser.parse([UInt8](errorBody)))?["error"] else { return false }
     var reasons: [String] = []
@@ -175,7 +142,6 @@ public struct GmailClient: Sendable {
     return precondition && messages.contains(mailServiceNotEnabled)
   }
 
-  /// Gmail sends int64s as decimal strings; accept a JSON number too.
   static func decimal(_ v: JSONValue?) -> String {
     if let s = v?.stringValue { return s }
     if let n = v?.numberValue, n.isIntegerLiteral { return n.literal }
@@ -183,15 +149,11 @@ public struct GmailClient: Sendable {
   }
 }
 
-// MARK: - MailSource
-
 extension GmailClient: MailSource {
-  /// At most this many `from:` terms per query (spec 04 §7.5).
   public var maxSendersPerList: Int { BankDomains.maxTermsPerQuery }
 
   public func changeToken() async throws(MailAPIError) -> String? { try await profileHistoryID() }
 
-  /// `messages.list` with the sender query; no senders is refused (`unfilteredListing`).
   public func list(senders: [String], since: Int64, pageToken: String?) async throws(MailAPIError) -> MailListPage {
     guard !senders.isEmpty else { throw .unfilteredListing }
     return try await messagesList(query: Self.senderQuery(senders, sinceSec: since), pageToken: pageToken)
@@ -205,13 +167,11 @@ extension GmailClient: MailSource {
     _ = try await get("/profile", [("fields", "historyId")], op: "mailbox")
   }
 
-  /// `users.watch` on the server's Pub/Sub topic; nil without one.
   public func subscribe(_ push: MailboxPushConfig) async throws(MailAPIError) -> MailSubscription? {
     guard case .gmail(let topic) = push else { return nil }
     return MailSubscription(expiresAtMs: try await watch(topicName: topic).expirationMs)
   }
 
-  /// A Gmail watch is renewed by watching again.
   public func renew(_ push: MailboxPushConfig) async throws(MailAPIError) -> MailSubscription? {
     try await subscribe(push)
   }

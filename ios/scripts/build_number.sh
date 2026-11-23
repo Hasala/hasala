@@ -1,15 +1,4 @@
 #!/usr/bin/env bash
-# build_number.sh <iso8601>: the CFBundleVersion for an archive made at that instant
-# (spec 06 §8): YYMMDD.1HHMM in UTC. The literal 1 keeps the second component free
-# of a leading zero, so build numbers compare correctly component by component.
-#
-#   ios/scripts/build_number.sh "$(date -u +%Y-%m-%dT%H:%M:%SZ)"   # -> 261011.11530
-#
-# Accepts a trailing Z or a ±HH:MM / ±HHMM offset (converted to UTC first). BSD
-# date(1) by absolute path: the Nix devShell puts GNU date first on PATH, which has
-# no -j and whose -f reads a file of dates. Two instants in the same UTC minute give
-# the same number; archive.sh refuses a second archive under a number that already
-# has a directory.
 set -euo pipefail
 
 in="${1:?usage: build_number.sh <iso8601 instant>}"

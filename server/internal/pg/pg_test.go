@@ -35,7 +35,6 @@ func mustExec(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) {
 	}
 }
 
-// sqlState returns the SQLSTATE and constraint name of a Postgres error.
 func sqlState(err error) (code, constraint string) {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
@@ -51,13 +50,6 @@ func wantsError(t *testing.T, pool *pgxpool.Pool, what, sql string, args ...any)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// The baseline
-// ---------------------------------------------------------------------------
-
-// TestTheBaselineHoldsExactlyTheKeptTables is the surgery's schema pin (spec 02
-// §2.5): the retired tables are absent, and nothing appears that nobody
-// classified.
 func TestTheBaselineHoldsExactlyTheKeptTables(t *testing.T) {
 	pool := pgtest.New(t)
 	rows, err := pool.Query(bg, `SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename`)
@@ -87,9 +79,6 @@ func TestTheBaselineHoldsExactlyTheKeptTables(t *testing.T) {
 	}
 }
 
-// schemaShape lists every column (type, nullability, default), constraint,
-// index, trigger and function of the public schema, sorted, so two databases
-// can be compared object by object.
 func schemaShape(t *testing.T, pool *pgxpool.Pool) []string {
 	t.Helper()
 	rows, err := pool.Query(bg, `
@@ -125,17 +114,12 @@ func schemaShape(t *testing.T, pool *pgxpool.Pool) []string {
 	return out
 }
 
-// 00022's Down is pgtest-only, but it must give back exactly what 00021 left,
-// or a Down to 21 followed by work at 21 tests a schema no deploy ever had.
 func TestDownTo21IsWhat00021Left(t *testing.T) { downIsWhatUpLeft(t, 21) }
 
-// 00023's Down is pgtest-only too, and gives back exactly what 00022 left.
 func TestDownTo22IsWhat00022Left(t *testing.T) { downIsWhatUpLeft(t, 22) }
 
 func TestDownTo23IsWhat00023Left(t *testing.T) { downIsWhatUpLeft(t, 23) }
 
-// downIsWhatUpLeft compares a database migrated up to version with one
-// migrated all the way up and then down to version.
 func downIsWhatUpLeft(t *testing.T, version int64) {
 	t.Helper()
 	open := func() *pgxpool.Pool {
@@ -189,7 +173,6 @@ func TestTheBaselineRefusesToRunAsAnyoneButTheSchemaOwner(t *testing.T) {
 	if err := pg.MigrateDown(bg, owner); err != nil {
 		t.Fatalf("down: %v", err)
 	}
-	// As the superuser, the baseline's own guard refuses.
 	err := pg.Migrate(bg, su)
 	if err == nil || !strings.Contains(err.Error(), "must be applied as hasala_migrate") {
 		t.Fatalf("the baseline ran as a superuser: %v", err)
@@ -216,10 +199,6 @@ func TestMigrationsAreReversible(t *testing.T) {
 	}
 }
 
-// TestTheSealedPredicateIsTheSpecsByteForByte pins hasala_frame_is_sealed: the
-// md5 of its body as installed equals the constant serve compares at startup
-// (O7) and spec 01 §8.2's V-F value, and the migration file carries the body
-// verbatim (AT-IDX-4).
 func TestTheSealedPredicateIsTheSpecsByteForByte(t *testing.T) {
 	pool := pgtest.New(t)
 	var sum string
@@ -246,9 +225,6 @@ func TestTheSealedPredicateIsTheSpecsByteForByte(t *testing.T) {
 	}
 }
 
-// TestTheSQLPredicateAgreesWithLooksSealed is spec 01 AT-P1 for the database:
-// every case of the V-F set, accepted or refused, the same way by Go and SQL.
-// A NULL is NULL (N-02: only NOT NULL refuses it).
 func TestTheSQLPredicateAgreesWithLooksSealed(t *testing.T) {
 	pool := pgtest.New(t)
 	for _, c := range blobtest.LooksSealedCases() {
@@ -270,17 +246,6 @@ func TestTheSQLPredicateAgreesWithLooksSealed(t *testing.T) {
 	}
 }
 
-// TestADirectInsertOfARefusedFrameFailsTheCheck is AT-P3 and AT-DB-1: no
-// write path, the application's or a hand-written INSERT, stores a frame the
-// predicate refuses, and the constraint that refuses it is
-// op_log_blob_is_sealed by name.
-//
-// PostgreSQL evaluates CHECK constraints in name order, so
-// op_log_aad_matches_position runs first: a refused frame carrying someone
-// else's AAD would be caught there and prove nothing about the sealed CHECK.
-// Every named-constraint case below is therefore a real frame sealed for the
-// very row it is inserted as, with exactly one predicate check broken and the
-// AAD bytes left untouched.
 func TestADirectInsertOfARefusedFrameFailsTheCheck(t *testing.T) {
 	pool := pgtest.New(t)
 	u := oplogtest.NewUser(t, pool)
@@ -327,8 +292,6 @@ func TestADirectInsertOfARefusedFrameFailsTheCheck(t *testing.T) {
 	)
 	for _, c := range cases {
 		f := positioned(c.mutate)
-		// Premises: the predicate refuses it on exactly this check, and the
-		// AAD the position CHECK compares is still this row's.
 		var refusal *blob.RefusalError
 		if err := blob.LooksSealed(f); !errors.As(err, &refusal) || refusal.Check != c.check {
 			t.Fatalf("%s: premise broken: LooksSealed = %v, want check %q", c.name, err, c.check)
@@ -341,11 +304,6 @@ func TestADirectInsertOfARefusedFrameFailsTheCheck(t *testing.T) {
 			t.Errorf("%s: insert answered %v (constraint %q), want op_log_blob_is_sealed", c.name, err, name)
 		}
 	}
-	// The rest of spec 01's V-F refusals (empty, 1 byte, off-ladder sizes,
-	// aad_len past the end, a ledgerd v1 frame) cannot carry this row's AAD in
-	// a frame the bucket CHECKs accept, so some other CHECK may name itself
-	// first; what AT-P3 requires of them is a CHECK violation, never a stored
-	// row and never a get_byte range error.
 	for _, c := range blobtest.LooksSealedCases() {
 		if c.Want == "" {
 			continue
@@ -360,24 +318,18 @@ func TestADirectInsertOfARefusedFrameFailsTheCheck(t *testing.T) {
 			t.Errorf("%s: insert answered %v, want a CHECK violation", c.Name, err)
 		}
 	}
-	// A frame that passes the predicate but names another position.
 	other := blob.Envelope{UserID: u, Stream: blob.StreamHot, WriterID: "ios-00000000-0000-4000-8000-00000000000a", WriterCounter: 2}
 	s := blobtest.MustSeal3(other, blob.ZeroHash, []byte(`{}`))
 	err := insert(s.Bytes, s.SizeBucket)
 	if _, name := sqlState(err); name != "op_log_aad_matches_position" {
 		t.Fatalf("a frame sealed for counter 2 stored at counter 1: %v", err)
 	}
-	// And the honest one goes in.
 	s = blobtest.MustSeal3(here, blob.ZeroHash, []byte(`{}`))
 	if err := insert(s.Bytes, s.SizeBucket); err != nil {
 		t.Fatalf("an honest frame was refused: %v", err)
 	}
 }
 
-// TestTheLogIsAppendOnlyForEveryRoleButTheCascade is spec 02 D-5/D-6 and
-// AT-DB-7: the runtime role holds no UPDATE or DELETE on op_log and
-// key_history and no DELETE on writers; the trigger refuses the owner too;
-// and deleting the account still removes every row through the cascade.
 func TestTheLogIsAppendOnlyForEveryRoleButTheCascade(t *testing.T) {
 	pool, owner := pgtest.NewWithOwner(t)
 	u := oplogtest.NewUser(t, pool)
@@ -403,12 +355,10 @@ func TestTheLogIsAppendOnlyForEveryRoleButTheCascade(t *testing.T) {
 			t.Errorf("owner: %s answered %v, want the append-only trigger's refusal", sql, err)
 		}
 	}
-	// Revoke once, and only once.
 	mustExec(t, pool, `UPDATE writers SET revoked_at = now() WHERE user_id = $1`, u)
 	if _, err := pool.Exec(bg, `UPDATE writers SET revoked_at = now() WHERE user_id = $1`, u); err == nil {
 		t.Fatal("a writer was revoked twice")
 	}
-	// The account goes, and everything with it.
 	mustExec(t, pool, `DELETE FROM users WHERE id = $1`, u)
 	for _, table := range []string{"op_log", "key_history", "writers", "oplog_seq", "account_usage"} {
 		var n int
@@ -437,8 +387,6 @@ func TestTheRuntimeRoleCannotWriteTheMigrationLedger(t *testing.T) {
 	}
 }
 
-// TestTheDefaultLimitPolicyIsPresentAndPermanent: the default row every
-// account without an override depends on (spec 02 §5.4: 256 MiB).
 func TestTheDefaultLimitPolicyIsPresentAndPermanent(t *testing.T) {
 	pool := pgtest.New(t)
 	var oplog int64
@@ -464,7 +412,6 @@ func TestTheDefaultLimitPolicyIsPresentAndPermanent(t *testing.T) {
 	}
 }
 
-// TestTheResourceVocabularyIsClosed is spec 02 §5.4's vocabulary in SQL.
 func TestTheResourceVocabularyIsClosed(t *testing.T) {
 	pool := pgtest.New(t)
 	u := oplogtest.NewUser(t, pool)
@@ -493,8 +440,6 @@ func TestAccountStatusIsActiveOrSuspended(t *testing.T) {
 }
 
 func TestParallelMigrationsDoNotRaceOnGooseGlobals(t *testing.T) {
-	// goose's SetDialect/SetBaseFS mutate unsynchronized package-level state;
-	// this is the t.Parallel() test that `go test -race` would catch it in.
 	for i := 0; i < 8; i++ {
 		t.Run(fmt.Sprintf("db%d", i), func(t *testing.T) {
 			t.Parallel()
@@ -509,10 +454,6 @@ func TestParallelMigrationsDoNotRaceOnGooseGlobals(t *testing.T) {
 		})
 	}
 }
-
-// ---------------------------------------------------------------------------
-// The startup refusals (spec 02 §5.6) and the migrate checks (§5.5)
-// ---------------------------------------------------------------------------
 
 func refusalCode(err error) string {
 	var r *pg.RefusalError
@@ -543,8 +484,6 @@ func TestServingRefusesTheSchemaOwnerAndASuperuser(t *testing.T) {
 	}
 }
 
-// Each refusal is reached by the one schema change it guards against, made as
-// the owner (the only role that can make it).
 func TestServingRefusesAWeakenedSchema(t *testing.T) {
 	cases := []struct {
 		code string
@@ -590,9 +529,6 @@ func TestServingRefusesAWeakenedConstraintDefinition(t *testing.T) {
 	}
 }
 
-// O3 on a role of its own: membership is cluster-wide, and granting it to the
-// shared hasala_runtime would refuse every other package's tests running
-// against the same cluster at that moment.
 func TestServingRefusesAMemberOfTheOwnerRole(t *testing.T) {
 	_, owner := pgtest.NewWithOwner(t)
 	su := pgtest.Superuser(t, owner)
@@ -641,10 +577,6 @@ func TestMigrateRunsOnlyAsTheSchemaOwner(t *testing.T) {
 	if err != nil || n != 0 {
 		t.Fatalf("Pending = %d, %v; want 0", n, err)
 	}
-	// 00001 plus the pre-deploy migrations of 00002–00029 (squashed into the
-	// baseline before the first QA deploy): today 00010_keys, 00020_mailbox_links,
-	// 00021_waitlist_invites_mail, 00022_accounts, 00023_mailbox_outlook and
-	// 00024_mailbox_one_account.
 	latest, err := pg.LatestEmbedded()
 	if err != nil || latest != 39 {
 		t.Fatalf("LatestEmbedded = %d, %v; want 39", latest, err)

@@ -1,18 +1,12 @@
 import XCTest
 
-/// Mailboxes on the in-memory mock (Debug: Gmail and Outlook): connecting in setup through
-/// to Home with the import running, Add a mailbox from Bank alerts, the two Outlook errors, Sign in again
-/// from the hero and from the mailbox, Disconnect behind its alert, and the large-text audit.
 final class MailboxUITests: XCTestCase {
   override func setUp() {
     continueAfterFailure = false
   }
 
-  /// The large-text size the audits use (AX3).
   static let largeText = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
 
-  /// Setup's bank alerts step connects Gmail (the mock's sign-in always succeeds), Home
-  /// opens, and the first scan reads behind it.
   @MainActor
   func testSetupConnectsGmailToTheFirstScan() throws {
     let app = launch(scenario: "setupBank")
@@ -26,8 +20,6 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Home after the connect")
   }
 
-  /// Outlook in setup: the bank step with Outlook (with the work account line); then Use
-  /// Outlook › Choose your email › Outlook, which connects it, and Home.
   @MainActor
   func testSetupConnectsOutlookToTheFirstScan() throws {
     var app = launch(scenario: nil, screen: "mail.connectOutlook")
@@ -52,8 +44,6 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Home · Outlook connected")
   }
 
-  /// A signed-in account with no mailbox: Home's Finish setting up leads with "Connect your
-  /// email", which opens Bank alerts, where Add a mailbox offers Gmail and Outlook.
   @MainActor
   func testHomeOffersToConnectAnAccountWithNoMailbox() throws {
     let app = launch(scenario: "noMailbox")
@@ -67,8 +57,6 @@ final class MailboxUITests: XCTestCase {
     XCTAssertTrue(el(app, "mail.choose.outlook").exists)
   }
 
-  /// Someone who adds transactions by hand hides "Connect your email"; the rest of Finish
-  /// setting up stays.
   @MainActor
   func testHomeHidesTheConnectRowForSomeoneWhoAddsByHand() throws {
     let app = launch(scenario: "noMailbox")
@@ -79,8 +67,6 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Home · connect row hidden")
   }
 
-  /// Bank alerts with no mailbox offers Add a mailbox; where the account can't connect one
-  /// it says why instead of showing nothing.
   @MainActor
   func testBankAlertsWithNoMailboxOffersAConnectOrSaysWhyNot() throws {
     var app = launch(scenario: nil, screen: "bankAlerts.none")
@@ -101,8 +87,6 @@ final class MailboxUITests: XCTestCase {
     XCTAssertFalse(review.label.contains("sample"), "a review account without the sample says it shows sample data")
   }
 
-  /// Profile › Bank alerts › Add a mailbox › Outlook connects a second mailbox: back on Bank
-  /// alerts, it is listed and checking for alerts.
   @MainActor
   func testAddOutlookFromBankAlerts() throws {
     let app = launch(scenario: "passkeyUser")
@@ -132,9 +116,6 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Bank alerts · two mailboxes")
   }
 
-  /// A work account its admin hasn't approved, then a Microsoft sign-in that didn't finish:
-  /// each has its screen; trying again runs the sign-in again, and "Choose a different
-  /// email" goes back to the providers, where Gmail connects a second Google account.
   @MainActor
   func testOutlookErrors() throws {
     var app = launch(scenario: nil, screen: "mail.add.errorAdmin")
@@ -149,7 +130,6 @@ final class MailboxUITests: XCTestCase {
     XCTAssertEqual(el(app, "mail.error.retry").label, "Continue with Microsoft")
     attach(app, "Microsoft sign-in didn't finish")
     try audit(app)
-    // The scenario's Microsoft sign-in never finishes: trying again lands here again.
     tap(app, "mail.error.retry")
     XCTAssertTrue(app.staticTexts["Outlook isn't connected."].waitForExistence(timeout: 10))
     tap(app, "mail.error.chooseDifferent")
@@ -305,8 +285,6 @@ final class MailboxUITests: XCTestCase {
     try audit(app, atLargeText: true)
   }
 
-  /// Microsoft ended access to Outlook: Bank alerts' hero says so and carries "Continue
-  /// with Microsoft"; signed in again, the hero says it works.
   @MainActor
   func testSignInAgainFromTheHero() throws {
     let app = launch(scenario: "outlookSignIn", screen: "bankAlerts")
@@ -324,9 +302,6 @@ final class MailboxUITests: XCTestCase {
     XCTAssertFalse(el(app, "bankAlerts.signInAgain").exists)
   }
 
-  /// While Outlook needs a sign-in, Add a mailbox says so on its Outlook row rather than
-  /// "is connected", and the row leads where it says: Outlook's sign-in again, then back on
-  /// Bank alerts with Outlook working.
   @MainActor
   func testAddAMailboxWhileOutlookNeedsASignIn() throws {
     let app = launch(scenario: "outlookSignIn", screen: "bankAlerts")
@@ -348,8 +323,6 @@ final class MailboxUITests: XCTestCase {
     XCTAssertTrue(el(app, "bankAlerts.mailbox.outlook-1").waitForLabel(containing: "Checked just now"))
   }
 
-  /// The Outlook mailbox: signed in again from its page, which turns into the working
-  /// layout; then disconnected behind the system alert, back on Bank alerts with a grey row.
   @MainActor
   func testMailboxSignInAgainAndDisconnect() throws {
     let app = launch(scenario: "outlookSignIn", screen: "bankAlerts")
@@ -403,7 +376,6 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Bank alerts · removed")
   }
 
-  /// Bank alerts and both mailbox layouts at AX3: nothing clipped, every control reachable.
   @MainActor
   func testBankAlertsAndMailboxAtLargeText() throws {
     var app = launch(scenario: nil, screen: "bankAlerts", arguments: Self.largeText)
@@ -413,8 +385,6 @@ final class MailboxUITests: XCTestCase {
       XCTAssertTrue(scroll(app, toShow: el(app, id)), "\(id) never came into view")
       try audit(app, atLargeText: true)
     }
-    // Disconnect ends each page, so it can't reach the upper half: drag until it can be
-    // tapped above the bottom edge.
     app = launch(scenario: nil, screen: "mail.detail", arguments: Self.largeText)
     XCTAssertTrue(el(app, "mailbox.card").waitForExistence(timeout: 15))
     try audit(app, atLargeText: true)
@@ -427,10 +397,6 @@ final class MailboxUITests: XCTestCase {
     try audit(app, atLargeText: true)
   }
 
-  /// The docks of the read-only screen and the two errors, at the default size and AX3:
-  /// "Not your email? Choose a different email" grows with the text as one sentence, and a
-  /// provider's pill takes the two lines it needs (setup's dock draws the same parts). The
-  /// row leads to the providers.
   @MainActor
   func testDocksGrowWithTheText() throws {
     var app = launch(scenario: nil, screen: "mail.profile.gmail")
@@ -458,14 +424,12 @@ final class MailboxUITests: XCTestCase {
     try audit(app, atLargeText: true)
   }
 
-  /// Some element on screen says `text`.
   @MainActor
   private func says(_ app: XCUIApplication, _ text: String) -> Bool {
     app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
       .waitForExistence(timeout: uiWait)
   }
 
-  /// The provider's button on setup's bank step. It names the company.
   @MainActor
   private func connectScreen(_ app: XCUIApplication, _ provider: Provider) throws -> XCUIElement {
     let button = el(app, "mail.connect.\(provider.rawValue)")

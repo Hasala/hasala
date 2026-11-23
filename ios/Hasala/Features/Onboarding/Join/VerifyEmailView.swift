@@ -2,15 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Create your account · 1 of 3 · Check your email (Paper EDW-0, EID-0, EKX-0; spec 07 S7a–c),
-/// on the typed-code path only. Six cells over one `.oneTimeCode` field, so "From Mail" and a
-/// paste fill all six; checked on the sixth digit, with no button.
-///
-/// Wrong: every cell gets the error ring and keeps its digit, so the code can be compared
-/// with the email, and one line says what to try and how many tries are left; typing again
-/// clears it. Expired (the server said so, or 10 minutes passed): the cells empty onto the
-/// wash, the keyboard goes, and "Send a new code" takes the button's place. "Change email"
-/// is always there.
 struct VerifyEmailView: View {
   let store: OnboardingStore
 
@@ -18,7 +9,6 @@ struct VerifyEmailView: View {
     self.store = store
   }
 
-  /// Moves on when the code's ten minutes run out, so the screen turns to "expired" on its own.
   @State private var now = Date.now
 
   var body: some View {
@@ -53,7 +43,6 @@ struct VerifyEmailView: View {
       if code.count == 6 { Task { await model.submitCode() } }
     }
     .task(id: model.ticket?.startedAt) {
-      // When this ticket's code expires, look again.
       guard let sent = model.ticket?.startedAt else { return }
       let left = sent.addingTimeInterval(10 * 60 + 1).timeIntervalSinceNow
       if left > 0 { try? await Task.sleep(for: .seconds(left)) }
@@ -63,11 +52,8 @@ struct VerifyEmailView: View {
 
   @ViewBuilder private func cells(_ model: SignupModel, state: CodeCells.State) -> some View {
     CodeCells(code: Bindable(model).code, state: state, identifier: "code.field", revealTarget: Self.revealID)
-      // A fresh code starts a fresh field, with the keyboard up again.
       .id(model.codeSentAt)
       .overlay {
-        // After a wrong code the field is empty for the next try; the digits that were
-        // refused stay drawn, ringed, until the first new one.
         if state == .wrong, model.code.isEmpty, !model.wrongCode.isEmpty {
           WrongCodeCells(digits: model.wrongCode)
         }
@@ -100,7 +86,6 @@ struct VerifyEmailView: View {
     }
   }
 
-  /// A failure that isn't about the code (offline, too many tries, an address in use).
   private func otherFailure(_ model: SignupModel) -> AuthFailure? {
     switch model.failure {
     case .codeWrong, .codeExpired, nil: nil
@@ -108,7 +93,6 @@ struct VerifyEmailView: View {
     }
   }
 
-  /// "Resend code in 0:42" counting down, then "Resend code"; "Change email" on the right.
   private func resendRow(_ model: SignupModel) -> some View {
     ReflowingRow {
       TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -136,8 +120,6 @@ struct VerifyEmailView: View {
   }
 }
 
-/// The refused code, drawn where the cells are (two groups of three 52 × 64 cells, each with
-/// the error ring), so it stays readable while the field under it is empty again.
 private struct WrongCodeCells: View {
   let digits: String
 

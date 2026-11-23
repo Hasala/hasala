@@ -1,16 +1,5 @@
 package api
 
-// keys.go serves the account's key material (spec 02 #17, #18; spec 01 §4–§5,
-// §10.3): GET /api/v1/keys and the atomic bootstrap. ledgerd's write-once
-// PUT /api/v1/keys is retired (spec 02 §2.4): keys arrive only through the
-// bootstrap, signed by the authority key the account-creating ceremony bound.
-//
-// What the server stores is opaque: the AMK commitment and the authority and
-// recovery public keys (published so every device can check what it
-// unwrapped), the 127-byte recovery wrap and the 45-byte phrase box, which only
-// the phrase.view step-up ever returns (it is never in GET /keys). It holds no
-// key that opens any of them.
-
 import (
 	"net/http"
 	"time"
@@ -20,13 +9,12 @@ import (
 	"github.com/salehtl/hasala/server/internal/auth"
 )
 
-// KeysResponse answers GET /api/v1/keys (#17). Never the phrase box.
 type KeysResponse struct {
 	FormatVersion   int       `json:"format_version"`
-	AMKCommitment   string    `json:"amk_commitment"`   // b64
-	AuthorityPubkey string    `json:"authority_pubkey"` // b64
-	RecoveryPubkey  string    `json:"recovery_pubkey"`  // b64
-	RecoveryWrap    string    `json:"recovery_wrap"`    // b64, 127 bytes
+	AMKCommitment   string    `json:"amk_commitment"`
+	AuthorityPubkey string    `json:"authority_pubkey"`
+	RecoveryPubkey  string    `json:"recovery_pubkey"`
+	RecoveryWrap    string    `json:"recovery_wrap"`
 	CurrentEpoch    int       `json:"current_epoch"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
@@ -45,22 +33,19 @@ func (s *Server) handleGetKeys(w http.ResponseWriter, r *http.Request, userID uu
 	})
 }
 
-// BootstrapPRFWrap is the optional PRF wrap of a bootstrap.
 type BootstrapPRFWrap struct {
-	CredentialID string `json:"credential_id"` // b64url
-	Wrap         string `json:"wrap"`          // b64, 127 bytes
+	CredentialID string `json:"credential_id"`
+	Wrap         string `json:"wrap"`
 	WrapVersion  int    `json:"wrap_version"`
 }
 
-// BootstrapWriter is the first writer of a bootstrap.
 type BootstrapWriter struct {
 	WriterID  string `json:"writer_id"`
 	Alg       string `json:"alg"`
-	PubKey    string `json:"pubkey"`     // b64, 32
-	DAKPubkey string `json:"dak_pubkey"` // b64, 65
+	PubKey    string `json:"pubkey"`
+	DAKPubkey string `json:"dak_pubkey"`
 }
 
-// BootstrapRequest is POST /api/v1/account/bootstrap (spec 02 §10.1).
 type BootstrapRequest struct {
 	FormatVersion   int               `json:"format_version"`
 	AMKCommitment   string            `json:"amk_commitment"`
@@ -80,7 +65,6 @@ type BootstrapRequest struct {
 	PhraseUnseen    bool              `json:"phrase_unseen,omitempty"`
 }
 
-// BootstrapResponse is #18's 201.
 type BootstrapResponse struct {
 	WriterID     string `json:"writer_id"`
 	CurrentEpoch int    `json:"current_epoch"`
@@ -116,7 +100,6 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request, userID 
 	writeJSON(w, http.StatusCreated, BootstrapResponse{WriterID: out.WriterID, CurrentEpoch: out.CurrentEpoch})
 }
 
-// decodeBootstrap decodes the §10.1 fields (everything but step_up).
 func decodeBootstrap(w http.ResponseWriter, req BootstrapRequest) (auth.Bootstrap, bool) {
 	b := auth.Bootstrap{FormatVersion: req.FormatVersion, AuthKind: req.AuthKind, PhraseUnseen: req.PhraseUnseen}
 	for _, f := range []struct {

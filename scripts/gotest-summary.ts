@@ -1,19 +1,3 @@
-// gotest-summary.ts — reads `go test -json` on stdin for scripts/check.sh.
-//
-// Streams one line per package as it finishes, then prints the full output of
-// every failing test, every skipped test with its reason, and the totals.
-// Exits 1 if any test or package failed, or if no test ran at all: a run that
-// collected nothing must never read as a pass.
-//
-// Skips are listed on every run rather than counted silently. A test that
-// skips because its fixture moved looks exactly like a pass otherwise.
-//
-// Tests that need the private real-mail fixtures (internal/privatefixtures)
-// write "[real-corpus]" into their output: a log line when they run against
-// $HASALA_PRIVATE_FIXTURES, the skip reason when it is unset. Those are counted
-// separately, printed, and — when REALCORPUS_COUNTS names a file — written there
-// as "<ran> <skipped>" for scripts/check.sh's closing summary.
-
 interface Event {
   Action: string;
   Package?: string;
@@ -65,15 +49,12 @@ for await (const line of console) {
     continue;
   }
   if (event.Test === undefined) {
-    // A package-level result.
     if (event.Action === 'pass') {
       packages.ok += 1;
       console.log(`ok    ${event.Package} (${event.Elapsed ?? 0}s)`);
     } else if (event.Action === 'fail') {
       packages.fail += 1;
       console.log(`FAIL  ${event.Package} (${event.Elapsed ?? 0}s)${order(event.Package)}`);
-      // A package that fails outside any test (TestMain, a panic between
-      // tests, a build failure) has its reason only in package-level output.
       failed.push(key(event));
       failedPackages.push(event.Package ?? '');
     } else if (event.Action === 'skip') {

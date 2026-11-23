@@ -1,18 +1,3 @@
-// The template regex dialect validator: a port of the ledgerd TypeScript client's src/tmpl/dialect.ts
-// (the mirror of the Go validator, server/internal/tmpl/dialect.go).
-//
-// A published template is data, run by more than one regex engine (Go's RE2 at publish, a
-// backtracking engine on the phone: ICU here). The dialect is the subset of RE2 on which the
-// engines were MEASURED to agree, plus cost rules that keep a backtracking engine cheap on
-// attacker-writable mail. This gate runs at LOAD time, before a pattern reaches ICU.
-//
-// Every rejection carries a stable reason code, in scan order, identical to Go's for the same
-// pattern: conformance/dialect/patterns.json pins the codes (36 rejected rows, 52 accepted rows
-// and a 9,324-pattern generated corpus with its SHA-256). Treat the codes as a wire format.
-//
-// Offsets are rune (scalar) indices, as in Go, so the scanner works on a scalar array.
-
-/// Cost bounds (counted in runes) and the reason codes. Identical to Go's.
 public enum Dialect {
   public static let maxPatternRunes = 512
   public static let maxCaptureGroups = 8
@@ -55,23 +40,15 @@ public enum Dialect {
     case notCompilable = "not_compilable"
   }
 
-  /// Every way `pattern` (with `flags`) violates the dialect, as reason codes in scan order.
-  /// Empty means the pattern is safe to compile and run here.
   public static func validate(_ pattern: String, flags: [String]) -> [Reason] {
     validateAndCompile(pattern, flags: flags).codes
   }
 
-  /// `validate`, and the compiled engine when the pattern passes (so a template compiles each
-  /// pattern once).
   static func validateAndCompile(_ pattern: String, flags: [String]) -> (codes: [Reason], regex: ICURegex?) {
     var v = Scanner(pattern)
     v.checkFlags(flags)
     v.scan()
     guard v.codes.isEmpty else { return (v.codes, nil) }
-    // The scanner models the dialect, not the whole grammar. The engine's own compile is the
-    // backstop for everything else, such as a reversed class range (the mirror of Go handing
-    // the pattern to regexp.Compile and TypeScript to `new RegExp`). Flags here are exactly
-    // [] or ["i"]: anything else was reported above.
     do {
       return ([], try ICUPattern.compile(pattern, caseInsensitive: !flags.isEmpty))
     } catch {
@@ -80,14 +57,10 @@ public enum Dialect {
     }
   }
 
-  /// The reason codes as their wire strings.
   public static func validatePattern(_ pattern: String, flags: [String]) -> [String] {
     validate(pattern, flags: flags).map(\.rawValue)
   }
 
-  /// Rewrites `(?P<name>` to `(?<name>`, class- and escape-aware (Go's `ToJS`, TypeScript's
-  /// `toJS`). Kept for parity with the twins' fixture; the ICU translation reads the stored
-  /// pattern itself.
   public static func toJS(_ p: String) -> String {
     let r = Array(p.unicodeScalars)
     var out = String.UnicodeScalarView()
@@ -124,8 +97,6 @@ public enum Dialect {
     return String(out)
   }
 
-  /// The named capture groups of a stored pattern, in order of appearance (Go's
-  /// `SubexpNames`).
   public static func groupNames(_ p: String) -> [String] {
     let r = Array(p.unicodeScalars)
     var out: [String] = []
@@ -164,11 +135,6 @@ public enum Dialect {
   }
 }
 
-// MARK: - The scanner
-
-/// Saturation caps for the length and width accumulators (Go's `lenCap`, `widthCap`). Both
-/// are compared against a yes/no bound, so saturating keeps every executor the same function
-/// where Go's int would otherwise wrap.
 private let lenCap = 1 << 30
 private let widthCap = Dialect.maxRepetitionWidth + 1
 
@@ -180,7 +146,6 @@ private func satMul(_ a: Int, _ b: Int) -> Int {
   return a * b
 }
 
-/// `a^n`, saturating at `widthCap`; `a^0` is 1.
 private func satPow(_ a: Int, _ n: Int) -> Int {
   if a <= 1 { return a == 0 ? 0 : 1 }
   var out = 1
@@ -192,14 +157,12 @@ private func satPow(_ a: Int, _ n: Int) -> Int {
   return out
 }
 
-/// Keeps the running bound product from overflowing.
 private func mulCapped(_ a: Int, _ b: Int) -> Int {
   if a > Dialect.maxBoundProduct || b > Dialect.maxBoundProduct { return Dialect.maxBoundProduct + 1 }
   let p = a * b
   return p > Dialect.maxBoundProduct ? Dialect.maxBoundProduct + 1 : p
 }
 
-/// One group's accumulated state; every field propagates to the parent when the group closes.
 private struct Frame {
   var hasUnbounded = false
   var best = 1
@@ -216,7 +179,6 @@ private struct Frame {
   var worstBranch: Int { Swift.max(branchUnbounded, maxUnbounded) }
   var isVariable: Bool { min != max }
 
-  /// Closes the branch at a `|` (or the group's end), folding it into the totals.
   mutating func endBranch() {
     maxUnbounded = worstBranch
     branchUnbounded = 0
@@ -247,13 +209,11 @@ private struct Scanner {
 
   init(_ p: String) { src = Array(p.unicodeScalars) }
 
-  /// Reports `code` at most once per offset.
   mutating func add(_ offset: Int, _ code: Dialect.Reason) {
     guard reported.insert("\(code.rawValue)@\(offset)").inserted else { return }
     codes.append(code)
   }
 
-  /// Reports a whole-pattern bound at most once.
   mutating func addOnce(_ code: Dialect.Reason) {
     guard reported.insert("once:\(code.rawValue)").inserted else { return }
     codes.append(code)
@@ -306,8 +266,6 @@ private struct Scanner {
         add(i, .bareDot)
         i = quantify(i + 1, group: nil)
       case "*", "+", "?", "{":
-        // A quantifier is consumed with its atom, so reaching one here means it applies to
-        // nothing (or to another quantifier, a possessive form).
         add(i, .malformedRepetition)
         i += 1
       case "|":
@@ -326,9 +284,6 @@ private struct Scanner {
     if stack[0].width > Dialect.maxRepetitionWidth { addOnce(.repetitionWidthTooLarge) }
   }
 
-  /// Reads the quantifier at `next`, applies the nesting rules, folds the atom's cost into the
-  /// enclosing frame, and returns the index past the quantifier. `group` is the closed child
-  /// frame when the atom is a group.
   mutating func quantify(_ next: Int, group child: Frame?) -> Int {
     let (q, after) = readQuant(next)
     let childBest = child?.best ?? 1
@@ -341,8 +296,6 @@ private struct Scanner {
         add(next, .unboundedInsideQuantifiedGroup)
       }
     }
-    // A group that can repeat more than once re-splits a variable-length interior on every
-    // repeat. `?` and `{0,1}` are exempt (one repetition multiplies nothing).
     if let child, q.present, !q.unbounded, q.max >= 2, child.isVariable {
       add(next, .nestedVariableRepetition)
     }
@@ -388,7 +341,6 @@ private struct Scanner {
     return after
   }
 
-  /// Reads a quantifier at `i`, including its optional lazy `?`.
   mutating func readQuant(_ i: Int) -> (Quant, Int) {
     guard i < src.count else { return (Quant(), i) }
     switch src[i] {
@@ -407,7 +359,6 @@ private struct Scanner {
     isDigit(c) || (c.value >= 0x61 && c.value <= 0x66) || (c.value >= 0x41 && c.value <= 0x46)
   }
 
-  /// A repetition count as Go's strconv.Atoi reads it: nil when it overflows Int64.
   func count(_ lo: Int, _ hi: Int) -> Int? {
     var v = 0
     for k in lo..<hi {
@@ -419,8 +370,6 @@ private struct Scanner {
     return v
   }
 
-  /// `{n}`, `{n,}` and `{n,m}`; anything else is malformed. A count Go's strconv.Atoi cannot
-  /// hold is malformed too (Go's reading; JavaScript would take it as a huge number).
   mutating func readBraceQuant(_ i: Int) -> (Quant, Int) {
     var j = i + 1
     let start = j
@@ -459,11 +408,8 @@ private struct Scanner {
     return (Quant(present: true, unbounded: false, min: lo, max: hi), skipLazy(j + 1))
   }
 
-  /// The single-character escapes measured identical in RE2 and JavaScript-with-`u`: a
-  /// whitelist, so an escape nobody thought about fails closed.
   static let escapeWhitelist = Array("nrtfvdDwW\\.+*?()[]{}|^$/".unicodeScalars)
 
-  /// Validates the escape at `i` (the backslash); returns the index past it.
   mutating func escape(_ i: Int, inClass: Bool) -> Int {
     if i + 1 >= src.count {
       add(i, .malformedEscape)
@@ -482,9 +428,7 @@ private struct Scanner {
       if Self.isDigit(c) {
         add(i, .escapeBackreference)
       } else if Self.escapeWhitelist.contains(c) {
-        // measured identical in both engines
       } else if inClass && c == "-" {
-        // `\-` is a valid ClassEscape in JavaScript, and only inside a class
       } else {
         add(i, .escapeNotAllowed)
       }
@@ -492,7 +436,6 @@ private struct Scanner {
     return i + 2
   }
 
-  /// `\xHH` is one code point in both engines; `\x{...}` is a SyntaxError in JavaScript.
   mutating func hexEscape(_ i: Int) -> Int {
     if i + 2 < src.count && src[i + 2] == "{" {
       add(i, .escapeUnicodeCodepoint)
@@ -506,7 +449,6 @@ private struct Scanner {
     return i + 4
   }
 
-  /// Validates the class at `i` (the `[`); returns the index past it.
   mutating func charClass(_ i: Int) -> Int {
     var j = i + 1
     if j < src.count && src[j] == "^" { j += 1 }
@@ -528,7 +470,6 @@ private struct Scanner {
     return src.count
   }
 
-  /// Validates the group opener at `i`, pushes its frame, returns the index past the opener.
   mutating func openGroup(_ i: Int) -> Int {
     func capture(_ s: inout Scanner) {
       s.captures += 1
@@ -591,7 +532,6 @@ private struct Scanner {
     return name.dropFirst().allSatisfy { word($0) || isDigit($0) }
   }
 
-  /// Validates the name starting at `i` (just past `(?P<`).
   mutating func groupName(_ i: Int) -> Int {
     var j = i
     while j < src.count && src[j] != ">" { j += 1 }

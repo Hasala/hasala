@@ -107,7 +107,7 @@
       "env": { "worker": true }
     },
     {
-      "files": ["scripts/*.ts", "web/scripts/*.ts", "ios/scripts/**/*.ts", "web/astro.config.mjs", "web/src/lib/*.mjs", "web/src/content.config.ts"],
+      "files": ["scripts/*.ts", "web/scripts/*.ts", "ios/scripts/**/*.ts", ".claude/skills/**/*.ts", "web/astro.config.mjs", "web/src/lib/*.mjs", "web/src/content.config.ts"],
       "env": { "node": true },
       "globals": { "Bun": "readonly" },
       "rules": {

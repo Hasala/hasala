@@ -54,8 +54,6 @@ func TestIdentifyRefusesAnythingButTheProxiedOwner(t *testing.T) {
 	if w := req(c, "GET", "/", nil, nil); w.Code != http.StatusOK || strings.Contains(w.Body.String(), "<script") {
 		t.Fatalf("owner: %d", w.Code)
 	}
-	// The forms' POSTs only carry the console's Origin (which action
-	// requires) when the policy is not no-referrer.
 	if p := req(c, "GET", "/", nil, nil).Header().Get("Referrer-Policy"); p != "same-origin" {
 		t.Fatalf("Referrer-Policy %q", p)
 	}
@@ -74,7 +72,6 @@ func TestIdentifyRefusesAnythingButTheProxiedOwner(t *testing.T) {
 			t.Errorf("%s: %d", name, w.Code)
 		}
 	}
-	// F7-2: no API or hook path.
 	for _, p := range []string{"/api/v1/healthz", "/api/v1/waitlist", "/hooks/gmail/pubsub", "/metrics"} {
 		if w := req(c, "GET", p, nil, nil); w.Code != http.StatusNotFound {
 			t.Errorf("%s: %d", p, w.Code)
@@ -99,7 +96,6 @@ func TestApproveAndMintWithCSRF(t *testing.T) {
 		t.Fatalf("dashboard: %s", page)
 	}
 	path := "/waitlist/" + entry + "/approve"
-	// Without same-origin evidence, or with a token for another path: refused.
 	if w := req(c, "POST", path, url.Values{"csrf": {m[1]}}, func(r *http.Request) { r.Header.Del("Sec-Fetch-Site") }); w.Code != http.StatusForbidden {
 		t.Fatalf("no Sec-Fetch-Site: %d", w.Code)
 	}
@@ -119,7 +115,6 @@ func TestApproveAndMintWithCSRF(t *testing.T) {
 	if state != "invited" || queued != 1 {
 		t.Fatalf("after approve: %s, %d queued", state, queued)
 	}
-	// Approving again is refused and audited as such.
 	if w := req(c, "POST", path, url.Values{"csrf": {m[1]}}, nil); w.Code != http.StatusConflict {
 		t.Fatalf("second approve: %d", w.Code)
 	}
@@ -141,7 +136,6 @@ func TestApproveAndMintWithCSRF(t *testing.T) {
 		t.Fatalf("a cancelled request's failure left %d audit rows", failed)
 	}
 
-	// Mint a printed code: shown once.
 	inv := req(c, "GET", "/invites", nil, nil).Body.String()
 	tok := csrfRE.FindStringSubmatch(inv)[1]
 	w := req(c, "POST", "/invites/mint", url.Values{"csrf": {tok}, "note": {"friend"}}, nil)
@@ -155,8 +149,6 @@ func TestApproveAndMintWithCSRF(t *testing.T) {
 	}
 }
 
-// Spec 07 §13.3 (probe P8): /healthz is ok until a request carrying a
-// Cloudflare header reaches the console; then it is 503 for 24 hours.
 func TestHealthzTurnsOnATunnelLeak(t *testing.T) {
 	c := New(pgtest.New(t), host, "tail.example.ts.net", []string{"owner@github"}, 0)
 	health := func() (int, HealthBody) {

@@ -1,10 +1,5 @@
 package api
 
-// What an account at its cumulative op-log ceiling is told. It used to be told
-// "500 internal": the append refused on policy grounds and writeAppendErr had
-// no case for it, so the one answer a user could act on was rendered as the
-// server being broken.
-
 import (
 	"net/http"
 	"net/http/httptest"
@@ -37,8 +32,6 @@ func refusalCount(t *testing.T, h *harness, u uuid.UUID, resource string) int64 
 	return n
 }
 
-// The whole defect, end to end: a full account is answered 413 account_full
-// with its own numbers, not 500 internal.
 func TestAnUploadOverTheAccountCeilingIs413AndNot500(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -77,27 +70,17 @@ func TestAnUploadOverTheAccountCeilingIs413AndNot500(t *testing.T) {
 	if n := countRows(t, h.pool, u); n != 0 {
 		t.Fatalf("%d rows stored by a refused upload", n)
 	}
-	// The receipt, written outside the transaction that was rolled back. A
-	// refusal nobody records is the silent drop account_refusals exists to
-	// prevent.
 	if n := refusalCount(t, h, u, budget.ResourceOplogHotBytes); n != 1 {
 		t.Fatalf("account_refusals[oplog_hot_bytes] = %d, want 1", n)
 	}
 }
 
-// The ceiling and the limiter must stay DISTINGUISHABLE, because a client's
-// remedy differs. 429 upload_bytes means "too soon" — the same batch succeeds
-// later, and Retry-After says roughly when. 413 account_full means "too much" —
-// the same batch never succeeds until something is deleted or the ceiling is
-// raised, and a client that retried it on a timer would retry forever.
 func TestTheCeilingAndTheUploadLimiterAreDifferentAnswers(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	u := h.user("shaped")
 	tok := h.session(u)
 	h.writer(u, "ios-00000000-0000-4000-8000-000000000207")
-	// A byte budget of zero refuses before the append; the ceiling is wide
-	// open, so this can only be the limiter.
 	h.srv.SyncUploadBytes = NewLimiter(0, 1, 16, h.srv.now)
 	h.h = h.srv.Handler()
 
@@ -116,9 +99,6 @@ func TestTheCeilingAndTheUploadLimiterAreDifferentAnswers(t *testing.T) {
 	}
 }
 
-// Every other answer keeps the field absent, so a client can key on its
-// presence. A budget object on a chain break would be meaningless noise in the
-// one error the spec makes a non-dismissable hard stop.
 func TestOnlyTheCeilingRefusalCarriesBudgetNumbers(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -126,8 +106,6 @@ func TestOnlyTheCeilingRefusalCarriesBudgetNumbers(t *testing.T) {
 	tok := h.session(u)
 	h.writer(u, "ios-00000000-0000-4000-8000-000000000207")
 
-	// A batch that starts above the empty head: a chain break, not a budget
-	// refusal.
 	blobs, _ := uploadChain(t, u, "ios-00000000-0000-4000-8000-000000000207", 5, [32]byte{}, 1)
 	w := h.req(http.MethodPost, "/api/v1/sync", tok, UploadRequest{
 		WriterID: "ios-00000000-0000-4000-8000-000000000207", Stream: "hot", Blobs: blobs,

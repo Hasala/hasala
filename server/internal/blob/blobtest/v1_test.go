@@ -16,9 +16,6 @@ func env() Envelope {
 		Stream: "hot", WriterID: "dev-a", WriterCounter: 7}
 }
 
-// The wire layout, restated here in the test's own words on purpose. The
-// production code must agree with this description, not the other way round:
-// if someone moves a field, exactly one of the two changes and the tests fail.
 const (
 	wireVersionOff = 0
 	wireAADLenOff  = 1
@@ -27,15 +24,11 @@ const (
 	wireTagSize    = 16
 )
 
-// sealedBounds derives the half-open range Phase 3 will encrypt, using only the
-// frozen layout above — never the package's own helper.
 func sealedBounds(b []byte) (start, end int) {
 	aadLen := int(binary.BigEndian.Uint16(b[wireAADLenOff : wireAADLenOff+2]))
 	return wireAADOff + aadLen + wireNonceSize, len(b) - wireTagSize
 }
 
-// incompressible returns n bytes gzip cannot shrink, so a test can control the
-// on-wire payload size instead of guessing at deflate.
 func incompressible(n int) []byte {
 	b := make([]byte, n)
 	rand.New(rand.NewSource(1)).Read(b)
@@ -90,8 +83,6 @@ func TestOpenRejectsAADMismatch(t *testing.T) {
 }
 
 func TestNonceAndTagSlotsAreReservedAndZeroInPhase1(t *testing.T) {
-	// Phase 3 fills these. If they are not reserved NOW, every blob near a
-	// bucket boundary silently re-buckets the day sealing turns on.
 	s := PlaintextSealer{}
 	sealed, err := s.Seal(env(), []byte("hello"))
 	if err != nil {
@@ -109,10 +100,6 @@ func TestNonceAndTagSlotsAreReservedAndZeroInPhase1(t *testing.T) {
 }
 
 func TestPhase1PayloadIsReadableInTheClear(t *testing.T) {
-	// This is the migration tripwire, and it works because it asserts something
-	// Phase 3 makes FALSE. (The earlier version of this test asserted the AAD
-	// was readable — but the AAD stays cleartext in Phase 3 by definition, so it
-	// passed with encryption fully on and defended nothing.)
 	s := PlaintextSealer{}
 	sealed, err := s.Seal(env(), []byte("hello"))
 	if err != nil {
@@ -124,9 +111,6 @@ func TestPhase1PayloadIsReadableInTheClear(t *testing.T) {
 	}
 }
 
-// TestPayloadLengthPrefixesTheSealedRegion pins the one offset the whole design
-// turns on: the 4-byte length lives at the START of the region Phase 3 encrypts,
-// not in the cleartext header.
 func TestPayloadLengthPrefixesTheSealedRegion(t *testing.T) {
 	s := PlaintextSealer{}
 	sealed, err := s.Seal(env(), []byte("hello"))
@@ -144,18 +128,11 @@ func TestPayloadLengthPrefixesTheSealedRegion(t *testing.T) {
 	if !bytes.Equal(sealed.Bytes[start+4+n:end], make([]byte, end-(start+4+n))) {
 		t.Fatal("padding must be zero and must live inside the sealed region")
 	}
-	// And nothing in the cleartext header may encode the payload size.
 	if bytes.Contains(sealed.Bytes[:start], sealed.Bytes[start:start+4]) {
 		t.Fatal("the length field appears outside the sealed region: padding would be cosmetic")
 	}
 }
 
-// TestSameBucketBlobsAreIndistinguishableOnceSealed is the anti-regression test
-// the whole task exists for. Two ops of very different sizes that land in the
-// same bucket must, once the sealed region is opaque, be byte-identical. Move
-// the length field (or any size-dependent byte) out of the sealed region and
-// this fails — which is exactly what a cleartext payloadLen would do to Phase
-// 3's padding.
 func TestSameBucketBlobsAreIndistinguishableOnceSealed(t *testing.T) {
 	s := PlaintextSealer{}
 	small, err := s.Seal(env(), []byte("x"))
@@ -170,9 +147,6 @@ func TestSameBucketBlobsAreIndistinguishableOnceSealed(t *testing.T) {
 		t.Fatalf("test needs both blobs in one bucket, got %d and %d", small.SizeBucket, big.SizeBucket)
 	}
 
-	// Simulate Phase 3: replace the sealed region with opaque bytes of the same
-	// length (AES-GCM is length-preserving, and the nonce/tag slots are already
-	// reserved), leaving the cleartext header exactly as it is today.
 	opaque := func(b []byte) []byte {
 		out := append([]byte(nil), b...)
 		start, end := sealedBounds(out)
@@ -232,9 +206,6 @@ func TestOpenRejectsHostileInput(t *testing.T) {
 	}
 }
 
-// frame builds a blob the way the frozen layout says to, without going through
-// Seal — hostile bytes do not come from our own encoder, and re-deriving the
-// offsets here is a second, independent statement of the format.
 func frame(t *testing.T, e Envelope, payload []byte) Sealed {
 	t.Helper()
 	aad := e.AAD()
@@ -254,9 +225,6 @@ func frame(t *testing.T, e Envelope, payload []byte) Sealed {
 }
 
 func TestOpenRejectsGzipBomb(t *testing.T) {
-	// A blob arriving from the inbound path is attacker-influenced. 8 MB of one
-	// byte compresses into the 16 KB bucket, so the framing alone cannot bound
-	// what Open allocates — the decompressed-size cap has to do it.
 	var buf bytes.Buffer
 	zw, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
 	if _, err := zw.Write(bytes.Repeat([]byte("A"), 8<<20)); err != nil {
@@ -274,10 +242,6 @@ func TestOpenRejectsGzipBomb(t *testing.T) {
 	}
 }
 
-// TestSealAndOpenAgreeOnTheSizeCap pins the property that matters more than the
-// cap's exact value: nothing Seal accepts may fail to Open. A cap that bound
-// only Open would let a legal max-size email be stored and then be permanently
-// unreadable.
 func TestSealAndOpenAgreeOnTheSizeCap(t *testing.T) {
 	s := PlaintextSealer{}
 	big := bytes.Repeat([]byte("A"), MaxPlaintext)
@@ -328,10 +292,6 @@ func TestHashChainsOverTheFramedBytes(t *testing.T) {
 }
 
 func TestSealRejectsEnvelopesThatWouldForgeAnAAD(t *testing.T) {
-	// The AAD is "|"-joined, so a separator inside a field would let two
-	// different positions produce identical associated data. A mistyped stream
-	// is just as unrecoverable: it is a valid, chain-distinct position that no
-	// other writer will ever reconcile with, baked into the AAD forever.
 	s := PlaintextSealer{}
 	for name, e := range map[string]Envelope{
 		"separator in stream": {UserID: env().UserID, Stream: "hot|dev-a", WriterID: "w", WriterCounter: 7},
@@ -350,7 +310,6 @@ func TestSealRejectsEnvelopesThatWouldForgeAnAAD(t *testing.T) {
 			t.Fatalf("%s: want ErrInvalidEnvelope, got %v", name, err)
 		}
 	}
-	// Both real streams must of course still work.
 	for _, stream := range []string{StreamHot, StreamCold} {
 		e := env()
 		e.Stream = stream
@@ -369,9 +328,6 @@ func TestAADIsTheFrozenFieldSet(t *testing.T) {
 	}
 }
 
-// EmbeddedAAD is what lets a KEYLESS reader — the server, in Phase 3 — check
-// that a blob was sealed for the position it is being stored at, which is the
-// check oplog.Row.validate performs on every append.
 func TestEmbeddedAADIsReadableWithoutOpening(t *testing.T) {
 	s, err := PlaintextSealer{}.Seal(env(), []byte("hello"))
 	if err != nil {
@@ -384,8 +340,6 @@ func TestEmbeddedAADIsReadableWithoutOpening(t *testing.T) {
 	if string(got) != string(env().AAD()) {
 		t.Fatalf("EmbeddedAAD = %q, want %q", got, env().AAD())
 	}
-	// A blob sealed at another position reports that other position, rather
-	// than whatever the caller hoped for.
 	other := env()
 	other.WriterCounter = 8
 	s2, err := PlaintextSealer{}.Seal(other, []byte("hello"))
@@ -399,15 +353,12 @@ func TestEmbeddedAADIsReadableWithoutOpening(t *testing.T) {
 	if string(got2) == string(env().AAD()) {
 		t.Fatal("two different positions produced the same embedded AAD")
 	}
-	// Framing that cannot be parsed is an error, never a partial answer.
 	if _, err := EmbeddedAAD(s.Bytes[:2]); !errors.Is(err, ErrMalformed) {
 		t.Fatalf("a truncated frame must be ErrMalformed, got %v", err)
 	}
 }
 
 func TestLargeBodyRoundTripsInAHigherBucket(t *testing.T) {
-	// The corpus's largest compressed body is ~314 KB, which is why the ladder
-	// goes past 64 KB (Decision 7).
 	s := PlaintextSealer{}
 	msg := incompressible(300 << 10)
 	sealed, err := s.Seal(env(), msg)

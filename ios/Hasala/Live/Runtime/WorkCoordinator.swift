@@ -2,34 +2,8 @@ import CoreMailbox
 import CoreSync
 import Foundation
 
-/// The one entry point for an account's work (spec 04 §3): every trigger (launch,
-/// foreground, pull to refresh, an authored edit, a silent push, the two BGTaskScheduler tasks) asks for a
-/// run here, and a run is the stages in order:
-///
-///   1. sync: reconcile the in-flight batch, pull (fold, snapshot, project), flush
-///      (`SyncEngine`; the observer projects at the end of each pull)
-///   2. mailbox: the Gmail cycle, when this device holds the link and the trigger is one
-///      that reads mail (an `authored` run does not)
-///   3. committed: the screens' ledger reloads from the projection
-///
-/// At most one run is in flight; a trigger that arrives meanwhile asks for ONE trailing
-/// rerun (the strongest trigger asked for wins) and waits for it, so a burst of edits is
-/// one upload. A stop that only the account gate can act on (deleted elsewhere, signed
-/// out by the server, frozen, keys gone, an update required) is handed to `stopped`.
-///
-/// Budgets and cancellation are per caller:
-/// - A caller with a budget (a silent push or a refresh task, 25 s) waits at most that
-///   long, even behind a run it did not start; the run carries on without it.
-/// - The trailing rerun runs to the most generous deadline of the callers that asked for
-///   it (none when any of them has no budget), never to the first run's.
-/// - A cancelled caller (a BGTask's expiration handler) returns at once. When no caller
-///   is left waiting on the run, the run is cancelled: the Gmail cycle stops at its next
-///   check and no later stage starts.
 actor WorkCoordinator {
   nonisolated enum Trigger: String, Sendable, CaseIterable {
-    /// `refresh` is pull to refresh: a foreground run the person asked for, so it skips
-    /// the once-a-minute spacing and the Gmail cycle lists even when the mailbox's history
-    /// hasn't moved.
     case launch, foreground, refresh, retryMail, authored, silentPush, bgRefresh, bgProcessing
 
     var sync: SyncTrigger {
@@ -44,7 +18,6 @@ actor WorkCoordinator {
       }
     }
 
-    /// The Gmail cycle this trigger runs; nil for an authored run (nothing new to read).
     var mailbox: MailboxTrigger? {
       switch self {
       case .launch: .launch
@@ -58,7 +31,6 @@ actor WorkCoordinator {
       }
     }
 
-    /// A rerun keeps the strongest trigger: anything that reads mail beats `authored`.
     var strength: Int {
       switch self {
       case .authored: 0
@@ -71,10 +43,7 @@ actor WorkCoordinator {
   }
 
   nonisolated struct Outcome: Sendable, Equatable {
-    /// Rows stored, ops acknowledged, or mail read (the silent push's `.newData`).
     var newData = false
-    /// Why the sync stage stopped early, if it did (`.notNow` when this caller's budget ran
-    /// out first, `.cancelled` when it was cancelled).
     var stop: SyncStop?
     var ran = false
     var timedOut = false
@@ -82,7 +51,6 @@ actor WorkCoordinator {
 
     static let notRun = Outcome(stop: .notNow)
 
-    /// The silent push's `.failed`: the run could not reach the server or stopped.
     var failed: Bool { stop.map { !WorkCoordinator.tolerable($0) } ?? false }
 
     enum Settled: Sendable, Equatable {
@@ -121,16 +89,11 @@ actor WorkCoordinator {
   typealias CommittedStage = @Sendable () async -> Void
   typealias StoppedStage = @Sendable (SyncStop) async -> Void
 
-  /// The stages, as closures over the account's pieces (tests pass their own).
   nonisolated struct Stages: Sendable {
-    /// The sync engine's run: whether rows were stored or ops acknowledged, and its stop.
     var sync: @Sendable (_ trigger: SyncTrigger, _ deadline: ContinuousClock.Instant?) async -> (newData: Bool, stop: SyncStop?)
-    /// The Gmail cycle; nil when the build has no Google client.
     var mailbox: (@Sendable (_ trigger: MailboxTrigger, _ deadlineMs: Int64?) async -> CycleReport)?
     var categorize: CategorizeStage?
-    /// After every run: the screens reload.
     var committed: @Sendable () async -> Void
-    /// A stop only the account gate can act on.
     var stopped: @Sendable (_ stop: SyncStop) async -> Void
 
     init(
@@ -145,8 +108,6 @@ actor WorkCoordinator {
     }
   }
 
-  /// How far a trailing rerun may run: the most generous deadline of the callers that
-  /// asked for it.
   private enum RerunLimit {
     case unasked
     case unbounded
@@ -167,7 +128,6 @@ actor WorkCoordinator {
     }
   }
 
-  /// Foreground runs at least this far apart (spec 04 §7.9).
   static let foregroundSpacing: Duration = .seconds(60)
 
   private let stages: Stages
@@ -177,7 +137,6 @@ actor WorkCoordinator {
   private var rerun: Trigger?
   private var rerunLimit = RerunLimit.unasked
   private var held: Trigger?
-  /// The callers waiting, by id, with the run each waits on.
   private var waiters: [Int: Task<Outcome, Never>] = [:]
   private var nextWaiter = 0
   private var lastForeground: ContinuousClock.Instant?
@@ -193,7 +152,6 @@ actor WorkCoordinator {
     self.stages = stages
   }
 
-  /// Stops accepting runs (sign-out, wipe). A run in flight finishes its current stage.
   func close() {
     closed = true
     rerun = nil
@@ -201,8 +159,6 @@ actor WorkCoordinator {
     inFlight?.cancel()
   }
 
-  /// Holds new runs and waits for the one in flight to end: the account is about to be
-  /// deleted, and its store wiped. `resume()` undoes it when the deletion did not happen.
   func pause() async {
     paused = true
     if let rerun { hold(rerun) }
@@ -232,9 +188,6 @@ actor WorkCoordinator {
     }
   }
 
-  /// Runs once, coalescing with a run in flight. `budget` bounds how long this caller
-  /// waits and how long a run it starts may take (a silent push or a refresh task gets
-  /// 25 s); nil waits until done.
   @discardableResult
   func run(_ trigger: Trigger, budget: Duration? = nil, retestingLatch: Bool = false) async -> Outcome {
     guard !closed else { return .notRun }
@@ -280,7 +233,6 @@ actor WorkCoordinator {
 
   var queued: Trigger? { rerun }
 
-  /// A caller was cancelled: when nobody else waits on its run, the run is cancelled.
   private func cancelIfUnwatched(_ task: Task<Outcome, Never>) {
     guard task == inFlight, !waiters.values.contains(task) else { return }
     rerun = nil
@@ -314,8 +266,6 @@ actor WorkCoordinator {
     let stamp: ContinuousClock.Instant? = trigger == .foreground ? .now : nil
     if let stamp { lastForeground = stamp }
     var out = Outcome(ran: true)
-    // The sync engine runs in a task of its own, so a cancellation can't reach it; the
-    // run stops waiting for it instead (it finishes, or stops at its deadline).
     let sync = stages.sync
     let syncTask = Task { await sync(trigger.sync, deadline) }
     syncing = syncTask
@@ -371,8 +321,6 @@ actor WorkCoordinator {
     handing.removeAll { $0 == stop }
   }
 
-  /// A stop the account gate acts on: the account was deleted (410), the session is gone,
-  /// the account is frozen, or this iPhone's keys or writer are gone.
   static func endsTheAccount(_ stop: SyncStop) -> Bool {
     switch stop {
     case .wipe, .needsSignIn, .needsRebind, .frozen, .needsUnlock, .keysRequired: true
@@ -380,14 +328,11 @@ actor WorkCoordinator {
     }
   }
 
-  /// A stop the gate shows: one that ends the account, or a halt (spec 04 §5.7), the
-  /// server's "update Hasala" (`426`, §6.5 RD-1) among them.
   static func surfaces(_ stop: SyncStop) -> Bool {
     if case .halted = stop { return true }
     return endsTheAccount(stop)
   }
 
-  /// A stop the screens read through (the last projection is still good).
   static func tolerable(_ stop: SyncStop) -> Bool {
     switch stop {
     case .rateLimited, .latched, .suspended, .notNow, .cancelled: true
@@ -395,10 +340,6 @@ actor WorkCoordinator {
     }
   }
 
-  // MARK: Waiting
-
-  /// Waits for `task`, returning `timedOut` once `deadline` passes and `cancelled` as soon
-  /// as the caller is cancelled, whichever comes first. The task itself is left running.
   nonisolated static func wait<T: Sendable>(
     for task: Task<T, Never>, until deadline: ContinuousClock.Instant?, timedOut: T, cancelled: T
   ) async -> T {
@@ -421,7 +362,6 @@ actor WorkCoordinator {
   }
 }
 
-/// The first of several racing results, handed to one continuation.
 nonisolated final class FirstOf<T: Sendable>: @unchecked Sendable {
   private let lock = NSLock()
   private var continuation: CheckedContinuation<T, Never>?
@@ -437,7 +377,6 @@ nonisolated final class FirstOf<T: Sendable>: @unchecked Sendable {
     if let ready { k.resume(returning: ready) }
   }
 
-  /// Returns whether this call decided the result.
   @discardableResult
   func finish(_ value: T) -> Bool {
     let k: CheckedContinuation<T, Never>?? = lock.withLock {

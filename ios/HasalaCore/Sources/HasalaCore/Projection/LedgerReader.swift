@@ -1,7 +1,3 @@
-// `LedgerReader` (spec 04 §2.2, §4.3): typed queries over `projection.sqlite`
-// for the beta's screens (Home, Activity, Review, Plan, Rules, Bank alerts),
-// and `ValueObservation` streams so a screen refreshes after each projection.
-// Every query returns plain values; nothing here writes.
 import CoreCategorize
 import CoreDomain
 import CoreJSON
@@ -12,7 +8,6 @@ import GRDB
 import HasalaText
 import OrderedCollections
 
-/// One projected transaction (03c §3.9.1).
 public struct TxnRow: Sendable, Equatable, Identifiable {
   public var id: String
   public var ord: Int64
@@ -177,7 +172,6 @@ public struct RuleRow: Sendable, Equatable, Identifiable {
   public var matchCount: Int
 }
 
-/// Keyset position for Activity paging: `(posted_ms, id)` of the last row shown.
 public struct ActivityCursor: Sendable, Equatable {
   public var postedMs: Int64
   public var id: String
@@ -192,8 +186,6 @@ public struct LedgerReader: Sendable {
 
   public init(_ db: any DatabaseReader) { self.db = db }
 
-  // MARK: Meta
-
   public func meta() throws -> ProjectionMeta? {
     try db.read { db in
       guard try db.tableExists("projection_meta") else { return nil }
@@ -206,13 +198,10 @@ public struct LedgerReader: Sendable {
     }
   }
 
-  /// The projection is complete, current, and from these fold semantics.
   public func isUsable() throws -> Bool {
     guard let m = try meta() else { return false }
     return m.complete && m.version == ProjectionSchema.version && m.foldPrint == FoldCanary.foldPrint
   }
-
-  // MARK: Transactions
 
   public func txn(_ id: String) throws -> TxnRow? {
     try db.read { db in try Row.fetchOne(db, sql: "SELECT * FROM txn WHERE id = ?", arguments: [id]).map(TxnRow.init) }
@@ -265,8 +254,6 @@ public struct LedgerReader: Sendable {
     }
   }
 
-  /// Activity: live, parsed, not archived rows, newest first, keyset-paged by
-  /// `(posted_ms, id)`; one month when `month` is given.
   public func activity(month: CivilMonth? = nil, after: ActivityCursor? = nil, limit: Int = 50) throws -> [TxnRow] {
     var sql = "SELECT * FROM txn WHERE superseded_by IS NULL AND unparsed = 0 AND archived IS NULL"
     var args: [(any DatabaseValueConvertible)?] = []
@@ -284,7 +271,6 @@ public struct LedgerReader: Sendable {
     return try db.read { db in try Row.fetchAll(db, sql: sql, arguments: StatementArguments(a)).map(TxnRow.init) }
   }
 
-  /// Archived rows (Activity › Archived), newest first.
   public func archived(limit: Int = 200) throws -> [TxnRow] {
     try db.read { db in
       try Row.fetchAll(
@@ -306,7 +292,6 @@ public struct LedgerReader: Sendable {
     }
   }
 
-  /// The review queue in deck order (newest first), for the given lanes.
   public func review(lanes: [ReviewLane] = ReviewLane.allCases.filter(\.inDeck), limit: Int = 500) throws -> [TxnRow] {
     let marks = lanes.map { _ in "?" }.joined(separator: ",")
     var args: [(any DatabaseValueConvertible)?] = lanes.map(\.rawValue)
@@ -320,7 +305,6 @@ public struct LedgerReader: Sendable {
     }
   }
 
-  /// Counts per review lane.
   public func reviewCounts() throws -> [ReviewLane: Int] {
     try db.read { db in
       var out: [ReviewLane: Int] = [:]
@@ -331,7 +315,6 @@ public struct LedgerReader: Sendable {
     }
   }
 
-  /// Which of `ids` already have a projected row (the Gmail lane's dedup before download).
   public func knownMailboxMessageIDs(_ ids: [String]) throws -> Set<String> {
     guard !ids.isEmpty else { return [] }
     return try db.read { db in
@@ -348,7 +331,6 @@ public struct LedgerReader: Sendable {
     }
   }
 
-  /// The sweep's view of every row (03c §8.4).
   public func sweepRows() throws -> [SweepRow] {
     try sweepRows(sql: Self.sweepSQL, [])
   }
@@ -429,8 +411,6 @@ public struct LedgerReader: Sendable {
     }
   }
 
-  // MARK: Categories, rules, merchants, trust
-
   public func taxonomy() throws -> TaxonomyView {
     try db.read { db in
       TaxonomyView(
@@ -471,7 +451,6 @@ public struct LedgerReader: Sendable {
     }
   }
 
-  /// Trusted domains the Gmail lane may list (03c §7.2 `queryDomains`).
   public func queryDomains() throws -> [String] {
     try db.read { db in
       try String.fetchAll(db, sql: "SELECT domain FROM sender_trust WHERE trusted = 1 AND ignored IS NULL").sorted { compareUTF8($0, $1) < 0 }
@@ -490,14 +469,10 @@ public struct LedgerReader: Sendable {
     }
   }
 
-  // MARK: Plan inputs
-
-  /// `money_line` rows with `local_date` in `[from, to]`.
   public func moneyLines(from: CivilDate, to: CivilDate) throws -> [MoneyLine] {
     try lines(where: "local_date BETWEEN ? AND ?", [from.wire, to.wire])
   }
 
-  /// Every line linked to a live project, all months (03c §6.1 roll-ups).
   public func projectLines() throws -> [MoneyLine] {
     try lines(where: "project_id IS NOT NULL", [])
   }
@@ -517,7 +492,6 @@ public struct LedgerReader: Sendable {
     }
   }
 
-  /// The plan records, rebuilt from the plan tables.
   public func planState() throws -> PlanState {
     try db.read { db in
       var p = PlanState()
@@ -558,15 +532,10 @@ public struct LedgerReader: Sendable {
     }
   }
 
-  /// A `PlanEngine` for the months around `today` (lines from 2 months before
-  /// `month` to the month after, for payday attribution and the September
-  /// comparison chips), plus every project-linked line for the project
-  /// roll-ups, which cover all months.
   public func planEngine(month: CivilMonth, today: CivilDate, bills: [BillExpectation] = []) throws -> PlanEngine {
     let from = (month.adding(months: -2) ?? month).firstDay
     let to = (month.adding(months: 1) ?? month).lastDay
     let goals = try goals()
-    // A category goal's progress reads every line from its `since`.
     let since = goals.compactMap { $0.goal.source.since.flatMap(CivilDate.init(wire:)) }.min()
     let start = since.map { min($0, from) } ?? from
     return PlanEngine(
@@ -574,7 +543,6 @@ public struct LedgerReader: Sendable {
       template: try budgetTemplate(), goals: goals, today: today, projectLines: try projectLines())
   }
 
-  /// A goal's lines need its whole window: a `PlanEngine` over all lines from `since`.
   public func goals() throws -> [(id: String, goal: Goal)] {
     try db.read { db in
       try Row.fetchAll(db, sql: "SELECT * FROM goal WHERE status <> 'removed' ORDER BY target_month IS NULL, target_month, name").map { r in
@@ -589,9 +557,6 @@ public struct LedgerReader: Sendable {
     }
   }
 
-  // MARK: Observation
-
-  /// A stream of `fetch`'s answer, re-run after every write to the tables it reads.
   public func observe<T: Sendable>(_ fetch: @escaping @Sendable (Database) throws -> T) -> AsyncValueObservation<T> {
     ValueObservation.tracking(fetch).values(in: db)
   }

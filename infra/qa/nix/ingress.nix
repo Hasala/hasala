@@ -1,18 +1,5 @@
-# The cloudflared ingress for the hasala tunnel (spec 05 §7.3), as a pure
-# renderer. module.nix is its only caller on a host; the ingress-lint check
-# renders the module's own output (services.hasala.tunnel.renderedConfig) and
-# compares it with infra/qa/cloudflared/config.golden.yml byte for byte (G1),
-# then runs lint.sh over it (L1–L8).
-#
-# The YAML is written by hand rather than through a generator so that the bytes
-# are stable across nixpkgs bumps: any change to them is a golden diff in review.
 { lib }:
 let
-  # Paths the API answers through the tunnel: the API itself, the Gmail
-  # Pub/Sub push hook, and the two Microsoft Graph change-notification hooks
-  # (notifications and lifecycle events). cloudflared matches the regex against the URL path only
-  # (never the query). There is no bare /healthz: the health route is
-  # /api/v1/healthz, already inside api/v1/.*.
   apiPath = "^/(api/v1/.*|hooks/gmail/pubsub|hooks/outlook/graph(/lifecycle)?)$";
 
   quote = s: "'" + lib.replaceStrings [ "'" ] [ "''" ] s + "'";
@@ -20,9 +7,6 @@ in
 {
   inherit apiPath;
 
-  # The two rules, as data. module.nix asserts on this list (M6, M16) and the
-  # renderer below prints it; the eval test overrides it to prove the
-  # assertions fire on a hand-edited ingress.
   rules =
     { hostname, port }:
     [

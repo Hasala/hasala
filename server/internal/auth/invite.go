@@ -1,17 +1,5 @@
 package auth
 
-// Invites (spec 07 §2.5, §4.4; spec 02 §14.1). internal/invites owns the
-// state machine: codes and link keys, minting, the redeemability rule,
-// revocation and the sweeps. This file is auth's side of it: the check at
-// signup/begin (invites.Resolve), the redemption inside the account-creation
-// transaction, bound to the signup's address, and spec 07's join hook
-// (waitlist.OnInviteRedeemedTx) in the same transaction.
-//
-// It gates the creation of a `users` row and nothing else. An account that
-// already exists signs in with no code, and `not_invited` is the one
-// distinguishable refusal in the auth surface: it is a fact about the
-// deployment's policy, not about a credential.
-
 import (
 	"context"
 	"crypto/sha256"
@@ -21,32 +9,21 @@ import (
 	"github.com/salehtl/hasala/server/internal/invites"
 )
 
-// ErrNotInvited is the one distinguishable signup answer (403 not_invited):
-// an unknown, spent, revoked or expired code, or an addressed invite used with
-// another address. It is invites.ErrNotInvited, so either name matches.
 var ErrNotInvited = invites.ErrNotInvited
 
-// NormalizeInviteCode is invites.Normalize.
 func NormalizeInviteCode(raw string) string { return invites.Normalize(raw) }
 
-// InviteCodeHash is invites.CodeHash: nil for a code that normalizes to nothing.
 func InviteCodeHash(code string) []byte { return invites.CodeHash(code) }
 
-// MintOptions describes one active invite minted directly (tests, and the
-// shape spec 07's worker mints for an emailed invite). The operator's CLI
-// mints through invites.MintPrinted.
 type MintOptions struct {
-	Note   string
-	TTL    time.Duration // 1–30 days; zero is 14 days
-	Review bool          // a Beta App Review invite (spec 02 §14.2): unaddressed, never emailed
-	// EmailTag and LinkKey make an addressed invite. LinkKey needs EmailTag;
-	// neither goes with Review.
+	Note     string
+	TTL      time.Duration
+	Review   bool
 	EmailTag []byte
 	LinkKey  []byte
 	Now      time.Time
 }
 
-// MintInvite mints one active invite and returns its code, shown once.
 func MintInvite(ctx context.Context, q queryExecer, o MintOptions) (string, error) {
 	code, err := invites.NewCode()
 	if err != nil {

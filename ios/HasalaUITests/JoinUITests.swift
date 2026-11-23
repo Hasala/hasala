@@ -1,11 +1,5 @@
 import XCTest
 
-/// Joining on the in-memory account mock (Paper P2.1 and P2.2): the stories, the invite,
-/// About you, the email code, the sign-in method and the 12 words. Every screen a flow
-/// reaches is audited for accessibility, and screenshots are attached to the report.
-///
-/// Mock values (synthetic): email codes are 123456; the existing account is
-/// maya@example.com / "copper lantern quietly 42"; the phrase is `phrase` below.
 final class JoinUITests: XCTestCase {
   static let invite = "ABCDEFGHIJKLMNOPQRSTUVWX"
 
@@ -13,10 +7,6 @@ final class JoinUITests: XCTestCase {
     continueAfterFailure = false
   }
 
-  // MARK: - The stories
-
-  /// The four stories as one pager (Paper row 10): a swipe moves on, story 4 is the last
-  /// ("Page 4 of 4", it doesn't loop), and "Get started" opens the invite code.
   @MainActor
   func testStoriesSwipeToTheLastThenGetStarted() throws {
     let app = launch(scenario: "newUser")
@@ -26,23 +16,17 @@ final class JoinUITests: XCTestCase {
       el(app, "stories.pager").swipeLeft()
     }
     XCTAssertTrue(progress.waitForLabel("Page 4 of 4", timeout: 10), "the pager did not reach story 4")
-    // Every story's copy is laid out side by side; story 4's is the one on screen.
     XCTAssertTrue(el(app, "Sort a week in a minute.").isHittable)
     attach(app, "Stories · 4 of 4")
     try audit(app)
-    // A swipe past the last story stays there.
     el(app, "stories.pager").swipeLeft()
     XCTAssertTrue(progress.waitForLabel("Page 4 of 4", timeout: uiWait))
     tap(app, "stories.getStarted")
     XCTAssertTrue(el(app, "invite.field").waitForExistence(timeout: 10))
-    // Back returns to the story the person left.
     back(app)
     XCTAssertTrue(progress.waitForLabel("Page 4 of 4", timeout: 10))
   }
 
-  /// "Who can see what" over story 3 (the screen launch opens it as the link does): the
-  /// stories wait under it longer than a story lasts, it closes back to story 3, and the
-  /// link opens it again.
   @MainActor
   func testWhoCanSeeWhatFromStoryThree() throws {
     let app = launch(scenario: nil, screen: "welcome.whoSees")
@@ -58,8 +42,6 @@ final class JoinUITests: XCTestCase {
     XCTAssertTrue(el(app, "whoSees.close").waitForExistence(timeout: 10))
     tap(app, "whoSees.close")
   }
-
-  // MARK: - An invite link on the pasteboard
 
   static let inviteLink = "https://hasala.app/i/\(invite)#" + String(repeating: "k", count: 43)
 
@@ -121,11 +103,6 @@ final class JoinUITests: XCTestCase {
     try audit(app)
   }
 
-  // MARK: - Back and Forward keep what was typed
-
-  /// Name, email, the method and the password stay through the system back, all the way
-  /// to About you and forward again (plan B3, owner requirement 4); the confirmed address
-  /// needs no second code.
   @MainActor
   func testBackAndForwardKeepNameEmailAndPassword() throws {
     let app = launch(scenario: "newUser")
@@ -142,7 +119,6 @@ final class JoinUITests: XCTestCase {
     type(app, "password.confirm", "copper lantern quietly 42")
     XCTAssertTrue(el(app, "password.create").isEnabled)
 
-    // Back to the method, the code, then About you.
     back(app)
     XCTAssertTrue(el(app, "method.password").waitForExistence(timeout: 10))
     XCTAssertTrue(el(app, "method.password").isSelected)
@@ -156,7 +132,6 @@ final class JoinUITests: XCTestCase {
     attach(app, "About you · after Back")
     try audit(app)
 
-    // Forward: no second code, the method and the password as they were.
     tap(app, "about.continue")
     XCTAssertTrue(el(app, "method.password").waitForExistence(timeout: 10))
     XCTAssertTrue(el(app, "method.password").isSelected)
@@ -167,10 +142,6 @@ final class JoinUITests: XCTestCase {
     XCTAssertTrue(el(app, "phrase.start").waitForExistence(timeout: 10))
   }
 
-  // MARK: - The stories wait under a pushed screen
-
-  /// Story 2 has just begun when "Get started" opens the invite code: under it the stories
-  /// don't move on, and Back finds the same story.
   @MainActor
   func testStoriesWaitUnderAPushedScreen() throws {
     let app = launch(scenario: "newUser")
@@ -186,10 +157,6 @@ final class JoinUITests: XCTestCase {
     XCTAssertEqual(progress.label, shown, "the stories moved on under the invite code")
   }
 
-  // MARK: - The keyboard
-
-  /// With the keyboard up, the dock keeps its button over the keyboard and its links step
-  /// aside, so they never cover a field (invite, about you, the password).
   @MainActor
   func testDockLinksStepAsideForTheKeyboard() throws {
     try dockLinksStepAside(arguments: [])
@@ -220,10 +187,6 @@ final class JoinUITests: XCTestCase {
                           hidden: ["password.useFaceID"], "Keyboard · Password")
   }
 
-  // MARK: - Reduce Motion
-
-  /// With Reduce Motion the stories cross-fade (a tap on the drawing moves on, no slide),
-  /// and the join flow runs to "Your account is ready" as usual.
   @MainActor
   func testJoinWithReduceMotion() throws {
     let app = launch(scenario: "newUser", motion: "reduce", arguments: [Self.noPRF])
@@ -268,8 +231,6 @@ final class JoinUITests: XCTestCase {
     try audit(app)
   }
 
-  // MARK: - Signup with a passkey, up to setup
-
   @MainActor
   func testSignupWithPasskeyWithoutPRFShowsTheWords() throws {
     let app = launch(scenario: "newUser", arguments: [Self.noPRF])
@@ -290,7 +251,6 @@ final class JoinUITests: XCTestCase {
     try audit(app)
     tap(app, "about.continue")
 
-    // A wrong code first: "Wrong code. … 4 tries left."
     type(app, "code.field", "000000")
     XCTAssertTrue(
       app.staticTexts["Wrong code. Check our newest email or get a new one. 4 tries left."]
@@ -308,7 +268,6 @@ final class JoinUITests: XCTestCase {
     attach(app, "Recovery phrase · why it matters")
     try audit(app)
     tap(app, "phrase.start")
-    // "I've written them down" waits until the words were shown (Paper F6Q).
     XCTAssertTrue(el(app, "phrase.reveal").waitForExistence(timeout: 10))
     XCTAssertFalse(el(app, "phrase.written").isEnabled)
     attach(app, "Recovery phrase · hidden")
@@ -317,14 +276,12 @@ final class JoinUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: uiWait))
     attach(app, "Recovery phrase · revealed")
     try audit(app)
-    // "I've written them down" publishes the account: there is no word check.
     tap(app, "phrase.written")
 
     XCTAssertTrue(el(app, "ready.continue").waitForExistence(timeout: 10))
     XCTAssertTrue(has(app, "Face ID passkey, In iCloud Keychain"))
     attach(app, "Account ready")
     try audit(app)
-    // "What Hasala reads, and what it doesn't" opens "Who can see what".
     tap(app, "ready.whoSees")
     XCTAssertTrue(el(app, "whoSees.close").waitForExistence(timeout: 10))
     tap(app, "whoSees.close")
@@ -332,8 +289,6 @@ final class JoinUITests: XCTestCase {
     XCTAssertTrue(el(app, "bank.summary").waitForExistence(timeout: 10), "setup did not follow")
   }
 
-  /// A passkey with PRF can show the words again after Face ID, so signup makes the account
-  /// without them and setup follows; Home asks for them first.
   @MainActor
   func testSignupWithPRFPasskeyLeavesTheWordsForHome() throws {
     let app = launch(scenario: "newUser")
@@ -355,8 +310,6 @@ final class JoinUITests: XCTestCase {
     XCTAssertTrue(el(app, "home.finish.phrase").waitForExistence(timeout: 15), "Home doesn't ask for the 12 words")
     try audit(app)
   }
-
-  // MARK: - Signup with a password
 
   @MainActor
   func testSignupWithPasswordChecksTheRules() throws {
@@ -390,8 +343,6 @@ final class JoinUITests: XCTestCase {
     XCTAssertTrue(el(app, "phrase.start").waitForExistence(timeout: 10))
   }
 
-  // MARK: - Invite not found
-
   @MainActor
   func testUnknownInviteSaysSo() throws {
     let app = launch(scenario: "newUser")
@@ -407,8 +358,6 @@ final class JoinUITests: XCTestCase {
     try audit(app)
   }
 
-  /// C1 killed before its bootstrap, then relaunched (spec 04 §6.2 "C1 interrupted"):
-  /// a new phrase, shown, then setup at the bank.
   @MainActor
   func testRelaunchAfterAnInterruptedSignupMakesNewWords() throws {
     let app = launch(scenario: "relaunchInterrupted")
@@ -425,7 +374,6 @@ final class JoinUITests: XCTestCase {
     XCTAssertTrue(el(app, "bank.summary").waitForExistence(timeout: 10))
   }
 
-  /// The signed-out screens at `.accessibility3` reflow instead of clipping (spec 04 §17).
   @MainActor
   func testJoinScreensAtLargeTextSizes() throws {
     let app = launch(
@@ -434,8 +382,6 @@ final class JoinUITests: XCTestCase {
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15))
     attach(app, "AX3 · Stories")
     try audit(app, atLargeText: true)
-    // The copy fills the screen at this size, so the stories wait for the person: still the
-    // first after longer than a story plays.
     sleep(7)
     XCTAssertEqual(el(app, "stories.progress").label, "Page 1 of 4", "the stories moved on mid-read")
     tap(app, "stories.getStarted")
@@ -473,7 +419,6 @@ final class JoinUITests: XCTestCase {
   static let noPRF = "-HasalaPasskeyNoPRF"
   static let notSynced = "-HasalaPasskeyNotSynced"
 
-  /// Some element's label is `label` or contains it (combined rows read as one).
   @MainActor
   func has(_ app: XCUIApplication, _ label: String) -> Bool {
     app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", label)).firstMatch

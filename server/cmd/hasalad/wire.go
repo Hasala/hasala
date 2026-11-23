@@ -1,10 +1,5 @@
 package main
 
-// wire.go builds what serve runs beside the API: the APNs dispatcher, the
-// Gmail and Outlook links and hooks, the account ceremonies (with the server keys), the one
-// email queue and its worker, and spec 07's website routes, each from its own
-// configuration group, plus their sweeps.
-
 import (
 	"context"
 	"fmt"
@@ -32,7 +27,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
-// nudgeInterval is spec 02 §13.7's watch-renewal nudge.
 const nudgeInterval = 15 * time.Minute
 
 const (
@@ -40,7 +34,6 @@ const (
 	restoreFlushTimeout = 10 * time.Second
 )
 
-// readSecret reads a *_FILE secret: the whole file, never logged.
 func readSecret(name, path string) (string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -49,10 +42,6 @@ func readSecret(name, path string) (string, error) {
 	return string(b), nil
 }
 
-// newSender is the [email] group's sender: Cloudflare Email Service, at
-// HASALA_EMAIL_API_BASE_URL when set (config refuses a non-default base
-// behind Cloudflare: it is a local end-to-end run's capture server), or
-// mail.Unconfigured without the group.
 func newSender(cfg config.Config) (mail.Sender, error) {
 	if !cfg.Email.Enabled() {
 		slog.Warn("hasalad serve: the [email] group is not configured: every email fails and the waitlist routes are not mounted")
@@ -75,8 +64,6 @@ func newSender(cfg config.Config) (mail.Sender, error) {
 	return cf, nil
 }
 
-// wireMailbox mounts the mailbox links of [gmail] and [outlook], which share
-// the route key, and Gmail's push.
 func wireMailbox(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv *api.Server, waker pushv2.Waker,
 	ex *extras) error {
 	if !cfg.Gmail.LinkEnabled() && !cfg.Outlook.LinkEnabled() {
@@ -98,9 +85,6 @@ func wireMailbox(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv
 	}
 	wireOutlook(cfg.Outlook, srv, rk)
 	wireGmail(cfg.Gmail, srv, rk)
-	// The renewal nudge asks a holder to renew its watch, so it runs only
-	// for the providers whose push is on: without one it would wake every
-	// holder twice a day for a watch that cannot exist.
 	var nudged []string
 	if srv.Gmail != nil && srv.Gmail.Push != nil {
 		nudged = append(nudged, gmailpush.ProviderGmail)
@@ -122,9 +106,6 @@ func forgetUnrelayedWatches(ctx context.Context, pool *pgxpool.Pool, relayed ...
 	}
 }
 
-// wireOutlook mounts the [outlook] group's parts (config.OutlookConfig): the
-// link with client_id and the route key; the Graph hooks and their URLs in
-// /meta with the push too.
 func wireOutlook(o config.OutlookConfig, srv *api.Server, rk gmailpush.RouteKey) {
 	if !o.LinkEnabled() {
 		slog.Warn("hasalad serve: the [outlook] group is not configured: Outlook mailboxes cannot be linked")
@@ -143,9 +124,6 @@ func wireOutlook(o config.OutlookConfig, srv *api.Server, rk gmailpush.RouteKey)
 	srv.Outlook.Push = &api.OutlookPush{NotificationURL: o.NotificationURL, LifecycleURL: o.LifecycleURL}
 }
 
-// wireGmail mounts the [gmail] group's parts (config.GmailConfig): the link
-// with ios_client_id and the route key; the hook and the watch topic only with
-// the Pub/Sub push too.
 func wireGmail(g config.GmailConfig, srv *api.Server, rk gmailpush.RouteKey) {
 	if !g.LinkEnabled() {
 		slog.Warn("hasalad serve: the [gmail] group is not configured: Gmail mailboxes cannot be linked and the Pub/Sub hook is not mounted")
@@ -169,7 +147,6 @@ func wireGmail(g config.GmailConfig, srv *api.Server, rk gmailpush.RouteKey) {
 	}
 }
 
-// extras is what wireExtras started; stop waits for its goroutines.
 type extras struct {
 	done []<-chan struct{}
 }
@@ -180,12 +157,9 @@ func (e *extras) wait() {
 	}
 }
 
-// wireExtras configures srv's push, Gmail and website options from cfg and
-// starts their workers and sweeps until ctx is done.
 func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv *api.Server) (*extras, error) {
 	ex := &extras{}
 
-	// Push (spec 02 §12): routes always mounted; sending only when enabled.
 	srv.Push.Environments = cfg.APNs.AllowedEnvironments
 	var waker pushv2.Waker = pushv2.NopWaker{}
 	if cfg.APNs.Enabled {
@@ -209,25 +183,15 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	}
 	srv.Push.Waker = waker
 
-	// The mailbox links (spec 02 §13), and Gmail's Pub/Sub push on top.
 	if err := wireMailbox(ctx, cfg, pool, srv, waker, ex); err != nil {
 		return nil, err
 	}
 
-	// Email (spec 02 §14.4, spec 07 §6): Cloudflare when configured. Without
-	// it every send fails permanently (mail.Unconfigured), so a queued email
-	// ends `failed` in the log rather than `sent`, and the website routes are
-	// not mounted: a sign-up whose confirmation can never arrive is worse than
-	// no form.
 	sender, err := newSender(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	// The server keys (spec 01 §4.11). Both files mount the account
-	// ceremonies (signup, passwords, recovery, resets, email change, freeze);
-	// the auth key alone still gives the waitlist and the queue their
-	// email_tag. Both derive K_tag identically, so the tags agree.
 	keys, err := loadAuthKeys(cfg)
 	if err != nil {
 		return nil, refusal{err}
@@ -254,7 +218,6 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 		tagger = t
 	}
 
-	// One queue, one worker and one log for every email this server sends.
 	q := mailq.New(pool, sender, tagger)
 	q.Rates = map[mailq.Lane]int{mailq.LaneWaitlist: int(cfg.Web.RateWaitlist), mailq.LaneBulk: int(cfg.Web.RateBulk)}
 	q.Retention = cfg.Web.LogRetention

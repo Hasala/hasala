@@ -1,45 +1,5 @@
 package auth
 
-// Writers: registration, revocation, the roster and the key-history log
-// (spec 01 §4.8, §10.5, §10.6, §10.13; spec 02 §9.4, §9.5, §10.2).
-//
-// # Who may enrol a writer
-//
-// Only the account's authority key (AAK). A RegistrationMessage
-//
-//	"hasala/v1/writer-registration" ‖ 00 ‖ nonce32 ‖ 00 ‖ writer_id ‖ 00 ‖ dwk_pub32 ‖ dak_pub65
-//
-// signed by the AAK over a server-issued, single-use nonce certifies both
-// device keys: the DWK (Ed25519, signs batch heads, revocations and bindings)
-// and the DAK (Secure Enclave P-256, approves step-ups). The AAK exists only in
-// memory after account creation, a PRF unlock or the phrase, so a stolen
-// session cannot produce one, and there is no step-up, no device authorizer,
-// no trust-on-first-use and no recovery-key branch (spec 01 DEV-3; ledgerd's
-// TOFU bootstrap and recovery authorizer are gone). The first writer is
-// registered by the bootstrap (accountkeys.go) with the same message.
-//
-// # Who may revoke one
-//
-// Any live writer of the account (the target included), by a DWK signature
-// over a RevocationMessage that pins the target's final head
-//
-//	"hasala/v1/writer-revocation" ‖ 00 ‖ nonce32 ‖ 00 ‖ writer_id ‖ 00 ‖ u64be(final_counter) ‖ final_head32
-//
-// plus step-up writer.revoke. The server requires the pinned head to be the
-// target's current head, under the target's row lock that uploads share, so no
-// row can land between the check and the revocation (R-02); readers then accept
-// none of the revoked writer's rows past that head.
-//
-// # key_history
-//
-// Every row carries the signature that authorized it and the nonce it was
-// over, so a device verifies the log itself instead of trusting the server's
-// account of it (spec 01 §10.13): registrations under the AAK, revocations
-// under a writer that was live at that point. The table is append-only by
-// trigger, and the runtime role holds no UPDATE or DELETE on it; the owner
-// (hasala_migrate) could disable the trigger, which is why hasalad never
-// serves as the owner (spec 02 §5.6).
-
 import (
 	"bytes"
 	"context"
@@ -57,10 +17,8 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// AlgEd25519 is the only writers.alg (spec 01 §4.8: 0x01; 0x02 is reserved).
 const AlgEd25519 = "ed25519"
 
-// key_history vocabulary, matching its CHECKs.
 const (
 	EventRegistered     = "registered"
 	EventRevoked        = "revoked"
@@ -69,53 +27,40 @@ const (
 )
 
 const (
-	// ChallengeNonceBytes is the writer-challenge nonce (32 bytes).
 	ChallengeNonceBytes = keyproto.NonceSize
-	// ChallengeTTL bounds how long a captured challenge is worth anything.
-	ChallengeTTL = 5 * time.Minute
-	// MaxLiveWriters is spec 01 §10.5's cap.
-	MaxLiveWriters = 20
-	// challengeRetention is how long a spent challenge is kept before the
-	// opportunistic sweep removes it; what refuses a replay is used_at.
-	challengeRetention = 24 * time.Hour
+	ChallengeTTL        = 5 * time.Minute
+	MaxLiveWriters      = 20
+	challengeRetention  = 24 * time.Hour
 )
 
-// Writer errors. The HTTP layer maps each to spec 02 §6.3's code; the reason
-// inside is for the operator log.
 var (
-	ErrKeysRequired       = errors.New("auth: the account has no keys yet")                           // 403 keys_required
-	ErrBadWriterID        = errors.New("auth: writer id does not match the §4.8 grammar")             // 400 bad_writer_id
-	ErrWriterMalformed    = errors.New("auth: writer request is malformed")                           // 400 bad_request
-	ErrBadSignature       = errors.New("auth: signature or nonce did not verify")                     // 400 bad_signature
-	ErrTooManyDevices     = errors.New("auth: the account has the maximum of live writers")           // 409 too_many_devices
-	ErrHeadMoved          = errors.New("auth: the target's head is not the pinned one")               // 409 head_moved
-	ErrNoSuchWriter       = errors.New("auth: no such writer")                                        // 404 not_found
-	ErrWriterRevoked      = errors.New("auth: the writer is revoked")                                 // 403 writer_revoked
-	ErrDeviceOtherAccount = errors.New("auth: the signing-in device is not a writer of this account") // 409 other_account_device
+	ErrKeysRequired       = errors.New("auth: the account has no keys yet")
+	ErrBadWriterID        = errors.New("auth: writer id does not match the §4.8 grammar")
+	ErrWriterMalformed    = errors.New("auth: writer request is malformed")
+	ErrBadSignature       = errors.New("auth: signature or nonce did not verify")
+	ErrTooManyDevices     = errors.New("auth: the account has the maximum of live writers")
+	ErrHeadMoved          = errors.New("auth: the target's head is not the pinned one")
+	ErrNoSuchWriter       = errors.New("auth: no such writer")
+	ErrWriterRevoked      = errors.New("auth: the writer is revoked")
+	ErrDeviceOtherAccount = errors.New("auth: the signing-in device is not a writer of this account")
 )
 
-// Writer is one row of a user's roster.
 type Writer struct {
 	UserID       uuid.UUID
 	WriterID     string
 	Alg          string
-	PubKey       []byte // Ed25519 DWK, 32 bytes
-	DAKPubkey    []byte // P-256 X9.63, 65 bytes
+	PubKey       []byte
+	DAKPubkey    []byte
 	RegisteredAt time.Time
-	RevokedAt    time.Time // zero while live
+	RevokedAt    time.Time
 }
 
-// Live reports whether the writer may still sign anything.
 func (w Writer) Live() bool { return w.RevokedAt.IsZero() }
 
-// Writers owns writer registration, revocation and the key-history log.
 type Writers struct {
-	Pool *pgxpool.Pool
-	// Mail receives the device_removed alert; nil records events without mail.
-	Mail *Mailer
-	// StepUp verifies the writer.revoke step-up.
+	Pool   *pgxpool.Pool
+	Mail   *Mailer
 	StepUp *StepUp
-	// Now defaults to time.Now; one clock decides minting and expiry.
 	Now    func() time.Time
 	Record func(purgeledger.Entry)
 	Hold   purgeledger.HoldFunc
@@ -128,8 +73,6 @@ func (w *Writers) now() time.Time {
 	return time.Now()
 }
 
-// Challenge mints a single-use writer-challenge nonce (#23). It serves
-// registration, revocation and the bootstrap.
 func (w *Writers) Challenge(ctx context.Context, userID uuid.UUID) ([]byte, time.Time, error) {
 	if w.Pool == nil {
 		return nil, time.Time{}, errors.New("auth: Writers.Pool is nil")
@@ -152,10 +95,6 @@ func (w *Writers) Challenge(ctx context.Context, userID uuid.UUID) ([]byte, time
 	return nonce, exp, nil
 }
 
-// consumeChallenge spends a writer challenge exactly once, OUTSIDE any
-// transaction the caller opens: it is spent by the attempt, not the success,
-// so one nonce buys one attempt. Unknown, foreign, used and expired nonces are
-// all ErrBadSignature (spec 02 §6.3).
 func consumeChallenge(ctx context.Context, pool *pgxpool.Pool, now time.Time, userID uuid.UUID, nonce []byte) error {
 	if len(nonce) != ChallengeNonceBytes {
 		return fmt.Errorf("%w: nonce is %d bytes", ErrBadSignature, len(nonce))
@@ -177,8 +116,6 @@ func consumeChallenge(ctx context.Context, pool *pgxpool.Pool, now time.Time, us
 	return nil
 }
 
-// Registration is POST /api/v1/writers/register's request (spec 02 §10.2),
-// decoded.
 type Registration struct {
 	WriterID  string
 	Alg       string
@@ -188,7 +125,6 @@ type Registration struct {
 	Sig       []byte
 }
 
-// checkShape is the stateless half of the registration checks.
 func (r Registration) checkShape() error {
 	if !keyproto.ValidWriterID(r.WriterID) {
 		return ErrBadWriterID
@@ -208,8 +144,6 @@ func (r Registration) checkShape() error {
 	return nil
 }
 
-// authorityKey reads account_keys.authority_pubkey; ErrKeysRequired when the
-// account has not bootstrapped.
 func authorityKey(ctx context.Context, q querier, userID uuid.UUID) ([]byte, error) {
 	var k []byte
 	err := q.QueryRow(ctx, `SELECT authority_pubkey FROM account_keys WHERE user_id = $1`, userID).Scan(&k)
@@ -222,8 +156,6 @@ func authorityKey(ctx context.Context, q querier, userID uuid.UUID) ([]byte, err
 	return k, nil
 }
 
-// Register enrols a writer under the AAK (#24, spec 02 §10.2's order) and binds
-// the calling, unbound session to it.
 func (w *Writers) Register(ctx context.Context, userID uuid.UUID, sessionHash []byte, r Registration) error {
 	if w.Pool == nil {
 		return errors.New("auth: Writers.Pool is nil")
@@ -235,9 +167,6 @@ func (w *Writers) Register(ctx context.Context, userID uuid.UUID, sessionHash []
 	if err := r.checkShape(); err != nil {
 		return err
 	}
-	// Already enrolled (key, DAK or id): a malformed request, refused before
-	// the nonce is spent. The caller holds this account's session and can read
-	// the roster anyway, so this discloses nothing.
 	var taken bool
 	if err := w.Pool.QueryRow(ctx,
 		`SELECT EXISTS (SELECT 1 FROM writers WHERE user_id = $1 AND (writer_id = $2 OR pubkey = $3 OR dak_pubkey = $4))`,
@@ -288,8 +217,6 @@ func (w *Writers) Register(ctx context.Context, userID uuid.UUID, sessionHash []
 	return nil
 }
 
-// insertWriterTx inserts the writer and its key_history registration (with
-// the AAK's RegistrationMessage signature over its own nonce, spec 01 §9 (a)).
 func insertWriterTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, r Registration, now time.Time) error {
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO writers (user_id, writer_id, alg, pubkey, dak_pubkey, registered_at) VALUES ($1,$2,$3,$4,$5,$6)`,
@@ -320,7 +247,6 @@ func lockUser(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 	return nil
 }
 
-// Revocation is POST /api/v1/writers/revoke's request (spec 02 §9.5), decoded.
 type Revocation struct {
 	WriterID       string
 	SignerWriterID string
@@ -331,11 +257,6 @@ type Revocation struct {
 	StepUp         *StepUpObject
 }
 
-// Revoke retires a writer (#25): the writer challenge is spent first; then,
-// in one transaction under step-up writer.revoke: the target's row locked FOR
-// UPDATE, its current head compared with the pinned one, the RevocationMessage
-// verified under a live signer's DWK, the writer revoked, key_history appended,
-// its sessions revoked and its APNs token deleted.
 func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionInfo, r Revocation) (Wake, error) {
 	if w.Pool == nil || w.StepUp == nil {
 		return Wake{}, errors.New("auth: Writers is not configured")
@@ -387,7 +308,6 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 			return err
 		}
 		if counter != r.FinalCounter || !bytes.Equal(head, r.FinalHead) {
-			// The error is logged: the counter, never the head hash (spec 02 §20).
 			return fmt.Errorf("%w: the writer's counter is %d", ErrHeadMoved, counter)
 		}
 		wr := writerRevocation{UserID: userID, WriterID: r.WriterID, SignerWriterID: r.SignerWriterID,
@@ -512,7 +432,6 @@ func dropHeldMailboxLinkTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, wri
 	return tag.RowsAffected() > 0, nil
 }
 
-// writerHead is the target's current (counter, blob_hash), or (0, 0^32).
 func writerHead(ctx context.Context, tx pgx.Tx, userID uuid.UUID, writerID string) (int64, []byte, error) {
 	var (
 		c int64
@@ -531,7 +450,6 @@ func writerHead(ctx context.Context, tx pgx.Tx, userID uuid.UUID, writerID strin
 	return c, h, nil
 }
 
-// Roster returns every writer of a user, revoked ones included.
 func (w *Writers) Roster(ctx context.Context, userID uuid.UUID) ([]Writer, error) {
 	if w.Pool == nil {
 		return nil, errors.New("auth: Writers.Pool is nil")

@@ -13,17 +13,11 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// challengeBytes is a server-minted challenge of a step-up's width.
-// It is generated rather than fixed so no test can pass by matching a constant
-// that also appears in the code under test.
 func challengeBytes(t *testing.T) []byte {
 	t.Helper()
 	return authtest.RandBytes(t, 32)
 }
 
-// assertOver is what a browser produces for navigator.credentials.get() over a
-// raw challenge. There is no begin step to fetch options from — the deletion
-// nonce IS the challenge.
 func assertOver(t *testing.T, a *authtest.Authenticator, challenge []byte, counter uint32) []byte {
 	t.Helper()
 	return a.Assert(t, &protocol.CredentialAssertion{
@@ -45,9 +39,6 @@ func TestVerifyAssertionAcceptsAnEnrolledCredentialOverTheServersChallenge(t *te
 		t.Fatalf("VerifyAssertion: %v", err)
 	}
 
-	// It is a sign-in in every way that matters to the credential row: the
-	// counter moved and the credential is marked used, so an operator can see
-	// that this authenticator is live and a clone cannot replay this counter.
 	var (
 		count int64
 		used  *time.Time
@@ -65,8 +56,6 @@ func TestVerifyAssertionAcceptsAnEnrolledCredentialOverTheServersChallenge(t *te
 	}
 }
 
-// The binding that makes this a re-authentication rather than a bearer check:
-// the assertion signs THIS challenge, so one over any other value is worthless.
 func TestVerifyAssertionRefusesAnAssertionOverADifferentChallenge(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -81,8 +70,6 @@ func TestVerifyAssertionRefusesAnAssertionOverADifferentChallenge(t *testing.T) 
 	}
 }
 
-// The account binding. Without it, anybody's passkey re-authenticates
-// anybody's session.
 func TestVerifyAssertionRefusesACredentialOfADifferentAccount(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -97,7 +84,6 @@ func TestVerifyAssertionRefusesACredentialOfADifferentAccount(t *testing.T) {
 	}
 }
 
-// A credential nobody enrolled is a rejection, never a first enrolment.
 func TestVerifyAssertionRefusesAnUnenrolledCredential(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -114,9 +100,6 @@ func TestVerifyAssertionRefusesAnUnenrolledCredential(t *testing.T) {
 	}
 }
 
-// A counter that does not advance is §6.1.1's evidence that the private key
-// exists in two places. The re-authentication that guards account deletion is
-// the last place to be relaxed about that.
 func TestVerifyAssertionRefusesACounterThatDidNotAdvance(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -134,9 +117,6 @@ func TestVerifyAssertionRefusesACounterThatDidNotAdvance(t *testing.T) {
 	}
 }
 
-// An absent assertion is a factor that was not presented, and it is a
-// REJECTION rather than an argument error: the HTTP layer must be able to
-// answer it identically to a wrong one.
 func TestVerifyAssertionRefusesAnEmptyAssertion(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -149,10 +129,6 @@ func TestVerifyAssertionRefusesAnEmptyAssertion(t *testing.T) {
 	}
 }
 
-// A challenge the server did not mint cannot be validated against anything.
-// go-webauthn only compares the echoed value, so a caller passing a short or
-// empty challenge would be authorizing an assertion over bytes of its own
-// choosing.
 func TestVerifyAssertionRefusesAChallengeTooShortToBeOneOfOurs(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)

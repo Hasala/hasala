@@ -1,5 +1,3 @@
-// Microsoft OAuth for the Outlook lane (the Outlook plan's shared contract), over FakeGraph's
-// token endpoint. Every value is synthetic.
 import CoreJSON
 import CoreMailbox
 import CorePrimitives
@@ -81,7 +79,6 @@ import Testing
     let tid = MicrosoftOAuthConfig.consumersTenantID
     let ok = client.identity(idToken: FakeGraph.idToken(email: "someone@outlook.example", tid: tid, nonce: "n1"))
     #expect(ok == MailIdentity(email: "someone@outlook.example", nonce: "n1"))
-    // A work or school account (another tenant) is not supported.
     #expect(client.identity(idToken: FakeGraph.idToken(email: "a@b.example", tid: "11111111-1111-4111-8111-111111111111", nonce: "n")) == nil)
     #expect(client.identity(idToken: FakeGraph.idToken(email: nil, tid: tid, nonce: "n"))?.email == nil)
     #expect(client.identity(idToken: "not-a-jwt") == nil)

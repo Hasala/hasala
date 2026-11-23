@@ -2,13 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Review · All caught up (Paper 4MY-0): the result, not a party. The mint disc, "6 sorted ·
-/// 3 new rules", what the plan now counts and every line this session sorted, then "See
-/// activity" and "Undo last sort", which bring the last card back.
-///
-/// The disc settles in once a session (the motion policy lets "All caught up" celebrate,
-/// 600 ms at most); with Reduce Motion it fades in. No haptic: the person's last sort already
-/// had its tap (plan B1.4).
 struct ReviewDoneView: View {
   let model: any ReviewDeckModel
   var toasts: AppModel?
@@ -118,13 +111,11 @@ struct ReviewDoneView: View {
     }
   }
 
-  /// "6 sorted · 3 new rules", "1 sorted", or nothing sorted in this session.
   static func tally(sorted: Int, rules: Int) -> String {
     guard sorted > 0 else { return "Nothing waiting to sort." }
     return "\(sorted) sorted" + (rules > 0 ? " · \(rules) new rule\(rules == 1 ? "" : "s")" : "")
   }
 
-  /// The mint disc (72, check 34 at 2.4, soft mint shadow).
   private var badge: some View {
     Circle()
       .fill(Hue.mint.perceptualGradient)
@@ -143,7 +134,6 @@ struct ReviewDoneView: View {
     withAnimation(celebrate ? motion.animation(.celebrate) : nil) { shown = true }
   }
 
-  /// "Your plan now counts AED 327.28 more", then each sorted line.
   private func summary(_ sorted: [SortedLine]) -> some View {
     let counted = Fils.sum(sorted.map(\.counted))
     return VStack(alignment: .leading, spacing: 0) {
@@ -178,16 +168,12 @@ struct ReviewDoneView: View {
       .accessibilityLabel(phrase.spoken(hidden: model.hidden))
   }
 
-  /// "AED 327.28" in the compact figure face, set inside the sentence. It is drawn from the
-  /// shared `MoneyPhrase`, so Hide amounts and its dot count (4, a figure) come from the same
-  /// place as every other phrase's.
   private func figure(_ m: Money) -> Text {
     Text(verbatim: MoneyPhrase([.text("AED "), .amount(m)]).rendered(hidden: model.hidden))
       .font(.system(.subheadline, design: .rounded, weight: .bold).monospacedDigit())
       .foregroundStyle(HColor.textPrimary)
   }
 
-  /// Disc 32, name 15/20 600 over the category 13/16, amount 15/20 bold.
   private func row(_ line: SortedLine) -> some View {
     Button { open(line.id) } label: { rowLabel(line) }
       .buttonStyle(HRowPressStyle())

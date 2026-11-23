@@ -1,7 +1,3 @@
-// Unit tests for CoreCategorize: the bundled dictionary, decide (03c §8.2),
-// the sweep (§8.4, pipe-01..06), learned patterns (§5.4), the Latin gate
-// (§8.6.2) and the model tier's budgets (§8.6.3). The v3 matcher is pinned by
-// conformance/categorize.
 import Foundation
 import Synchronization
 import Testing
@@ -84,13 +80,13 @@ struct CoreCategorizeTests {
       SweepRow(id: id, merchantRaw: m, direction: dir, category: cat, sourceKind: k, sourceRef: ref, needsReview: nr, candidate: true)
     }
     let rows = [
-      row("a", "SPINNEYS JLT", "groceries", .dictionary, ref: "x"),  // re-filed by the rule
-      row("b", "SPINNEYS JLT", "groceries", .user),  // user: untouched
-      row("c", "SPINNEYS JLT", "groceries", .held, ref: "r"),  // held: untouched
-      row("d", "UNKNOWN SHOP 42", "shopping", .dictionary, ref: "x"),  // no decision: never un-filed
-      row("e", "UNKNOWN SHOP 42", nil, .none),  // model queue
-      row("f", "CARREFOUR", "groceries", .dictionary, ref: "\(DictionaryManifest.bundle)|contains:carrefour", nr: false),  // unchanged
-      row("g", "UNKNOWN SHOP 42", nil, .none, dir: .credit),  // credits never queue
+      row("a", "SPINNEYS JLT", "groceries", .dictionary, ref: "x"),
+      row("b", "SPINNEYS JLT", "groceries", .user),
+      row("c", "SPINNEYS JLT", "groceries", .held, ref: "r"),
+      row("d", "UNKNOWN SHOP 42", "shopping", .dictionary, ref: "x"),
+      row("e", "UNKNOWN SHOP 42", nil, .none),
+      row("f", "CARREFOUR", "groceries", .dictionary, ref: "\(DictionaryManifest.bundle)|contains:carrefour", nr: false),
+      row("g", "UNKNOWN SHOP 42", nil, .none, dir: .credit),
     ]
     let (actions, queue) = Sweep.plan(rows, c)
     #expect(actions == [SweepAction(txnID: "a", category: "dining", source: .rule(id: "01JC0000000000000000000004"), needsReview: true)])
@@ -139,7 +135,6 @@ struct CoreCategorizeTests {
     let allowed = ModelTier.allowed(TaxonomyV1.builtins)
     final class Hangs: CategoryModel, @unchecked Sendable {
       let calls = Mutex([String: Int]())
-      /// The hung call answered (it never should before the sweep returns).
       let hangAnswered = Mutex(false)
       let modelTag = "apple-fm/26.1"
       func availability() -> ModelAvailability { .available }
@@ -150,7 +145,6 @@ struct CoreCategorizeTests {
         }
         switch subject {
         case "hang forever":
-          // Ignores cancellation and answers much later: the tier must not wait for it.
           await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
             DispatchQueue.global().asyncAfter(deadline: .now() + 300) { k.resume() }
           }
@@ -166,8 +160,6 @@ struct CoreCategorizeTests {
     let r = await ModelTier.run(
       subjects: ["hang forever", "overflow once", "overflow twice", "spinneys"], model: m, allowed: allowed, context: .foreground, now: { 0 },
       callTimeout: .milliseconds(200))
-    // Load-independent: the sweep returned while the hung call was still
-    // pending (a wall-clock bound on a 200 ms limit is flaky on a busy runner).
     #expect(!m.hangAnswered.withLock { $0 })
     #expect(r.suggestions == [.init(subject: "overflow once", category: "dining"), .init(subject: "spinneys", category: "groceries")])
     #expect(r.unknown.isEmpty && r.stoppedBy == nil)

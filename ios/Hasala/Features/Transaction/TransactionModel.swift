@@ -1,7 +1,6 @@
 import HasalaModels
 import Observation
 
-/// One group of the category picker: a bucket's overline and its categories.
 struct CategoryGroup: Identifiable, Hashable {
   var id: Bucket { bucket }
   let bucket: Bucket
@@ -44,15 +43,12 @@ struct CategoryGroup: Identifiable, Hashable {
   }
 }
 
-/// Transaction detail and its pushed editors (spec 04 §16.1 "Transaction detail", "Choose a category", "Split";
-/// §16.2 T1). Every write is one `LedgerEdit` (03c §3.8).
 @MainActor
 protocol TransactionModel: AnyObject, Observable {
   var detail: TransactionDetail? { get }
   var hidden: Bool { get }
   var categoryGroups: [CategoryGroup] { get }
   var projects: [(id: ProjectID, name: String)] { get }
-  /// The merchant as it is now ("Lulu Hypermarket"), for "Always use X for M".
   var merchantName: String { get }
   func choose(_ category: CategoryID, alwaysUse: Bool)
   @discardableResult func setNote(_ note: String) -> Bool

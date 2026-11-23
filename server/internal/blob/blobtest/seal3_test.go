@@ -29,8 +29,6 @@ func mustHex(t *testing.T, s string) []byte {
 	return b
 }
 
-// Spec 01 §15.5 anchors A09 and A10: the AEAD layer of frame v3 with a
-// synthetic region R = u32be(16) ‖ 00..0f ‖ zeros under K_1 (A06).
 func TestSealRegion3MatchesAnchorsA09A10(t *testing.T) {
 	k1 := mustHex(t, "c2e59f467f32b6e843710e8f959c186013d2d2fe94ec883c64ebfa3155f8e188")
 	user := uuid.MustParse("6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d")
@@ -109,7 +107,6 @@ func TestSeal3RoundTripsAndBindsThePosition(t *testing.T) {
 	if err != nil || !bytes.Equal(got, pt) {
 		t.Fatalf("Open3 = %q, %v", got, err)
 	}
-	// Another position, another predecessor or another key: no plaintext.
 	moved := e
 	moved.WriterCounter = 4
 	if _, err := Open3(moved, TestEpochKey, prev, s.Bytes); err == nil {
@@ -121,7 +118,6 @@ func TestSeal3RoundTripsAndBindsThePosition(t *testing.T) {
 	if _, err := Open3(e, bytes.Repeat([]byte{1}, 32), prev, s.Bytes); err == nil {
 		t.Fatal("opened under another key")
 	}
-	// Large plaintext moves up the ladder and still passes the predicate.
 	big := make([]byte, 300_000)
 	for i := range big {
 		big[i] = byte(i * 7919 >> 3)

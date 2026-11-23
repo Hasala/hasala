@@ -2,9 +2,6 @@ import HasalaDesign
 import HasalaModels
 import Observation
 
-/// Activity · Overview and Filtered (Paper 1QG-0, 7LT-0). Views bind to this protocol;
-/// `ActivityViewModel` is the one implementation, over any `LedgerStore` (the Maya mock in
-/// Debug, the projection in every real build).
 @MainActor
 protocol ActivityModel: AnyObject, Observable {
   var snapshot: ActivitySnapshot { get }
@@ -13,9 +10,7 @@ protocol ActivityModel: AnyObject, Observable {
   var exportRows: [ExportRow] { get }
   func select(_ kind: TxnFilter.Kind)
   func search(_ text: String)
-  /// Narrows the list to one category ("Activity · Filtered"); nil goes back to everything.
   func show(category: CategoryID?)
-  /// Shows exactly this filter (a request from Search).
   func apply(_ filter: TxnFilter)
   func choosePeriod()
   func backToThisMonth()
@@ -48,7 +43,6 @@ final class ActivityViewModel: ActivityModel {
   var hidden: Bool { app.amountsHidden }
   var searchText: String { filter.text }
 
-  /// The rows "Export" shares: what the list shows.
   var exportRows: [ExportRow] {
     exportMemo.value(for: [app.store.revision, filter, app.period]) {
       let s = app.store.state
@@ -80,9 +74,6 @@ final class ActivityViewModel: ActivityModel {
   func startReview() { ReviewEntry.open(app, at: nil) }
 }
 
-/// Asks the Activity tab to show a filter from elsewhere (Search's category row, a Debug
-/// screen launch). The Activity view model lives in the shell (`MainView`, frozen), so a
-/// request waits here until the Activity screen applies it.
 @MainActor
 @Observable
 final class ActivityRequests {
@@ -90,7 +81,6 @@ final class ActivityRequests {
 
   private(set) var pending: (app: ObjectIdentifier, filter: TxnFilter)?
 
-  /// Switches to Activity, at its root, showing `filter` (a category, or a search's text).
   func show(_ filter: TxnFilter, in app: AppModel) {
     pending = (ObjectIdentifier(app), filter)
     app.router.activity = []
@@ -98,7 +88,6 @@ final class ActivityRequests {
     if app.router.sheet == .search || app.router.sheet == .profile { app.router.sheet = nil }
   }
 
-  /// The filter waiting for `app`'s Activity screen; the request is used up.
   func take(for app: AppModel) -> TxnFilter? {
     guard let p = pending, p.app == ObjectIdentifier(app) else { return nil }
     pending = nil

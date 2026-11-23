@@ -3,15 +3,6 @@ import HasalaModels
 import SwiftUI
 import UIKit
 
-// Paper P2.1 "Join and create an account" (spec 07 §4): enter your invite code (pasted, not
-// found), about you, how you sign in, create a password. "Your invite is ready" and "Check
-// your email" are in `Join/`. Everything typed lives in the onboarding store's
-// `SignupModel`, so Back and Forward never clear a field (plan B3).
-
-/// Enter your invite code (Paper E47-0, E6F-0; spec 07 S2, S4). The server's code is 24
-/// letters and numbers, so it is one grouped field in Paper's field style rather than
-/// Paper's "HSL" and four cells (plan decision 3). A line under it says where the code came
-/// from, or that it wasn't found; "Other reasons" follows a code that wasn't found.
 struct InviteCodeView: View {
   @Bindable var model: SignupModel
   var onSignIn: () -> Void
@@ -40,7 +31,6 @@ struct InviteCodeView: View {
     ) {
       VStack(alignment: .leading, spacing: 12) {
         field
-        // Paper's "Not found" (E6F) swaps where to find the code for why it may not work.
         if !notFound {
           InfoCard(icon: .envelope, hue: .sky, title: "Look for \u{201C}Your Hasala invite\u{201D}",
                    detail: "From no-reply@hasala.app, to your waitlist email.", radius: HRadius.tile)
@@ -66,16 +56,12 @@ struct InviteCodeView: View {
     }
   }
 
-  /// Paper "InviteCodeField": the label, a white 64 box (radius 14) holding the grouped
-  /// code, the red ring on a code that wasn't found, the blue ring while typing.
   private var field: some View {
     VStack(alignment: .leading, spacing: HSpacing.fieldLabelGap) {
       Text("Invite code")
         .hType(.footnote.weight(.semibold))
         .foregroundStyle(HColor.textSecondary)
         .accessibilityHidden(true)
-      // Groups the code as it is typed or pasted, and wraps instead of clipping at large
-      // text sizes.
       InviteCodeField(text: $model.inviteText, focused: $focused, identifier: "invite.field") { link in
         model.applyInviteLink(link, pasteboardChange: UIPasteboard.general.changeCount)
       }
@@ -119,11 +105,6 @@ struct InviteCodeView: View {
   }
 }
 
-/// Create your account · 1 of 3 · About you (Paper E7J-0 with an invite link, JYI-0 with a
-/// typed code; spec 07 S6a, S6b). The email is typed, because the app doesn't know where the
-/// invite went; once a link or a code has confirmed it, the box carries Paper's "Confirmed"
-/// chip (seen when the person comes Back here). The chip and the line under the box say what
-/// Continue will do (`SignupModel.emailHelp`): a changed name or address may mean a new code.
 struct AboutYouView: View {
   @Bindable var model: SignupModel
   var onSignIn: () -> Void
@@ -261,9 +242,6 @@ struct SignInMethodView: View {
   }
 }
 
-/// Create your account · 2 of 3 · Password (Paper EQ6-0 too short, EZU-0 strong and
-/// confirmed; spec 07 S10). The rules tick as they pass and nothing shouts while the person
-/// types; "Create account" waits until the password could pass and the two match.
 struct CreatePasswordView: View {
   @Bindable var model: SignupModel
 
@@ -277,7 +255,6 @@ struct CreatePasswordView: View {
       VStack(alignment: .leading, spacing: 12) {
         VStack(alignment: .leading, spacing: 12) {
           LabeledField(label: "Password") {
-            // A UIKit field: SwiftUI's can't carry Hasala's password rules for AutoFill.
             RuledNewPasswordField(placeholder: "12 characters or more", text: $model.newPassword, secure: !model.passwordShown,
                                   identifier: "password.new")
           } accessory: {
@@ -319,7 +296,6 @@ struct CreatePasswordView: View {
 
   private static let fieldsID = "password.fields"
 
-  /// Said only once the second field is as long as the first: never while still typing.
   private var mismatch: Bool {
     !model.confirmPassword.isEmpty && !model.passwordsMatch && model.confirmPassword.count >= model.newPassword.count
   }

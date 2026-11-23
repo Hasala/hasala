@@ -8,25 +8,12 @@ import CoreWire
 import Foundation
 import HasalaModels
 
-/// The projection (`projection.sqlite` through `LedgerReader`) as the screens' read model,
-/// HasalaKit's `LedgerState` (spec 04 §15.1-§15.2): categories, accounts, transactions,
-/// the plan, bills, projects, goals and rules at one instant. The screens' engines
-/// (`HomeEngine`, `PlanEngine`, `ActivityEngine`, `BillsEngine`, `ReviewEngine`) run over it
-/// unchanged, so a live account shows the same boards as the Maya mock (AT-REV-3).
-///
-/// Every figure comes from the fold: budgets are CoreDomain's `PlanEngine.assigned`
-/// (carry-forward and moves applied), a bill's next due date is its schedule minus the
-/// resolved occurrences, a balance is the latest check-in. What no op family holds (the
-/// detector's bill proposals, review suggestions, row detail overrides) is left empty.
 nonisolated enum LedgerStateMapper {
-  /// What the projection doesn't hold: who is signed in, the mailbox's health and the
-  /// device's own preferences.
   struct Context: Sendable {
     var today: LocalDate
     var profile: ProfileInfo
     var mailbox = MailboxHealth(status: .notConnected, lastEmail: "", banks: "")
     var prefs = DevicePrefs()
-    /// The review cards skipped today, as digests (`DevicePrefsStore`), and their salt.
     var skippedDigests: Set<String> = []
     var digestSalt = ""
     var unreadSenders: [String: String] = [:]
@@ -39,7 +26,6 @@ nonisolated enum LedgerStateMapper {
 
   enum MapError: Error { case date }
 
-  /// Display names of the banks the beta reads (card accounts name their bank by id).
   static let bankNames = RuntimeMailboxLedger.bankNames
 
   struct Mapped: Sendable {
@@ -62,7 +48,6 @@ nonisolated enum LedgerStateMapper {
     let categories = byParent(taxonomy.ordered).map { category($0, engine: engine) }
     let billOfTxn = feed.billOfTxn
 
-    // Accounts: the latest check-in is the balance (03b §4.6).
     let cards = try r.cards()
     let checkins = try r.checkins()
     let liveAccounts = try r.accounts().filter(\.active)
@@ -74,7 +59,6 @@ nonisolated enum LedgerStateMapper {
         balance: Money(minor: balance, currency: a.currency), inPlan: a.inPlan, detail: "")
     }
 
-    // Transactions: every live, parsed row (archived ones too, flagged).
     let rules = try r.rules()
     let ruleByID = Dictionary(rules.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     let home = try r.homeCurrency() ?? "AED"
@@ -118,7 +102,6 @@ nonisolated enum LedgerStateMapper {
     }
     let unreadTexts = unreadable.filter(\.isText).map { Self.unreadText($0, accounts: liveAccounts) }
 
-    // The plan: CoreDomain's assigned budgets around this month, the income sources.
     var budgets: [String: Money] = [:]
     var incomeByMonth: [YearMonth: Money] = [:]
     var expectedByMonth: [YearMonth: Money] = [:]
@@ -226,13 +209,10 @@ nonisolated enum LedgerStateMapper {
       accountID: (ofBank.first(where: \.inPlan) ?? ofBank.first)?.id)
   }
 
-  /// The transactions whose digest is among the skipped cards'.
   static func skipped(_ txns: [HasalaModels.Txn], _ c: Context) -> Set<TxnID> {
     guard !c.skippedDigests.isEmpty else { return [] }
     return Set(txns.lazy.map(\.id).filter { c.skippedDigests.contains(LocalAccountData.digest($0, salt: c.digestSalt)) })
   }
-
-  // MARK: Categories
 
   static func category(_ info: CategoryInfo, engine: CoreDomain.PlanEngine) -> HasalaModels.Category {
     let kind: HasalaModels.CategoryKind
@@ -264,7 +244,6 @@ nonisolated enum LedgerStateMapper {
     return top.flatMap { [$0] + (children[$0.id] ?? []) }
   }
 
-  /// 03c §1.7 icon tokens → HasalaModels' glyphs (the inverse of the seed export's table).
   static let glyphs: [String: Glyph] = [
     "house": .rent, "bolt": .utilities, "basket": .groceries, "car": .transport, "cross": .healthcare,
     "shield_check": .insurance, "fork_knife": .dining, "ticket": .entertainment, "bag": .shopping, "plane": .travel,
@@ -278,8 +257,6 @@ nonisolated enum LedgerStateMapper {
     glyphs.filter { $0.value == glyph }.map(\.key).sorted().first ?? "flag"
   }
 
-  // MARK: Accounts
-
   static func accountKind(_ kind: String) -> AccountKind {
     switch kind {
     case "credit_card": .credit
@@ -289,13 +266,10 @@ nonisolated enum LedgerStateMapper {
     }
   }
 
-  /// How rows name an account: "Emirates NBD", "DIB card"; otherwise its own name.
   static func shortName(_ a: CoreReplay.Account) -> String {
     guard let bank = a.institution, let name = bankNames[bank] else { return a.name }
     return a.kind == "credit_card" ? "\(name) card" : name
   }
-
-  // MARK: Transactions
 
   static func txn(_ row: TxnRow, r: LedgerReader, ruleByID: [String: RuleRow], billID: String?) throws
     -> HasalaModels.Txn
@@ -466,8 +440,6 @@ nonisolated enum LedgerStateMapper {
     return HeldCopy(of: other, fromOtherInbox: source != row.sourceMailbox)
   }
 
-  // MARK: Bills
-
   static func charged(_ t: HasalaModels.Txn, in currency: String) -> Money? {
     if t.amount.currency == currency { return t.amount }
     return currency == Money.home ? t.homeMinor.map(Money.aed) : nil
@@ -477,7 +449,6 @@ nonisolated enum LedgerStateMapper {
     LocalDate(year, month, min(day, CivilCalendar.daysIn(year: year, month: month)))
   }
 
-  /// The next payday on or after `after` (day clamped to short months).
   static func nextPayday(_ day: Int, after: LocalDate) -> LocalDate {
     let this = clamp(after.year, after.month, day)
     if this >= after { return this }
@@ -485,16 +456,11 @@ nonisolated enum LedgerStateMapper {
     return clamp(n.year, n.month, day)
   }
 
-  // MARK: Mailbox
-
-  /// Bank alerts' health for Profile (spec 04 §7.10; content-free).
   static func health(_ st: MailboxStatus, nowMs: Int64) -> MailboxHealth {
     let status: MailboxHealth.Status
     switch st.hero {
     case .working, .otherDevice: status = .working
     case .catchingUp:
-      // The first import (scan and backfill) is "importing"; an active lane that hasn't
-      // succeeded for a while is still working.
       switch st.phase {
       case .scanning, .awaitingCards, .authoringBackfill: status = .importing
       default: status = .working
@@ -509,8 +475,6 @@ nonisolated enum LedgerStateMapper {
       unreadable: st.unreadable)
   }
 
-  /// Each bank's sender domains, from its bundled templates (03c §7.2), e.g. Emirates NBD
-  /// → emiratesnbd.com: a health row names its bank by the template it matched.
   static let bankDomains: [(bank: String, domains: [String])] = bankNames.keys.sorted().map {
     (bank: $0, domains: MailboxLane.senderDomains(bank: $0))
   }
@@ -519,12 +483,9 @@ nonisolated enum LedgerStateMapper {
     bankDomains.first { BankDomains.isMember(domain, of: $0.domains) }?.bank
   }
 
-  /// The bank a sender domain belongs to, if it is one the beta reads.
   static func bankName(domain: String) -> String? {
     bank(domain: domain).flatMap { bankNames[$0] }
   }
-
-  // MARK: Rules
 
   static func ruleMatch(_ m: String) -> RuleMatch {
     switch m {
@@ -534,11 +495,8 @@ nonisolated enum LedgerStateMapper {
     }
   }
 
-  // MARK: Dates
-
   static func local(_ d: CivilDate) -> LocalDate { LocalDate(d.year, d.month, d.day) }
 
-  /// The local day of an RFC 3339 instant.
   static func localDay(_ instant: String) -> LocalDate? {
     guard let ms = try? parseInstantMs(instant), let d = LocalClock.localDate(ms) else { return nil }
     return local(d)

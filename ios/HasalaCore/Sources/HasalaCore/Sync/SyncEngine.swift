@@ -1,13 +1,3 @@
-// The sync engine (spec 04 §5.1, §3): one actor per bound account.
-//
-// One run is `reconcile in-flight → pull → fold → flush → self-pull`; the
-// projection and signals stages belong to the app's WorkCoordinator, which
-// calls `run` and then projects. Triggers coalesce: a call while a run is in
-// flight sets a single trailing rerun and waits for it, never a second
-// concurrent run (§3 "One entry point").
-//
-// Every stop maps to a phase (§5.1). Halts and latches never wipe data; a wipe
-// is reported (`.wiping`) and performed by the app (`AccountWipe`).
 import CoreAuth
 import CorePrimitives
 import CoreStore
@@ -17,20 +7,15 @@ import Foundation
 public enum SyncTrigger: String, Sendable, Hashable, CaseIterable {
   case launch, foreground, refresh, authored, pathUp, silentPush, bgRefresh, bgProcessing, foregroundTimer
 
-  /// Whether the run re-verifies the key history first (01 §10.13). An
-  /// `authored` run follows the user's own edit and keeps the pinned roster
-  /// (R1 still re-fetches it for an unknown writer).
   public var refreshesRoster: Bool { self != .authored }
 
   public var retestsALatch: Bool { self == .launch || self == .foreground || self == .refresh }
 }
 
 public struct RunOutcome: Sendable, Hashable {
-  /// Any row stored or any op acknowledged (the silent-push `.newData`).
   public var newData = false
   public var pulled = PullSummary()
   public var pushed = PushSummary()
-  /// Why the run stopped early, if it did.
   public var stop: SyncStop?
 }
 
@@ -49,7 +34,6 @@ public actor SyncEngine {
   let observer: (any PageObserver)?
   public private(set) var status = SyncStatus()
   private var inFlight: Task<RunOutcome, Never>?
-  /// The trailing rerun asked for while a run was in flight, if any.
   private var rerun: Rerun?
   private var continuations: [UUID: AsyncStream<SyncStatus>.Continuation] = [:]
   private var accountFullAtMs: Int64?
@@ -63,7 +47,6 @@ public actor SyncEngine {
     self.observer = observer
   }
 
-  /// Every status change, starting with the current one.
   public func statusUpdates() -> AsyncStream<SyncStatus> {
     let (stream, c) = AsyncStream<SyncStatus>.makeStream(bufferingPolicy: .bufferingNewest(1))
     let id = context.random.uuidV4Lenient()
@@ -90,21 +73,16 @@ public actor SyncEngine {
     inFlight?.cancel()
   }
 
-  /// The app acknowledged the integrity-alarm sheet (§5.7).
   public func acknowledgeAlarms() {
     status.integrityAlarms = 0
     status.rowAlarms = 0
     publish()
   }
 
-  /// Runs once, coalescing with a run in flight: a call while a run is in
-  /// flight asks for one trailing rerun and returns the merged outcome.
   @discardableResult
   public func run(_ trigger: SyncTrigger, deadline: ContinuousClock.Instant? = nil) async -> RunOutcome {
     if stopped { return RunOutcome(stop: .cancelled) }
     if let t = inFlight {
-      // The rerun keeps the strongest trigger asked for: one that re-verifies
-      // the roster wins over `authored`.
       if rerun == nil {
         rerun = Rerun(trigger: trigger, deadline: deadline)
       } else {
@@ -117,9 +95,6 @@ public actor SyncEngine {
     return await task.value
   }
 
-  /// Every run's body. `inFlight` is cleared here, in the same actor step as
-  /// the last `rerun` check (no suspension between them), so a `run` call can
-  /// never set `rerun` after that check and still be handed this outcome.
   private func loop(_ trigger: SyncTrigger, deadline: ContinuousClock.Instant?) async -> RunOutcome {
     var out = await once(trigger, deadline: deadline)
     while let next = rerun {
@@ -143,7 +118,6 @@ public actor SyncEngine {
     do {
       try resumeAfterLatch(trigger)
       await recordLogGenerationIfUnknown()
-      // Reconcile: an in-flight batch goes first, byte-identical.
       set(.reconciling)
       let hasInflight = !(try context.storeCall { () throws(StoreError) in try context.store.inflight() }).isEmpty
       if hasInflight {
@@ -195,10 +169,6 @@ public actor SyncEngine {
     if stop == nil, !uploadRefusedThisRun { status.lastSuccessAt = context.clock.nowMs() }
   }
 
-  /// 01 §10.13: the key history is verified again on every launch, unlock and
-  /// wake (a wake's payload is the same for every reason, so a security wake
-  /// cannot be told apart), so a revocation pins its final head before the
-  /// next page is read.
   private func refreshRoster() async throws(SyncStop) {
     let state = try context.storeCall { () throws(StoreError) in try context.store.syncState() }
     guard let pinned = PinnedRoster.decode(state.rosterJSON) else { throw .halted(.rosterInvalid) }
@@ -231,7 +201,6 @@ public actor SyncEngine {
     try? context.store.recordLogGenerationIfUnknown(generation)
   }
 
-  /// A latch stops the flush but not the pull (§5.4: reads continue).
   private func latchAware(_ push: () async throws(SyncStop) -> PushSummary) async throws(SyncStop) -> PushSummary {
     do {
       let pushed = try await push()
@@ -257,7 +226,6 @@ public actor SyncEngine {
     }
   }
 
-  /// Maps a stop onto the phase (§5.1) and returns it.
   private func apply(_ stop: SyncStop) async -> SyncStop {
     switch stop {
     case .offline, .protocolError:
@@ -286,8 +254,6 @@ public actor SyncEngine {
     return stop
   }
 
-  /// R-10: a chain condition while `meta.log_generation` differs from the one
-  /// seen at enrolment is `server_restored`, not tampering.
   private func restoredOr(_ h: HaltKind) async -> HaltKind {
     switch h {
     case .tampered(.chainBreak), .tampered(.ownChainConflict), .tamperedResend: break
@@ -301,7 +267,6 @@ public actor SyncEngine {
 }
 
 extension RandomSource {
-  /// A UUID for local bookkeeping (never on the wire).
   func uuidV4Lenient() -> UUID {
     (try? uuidV4()).flatMap(UUID.init(uuidString:)) ?? UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
   }

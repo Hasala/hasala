@@ -1,24 +1,3 @@
-// The canonical writer: `JSON.stringify` over a `JSONValue`, byte for byte.
-//
-// This is the encoder the TypeScript op codec uses (wire/op.ts
-// `encodeBlobOps`, `encodeRawBody`; replay/state.ts `serializeState`): no
-// whitespace, keys in the object's order, and JSON.stringify's escaping:
-// `"` and `\` escaped, `\b \f \n \r \t` by name, every other C0 control as
-// lower-case `\u00XX`, and EVERYTHING ELSE LITERAL, including `/`, `<`, `>`, `&`,
-// DEL, U+2028 and U+2029. (Go's `encoding/json` escapes `<`, `>`, `&`, U+2028 and
-// U+2029, which is why Go-encoded bytes are only value-equal, never
-// byte-equal, to these.)
-//
-// Two choices are JavaScript's and are on by default (`.javascript`):
-//
-//   - key order: a JavaScript object enumerates its array-index keys
-//     (`"0"` ... `"4294967294"`, canonical decimal) first, ascending, then the
-//     other keys in insertion order. `JSON.stringify(JSON.parse(text))` reorders
-//     `{"b":1,"1":2}` to `{"1":2,"b":1}`; `.insertion` does not.
-//   - numbers: JSON.stringify writes a JavaScript Number, so `1.50` becomes
-//     `1.5`, `1e2` becomes `100`, `-0` becomes `0` and 2^53+1 becomes
-//     9007199254740992. `.literal` writes the literal as parsed instead (spec
-//     04 §2.2 "literal-preserving"), which is value-equal and exact.
 import HasalaText
 
 public struct JSONWriter: Sendable {
@@ -33,14 +12,12 @@ public struct JSONWriter: Sendable {
     self.keyOrder = keyOrder
   }
 
-  /// The UTF-8 bytes of `value`.
   public func bytes(_ value: JSONValue) -> [UInt8] {
     var out = [UInt8]()
     write(value, into: &out)
     return out
   }
 
-  /// The text of `value`.
   public func string(_ value: JSONValue) -> String {
     String(decoding: bytes(value), as: UTF8.self)
   }
@@ -87,8 +64,6 @@ public struct JSONWriter: Sendable {
     return indexed.sorted { $0.0 < $1.0 }.map(\.1) + named
   }
 
-  /// ECMAScript's array index: the canonical decimal string of an integer in
-  /// `0 ... 2^32 - 2`.
   static func arrayIndex(_ key: String) -> UInt32? {
     let u = Array(key.utf8)
     guard !u.isEmpty, u.count <= 10, u.allSatisfy(ASCII.isDigit), u.count == 1 || u[0] != 0x30 else {
@@ -101,7 +76,6 @@ public struct JSONWriter: Sendable {
 
   private static let hexDigits = Array("0123456789abcdef".utf8)
 
-  /// JSON.stringify's QuoteJSONString over a well-formed string.
   public static func quote(_ s: String, into out: inout [UInt8]) {
     out.append(0x22)
     for b in s.utf8 {

@@ -16,11 +16,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/oplog"
 )
 
-// ---------------------------------------------------------------------------
-// The device's key-history verification (spec 01 §10.13), as a reference: the
-// tests below require every log the server serves to pass it.
-// ---------------------------------------------------------------------------
-
 type rosterRow struct {
 	pub, dak     []byte
 	live         bool
@@ -82,10 +77,6 @@ func (f *keyFixture) verifiedRoster() map[string]rosterRow {
 	return r
 }
 
-// ---------------------------------------------------------------------------
-// Bootstrap (spec 01 §10.3.2–§10.3.3)
-// ---------------------------------------------------------------------------
-
 func TestBootstrapUnderThePendingAuthorityPublishesKeysAndTheFirstWriter(t *testing.T) {
 	t.Parallel()
 	f := newKeyFixture(t)
@@ -109,8 +100,6 @@ func TestBootstrapUnderThePendingAuthorityPublishesKeysAndTheFirstWriter(t *test
 	if w, ok := r[f.device.WriterID]; !ok || !w.live || !bytes.Equal(w.dak, f.device.DAKPub()) {
 		t.Fatalf("roster: %+v", r)
 	}
-	// The key-history row carries the RegistrationMessage signature, never the
-	// bootstrap signature (spec 01 §9 (a)).
 	if n := f.count(`SELECT count(*) FROM account_usage WHERE user_id = $1`, f.user); n != 1 {
 		t.Fatal("no account_usage row")
 	}
@@ -155,7 +144,6 @@ func TestBootstrapRefusesWhatItMustRefuse(t *testing.T) {
 			t.Errorf("%s: %v, want %v", c.name, err, c.want)
 		}
 	}
-	// A nonce is spent by the attempt: a good request on a spent nonce fails.
 	b := good()
 	b.AuthoritySig = ed25519.Sign(f.acct.AAK(), []byte("x"))
 	if _, err := f.keys.Bootstrap(bgctx, info, b); !errors.Is(err, ErrBadSignature) {
@@ -169,7 +157,6 @@ func TestBootstrapRefusesWhatItMustRefuse(t *testing.T) {
 	if n := f.count(`SELECT count(*) FROM account_keys`); n != 0 {
 		t.Fatalf("%d account_keys rows after refusals", n)
 	}
-	// Then the real one, and a second is 409 keys_exist.
 	if _, err := f.keys.Bootstrap(bgctx, info, good()); err != nil {
 		t.Fatal(err)
 	}
@@ -178,24 +165,19 @@ func TestBootstrapRefusesWhatItMustRefuse(t *testing.T) {
 	}
 }
 
-// The interrupted-onboarding path: an authority key that is not the pending
-// one needs step-up keys.bootstrap with T = (authority_pubkey), and auth_kind
-// 0 with a zero auth_hash (spec 01 §10.3, R-04).
 func TestBootstrapWithAnotherAuthorityKeyNeedsAStepUp(t *testing.T) {
 	t.Parallel()
 	f := newKeyFixtureUnbootstrapped(t)
-	f.acct.AAKSeed = authtest.RandBytesTB(t, 32) // the onboarding restarted with new secrets
+	f.acct.AAKSeed = authtest.RandBytesTB(t, 32)
 	b := f.bootstrap(f.device, keyproto.AuthKindNone, make([]byte, 32), false)
 	if _, err := f.keys.Bootstrap(bgctx, f.info(f.token), b); !errors.Is(err, ErrStepUpRequired) {
 		t.Fatalf("no step-up: %v", err)
 	}
-	// A step-up for another key is a failed proof.
 	b = f.bootstrap(f.device, keyproto.AuthKindNone, make([]byte, 32), false)
 	b.StepUp = f.stepUpPasskey(f.token, keyproto.ActionKeysBootstrap, authtest.AuthorityPub(t))
 	if _, err := f.keys.Bootstrap(bgctx, f.info(f.token), b); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("step-up over another key: %v", err)
 	}
-	// auth_kind 1 on the step-up path is malformed.
 	b = f.bootstrap(f.device, keyproto.AuthKindPasskey, f.attestation(), false)
 	b.StepUp = f.stepUpPasskey(f.token, keyproto.ActionKeysBootstrap, f.acct.AAKPub())
 	if _, err := f.keys.Bootstrap(bgctx, f.info(f.token), b); !errors.Is(err, ErrKeysMalformed) {
@@ -206,16 +188,11 @@ func TestBootstrapWithAnotherAuthorityKeyNeedsAStepUp(t *testing.T) {
 	if _, err := f.keys.Bootstrap(bgctx, f.info(f.token), b); err != nil {
 		t.Fatalf("stepped-up bootstrap: %v", err)
 	}
-	// The nonce is spent with the action.
 	if n := f.count(`SELECT count(*) FROM step_up_challenges WHERE nonce = $1 AND used_at IS NOT NULL`, b.StepUp.Nonce); n != 1 {
 		t.Fatal("the step-up nonce was not spent")
 	}
 	f.verifiedRoster()
 }
-
-// ---------------------------------------------------------------------------
-// Registration (spec 01 §10.5): the AAK, and only the AAK
-// ---------------------------------------------------------------------------
 
 func TestASecondWriterIsRegisteredByTheAuthorityKeyAndBindsItsSession(t *testing.T) {
 	t.Parallel()
@@ -253,8 +230,6 @@ func TestRegistrationRefusals(t *testing.T) {
 	if err := reg(func(r *Registration) { r.DAKPubkey = f.device.DAKPub() }); !errors.Is(err, ErrWriterMalformed) {
 		t.Errorf("an enrolled DAK: %v", err)
 	}
-	// Signed by the device's own DWK (ledgerd's TOFU), by an enrolled writer's
-	// DWK (ledgerd's device authorizer), and by the recovery key: all refused.
 	for name, signer := range map[string]ed25519.PrivateKey{"self": d.DWK, "enrolled writer": f.device.DWK,
 		"recovery key": ed25519.NewKeyFromSeed(authtest.RandBytesTB(t, 32))} {
 		if err := reg(func(r *Registration) {
@@ -264,7 +239,6 @@ func TestRegistrationRefusals(t *testing.T) {
 			t.Errorf("signed by %s: %v", name, err)
 		}
 	}
-	// A spent nonce stays spent.
 	r := f.registration(d)
 	bad := r
 	bad.Sig = ed25519.Sign(d.DWK, []byte("x"))
@@ -274,14 +248,12 @@ func TestRegistrationRefusals(t *testing.T) {
 	if err := f.writers.Register(bgctx, f.user, hash, r); !errors.Is(err, ErrBadSignature) {
 		t.Fatalf("a good signature over a spent nonce: %v", err)
 	}
-	// A session that is already bound is never re-bound.
 	if err := f.writers.Register(bgctx, f.user, f.info(f.token).Hash, f.registration(d)); !errors.Is(err, ErrSessionBound) {
 		t.Fatalf("re-binding: %v", err)
 	}
 	if n := f.count(`SELECT count(*) FROM writers WHERE writer_id = $1`, d.WriterID); n != 0 {
 		t.Fatal("a refused registration left a writer")
 	}
-	// An account without keys has no authority to register under.
 	g := newKeyFixtureUnbootstrapped(t)
 	if err := g.writers.Register(bgctx, g.user, g.info(g.token).Hash, g.registration(d)); !errors.Is(err, ErrKeysRequired) {
 		t.Fatalf("no keys: %v", err)
@@ -340,8 +312,6 @@ func TestAWriterChallengeIsSingleUseUnderConcurrency(t *testing.T) {
 	}
 }
 
-// warmPool forces n connections to be established before a race starts, so
-// the racers are not staggered by connection setup.
 func warmPool(t *testing.T, pool *pgxpool.Pool, n int) {
 	t.Helper()
 	conns := make([]*pgxpool.Conn, 0, n)
@@ -357,10 +327,6 @@ func warmPool(t *testing.T, pool *pgxpool.Pool, n int) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Revocation (spec 01 §10.6, R-02)
-// ---------------------------------------------------------------------------
-
 func TestRevocationPinsTheFinalHeadAndEndsTheDevice(t *testing.T) {
 	t.Parallel()
 	f := newKeyFixture(t)
@@ -370,8 +336,6 @@ func TestRevocationPinsTheFinalHeadAndEndsTheDevice(t *testing.T) {
 	registerPushToken(t, f.pool, f.user, stolen.WriterID, stolenTok, "stolen")
 
 	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(stolen.WriterID))
-	// A head the server has moved past is 409 head_moved, and the step-up is
-	// NOT burned (the action failed after a good proof).
 	_, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(stolen.WriterID, f.device, counter-1, head, su))
 	if !errors.Is(err, ErrHeadMoved) {
 		t.Fatalf("stale head: %v", err)
@@ -390,11 +354,9 @@ func TestRevocationPinsTheFinalHeadAndEndsTheDevice(t *testing.T) {
 	if n := f.count(`SELECT count(*) FROM apns_tokens WHERE writer_id = $1`, stolen.WriterID); n != 0 {
 		t.Fatal("the revoked writer's push token survived")
 	}
-	// It can append nothing more: the writer row is read FOR SHARE at append.
 	if err := f.tryAppend(stolen, 1); !errors.Is(err, oplog.ErrWriterRevoked) {
 		t.Fatalf("a revoked writer's validly signed batch: %v, want ErrWriterRevoked", err)
 	}
-	// Revoking again is refused: the log never revokes a writer twice.
 	su2 := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(stolen.WriterID))
 	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(stolen.WriterID, f.device, counter, head, su2)); !errors.Is(err, ErrWriterRevoked) {
 		t.Fatalf("second revocation: %v", err)
@@ -422,7 +384,6 @@ func TestRevocationRefusals(t *testing.T) {
 	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, nil)); !errors.Is(err, ErrStepUpRequired) {
 		t.Fatalf("no step-up: %v", err)
 	}
-	// A step-up begun for another writer id fails, and burns.
 	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(f.device.WriterID))
 	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("step-up for another target: %v", err)
@@ -430,30 +391,23 @@ func TestRevocationRefusals(t *testing.T) {
 	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(f.device.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("a burned nonce: %v", err)
 	}
-	// An assertion without UV fails.
 	f.authn.NoUV = true
 	su = f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
 	f.authn.NoUV = false
 	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("UV cleared: %v", err)
 	}
-	// A signer that is not a live writer of the account.
 	stranger := authtest.NewDevice(t)
 	su = f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
 	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, stranger, 0, zero, su)); !errors.Is(err, ErrBadSignature) {
 		t.Fatalf("unenrolled signer: %v", err)
 	}
-	// The step-up survives a failed action: retry with the right signer.
 	su = f.reprove(su, keyproto.ActionWriterRevoke, []byte(other.WriterID))
 	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); err != nil {
 		t.Fatalf("retry after a refused signer: %v", err)
 	}
 	f.verifiedRoster()
 }
-
-// ---------------------------------------------------------------------------
-// key_history is append-only (spec 02 D-6, spec 01 §9)
-// ---------------------------------------------------------------------------
 
 func TestKeyHistoryGuardBindsANonOwnerRuntimeRole(t *testing.T) {
 	t.Parallel()
@@ -472,7 +426,6 @@ func TestKeyHistoryGuardBindsANonOwnerRuntimeRole(t *testing.T) {
 			t.Fatalf("owner %s: %v, want the append-only guard", sql, err)
 		}
 	}
-	// The CHECKs refuse rows a device could not verify.
 	for name, sql := range map[string]string{
 		"a registration without a DAK": `INSERT INTO key_history (user_id, writer_id, alg, pubkey, event, authorized_by, nonce, signature, at)
 			SELECT user_id, writer_id, alg, pubkey, 'registered', 'authority', nonce, signature, now() FROM key_history LIMIT 1`,
@@ -499,10 +452,6 @@ func TestKeyHistoryIsRemovedWithItsUser(t *testing.T) {
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Step-up (spec 01 §10.2, spec 02 §8)
-// ---------------------------------------------------------------------------
 
 func TestStepUpBeginRefusals(t *testing.T) {
 	t.Parallel()
@@ -532,9 +481,6 @@ func TestStepUpBeginRefusals(t *testing.T) {
 	}
 }
 
-// A device proof: the DAK first, then the password. This account has no
-// password, so a valid DAK signature fails at the password step (and burns),
-// and an invalid one fails before it.
 func TestStepUpDeviceProofChecksTheDAKFirst(t *testing.T) {
 	t.Parallel()
 	f := newKeyFixture(t)
@@ -581,18 +527,15 @@ func TestAStepUpIsBoundToItsSessionAndExpires(t *testing.T) {
 	other := authtest.NewDevice(t)
 	f.enrol(other)
 	zero := make([]byte, 32)
-	// Another session's nonce.
 	su := f.stepUpPasskey(f.newSession(), keyproto.ActionWriterRevoke, []byte(other.WriterID))
 	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("another session's step-up: %v", err)
 	}
-	// An expired one.
 	su = f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
 	f.clock.advance(StepUpTTL + 1)
 	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("an expired step-up: %v", err)
 	}
-	// A proof kind that differs from the one begun.
 	su = f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
 	su.Proof.Kind = "device"
 	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {

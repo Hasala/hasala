@@ -1,10 +1,3 @@
-// Sign-in (spec 04 §6.2 C2, C2-P, C2b, C2b-P; §6.4), sign-out (§4.7 row 1)
-// and the step-up helper (§6.3).
-//
-// A bound iPhone (one with a binding and its DWK) always signs in WITH its
-// writer: `device = {writer_id, Ed25519(DWK, SessionBindMessage(challenge, writer_id))}`
-// where the challenge is the passkey ceremony's `options.challenge` (#6) or
-// the password ceremony's `nonce` (#47, E-05).
 import CoreAuth
 import CoreCrypto
 import CorePrimitives
@@ -14,10 +7,8 @@ import Foundation
 
 public struct SignInResult: Sendable {
   public let grant: SessionGrant
-  /// The address and salt of a password sign-in (the binding needs both).
   public let emailNorm: String?
   public let serverSalt: Data?
-  /// The passkey assertion of a passkey sign-in (its PRF output unlocks, C2).
   public let assertion: RawAssertion?
 
   public var userID: UserID? { UserID(grant.user_id) }
@@ -32,7 +23,6 @@ struct SigningWriter: Sendable {
 }
 
 public enum AccountSignIn {
-  /// C2-P / C2b-P. `bound` is this iPhone's binding when it has a live writer.
   public static func withPassword(
     _ env: AccountEnvironment, email: String, password: String, bound: AccountBinding?
   ) async throws(CeremonyError) -> SignInResult {
@@ -56,8 +46,6 @@ public enum AccountSignIn {
     return SignInResult(grant: grant, emailNorm: emailNorm, serverSalt: salt, assertion: nil)
   }
 
-  /// C2 / C2b. `wantPRF` asks the assertion for the PRF output (an unbound
-  /// iPhone that will unlock with Face ID).
   public static func withPasskey(_ env: AccountEnvironment, bound: AccountBinding?, wantPRF: Bool, only: [Data] = [])
     async throws(CeremonyError) -> SignInResult
   {
@@ -122,7 +110,6 @@ public enum AccountSignIn {
     return (spent, !wrapped.isEmpty)
   }
 
-  /// The SessionBind proof for a bound iPhone, or `nil` when unbound.
   static func binding(_ env: AccountEnvironment, bound: AccountBinding?, challenge: Data) throws(CeremonyError)
     -> DeviceBindingJSON?
   {
@@ -155,9 +142,6 @@ public enum AccountSignIn {
     return s.token
   }
 
-  /// §4.7 row 1: `POST /auth/logout` BEFORE the session item goes; offline →
-  /// keep it with `pending_logout: true` and treat the app as signed out.
-  /// Returns whether the server confirmed (`204` or `401`).
   @discardableResult
   public static func signOut(_ env: AccountEnvironment) async -> Bool {
     let stored: SessionRecord?
@@ -204,26 +188,18 @@ public enum AccountSignIn {
   }
 }
 
-/// The step-up helper (spec 04 §6.3; 01 §10.2; `02` §8.1).
 public enum StepUpHelper {
-  /// What the proof needs from the user, gathered by the "Confirm it's you"
-  /// sheet before this runs.
   public enum Factor: Sendable {
-    /// The passkey sheet (the provider prompts).
     case passkey
-    /// The current password and the DAK (Face ID or the passcode).
     case device(password: String)
   }
 
-  public struct Proof: @unchecked Sendable {  // `prf` is handed to one ceremony, which wipes it
+  public struct Proof: @unchecked Sendable {
     public let stepUp: StepUpJSON
-    /// The PRF output of a passkey proof that asked for it.
     public let prf: SecureBytes?
     public let credentialID: Data?
   }
 
-  /// Runs steps 1–5 for `params` with `factor`, returning the `step_up` object
-  /// for the guarded request. `C` is recomputed and compared BEFORE any prompt.
   public static func prove(
     _ env: AccountEnvironment, params: StepUpParams, factor: Factor, binding: AccountBinding?, reason: String
   ) async throws(CeremonyError) -> Proof {
@@ -276,7 +252,6 @@ public enum StepUpHelper {
     }
   }
 
-  /// A `device_code` proof with the typed code, reusing the stored signature.
   public static func withCode(_ proof: Proof, code: String) throws(CeremonyError) -> StepUpJSON {
     let p = proof.stepUp.proof
     guard p.kind == StepUpProofKind.deviceCode.rawValue, let writer = p.writer_id, let sig = p.sig else {
@@ -297,8 +272,6 @@ public enum StepUpHelper {
   }
 }
 
-/// §4.7 rows 2–3: everything this iPhone holds for an account. The server
-/// side (revocation, deletion) is the caller's, and happens first.
 public enum AccountWipe {
   public static func wipe(_ env: AccountEnvironment, userID: UserID, writerID: WriterID?) {
     try? env.secrets.wipeAccount(userID: userID, writerID: writerID)

@@ -1,16 +1,4 @@
 #!/usr/bin/env swift
-// generate.swift: Paper design tokens -> HasalaDesign/Generated/Tokens.swift.
-//
-//   swift ios/tools/tokens/generate.swift            # rewrite Tokens.swift
-//   swift ios/tools/tokens/generate.swift --check    # exit 1 if Tokens.swift is stale
-//   swift ios/tools/tokens/generate.swift --accept-hash  # take a new Paper token set
-//
-// Run from the repository root. The input is design/tokens/paper-tokens.json, a
-// verbatim `get_tokens` export of the private Paper design file (name -> value,
-// in the file's order, plus the token-set hash Paper reports). Aliases
-// (`var(--x)`) are resolved here, so the Swift side sees only literals; each
-// alias keeps a comment naming what it points at. The design is light only, so
-// there is one value per token (spec 04 §14.1, §14.2).
 
 import Foundation
 
@@ -42,7 +30,6 @@ for t in file.tokens {
   byName[t.name] = t.value
 }
 
-/// Follows `var(--x)` chains to a literal; returns the literal and the first alias target.
 func resolve(_ name: String, depth: Int = 0) -> (literal: String, aliasOf: String?) {
   guard depth < 16 else { fail("alias cycle at \(name)") }
   guard let raw = byName[name] else { fail("unknown token \(name)") }
@@ -54,7 +41,6 @@ func resolve(_ name: String, depth: Int = 0) -> (literal: String, aliasOf: Strin
   return (v, nil)
 }
 
-/// `--color-hue-sky-start` minus its namespace prefix -> `hueSkyStart`; `2xs` -> `xxs`.
 func identifier(_ rest: String) -> String {
   let parts = rest.split(separator: "-").map(String.init)
   var out = ""
@@ -83,7 +69,6 @@ func parseColor(_ s: String) -> RGBA {
                 a: Double(v & 0xFF) / 255)
   }
   if s.hasPrefix("rgb("), s.hasSuffix(")") {
-    // CSS Color 4 space syntax: rgb(R G B / A%)
     let body = s.dropFirst(4).dropLast()
     let halves = body.split(separator: "/").map { $0.trimmingCharacters(in: .whitespaces) }
     let chans = halves[0].split(separator: " ").compactMap { Int($0) }
@@ -108,14 +93,12 @@ func fmt(_ v: Double) -> String {
 }
 
 func fmtAlpha(_ a: Double) -> String {
-  // Paper writes percentages with at most one decimal (92.2%), so four places are exact.
   var t = String(format: "%.4f", a)
   while t.hasSuffix("0") { t.removeLast() }
   if t.hasSuffix(".") { t.removeLast() }
   return t
 }
 
-// Namespaces, longest prefix first so `--font-weight-` wins over `--font-`.
 let namespaces: [(prefix: String, kind: String)] = [
   ("--color-", "color"), ("--font-weight-", "weight"), ("--font-", "family"),
   ("--text-", "size"), ("--leading-", "leading"), ("--tracking-", "tracking"),
@@ -198,8 +181,6 @@ for e in enums {
 out.removeLast()
 
 let existing = (try? String(contentsOfFile: outputPath, encoding: .utf8)) ?? ""
-// A new Paper token set is a design change, not a regeneration: it is taken only
-// on purpose, with --accept-hash (spec 04 §14.1).
 let hashMarker = "public static let paperHash = \""
 let recordedHash = existing.range(of: hashMarker).map { start in
   String(existing[start.upperBound...].prefix { $0 != "\"" })

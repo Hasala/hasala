@@ -3,13 +3,6 @@ import HasalaModels
 import SwiftUI
 import UIKit
 
-// Paper P2.2 "Recovery phrase" (spec 07 §5): why it matters, then the 12 words hidden
-// until tapped and written on paper, then "Your account is ready". There is no word check
-// (`docs/decisions/recovery-phrase-no-quiz.md`): "I've written them down" publishes the
-// account once the words were drawn for the person.
-
-/// Recovery phrase · 3 of 3 · Why it matters (Paper F46-0; spec 07 S11). No way back: the
-/// account exists.
 struct PhraseIntroView: View {
   var model: SignupModel
 
@@ -43,9 +36,6 @@ struct PhraseIntroView: View {
     }
   }
 
-  /// Paper's line, where this build can get someone back in with the words alone
-  /// (`recoverAccess`). The beta can't yet: there the words unlock a new iPhone only after
-  /// signing in there (a Release copy exception, plan P1).
   private var newIPhone: String {
     model.capabilities.contains(.recoverAccess)
       ? "No passkey there? These words unlock your data. A password can't."
@@ -66,26 +56,15 @@ struct PhraseIntroView: View {
   }
 }
 
-/// The words, hidden until tapped; hidden again when the app leaves the foreground or the
-/// screen is captured (spec 04 §6.7), and not shown at all while it is captured. In create
-/// mode "I've written them down" stays off until the words were shown (Paper F6Q), then
-/// publishes them: there is no word check after this screen
-/// (`docs/decisions/recovery-phrase-no-quiz.md`), so a reveal that drew only dots must not
-/// count (`onCapture` tells the model).
 struct PhraseShowView: View {
   @Binding var revealed: Bool
   var words: [String]
   var mode: Mode = .create
   var onBack: (() -> Void)?
-  /// "I've written them down" (create) or "Done" (view).
   var onContinue: () -> Void
-  /// Create mode: the words were shown at least once, so "I've written them down" can go.
   var seen = true
-  /// Create mode: publishing is under way.
   var busy = false
-  /// Create mode: why the last publish didn't go through.
   var failure: AuthFailure?
-  /// Whether the screen is being recorded or mirrored, on appear and on every change.
   var onCapture: (Bool) -> Void = { _ in }
   var canShowAgain = true
 
@@ -99,7 +78,6 @@ struct PhraseShowView: View {
   @State private var captured = screenIsCaptured()
   @State private var screenshotWarning = false
 
-  /// The words are drawn (revealed and not masked by a capture).
   private var shown: Bool { revealed && !captured }
 
   var body: some View {
@@ -109,7 +87,6 @@ struct PhraseShowView: View {
         ? "On paper, numbered. Check each word twice."
         : "Make sure no one's watching, then tap to show them.",
       steps: mode == .create ? (3, 3) : nil,
-      // Creating, there is no way back (Paper S12); viewing, back closes the words.
       back: mode == .view ? onBack.map { AccountBack.action($0) } ?? AccountBack.none : AccountBack.none
     ) {
       VStack(alignment: .leading, spacing: shown ? 10 : 12) {
@@ -121,8 +98,6 @@ struct PhraseShowView: View {
         WarningCallout(icon: .cameraSlash,
                        text: "No screenshots or copying. Photos sync, and apps can read your clipboard.")
       }
-      // Revealed, the phrase header joins the card and the content moves up to make room
-      // (Paper F9O-0: 12 under the question block, 10 apart; hidden, 24 and 12).
       .padding(.top, shown ? -12 : 0)
       .hAnimation(.stateSwap, value: shown)
     } actions: {
@@ -150,7 +125,6 @@ struct PhraseShowView: View {
     .onDisappear { revealed = false }
   }
 
-  /// Captured, the words hide and stay hidden until capture stops.
   private func noteCapture() {
     captured = screenIsCaptured()
     if captured { revealed = false }
@@ -158,17 +132,10 @@ struct PhraseShowView: View {
   }
 }
 
-/// Recovery phrase · Saved → "Your account is ready." (Paper FJI-0; spec 07 S13): what the
-/// account has (the address, how it signs in, the words on paper), then the hand-off to
-/// setup, where the person connects their email. "What Hasala reads, and what it doesn't"
-/// opens "Who can see what". No way back: the account exists.
 struct AccountReadyView: View {
   var profile: AccountProfile?
   var signupEmail = ""
-  /// Outlook can be connected in this build ("Who can see what" names Microsoft only then).
   var outlook: Bool
-  /// What this build can do for the account (`AccountService.capabilities`): whether the
-  /// words can be shown again, and how.
   var capabilities: AccountCapabilities
   var passkeyHoldsKeys = true
   var onContinue: () -> Void
@@ -177,10 +144,6 @@ struct AccountReadyView: View {
 
   private var passkey: Bool { profile?.method != .password }
 
-  /// Where the words can be seen again, said only as far as this build can do it: Sign-in &
-  /// security shows them after Face ID with a passkey that holds the keys. A passkey added
-  /// later on this iPhone signs in but holds no keys, so a password account can't. No line
-  /// is longer than Paper's, so the screen still fits above the dock.
   private var subtitle: String {
     Self.subtitle(capabilities: capabilities, passkey: passkey, passkeyHoldsKeys: passkeyHoldsKeys)
   }
@@ -206,7 +169,6 @@ struct AccountReadyView: View {
     .sheet(isPresented: $whoSeesOpen) { WhoCanSeeSheet(outlook: outlook) }
   }
 
-  /// Continue to setup, and what Hasala reads (the "Who can see what" sheet).
   @ViewBuilder private var actions: some View {
     Button("Continue", action: onContinue)
       .buttonStyle(.pill(.primary, fill: true))
@@ -216,7 +178,6 @@ struct AccountReadyView: View {
       .accessibilityIdentifier("ready.whoSees")
   }
 
-  /// Paper "ListCard · Account summary": a green dot, what, and where it is.
   private var summary: some View {
     VStack(spacing: 0) {
       row(profile?.email.isEmpty == false ? profile?.email ?? "" : signupEmail, "Verified")
@@ -232,7 +193,6 @@ struct AccountReadyView: View {
     Rectangle().fill(HColor.borderSubtle).frame(height: 1).padding(.leading, 35)
   }
 
-  /// Paper's hand-off card ("Next: connect your email").
   private var handOff: some View {
     InfoCard(icon: .envelope, hue: .sky, title: "Next: connect your email",
              detail: "Read-only, on this iPhone. Only your banks' alerts.")
@@ -242,8 +202,6 @@ struct AccountReadyView: View {
     ReflowingRow(spacing: 12) {
       HStack(spacing: 12) {
         Circle().fill(HColor.statusSuccessForeground).frame(width: 7, height: 7).accessibilityHidden(true)
-        // One line as Paper draws it; at the larger sizes a long address wraps rather than
-        // losing its middle.
         Text(title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
           .lineLimitAtDefaultTextSize(1).truncationMode(.middle)
       }

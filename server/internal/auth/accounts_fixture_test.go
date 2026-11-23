@@ -21,8 +21,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// acctFixture is the account ceremonies with fixed server keys, a fake mail
-// sender whose sends run inline, and a settable clock.
 type acctFixture struct {
 	t        *testing.T
 	pool     *pgxpool.Pool
@@ -74,7 +72,6 @@ func newAcctFixture(t *testing.T) *acctFixture {
 
 var codeRe = regexp.MustCompile(`Your Hasala code is ([0-9]{6})\.`)
 
-// lastCode is the newest code mailed to addr.
 func (f *acctFixture) lastCode(addr string) string {
 	f.t.Helper()
 	msgs := f.fake.To(addr)
@@ -87,7 +84,6 @@ func (f *acctFixture) lastCode(addr string) string {
 	return ""
 }
 
-// sendQueued runs the mail worker once.
 func (f *acctFixture) sendQueued() {
 	f.t.Helper()
 	if _, err := f.queue.Drain(bgctx); err != nil {
@@ -97,7 +93,6 @@ func (f *acctFixture) sendQueued() {
 
 var freezeLinkRe = regexp.MustCompile(`https://hasala\.app/freeze#([A-Za-z0-9_-]{43})`)
 
-// freezeToken is the newest freeze link's token mailed to addr.
 func (f *acctFixture) freezeToken(addr string) string {
 	f.t.Helper()
 	f.sendQueued()
@@ -111,8 +106,6 @@ func (f *acctFixture) freezeToken(addr string) string {
 	return ""
 }
 
-// addressedInvite mints an emailed invite for addr with a link key, as 07's
-// worker does, and answers the code and the b64url link key.
 func (f *acctFixture) addressedInvite(addr string) (string, string) {
 	f.t.Helper()
 	lk := authtest.RandBytesTB(f.t, 32)
@@ -132,7 +125,6 @@ func (f *acctFixture) printedInvite(review bool) string {
 	return code
 }
 
-// provenSignup is signup/begin with an addressed invite's link.
 func (f *acctFixture) provenSignup(addr, name string) SignupBegun {
 	f.t.Helper()
 	norm, err := keyproto.EmailNorm(addr)
@@ -150,13 +142,11 @@ func (f *acctFixture) provenSignup(addr, name string) SignupBegun {
 	return s
 }
 
-// member is one account taken through password signup (C1-P), with its
-// device and its key material.
 type member struct {
 	f      *acctFixture
 	addr   string
 	pw     string
-	s      []byte // S
+	s      []byte
 	user   SignedIn
 	acct   *authtest.Account
 	device *authtest.Device
@@ -167,7 +157,6 @@ func (f *acctFixture) stretch(addr, pw string) []byte {
 	return authtest.Stretch(pw, f.keys.PasswordSalt(addr), addr)
 }
 
-// passwordMember signs a new account up with a password on a proven address.
 func (f *acctFixture) passwordMember(name string) *member {
 	f.t.Helper()
 	addr := f.newAddr()
@@ -206,8 +195,6 @@ func (m *member) info() SessionInfo {
 	return i
 }
 
-// deviceStepUp begins and proves a device step-up (the DAK plus S) for action
-// on the member's session.
 func (m *member) deviceStepUp(action keyproto.Action, s []byte, fields ...[]byte) *StepUpObject {
 	m.f.t.Helper()
 	i := m.info()
@@ -221,7 +208,6 @@ func (m *member) deviceStepUp(action keyproto.Action, s []byte, fields ...[]byte
 		Sig: m.device.SignDAK(m.f.t, msg), Verifier: s}}
 }
 
-// loginPassword signs in with S; device binds it when non-nil.
 func (m *member) loginPassword(s []byte, device *authtest.Device) (SignedIn, error) {
 	m.f.t.Helper()
 	b, err := m.f.acct.PasswordLoginBegin(bgctx, m.addr)

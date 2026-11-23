@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// Spec 02 §16.1's cases (the shape of conformance's client-ip.json).
 func TestClientKeyFor(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
@@ -32,7 +31,6 @@ func TestClientKeyFor(t *testing.T) {
 		if c.header != "" {
 			r.Header.Set("Cf-Connecting-Ip", c.header)
 		}
-		// Headers nothing may read (fence test 3) change nothing.
 		r.Header.Set("X-Real-Ip", "198.51.100.200")
 		r.Header.Set("X-Forwarded-For", "198.51.100.201")
 		r.Header.Set("True-Client-Ip", "198.51.100.202")
@@ -43,7 +41,6 @@ func TestClientKeyFor(t *testing.T) {
 	}
 }
 
-// AT-RL-1, AT-RL-2 and AT-RL-3 through the handler, on meta-ip (no database).
 func TestPerIPLimitsFollowCfConnectingIP(t *testing.T) {
 	t.Parallel()
 	srv := &Server{TrustCloudflare: true, Logf: func(string, ...any) {}}
@@ -60,22 +57,18 @@ func TestPerIPLimitsFollowCfConnectingIP(t *testing.T) {
 		return w.Code
 	}
 	const tunnel = "127.0.0.1:40000"
-	// AT-RL-1: one client is limited, a second client behind the same tunnel
-	// is not.
 	if get(tunnel, "192.0.2.1") != http.StatusOK || get(tunnel, "192.0.2.1") != http.StatusTooManyRequests {
 		t.Fatal("192.0.2.1 was not limited on its own key")
 	}
 	if c := get(tunnel, "192.0.2.2"); c != http.StatusOK {
 		t.Fatalf("a second client behind the tunnel got %d: the limit is global", c)
 	}
-	// AT-RL-3: one /64 is one bucket; another /64 is its own.
 	if get(tunnel, "2001:db8::1") != http.StatusOK || get(tunnel, "2001:db8::ffff:2") != http.StatusTooManyRequests {
 		t.Fatal("two addresses in one /64 did not share a bucket")
 	}
 	if c := get(tunnel, "2001:db8:0:1::1"); c != http.StatusOK {
 		t.Fatalf("another /64 got %d", c)
 	}
-	// AT-RL-2: a non-loopback peer is keyed by itself, whatever it claims.
 	if c := get("203.0.113.5:1", "192.0.2.99"); c != http.StatusOK {
 		t.Fatalf("first request from a remote peer: %d", c)
 	}

@@ -1,13 +1,6 @@
 import HasalaModels
 import SwiftUI
 
-/// A 48 pt glass circle in screen chrome (page 10 "Glass for chrome, system for the OS.";
-/// page 13 headers, page 14 sheet headers): Hide amounts, Notifications, Back, Close, Add,
-/// More, Share, Filter, and the accent Done. Icon only: the label is for VoiceOver ("Back",
-/// "Notifications, 4 new", "Hide amounts"); the circle never holds text.
-///
-/// Native Liquid Glass (the system brightens it on press, so there is no custom pressed fill);
-/// solid with a hairline under Reduce Transparency. Dynamic Type does not grow the circle.
 public struct GlassIconButton: View {
   let icon: HIcon
   let label: String
@@ -18,9 +11,6 @@ public struct GlassIconButton: View {
   @Environment(\.isEnabled) private var isEnabled
   @Environment(\.hGlassPaired) private var paired
 
-  /// `badge` draws the count top right (hidden at 0, "99+" past 99); put the count in `label`
-  /// too, since the badge is hidden from VoiceOver. `prominent` is the accent Done (one per
-  /// screen). `selected` marks a toggle such as Hide amounts.
   public init(_ icon: HIcon, label: String, badge: Int? = nil, prominent: Bool = false, selected: Bool? = nil,
               action: @escaping () -> Void)
   {
@@ -35,7 +25,6 @@ public struct GlassIconButton: View {
   public var body: some View {
     Button(action: action) {
       ZStack {
-        // A toggle's glyph swap (the eye of Hide amounts) cross-fades, 150 ms at most.
         HIconView(icon, size: iconSize, color: iconColor)
           .id(icon)
           .transition(.opacity)
@@ -57,14 +46,12 @@ public struct GlassIconButton: View {
     }
     .accessibilityLabel(label)
     .accessibilityAddTraits(selected == true ? .isSelected : [])
-    // Dynamic Type does not grow the circle; a long press shows the icon and its name large.
     .accessibilityShowsLargeContentViewer {
       HIconView(icon, size: 28, color: HColor.iconPrimary)
       Text(label)
     }
   }
 
-  /// 22 for every glass glyph (`--spacing-icon-glass`), 24 for the two eye glyphs.
   private var iconSize: CGFloat {
     icon == .eye || icon == .eyeSlash ? HSpacing.iconLarge : HSpacing.iconGlass
   }
@@ -132,8 +119,6 @@ struct GlassBadgeAnchors: PreferenceKey {
   }
 }
 
-/// The Profile glass button: a 36 initial disc inside the glass, 6 in (page 10, Avatar). It
-/// opens Your profile from the Home header.
 public struct GlassAvatarButton: View {
   let initial: String
   let email: String?

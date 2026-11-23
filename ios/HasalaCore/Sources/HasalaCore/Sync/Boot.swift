@@ -1,23 +1,3 @@
-// The boot decision (spec 04 §6.5, port of `v2/boot.ts`; never rejects) and
-// the launch probe (§6.5 "The launch run starts with GET /api/v1/meta and GET
-// /api/v1/auth/session").
-//
-//   installCheck (HasalaKeychain.InstallCheck) ── .notNow ──► waitingForUnlock
-//   bindingCheck
-//     no binding, no DB, no session ──────────► signedOut
-//     no binding, session present ────────────► onboardingKeys      (C1 interrupted, R-04)
-//     binding ≠ DB user / session user ───────► foreignData
-//     binding ok → secretsCheck
-//       a secret unreadable now ──────────────► waitingForUnlock
-//       K_e missing ──────────────────────────► needsUnlock
-//       DWK missing ──────────────────────────► unenrolled
-//       session missing ──────────────────────► signedOutBound
-//       ledger.sqlite absent ─────────────────► restoring          (same-iPhone restore, §4.7 row 8)
-//       ok ───────────────────────────────────► opening
-//
-// TODO(WS-14): `restoring` (recreate the store, full pull, authored head :=
-// the verified server head) and the roster's `key_lost`/`revoked` states of
-// `unenrolled` are decided here but not yet carried out.
 import CoreAuth
 import CorePrimitives
 import CoreStore
@@ -33,20 +13,16 @@ public enum BootState: Sendable, Hashable {
   case unenrolled
   case signedOutBound
   case restoring
-  /// Open the pools, then onboarding or `ready(offline: true)`.
   case opening(AccountBinding)
 }
 
-/// The facts boot decides from; `gather` reads them, `decide` is pure.
 public struct BootFacts: Sendable, Hashable {
   public var binding: AccountBinding?
   public var session: SessionRecord?
-  /// The store's `store_meta.user_id`, when a store exists.
   public var storeUserID: UserID?
   public var storeExists: Bool
   public var epochKeyPresent: Bool
   public var writerKeyPresent: Bool
-  /// A Keychain read threw (before first unlock).
   public var unreadable: Bool
 
   public init(
@@ -81,7 +57,6 @@ public enum Boot {
     return .opening(binding)
   }
 
-  /// Reads the facts. Call only after `InstallCheck` returned `.done`.
   public static func gather(_ env: AccountEnvironment) -> BootFacts {
     var f = BootFacts(
       binding: nil, session: nil, storeUserID: nil, storeExists: false, epochKeyPresent: false,
@@ -112,18 +87,13 @@ public enum Boot {
   }
 }
 
-/// What the launch run's probe found (§6.5).
 public enum LaunchProbe: Sendable, Hashable {
   case ok
-  /// The session is not bound to a writer: re-bind (C2b / C2b-P).
   case unbound
-  /// A restricted session or a frozen account (§6.11).
   case frozen
-  /// `meta.min_ios_build` is above this build (§6.5 RD-1).
   case updateRequired
   case stop(SyncStop)
 
-  /// `GET /meta` then `GET /auth/session`. `build` is `CFBundleVersion`.
   public static func run(_ ctx: SyncContext, build: Int) async -> LaunchProbe {
     do {
       let meta = try await ctx.client.meta()

@@ -2,26 +2,14 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-// The parts the mailbox screens share (Paper P2.9 "Connect your email", P1 "Profile · Bank
-// alerts"; spec 06 §3): the Gmail-to-this-iPhone strip, the "Hasala reads / Never" card, the
-// reasons card of the two errors, the text link rows, the accent action row and the bank
-// row. The kit's `MailboxRow`, `ProviderRow`, `ProviderButton` and `ProviderMark` do the rest.
-
-// MARK: - Copy
-
 enum MailCopy {
   static let sampleDataRefusal = "This account shows sample data and can't read email."
   static let reviewAccountRefusal = "This App Review account can't read your email."
 
-  /// "Emirates NBD and DIB": the banks as the read-only card and the scan name them.
   static func banks(_ banks: [SupportedBank]) -> String {
     banks.map(\.shortName).formatted(.list(type: .and))
   }
 
-  /// The caption under the read-only card (Paper 6RN, 1MRM: "New mail note"), two lines as
-  /// Paper draws it, so the screen fits above its dock and nothing sits cut off behind the
-  /// provider's button. Paper's is the push sentence; a Release build relays no push, so it
-  /// says how new alerts are really caught (no promise the beta doesn't keep).
   static var readNote: String {
     BuildSurface.showsUnfinished
       ? "Our server is told when new mail arrives, never what it says."
@@ -50,8 +38,6 @@ enum MailCopy {
 
   static let pastImportLater = "Reading your past email in the background."
 
-  /// Under the Mailboxes card (Paper 1NS8). The server's part of a new-mail wake is
-  /// Debug's: a Release build relays none.
   static let mailboxesFootnote = "Read-only, on this iPhone."
 
   static var mailboxesFootnoteDetail: String {
@@ -60,8 +46,6 @@ enum MailCopy {
       : "Our server keeps only a code for each mailbox, made with a secret key. It never sees your mail."
   }
 
-  /// The toast after a new sign-in to a mailbox whose provider ended access (Paper flow:
-  /// "Connected again · Checks again from the last check").
   static func signedInAgain(
     _ provider: MailProviderKind, nowReading address: String? = nil, removal: MailSwitchRemoval? = nil
   ) -> String {
@@ -69,7 +53,6 @@ enum MailCopy {
     return with("Now reading \(address).", removal)
   }
 
-  /// The toast after a new mailbox (Paper 1NYL).
   static func added(_ provider: MailProviderKind, removal: MailSwitchRemoval? = nil) -> String {
     with("\(provider.appName) connected. Checking for alerts.", removal)
   }
@@ -150,8 +133,6 @@ enum MailCopy {
     return lead.map { "\($0), remove \(them)" } ?? "Remove \(them)"
   }
 
-  /// Where to take Hasala's permission away on the provider's side (Paper 1O9X names
-  /// Microsoft's; Google's is its permissions page).
   static func consentPage(_ provider: MailProviderKind) -> String {
     switch provider {
     case .gmail: "myaccount.google.com/permissions"
@@ -159,11 +140,8 @@ enum MailCopy {
     }
   }
 
-  /// The system alert before a connect replaces the account's one link (main's "Change
-  /// your email?"; Paper has no board for it, so it is the disconnect alert's kind).
   static let switchTitle = "Change your email?"
 
-  /// Its message: "Hasala reads your bank alerts from Outlook instead of Gmail."
   static func switchMessage(
     from old: MailProviderKind, to new: MailProviderKind, impact: MailboxDisconnectImpact? = nil
   ) -> String {
@@ -172,13 +150,8 @@ enum MailCopy {
     return ([lead] + impactLines(impact)).joined(separator: " ")
   }
 
-  /// The system alert before a connect takes the account's link over from another iPhone
-  /// (a new install or a recovered account, while the server still names the earlier
-  /// iPhone; Paper has no board for it, so it is the switch alert's kind).
   static let takeoverTitle = "Read your email on this iPhone?"
 
-  /// Its message. The other iPhone may be one the person no longer has: the server can't
-  /// tell, so the copy says both.
   static func takeoverMessage(from held: MailProviderKind, to new: MailProviderKind) -> String {
     let reads = held == new ? "" : ", and this iPhone reads \(new.appName)"
     return "Another iPhone reads your \(held.appName), maybe one you no longer have. It stops\(reads). Past transactions stay."
@@ -225,19 +198,10 @@ enum MailCopy {
   }
 }
 
-// MARK: - The success moment
-
-/// A mailbox connected, or read again after a new sign-in, on a screen that goes as it
-/// ends (`ConnectMailPage`: Add a mailbox's provider screen, the Profile card's "Connect
-/// your email" or "Sign in again"). Bank alerts takes it once it shows, whether it was
-/// under that screen or is made new in its place, and plays the motion policy's success:
-/// the new row lands with the haptic, or the haptic plays for the mailbox read again.
-/// One at a time, for the process, like `MailLaunch`'s Debug taps.
 enum MailboxMoment: Equatable {
   case added(mailboxID: String)
   case signedInAgain(mailboxID: String)
 
-  /// The moment no Bank alerts has shown yet.
   private(set) static var pending: MailboxMoment?
 
   static func hand(_ moment: MailboxMoment) {
@@ -253,13 +217,11 @@ enum MailboxMoment: Equatable {
     pending = nil
   }
 
-  /// The pending moment, once.
   static func take() -> MailboxMoment? {
     defer { pending = nil }
     return pending
   }
 
-  /// The mailbox a pending `added` lands (Bank alerts holds its row back from the first frame).
   static var pendingAddition: String? {
     if case .added(let id)? = pending { return id }
     return nil
@@ -283,26 +245,18 @@ extension MailboxSnapshot {
 }
 
 extension MotionPolicy {
-  /// How long `kind` takes to come to rest under this policy (none when it shows at once),
-  /// so the success haptic plays as the motion settles, never as it starts (motion policy).
   func settleDelay(_ kind: HMotion.Kind) -> Duration {
     .seconds(curve(kind)?.nominalDuration ?? 0)
   }
 }
 
-// MARK: - Glyphs Paper draws that the icon set doesn't hold
-
-/// A 24-grid glyph from a Paper board, drawn from its path data: the hero's check and "!",
-/// the link of "How Hasala reads your email", the action row's plus.
 struct PaperGlyph: View {
   struct Part {
     let d: String
     var fill = false
   }
 
-  /// Bank alerts' working hero: `M5.5 12.5l4.2 4.2 8.8-9.2`.
   static let check = [Part(d: "M5.5 12.5l4.2 4.2 8.8-9.2")]
-  /// The "needs you" hero: a bar and a dot.
   static let alert = [Part(d: "M12 7.5v5.5"), Part(d: "M13.4 17a1.4 1.4 0 1 1-2.8 0a1.4 1.4 0 1 1 2.8 0Z", fill: true)]
   static let link = [
     Part(d: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2"),
@@ -314,14 +268,12 @@ struct PaperGlyph: View {
     Part(d: "M9.9 9.9a3 3 0 0 0 4.2 4.2"),
   ]
   static let plus = [Part(d: "M12 5v14M5 12h14")]
-  /// The read-only card's tick and dash (12 in a 20 badge).
   static let tick = [Part(d: "m5 12.5 4.5 4.5L19 7.5")]
   static let dash = [Part(d: "M6 12h12")]
 
   let parts: [Part]
   let size: CGFloat
   let color: Color
-  /// In grid units.
   let lineWidth: CGFloat
 
   init(_ parts: [Part], size: CGFloat, color: Color, lineWidth: CGFloat) {
@@ -351,10 +303,6 @@ struct PaperGlyph: View {
   }
 }
 
-// MARK: - The read-only screen's parts
-
-/// "Gmail → This iPhone" (Paper "Flow · Gmail to this iPhone"): where the alerts come from
-/// and where they're read, two chips and a dotted arrow.
 struct FlowStrip: View {
   let provider: MailProviderKind
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -372,7 +320,6 @@ struct FlowStrip: View {
       }
       arrow
       chip(title: "This iPhone", detail: "Reads and sorts", lifted: true) {
-        // P1's tile (Paper "Slot mark · tile"), the one the join screens draw.
         AppIconTile(size: 36, radius: 10)
       }
     }
@@ -421,8 +368,6 @@ struct FlowStrip: View {
   }
 }
 
-/// "Hasala reads / Never" (Paper "What is and isn't read"): the banks picked and the iPhone
-/// on one side, the rest of the inbox, sending and the server on the other.
 struct ReadsNeverCard: View {
   let banks: [SupportedBank]
 
@@ -449,9 +394,6 @@ struct ReadsNeverCard: View {
   }
 
   private func item(_ text: String, reads: Bool) -> some View {
-    // Paper's gap is 10, but Inter on iOS sets "Downloaded and read here, on this iPhone"
-    // 0.6 pt wider than the 300 that leaves on a 402 screen: 9 keeps Paper's line breaks
-    // (and the screen 20 pt shorter, so its caption isn't left under the dock).
     HStack(alignment: .top, spacing: 9) {
       Circle()
         .fill(reads ? HColor.statusSuccessSurface : HColor.surfaceSecondary)
@@ -469,9 +411,6 @@ struct ReadsNeverCard: View {
   }
 }
 
-/// A sentence and its link in one wrapping row (Paper "TextLinkRow"): "Not your email?
-/// Choose a different one." One button; VoiceOver reads both parts. While what it started
-/// runs (`busy`), a spinner holds its place and further taps do nothing.
 struct TextLinkRow: View {
   var lead: String?
   var link: String
@@ -493,15 +432,9 @@ struct TextLinkRow: View {
   }
 }
 
-/// "Use another email service? Email us." (Paper, Choose your email): a mail to support
-/// naming the provider Hasala doesn't read yet, marked as leaving the app. A person reads
-/// it; nothing is sent from the app.
 struct TellUsWhichLink: View {
-  /// The chooser's footnote: the whole sentence in link blue, 13/18 semibold, from the
-  /// leading edge (Paper 1MZG, 1NW2). Otherwise the dock's text link row, 15/20, centred.
   var small = false
   var leading = false
-  /// The small link's text height, so its 44 pt target can overhang it (see `body`).
   @State private var textHeight: CGFloat = 0
 
   static let label = "Use another email service? Email us."
@@ -536,18 +469,10 @@ struct TellUsWhichLink: View {
     .accessibilityHint("Opens Mail")
     .accessibilityAddTraits(.isLink)
     .accessibilityIdentifier("mail.choose.other")
-    // The chooser's footnote sits 6 above the link (Paper 1N2A): the 44 pt target
-    // overhangs the text above and below instead of pushing it 13 pt down.
     .padding(.vertical, small && textHeight > 0 ? -max(0, HSpacing.targetMinimum - textHeight) / 2 : 0)
   }
 }
 
-/// The sentence and its link as one text of two runs, so it grows with Dynamic Type and
-/// wraps as one sentence at every size (two texts side by side, or a fit switch between
-/// layouts, left the accessibility audit reading text that stops growing). Paper's row
-/// wraps the link as a whole ("flex-wrap"): up to the large sizes its words are held
-/// together, so it moves to the next line in one piece, as on 1MRM; at the accessibility
-/// sizes it wraps word by word, as its words may not fit one line.
 private struct TextLinkLabel: View {
   let lead: String?
   let link: String
@@ -567,8 +492,6 @@ private struct TextLinkLabel: View {
       .contentShape(Rectangle())
   }
 
-  /// The lead in the secondary colour (the type the view sets), then the link at 600 in
-  /// link blue (a weight up under Bold Text, as `hType` steps its own faces).
   static func text(lead: String?, link: String, wholeLink: Bool, boldText: Bool, external: Bool = false) -> Text {
     let weight: HWeight = boldText ? HWeight.semibold.bolder : .semibold
     let words = wholeLink ? link.replacingOccurrences(of: " ", with: "\u{00A0}") : link
@@ -580,17 +503,9 @@ private struct TextLinkLabel: View {
 }
 
 extension View {
-  /// A pill in an account screen's dock takes the height its label needs at every text
-  /// size. The dock doesn't scroll, so a label offered less height than it needs could be
-  /// cut short at the larger sizes (the accessibility audit's "Text clipped" at AX3, where
-  /// "Continue with Microsoft" takes two lines).
   func dockPill() -> some View { fixedSize(horizontal: false, vertical: true) }
 }
 
-// MARK: - The errors' card
-
-/// "What to do" / "Common reasons" (Paper 1NQF): numbered badges for real steps, or plain
-/// rows, a title and a line each.
 struct MailReasonsCard: View {
   struct Item: Hashable {
     let title: String
@@ -635,14 +550,9 @@ struct MailReasonsCard: View {
   }
 }
 
-// MARK: - Bank alerts' rows
-
-/// An accent action row at the end of a card (Paper "Add a mailbox", "Add a bank"): a 40
-/// accent tile with a plus, the label in link blue.
 struct MailActionRow: View {
   let title: String
   let identifier: String
-  /// Add a mailbox's plus, or the envelope for "Use another email".
   var glyph = PaperGlyph.plus
   var icon: HIcon?
   var detail: String?
@@ -687,8 +597,6 @@ struct MailActionRow: View {
   }
 }
 
-/// A bank whose alerts are read (Paper "BankRow"): its plate, its name, where its alerts
-/// come from, and a green tick.
 struct BankAlertsBankRow: View {
   let bank: SupportedBank
   let detail: String

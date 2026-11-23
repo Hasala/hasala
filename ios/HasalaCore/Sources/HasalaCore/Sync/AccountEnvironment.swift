@@ -1,9 +1,3 @@
-// What the auth ceremonies need (spec 04 §6), and the one error they throw.
-//
-// The ceremonies here are the core half of §6.2: every byte, every server call
-// and every Keychain write, in 01's order. The app's Live/ layer drives them
-// from the screens and supplies the platform pieces (the passkey sheet, the
-// Secure Enclave DAK, the Keychain), each behind its core protocol.
 import CoreAuth
 import CoreCrypto
 import CorePrimitives
@@ -19,10 +13,7 @@ public struct AccountEnvironment: Sendable {
   public let passkeys: (any PasskeyProvider)?
   public let clock: any CoreTime.Clock
   public let random: any RandomSource
-  /// The API origin stored in the binding (`https://api.hasala.app`).
   public let apiBase: String
-  /// `<AS>/accounts`; each account's store lives in `<user_id>/` below it.
-  /// `nil` keeps stores in memory (tests).
   public let accountsDirectory: URL?
 
   public init(
@@ -59,39 +50,25 @@ public enum CeremonyError: Error, Sendable {
   case approvalKey(ApprovalKeyError)
   case secret(SecretStoreError)
   case store(StoreError)
-  /// A server value failed the client's own check BEFORE any prompt: `C_reg`
-  /// (01 §10.3 step 6) or a step-up `C` (AT-C9).
   case challengeMismatch
-  /// E-04: after bootstrap, `GET /keys` or `GET /account` differ from this
-  /// device's values; or the commitments of an unwrapped body failed.
   case integrityAlarm(String)
-  /// S-15: the words are valid but not this account's.
   case notThisAccountsPhrase
-  /// The words are not 12 valid words with a good checksum.
   case badPhrase
   case badEmail
   case badName
   case badInviteCode
-  /// Unlock with Face ID was asked for but this credential has no PRF wrap,
-  /// or the authenticator returned no PRF output: fall back to the phrase.
   case noPRF
-  /// A step-up proof kind this action does not allow, or a `device` proof
-  /// without a bound writer and DAK.
   case noDeviceKey
   case needsPasskey
-  /// A 2xx whose body this client cannot use.
   case badResponse(String)
   case crypto(String)
 
-  /// The server's refusal, when that is what happened.
   public var failure: APIFailure? {
     if case .api(let e) = self { return e.failure }
     return nil
   }
 }
 
-/// The plain-language class of a ceremony failure (spec 04 §6.1.5): the UI
-/// picks its copy block from this and never from a raw code.
 public enum CeremonyFailureClass: Sendable, Hashable {
   case cancelled, unsupported, noCredential, notInvited, badName, rejected, wrongCredentials, recoveryRefused,
     resetRefused, emailInUse, codeRejected, badEmail, lastAuthenticator, frozen, notApproved, stepUpFailed,
@@ -135,9 +112,7 @@ extension CeremonyError {
   }
 }
 
-/// Input rules the app applies before calling (§6.1.4, §6.8).
 public enum AuthInput {
-  /// §6.1.4: upper-cased, spaces and hyphens dropped; exactly 24 of `A-Z2-7`.
   public static func inviteCode(_ typed: String) -> String? {
     var out: [UInt8] = []
     for b in typed.utf8 where b != 0x20 && b != 0x2d {
@@ -150,7 +125,6 @@ public enum AuthInput {
   }
 }
 
-/// RFC 3339 (Go's `time.Time` JSON, up to nanoseconds) → epoch seconds.
 enum RFC3339 {
   static func seconds(_ s: String?) -> Int64? {
     guard let s else { return nil }
@@ -162,7 +136,6 @@ enum RFC3339 {
   }
 }
 
-/// A Keychain or store step, mapped.
 func secretStep<T>(_ body: () throws(SecretStoreError) -> T) throws(CeremonyError) -> T {
   do { return try body() } catch { throw .secret(error) }
 }

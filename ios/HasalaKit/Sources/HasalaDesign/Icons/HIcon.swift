@@ -1,23 +1,14 @@
 import HasalaModels
 import SwiftUI
 
-// Hasala's own icons (spec 01 page 05, appendix B): plain line drawings on a 24 grid, round
-// caps and joins, kept inside about 3–21. They replace SF Symbols for categories, glass
-// buttons, tab glyphs, row icons and provider marks. Every path is copied from the Paper
-// boards ("Source" in each comment); the few the boards do not draw are marked "drawn to the
-// page 05 rules". The size sets the stroke (`HIconView`), the container sets the colour.
-
-/// One stroke or fill of an icon, in its viewBox units.
 public struct IconElement: Sendable, Hashable {
   public enum Paint: Sendable, Hashable {
     case stroke(width: CGFloat, roundCaps: Bool, roundJoins: Bool)
     case fill
   }
 
-  /// SVG path data; rects and circles are written as paths.
   public let d: String
   public let paint: Paint
-  /// A fixed colour (third-party marks, the white door on Home); nil takes the icon's colour.
   public let color: HRGBA?
 
   init(_ d: String, _ paint: Paint, color: HRGBA? = nil) {
@@ -27,34 +18,25 @@ public struct IconElement: Sendable, Hashable {
   }
 }
 
-/// Every icon in the app.
 public enum HIcon: String, CaseIterable, Sendable, Hashable {
-  // Categories (40 pt disc, 20 pt icon, bucket ink).
   case rent, utilities, groceries, transport, healthcare, insurance
   case dining, entertainment, shopping, travel, subscriptions
   case savings, investments, debt
   case salary, freelance
   case transfer, refunds, project
-  // Glass buttons and navigation.
   case eye, eyeSlash, bell, back, close, add, more, share, filter, done
   case tabHome, tabPlan, tabReview, tabActivity, magnifier
-  // Rows, cards and screens.
   case check, chevronRight, chevronDown, chevronUp, minus, delete
   case lock, lockKeyhole, key, shield, shieldCheck, privacy, faceID, touchID, passkey, password
   case envelope, mailX, phone, iPad, cloud, paper, info, alert, calendar, clock, history
   case download, upload, copy, trash, linkOff, wand, rule, split, pencil, refund, swap, archive
   case globe, appearance, help, tag, receipt, bank, cash, trendUp, monitor, chat, mic, cameraSlash, swipe
   case gauge, reviewSheet
-  // Other companies' marks, in their own colours (page 15 · Mailboxes).
   case google, microsoft
 
-  /// How the stroke follows the size (page 05 §5.1).
   public enum Role: Sendable, Hashable {
-    /// Names a thing (categories, header and row icons): 1.9, 2.0 at 16 pt, 1.7 at 28 pt and up.
     case describing
-    /// A single mark you press or follow (back, close, add, chevrons, checks): its drawn width.
     case acting
-    /// Filled shapes (tab glyphs, More, marks): no stroke.
     case filled
   }
 }
@@ -68,7 +50,6 @@ public extension HIcon {
     }
   }
 
-  /// The side of the square viewBox the elements are drawn in.
   var viewBox: CGFloat {
     switch self {
     case .google: 48
@@ -77,10 +58,8 @@ public extension HIcon {
     }
   }
 
-  /// The main stroke width as drawn (the width a size rule replaces).
   var drawnStroke: CGFloat { HIcon.drawings[self]?.drawnStroke ?? 0 }
 
-  /// The stroke for this icon at `size` points, in viewBox units.
   func stroke(at size: CGFloat) -> CGFloat {
     switch role {
     case .filled: 0
@@ -90,13 +69,10 @@ public extension HIcon {
     }
   }
 
-  /// The elements as Paper draws them.
   var elements: [IconElement] { HIcon.drawings[self]?.elements ?? [] }
 
-  /// The parsed paths, one per element (parsed once per process).
   var paths: [SVGPath] { HIcon.drawings[self]?.paths ?? [] }
 
-  /// Every element parses (IconTests checks this on the real data).
   private static let drawings: [HIcon: IconDrawing] = {
     var out: [HIcon: IconDrawing] = [:]
     for icon in HIcon.allCases {
@@ -123,15 +99,12 @@ private struct IconDrawing: Sendable {
   let drawnStroke: CGFloat
 }
 
-// MARK: - The drawings
-
 private func line(_ d: String, _ w: CGFloat = 1.9, caps: Bool = true, joins: Bool = true) -> IconElement {
   IconElement(d, .stroke(width: w, roundCaps: caps, roundJoins: joins))
 }
 
 private func fill(_ d: String, _ color: HRGBA? = nil) -> IconElement { IconElement(d, .fill, color: color) }
 
-/// `<rect>` as path data: corners of radius `r` (SVG `rx`).
 func rectPath(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, r: CGFloat = 0) -> String {
   func n(_ v: CGFloat) -> String {
     let s = String(format: "%.3f", v)
@@ -143,7 +116,6 @@ func rectPath(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, r: CGFloat
     + "A\(n(r)) \(n(r)) 0 0 1 \(n(x)) \(n(y + h - r))V\(n(y + r))A\(n(r)) \(n(r)) 0 0 1 \(n(x + r)) \(n(y))Z"
 }
 
-/// `<circle>` as path data: two half arcs.
 func circlePath(_ cx: CGFloat, _ cy: CGFloat, _ r: CGFloat) -> String {
   "M\(cx - r) \(cy)A\(r) \(r) 0 1 0 \(cx + r) \(cy)A\(r) \(r) 0 1 0 \(cx - r) \(cy)Z"
 }
@@ -153,7 +125,6 @@ private let white = HRGBA(255, 255, 255, 1)
 private extension HIcon {
   var drawnElements: [IconElement] {
     switch self {
-    // Source: appendix B (page 05 category set).
     case .rent:
       [line("M4 10.4 12 4l8 6.4V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19z", caps: false),
        line("M9.5 20.5V15h5v5.5", caps: false)]
@@ -209,7 +180,6 @@ private extension HIcon {
       [line("M5.5 21V4", joins: false),
        line("M5.5 4.5h11.5l-2.2 3.7 2.2 3.8H5.5", caps: false)]
 
-    // Source: appendix B (page 05 glass set and tab bar).
     case .eye:
       [line("M2.8 12s3.4-6.3 9.2-6.3 9.2 6.3 9.2 6.3-3.4 6.3-9.2 6.3S2.8 12 2.8 12Z", caps: false),
        line(circlePath(12, 12, 2.9), caps: false, joins: false)]
@@ -251,38 +221,37 @@ private extension HIcon {
       [line(circlePath(10.5, 10.5, 6.5), 2.2, caps: false, joins: false),
        line("M15.5 15.5 20 20", 2.4, joins: false)]
 
-    // Source: P1 and P2 screens (rows, cards, sheets), read from the boards' JSX.
-    case .chevronRight:  // Every row chevron (list-row-chevron, 16 pt).
+    case .chevronRight:
       [line("M9 5.5 15.5 12 9 18.5", 2.4)]
-    case .chevronDown:  // Period pill, 14 pt.
+    case .chevronDown:
       [line("M6 9.5l6 6 6-6", 2.6)]
-    case .chevronUp:  // Drawn to the page 05 rules: the period chevron turned over.
+    case .chevronUp:
       [line("M6 14.5l6-6 6 6", 2.6)]
-    case .minus:  // Dining budget stepper.
+    case .minus:
       [line("M5.5 12h13", 2.3, joins: false)]
-    case .delete:  // Amount keypad delete key, 26 pt.
+    case .delete:
       [line("M9 5.5h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-6-6.5z", caps: false),
        line("m11.5 9.5 5 5M16.5 9.5l-5 5", joins: false)]
-    case .lock:  // Setup dock note (16 pt); recovery "Only you have them".
+    case .lock:
       [line(rectPath(5, 10.5, 14, 10, r: 2.5), caps: false, joins: false),
        line("M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5", joins: false)]
-    case .lockKeyhole:  // Account frozen hero (30 pt, 1.8).
+    case .lockKeyhole:
       [line(rectPath(5, 10.5, 14, 10, r: 2.6), 1.8, caps: false, joins: false),
        line("M8.2 10.5V8a3.8 3.8 0 0 1 7.6 0v2.5", 1.8, joins: false),
        line("M12 14.2v2.6", 1.8, joins: false)]
-    case .key:  // Frozen "Sign in fully to unfreeze"; keep-safe cards.
+    case .key:
       [line(circlePath(8, 12, 4), caps: false, joins: false),
        line("M12 12h8.5M17.5 12v3M20.5 12v2.2", joins: false)]
-    case .shield:  // Frozen note "Didn't freeze it yourself?".
+    case .shield:
       [line("M12 3l7 3v5.5c0 4.3-3 7.9-7 9.5-4-1.6-7-5.2-7-9.5V6z", caps: false)]
-    case .shieldCheck:  // Profile › Sign-in & security row.
+    case .shieldCheck:
       [line("M12 3.5 5 6.2v5.3c0 4.3 2.9 7.6 7 9 4.1-1.4 7-4.7 7-9V6.2l-7-2.7Z", 1.8, caps: false),
        line("m9 12 2.2 2.2L15.5 10", 1.8)]
-    case .privacy:  // Profile › Privacy and data.
+    case .privacy:
       [line("M12 3.5 19 6v5.5c0 4.3-2.9 7.6-7 9-4.1-1.4-7-4.7-7-9V6z", 1.8, caps: false),
        line(circlePath(12, 10.5, 1.8), 1.8, caps: false, joins: false),
        line("M12 12.3v3.2", 1.8, joins: false)]
-    case .faceID:  // Sign-in & security passkey plate; Face ID lock row.
+    case .faceID:
       [line("M3.5 8V6a2.5 2.5 0 0 1 2.5-2.5h2M16 3.5h2A2.5 2.5 0 0 1 20.5 6v2M20.5 16v2a2.5 2.5 0 0 1-2.5 2.5h-2M8 20.5H6A2.5 2.5 0 0 1 3.5 18v-2", joins: false),
        line("M8.5 9v1.5M15.5 9v1.5M12 9v4h-1M9 16a4.5 4.5 0 0 0 6 0")]
     case .touchID:
@@ -291,117 +260,116 @@ private extension HIcon {
        line("M15.5 13c0 2.8-.6 5.2-1.8 7.2", joins: false),
        line("M10.6 20.2C9.4 18.4 8.6 16 8.6 13a3.4 3.4 0 0 1 6.8 0", joins: false),
        line("M12 13v1.5c0 1.7.4 3.2 1.1 4.5", joins: false)]
-    case .passkey:  // Sign-in & security, a passkey on another account.
+    case .passkey:
       [line(circlePath(9, 8, 3.5), caps: false, joins: false),
        line("M3 19c.6-3.3 3-5 6-5 1.4 0 2.6.3 3.6 1", joins: false),
        line(circlePath(17.5, 13.5, 2.5), caps: false, joins: false),
        line("M17.5 16v4.5M17.5 19h1.8", joins: false)]
-    case .password:  // Sign-in & security, password row.
+    case .password:
       [line(rectPath(2.5, 7, 19, 10, r: 3), caps: false, joins: false),
        line("M7 10.5v3M5.7 11.2l2.6 1.6M8.3 11.2l-2.6 1.6M12 10.5v3M10.7 11.2l2.6 1.6M13.3 11.2l-2.6 1.6", 1.5,
             joins: false),
        line("M16 13.5h3", joins: false)]
-    case .envelope:  // Transaction detail provenance; bank email notes.
+    case .envelope:
       [line(rectPath(3.5, 5.5, 17, 13, r: 2.5), caps: false, joins: false),
        line("m4.5 7.5 7.5 5.5 7.5-5.5")]
-    case .mailX:  // Delete account, "access to your mailboxes is removed".
+    case .mailX:
       [line("M20.5 11V8a2.5 2.5 0 0 0-2.5-2.5H5.5A2.5 2.5 0 0 0 3 8v8a2.5 2.5 0 0 0 2.5 2.5h6.5"),
        line("m3.8 7 8.2 6 8.2-6M16 15.5l4.5 4.5M20.5 15.5 16 20")]
-    case .phone:  // Devices, "This iPhone"; recovery "For a new iPhone".
+    case .phone:
       [line(rectPath(6.5, 2.5, 11, 19, r: 2.8), caps: false, joins: false),
        line("M10.5 18.5h3", joins: false)]
-    case .iPad:  // Devices, "Maya's iPad".
+    case .iPad:
       [line(rectPath(4, 3, 16, 18, r: 2.5), caps: false, joins: false),
        line("M11 18h2", joins: false)]
-    case .cloud:  // Who can see what, Cloudflare.
+    case .cloud:
       [line("M7 18.5h10.5a3.5 3.5 0 0 0 .4-7A5.5 5.5 0 0 0 7.3 10 4.3 4.3 0 0 0 7 18.5Z", caps: false)]
-    case .paper:  // Recovery phrase rows ("Write them on paper").
+    case .paper:
       [line("M6.5 3.5h8l3 3v14h-11z", caps: false),
        line("M9 11h6M9 14.5h6M9 18h3.5", joins: false)]
-    case .info:  // Project card, "Not counted in your monthly plan" (14 pt).
+    case .info:
       [line(circlePath(12, 12, 8.5), 2, caps: false, joins: false),
        line("M12 11v5.5M12 7.5v.5", 2.2, joins: false)]
     case .alert:
       [line("M12 7v6", 2.2, joins: false), fill(circlePath(12, 16.8, 1.3))]
-    case .calendar:  // Drawn to the page 05 rules (no board draws one yet).
+    case .calendar:
       [line(rectPath(3.5, 5, 17, 15.5, r: 2.5), caps: false, joins: false),
        line("M3.5 10h17M8 3v4M16 3v4", joins: false)]
-    case .clock:  // Delete account, "within 30 days".
+    case .clock:
       [line(circlePath(12, 12, 8.5), caps: false, joins: false), line("M12 7.5V12l3 2")]
-    case .download:  // Export your data (CSV).
+    case .download:
       [line("M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14", 1.8)]
     case .upload:
       [line("M12 15V4.5M7.5 9 12 4.5 16.5 9M5 19.5h14", 2.2)]
     case .copy:
       [line(rectPath(9, 9, 11.5, 11.5, r: 2.5), 2, caps: false, joins: false),
        line("M15 5.5V5a1.5 1.5 0 0 0-1.5-1.5H5A1.5 1.5 0 0 0 3.5 5v8.5A1.5 1.5 0 0 0 5 15h.5", 2, joins: false)]
-    case .trash:  // Delete account, "erased here and on our server".
+    case .trash:
       [line("M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.9 12.2a1.5 1.5 0 0 0 1.5 1.3h6.2a1.5 1.5 0 0 0 1.5-1.3L17.5 7")]
-    case .linkOff:  // Delete account, "passkeys and password stop working".
+    case .linkOff:
       [line("M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2"),
        line("M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2"),
        line("M4 4l16 16", joins: false)]
-    case .wand:  // Plan · Dining, "Rules that sort into Dining".
+    case .wand:
       [line("M4.5 19.5 14 10", joins: false),
        line("M16.5 3.5v3M15 5h3M19.5 9v2.5M18.25 10.25h2.5M10 4v2M9 5h2", 1.7, joins: false)]
-    case .rule:  // Provenance, "Sorted by your rule".
+    case .rule:
       [line(circlePath(6, 5.5, 2.3), caps: false, joins: false),
        line("M6 8v4.5a3.5 3.5 0 0 0 3.5 3.5H19", joins: false),
        line("M15.5 12.5 19 16l-3.5 3.5")]
-    case .split:  // Transaction actions, "Split across categories".
+    case .split:
       [line("M12 21v-7.5L6 7.5M12 13.5l6-6"), line("M5.5 11.5v-4.5H10M18.5 11.5v-4.5H14")]
-    case .pencil:  // "Rename merchant".
+    case .pencil:
       [line("M4.5 19.5h4l10.3-10.3a2.1 2.1 0 0 0-3-3L5.5 16.5z", caps: false),
        line("m14 8 3 3", joins: false)]
-    case .refund:  // "This is a refund".
+    case .refund:
       [line("M9 14.5 4 9.5l5-5"), line("M4.5 9.5h10a5 5 0 0 1 0 10H11", joins: false)]
-    case .swap:  // "Mark as a transfer".
+    case .swap:
       [line("M16.5 3.5 20 7l-3.5 3.5M20 7H5M7.5 13.5 4 17l3.5 3.5M4 17h15")]
-    case .archive:  // "Archive".
+    case .archive:
       [line(rectPath(3.5, 4.5, 17, 4.5, r: 1.5), caps: false, joins: false),
        line("M5 9v8.5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4")]
-    case .globe:  // Settings, Currency.
+    case .globe:
       [line(circlePath(12, 12, 8.5), 1.8, caps: false, joins: false),
        line("M3.5 12h17M12 3.5c2.3 2.4 3.4 5.2 3.4 8.5s-1.1 6.1-3.4 8.5c-2.3-2.4-3.4-5.2-3.4-8.5s1.1-6.1 3.4-8.5Z", 1.8,
             caps: false, joins: false)]
-    case .appearance:  // Settings, Appearance.
+    case .appearance:
       [line(circlePath(12, 12, 8.5), 1.8, caps: false, joins: false), fill("M12 3.5a8.5 8.5 0 0 1 0 17z")]
-    case .help:  // Settings, Get help.
+    case .help:
       [line(circlePath(12, 12, 8.5), 1.8, caps: false, joins: false),
        line("M9.6 9.6a2.5 2.5 0 0 1 4.8.8c0 1.7-2.4 2-2.4 3.6", 1.8), fill(circlePath(12, 16.9, 1.1))]
-    case .tag:  // Your money, Categories and rules.
+    case .tag:
       [line("M3.5 4.8v6.4c0 .4.2.8.4 1.1l8 8a1.5 1.5 0 0 0 2.1 0l6.3-6.3a1.5 1.5 0 0 0 0-2.1l-8-8a1.5 1.5 0 0 0-1.1-.4H4.8a1.3 1.3 0 0 0-1.3 1.3Z", caps: false),
        fill(circlePath(8.2, 8.2, 1.6))]
-    case .receipt:  // Your money, Bills.
+    case .receipt:
       [line("M6 3.5h12v17l-2-1.3-2 1.3-2-1.3-2 1.3-2-1.3-2 1.3z", caps: false),
        line("M9 8.5h6M9 12h6M9 15.5h3", joins: false)]
-    case .bank:  // Your money, Accounts.
+    case .bank:
       [line("M3.5 9 12 4.5 20.5 9"), line("M6 10.5v6.5M10 10.5v6.5M14 10.5v6.5M18 10.5v6.5M3.5 19.5h17", joins: false)]
-    case .cash:  // Accounts, Cash.
+    case .cash:
       [line(rectPath(2.5, 6, 19, 12, r: 2.5), caps: false, joins: false),
        line(circlePath(12, 12, 2.6), caps: false, joins: false),
        line("M6 9.5v.01M18 14.5v.01", 2.4, joins: false)]
-    case .trendUp:  // Net worth widget.
+    case .trendUp:
       [line("M5 15.5l5-5 3.5 3.5L20 7.5M15.5 7.5H20V12", 2)]
     case .gauge:
       [line("M4 15a8 8 0 0 1 16 0", 2), line("M12 15l3.5-4.5", 2), fill(circlePath(12, 15, 1.6))]
     case .reviewSheet:
       [line(rectPath(5, 4, 14, 16, r: 3), 2, caps: false, joins: false), line("M9 9h6M9 13h4", 2, joins: false)]
-    case .monitor:  // Notifications, "6 transactions to sort" (the To review glyph).
+    case .monitor:
       [line(rectPath(4, 5, 16, 11, r: 2.5), caps: false, joins: false), line("M7 19.5h10", joins: false)]
-    case .chat:  // Search, Try asking.
+    case .chat:
       [line("M5 5h14a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5h-7.5L7 20v-3.5H5A1.5 1.5 0 0 1 3.5 15V6.5A1.5 1.5 0 0 1 5 5z", 2,
             caps: false)]
-    case .mic:  // Search field, dictation.
+    case .mic:
       [fill(rectPath(9, 3, 6, 11, r: 3)), line("M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21", 2, joins: false)]
-    case .cameraSlash:  // Recovery phrase, "No screenshots or copying".
+    case .cameraSlash:
       [line(rectPath(3, 6, 18, 13, r: 3), caps: false, joins: false),
        line(circlePath(12, 12.5, 3.2), caps: false, joins: false),
        line("M8.5 6l1.2-2h4.6l1.2 2M3 3l18 18")]
-    case .swipe:  // Settings, Swipe directions.
+    case .swipe:
       [line("M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4", 1.8)]
 
-    // Source: appendix B and page 15 · Mailboxes. Never recoloured.
     case .google:
       [fill("M24 9.5c3.540 0 6.710 1.220 9.210 3.600l6.850-6.850C35.900 2.380 30.470 0 24 0 14.620 0 6.510 5.380 2.560 13.220l7.980 6.190C12.430 13.720 17.740 9.500 24 9.500z", HRGBA(0xEA, 0x43, 0x35, 1)),
        fill("M46.980 24.550c0-1.570-.150-3.090-.380-4.550H24v9.020h12.940c-.580 2.960-2.260 5.480-4.780 7.180l7.730 6c4.510-4.180 7.090-10.360 7.090-17.650z", HRGBA(0x42, 0x85, 0xF4, 1)),
@@ -414,16 +382,12 @@ private extension HIcon {
   }
 }
 
-/// An icon at a size and colour. The stroke follows the size (page 05): describing icons
-/// draw 1.9 (2.0 at 16 pt and under, 1.7 at 28 and up); acting icons keep their drawn width.
-/// Decorative by default: the row or button around it carries the words.
 public struct HIconView: View {
   let icon: HIcon
   let size: CGFloat
   let color: Color
   let strokeWidth: CGFloat?
 
-  /// `strokeWidth` overrides the size rule, in grid units (settings rows draw 1.8).
   public init(_ icon: HIcon, size: CGFloat = 24, color: Color = HColor.iconPrimary, strokeWidth: CGFloat? = nil) {
     self.icon = icon
     self.size = size
@@ -457,7 +421,6 @@ public struct HIconView: View {
 }
 
 public extension Glyph {
-  /// The drawing for this semantic glyph.
   var icon: HIcon {
     switch self {
     case .review: .monitor

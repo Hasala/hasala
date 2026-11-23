@@ -1,14 +1,3 @@
-// T4 against a real hasalad (spec 04 §19.1): runs only when HASALA_E2E_URL
-// names a local server (ios/scripts/e2e-hasalad.sh starts one on 127.0.0.1
-// with a throwaway Postgres).
-//
-// Until the server's signup and sign-in routes land (server/accounts-auth),
-// the account and its sessions are seeded straight into Postgres
-// (HASALA_E2E_PSQL + HASALA_E2E_DSN): a user whose `authority_pubkey_pending`
-// is this test's AAK and whose oldest credential carries a known
-// `attestation_sha256`, so the REAL bootstrap path (#23, #18 with auth_kind 1)
-// runs unchanged. TODO(WS-11): replace the seeding with C1-P over #43–#45
-// once those routes exist, and add the passkey ceremonies with SoftPasskey.
 import CoreAuth
 import CoreCrypto
 import CoreSoftAuth
@@ -41,7 +30,6 @@ enum Live {
 
   static func hex(_ d: Data) -> String { "'\\x" + Hex.encode(d) + "'" }
 
-  /// A user awaiting bootstrap with `aak`, and its credential's attestation hash.
   static func seedUser(_ user: UserID, email: String, aak: Data, attestationHash: Data, random: some RandomSource) throws {
     let handle = hex(try random.bytes(32))
     _ = try sql(
@@ -59,7 +47,6 @@ enum Live {
       """)
   }
 
-  /// A fresh, unbound session for `user`; returns its token.
   static func seedSession(_ user: UserID, random: some RandomSource) throws -> String {
     let token = Base64.encodeURL(try random.bytes(32))
     _ = try sql(
@@ -80,7 +67,6 @@ enum Live {
   }
 }
 
-/// Drops the answer of the first upload after forwarding it (a lost response).
 final class LosingTransport: Transport, @unchecked Sendable {
   let inner: any Transport
   private let lock = NSLock()
@@ -103,7 +89,6 @@ struct LiveHasaladTests {
     let user = try #require(UserID(try random.uuidV4()))
     let email = "e2e-\(Hex.encode(try random.bytes(4)))@example.com"
 
-    // Phone A: the real bootstrap (#23, #18) on a seeded account.
     let a = Live.phone("live-a-\(user.string)")
     let keys = try NewAccountKeys.generate(random: random)
     let words = try keys.words()
@@ -126,7 +111,6 @@ struct LiveHasaladTests {
     #expect(k.authority_pubkey == body.authority_pubkey && k.recovery_wrap == body.recovery_wrap)
     let ctxA = Enrolment.context(a.env, account: accountA)
 
-    // Phone B: unlock with the twelve words and register a second writer (#24).
     let b = Live.phone("live-b-\(user.string)")
     try Live.signIn(b, user: user)
     let bodyB = try await Enrolment.unlockWithPhrase(b.env, userID: user, typed: words.joined(separator: " "))
@@ -134,7 +118,6 @@ struct LiveHasaladTests {
       b.env, userID: user, body: bodyB, emailNorm: email, serverSalt: Data(count: 32), displayName: "E2E")
     let ctxB = Enrolment.context(b.env, account: accountB)
 
-    // A uploads (sealed, head-signed); B pulls and opens.
     try enqueue(ctxA, (1...3).map { op($0) })
     let outA = await SyncEngine(context: ctxA).run(.authored)
     #expect(outA.stop == nil && outA.pushed.opsAcknowledged == 3)
@@ -142,7 +125,6 @@ struct LiveHasaladTests {
     #expect(outB.stop == nil)
     #expect(try storedOps(ctxB).map(\.opID) == (1...3).map { op($0).opID })
 
-    // A lost answer: the resend is a byte-identical replay with the same head_sig.
     let losing = SyncContext(
       userID: ctxA.userID, writerID: ctxA.writerID, store: ctxA.store, secrets: ctxA.secrets,
       client: AuthClient(transport: LosingTransport(inner: URLSessionTransport(baseURL: Live.url!, clientHeader: "ios/0.0.0/1"))),
@@ -153,11 +135,9 @@ struct LiveHasaladTests {
     #expect(await SyncEngine(context: losing).run(.foreground).stop == nil)
     #expect(try ctxA.store.inflight().isEmpty && ctxA.store.pendingCount() == 0)
 
-    // B sees exactly five ops, once each.
     #expect(await SyncEngine(context: ctxB).run(.foreground).stop == nil)
     #expect(try storedOps(ctxB).count == 5)
 
-    // A head_sig that is not the writer's: 400 bad_signature → hard_stop + alarm.
     try enqueue(ctxA, [op(20)])
     let batch = try Pusher.buildBatch(try ctxA.store.pendingOps(), ctx: ctxA)
     var forged = batch

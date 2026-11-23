@@ -1,11 +1,9 @@
-// Clocks and randomness for tests (spec 04 §2.2 CoreTestSupport).
 import CorePrimitives
 import CoreTime
 import CryptoKit
 import Foundation
 import Synchronization
 
-/// A clock tests move by hand.
 public final class FakeClock: CoreTime.Clock {
   private let ms: Mutex<Int64>
   public init(ms: Int64 = 1_791_000_000_000) { self.ms = Mutex(ms) }
@@ -13,8 +11,6 @@ public final class FakeClock: CoreTime.Clock {
   public func advance(ms d: Int64) { ms.withLock { $0 += d } }
 }
 
-/// A deterministic `RandomSource`: SHA-256 in counter mode over a seed. Never
-/// for production keys.
 public final class SeededRandom: RandomSource {
   private let state: Mutex<(seed: Data, counter: UInt64)>
 
@@ -36,8 +32,6 @@ public final class SeededRandom: RandomSource {
   }
 }
 
-/// The CBOR subset WebAuthn uses, decoded (the fake server reads attestation
-/// objects and COSE keys with it).
 public indirect enum CBORValue: Sendable, Hashable {
   case int(Int64)
   case bytes(Data)
@@ -54,7 +48,6 @@ public indirect enum CBORValue: Sendable, Hashable {
   public var text: String? { if case .text(let s) = self { s } else { nil } }
   public var int: Int64? { if case .int(let i) = self { i } else { nil } }
 
-  /// Decodes one item at `data[offset...]`, advancing `offset`.
   public static func decode(_ data: Data, offset: inout Int) -> CBORValue? {
     let b = [UInt8](data)
     return decode(b, &offset)

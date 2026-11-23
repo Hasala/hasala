@@ -1,8 +1,3 @@
-/**
- * Talking to hasalad's public routes: JSON in, `02`'s JSON
- * envelope out ({ "error": "<code>", "detail"?: "..." } on failure). No
- * cookies, no referrer. A network failure resolves to status 0.
- */
 import { pageTimer } from './page';
 
 export interface ApiAnswer {
@@ -26,12 +21,7 @@ export async function postJson(url: string, body: unknown): Promise<ApiAnswer> {
       cache: 'no-store',
       signal: AbortSignal.timeout?.(API_WAIT_MS),
     });
-    let data: Record<string, unknown> = {};
-    try {
-      data = await res.json();
-    } catch {
-      /* an empty body is fine */
-    }
+    const data: Record<string, unknown> = await res.json().catch(() => ({}));
     const retryAfter = Number.parseInt(res.headers.get('Retry-After') ?? '', 10);
     return {
       status: res.status,
@@ -44,7 +34,6 @@ export async function postJson(url: string, body: unknown): Promise<ApiAnswer> {
   }
 }
 
-/** "a minute", "3 minutes", "an hour": for a Retry-After in seconds. */
 export function waitText(seconds: number): string {
   if (!(seconds > 0)) {
     return 'a few minutes';
@@ -60,7 +49,6 @@ export function waitText(seconds: number): string {
   return hours === 1 ? 'an hour' : `${hours} hours`;
 }
 
-/** A bank name the server accepts (its bank_text rules), or null. */
 export function bankText(value: string): string | null {
   const text = value.trim().replaceAll(/\s+/gu, ' ');
   if (!text) {
@@ -83,13 +71,6 @@ let requested = false;
 let keepsTag = false;
 const settleLoad = (loaded: boolean): void => waiting.splice(0).forEach((waiter) => waiter(loaded));
 
-/**
- * Loads Turnstile's api.js once per document. The router rebuilds <head> on
- * every client-side navigation and would drop the tag, so an empty
- * placeholder with the same transition:persist id goes into each incoming
- * page: Astro then keeps our tag where it is. data-astro-exec tells the
- * router the tag has run, so it never re-inserts (and re-runs) it.
- */
 function loadTurnstile(): void {
   if (requested) {
     return;
@@ -129,13 +110,6 @@ export interface TurnstileGate {
 }
 const MISSING: TurnstileCheck = { state: 'missing' };
 
-/**
- * Cloudflare Turnstile, rendered explicitly (so it also appears after a
- * client-side navigation) with the action the server checks.
- * Returns the form's token check and its reset: tokens are single use, so
- * call reset after every attempt. With no widget (no site key at build time)
- * check answers "off" and reset does nothing.
- */
 export function renderTurnstile(
   form: HTMLFormElement,
   action: 'waitlist' | 'bank_request',

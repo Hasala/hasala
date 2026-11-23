@@ -18,15 +18,11 @@ import (
 	"time"
 )
 
-// Hermetic: every key is generated here and served from an httptest server.
-// No test reaches Microsoft. The addresses and ids are synthetic.
-
 const (
 	testClientID = "00000000-1111-4222-8333-444444444444"
 	testOid      = "00000000-0000-0000-aaaa-bbbbbbbbbbbb"
 	testEmail    = "someone@outlook.example"
-	// The work-and-school tenant of a made-up organisation.
-	otherTenant = "11111111-2222-4333-8444-555555555555"
+	otherTenant  = "11111111-2222-4333-8444-555555555555"
 )
 
 var bg = context.Background()
@@ -49,7 +45,6 @@ var keys = sync.OnceValue(func() [2]*key {
 
 func b64(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
 
-// jwks serves k the way Microsoft publishes its keys: kid, x5t and a use.
 func jwks(t *testing.T, k *key) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -64,7 +59,6 @@ func jwks(t *testing.T, k *key) string {
 	return srv.URL
 }
 
-// x5t is a stand-in SHA-1 thumbprint; no certificate is published with it.
 func x5t(k *key) string {
 	sum := sha256.Sum256([]byte(k.kid))
 	return b64(sum[:20])
@@ -100,8 +94,6 @@ func mint(t *testing.T, k *key, hdrOver, claims map[string]any) string {
 
 var now = time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
 
-// consumerClaims is the shape of a personal account's v2.0 ID token; a nil
-// in over deletes a claim.
 func consumerClaims(over map[string]any) map[string]any {
 	c := map[string]any{
 		"ver": "2.0", "iss": ConsumersIssuer, "sub": "AAAAAAAAAAAAAAAAAAAAAL-synthetic", "aud": testClientID,
@@ -157,7 +149,6 @@ func TestAConsumerTokenVerifies(t *testing.T) {
 
 func TestTheTenantMustBeConsumers(t *testing.T) {
 	v := verifier(t)
-	// The consumers issuer with another tid, and the other tid's own issuer.
 	mustReject(t, v, mint(t, keys()[0], nil, consumerClaims(map[string]any{"tid": otherTenant})), ErrTenant)
 	mustReject(t, v, mint(t, keys()[0], nil, consumerClaims(map[string]any{"tid": nil})), ErrTenant)
 	mustReject(t, v, mint(t, keys()[0], nil, consumerClaims(map[string]any{
@@ -167,22 +158,17 @@ func TestTheTenantMustBeConsumers(t *testing.T) {
 func TestTheAudienceIsTheOutlookClient(t *testing.T) {
 	v := verifier(t)
 	mustReject(t, v, mint(t, keys()[0], nil, consumerClaims(map[string]any{"aud": "another-client"})), ErrTokenRejected)
-	// A verifier with no audience refuses everything.
 	mustReject(t, &Verifier{JWKSURL: jwks(t, keys()[0]), Now: func() time.Time { return now }},
 		mint(t, keys()[0], nil, consumerClaims(nil)), ErrTokenRejected)
 }
 
 func TestForgeriesAreRefused(t *testing.T) {
 	v := verifier(t)
-	// Signed by a key Microsoft does not publish, under its kid or its own.
 	mustReject(t, v, mint(t, keys()[1], map[string]any{"kid": keys()[0].kid}, consumerClaims(nil)), ErrTokenRejected)
 	mustReject(t, v, mint(t, keys()[1], nil, consumerClaims(nil)), ErrTokenRejected)
-	// Key material in the header.
 	mustReject(t, v, mint(t, keys()[0], map[string]any{"x5c": []string{"MIIB"}}, consumerClaims(nil)), ErrTokenRejected)
 	mustReject(t, v, mint(t, keys()[0], map[string]any{"jku": "https://evil.example/keys"}, consumerClaims(nil)), ErrTokenRejected)
-	// Not RS256.
 	mustReject(t, v, mint(t, keys()[0], map[string]any{"alg": "HS256"}, consumerClaims(nil)), ErrTokenRejected)
-	// Expired.
 	mustReject(t, v, mint(t, keys()[0], nil, consumerClaims(map[string]any{"exp": now.Add(-time.Second).Unix()})), ErrTokenRejected)
 }
 

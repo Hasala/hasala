@@ -1,13 +1,3 @@
-// Package gmailpush relays Gmail's Pub/Sub change notices into content-free
-// wakes (spec 02 §13): the routing key that turns a Gmail address into an
-// HMAC the database can index without holding the address, the Pub/Sub push
-// envelope parser, the watch-renewal nudge, and the startup check on the
-// route key's fingerprint.
-//
-// The server holds no Google credential. A notice says only "this mailbox
-// changed" (emailAddress and historyId); historyId is parsed for shape and
-// never stored or logged, and the address lives only in a local variable for
-// the length of one request.
 package gmailpush
 
 import (
@@ -32,14 +22,10 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// RouteKey is the 32-byte mailbox routing key (HASALA_MAILBOX_ROUTE_KEY_FILE).
 type RouteKey struct{ k []byte }
 
-// ErrRouteKey is a route key file that is not exactly 64 hex characters.
 var ErrRouteKey = errors.New("gmailpush: the route key file holds exactly 64 hex characters")
 
-// ParseRouteKey reads the key file's contents: 64 hex characters, at most one
-// trailing newline. Anything else is refused.
 func ParseRouteKey(s string) (RouteKey, error) {
 	s = strings.TrimSuffix(strings.TrimSuffix(s, "\n"), "\r")
 	if len(s) != 64 {
@@ -52,7 +38,6 @@ func ParseRouteKey(s string) (RouteKey, error) {
 	return RouteKey{k: k}, nil
 }
 
-// NewRouteKey wraps 32 raw bytes (tests).
 func NewRouteKey(raw []byte) (RouteKey, error) {
 	if len(raw) != 32 {
 		return RouteKey{}, ErrRouteKey
@@ -60,8 +45,6 @@ func NewRouteKey(raw []byte) (RouteKey, error) {
 	return RouteKey{k: append([]byte(nil), raw...)}, nil
 }
 
-// NormalizeAddress is spec 02 §13.3's address: trimmed, ASCII letters lowered,
-// every other byte unchanged.
 func NormalizeAddress(x string) string {
 	x = strings.Trim(x, " \t\r\n")
 	b := []byte(x)
@@ -73,17 +56,11 @@ func NormalizeAddress(x string) string {
 	return string(b)
 }
 
-// The mailbox providers: the strings the database, the API and the address
-// HMAC use.
 const (
 	ProviderGmail   = "gmail"
 	ProviderOutlook = "outlook"
 )
 
-// AddressHMACFor is HMAC(route_key, "hasala/v1/mailbox-route" ‖ 00 ‖ provider
-// ‖ 00 ‖ address) over the normalized address. The provider is one of the
-// Provider constants, so one address linked through two providers gives two
-// unrelated values.
 func (r RouteKey) AddressHMACFor(provider, address string) []byte {
 	m := hmac.New(sha256.New, r.k)
 	m.Write([]byte(keyproto.DomainMailboxRoute))
@@ -94,9 +71,6 @@ func (r RouteKey) AddressHMACFor(provider, address string) []byte {
 	return m.Sum(nil)
 }
 
-// SubjectHMACFor is the exclusive key of a mailbox whose provider asserts a
-// stable subject but no verified address. It never equals an address's HMAC
-// and the subject is compared exactly.
 func (r RouteKey) SubjectHMACFor(provider, subject string) []byte {
 	m := hmac.New(sha256.New, r.k)
 	m.Write([]byte(keyproto.DomainMailboxRoute))
@@ -107,22 +81,16 @@ func (r RouteKey) SubjectHMACFor(provider, subject string) []byte {
 	return m.Sum(nil)
 }
 
-// AddressHMAC is AddressHMACFor(ProviderGmail, address), the key the Gmail
-// hook routes by.
 func (r RouteKey) AddressHMAC(address string) []byte { return r.AddressHMACFor(ProviderGmail, address) }
 
-// KeyID is HMAC(route_key, "hasala/v1/mailbox-route-key-id")[0:8].
 func (r RouteKey) KeyID() []byte {
 	m := hmac.New(sha256.New, r.k)
 	m.Write([]byte(keyproto.DomainMailboxRouteKeyID))
 	return m.Sum(nil)[:8]
 }
 
-// Valid reports whether the key was loaded.
 func (r RouteKey) Valid() bool { return len(r.k) == 32 }
 
-// CheckKeyID is the startup check of spec 02 §13.3: every stored link was made
-// under the current route key, or serve refuses to start.
 func CheckKeyID(ctx context.Context, pool *pgxpool.Pool, r RouteKey) error {
 	rows, err := pool.Query(ctx, `SELECT DISTINCT route_key_id FROM mailbox_links`)
 	if err != nil {
@@ -144,24 +112,17 @@ func CheckKeyID(ctx context.Context, pool *pgxpool.Pool, r RouteKey) error {
 	return rows.Err()
 }
 
-// Notice is a decoded Gmail notification.
 type Notice struct {
 	EmailAddress string
 }
 
-// Envelope errors, each a 204 with its own counter (spec 02 §13.4 steps 6–8).
 var (
 	ErrMalformed           = errors.New("gmailpush: malformed push")
 	ErrForeignSubscription = errors.New("gmailpush: push for another subscription")
 )
 
-// maxData bounds the decoded notice (spec 02 §13.4 step 8: 1 KiB).
 const maxData = 1024
 
-// ParseEnvelope is steps 6–8: the Pub/Sub push envelope, leniently (unknown
-// fields ignored), its subscription, and its base64 data, which must be a
-// small JSON object with a string emailAddress and a numeric or string
-// historyId. The history id is checked for shape and dropped.
 func ParseEnvelope(body []byte, subscription string) (Notice, error) {
 	var env struct {
 		Message *struct {
@@ -224,18 +185,15 @@ func validHistoryID(raw json.RawMessage) bool {
 	return true
 }
 
-// Holder is one link a notice routes to.
 type Holder struct {
 	UserID   uuid.UUID
 	WriterID string
 }
 
-// Counters are the hook's outcome counters (spec 02 §13.4, §20.1).
 type Counters struct {
 	Pushes, Woken, Malformed, ForeignSubscription, Unknown, LinkLimited, Unauthorized, Forbidden atomic.Int64
 }
 
-// Waker is the slice of pushv2.Waker the nudge needs.
 type Waker interface {
 	WakeWriter(ctx context.Context, userID uuid.UUID, writerID string, r pushv2.Reason)
 }
@@ -265,13 +223,6 @@ const (
 	confirmNudgeFor     = 5 * time.Second
 )
 
-// Nudge is spec 02 §13.7, run every 15 minutes: a holder whose watch was never
-// reported (an hour after linking) or expires within 36 hours gets one nudge
-// wake, and no second one for 12 hours. The mark is taken back for a wake w
-// did not queue (a QueueingWaker that answers false), so the next run tries
-// again instead of 12 hours later. Only links of the given providers are
-// nudged: those whose push this server relays, since a provider without one
-// can never have a watch to renew.
 func Nudge(ctx context.Context, pool *pgxpool.Pool, w Waker, providers ...string) (string, error) {
 	if len(providers) == 0 {
 		return "", nil

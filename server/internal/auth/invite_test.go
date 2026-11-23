@@ -18,7 +18,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// mintCode mints a printed CLI invite and returns its code.
 func mintCode(t *testing.T, pool *pgxpool.Pool, note string) string {
 	t.Helper()
 	code, err := MintInvite(bgctx, pool, MintOptions{Note: note, Now: time.Now().UTC()})
@@ -28,9 +27,6 @@ func mintCode(t *testing.T, pool *pgxpool.Pool, note string) string {
 	return code
 }
 
-// mustMint is a ready signup for a passkey registration: a printed invite and a
-// proven signup ceremony on a fresh address, written directly (the passkey
-// tests need no server keys). It returns the signup id.
 func mustMint(t *testing.T, pool *pgxpool.Pool, note string) string {
 	t.Helper()
 	code := mintCode(t, pool, note)
@@ -86,7 +82,6 @@ func TestInviteCodeNormalizationIsForgiving(t *testing.T) {
 	}
 }
 
-// A review invite is unaddressed and CLI-only (07 §2.5's CHECK).
 func TestAReviewInviteCarriesNoAddress(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -98,43 +93,6 @@ func TestAReviewInviteCarriesNoAddress(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Entropy: the one property the whole gate rests on
-// ---------------------------------------------------------------------------
-
-// A minted code is 24 characters of RFC 4648 base32 carrying 120 bits, and
-// nothing about it is predictable from another one.
-//
-// This exists because two mutations survived the entire package before it did:
-// `inviteCodeBytes = 2` (a SIXTEEN-BIT invite code) and codes minted from an
-// incrementing counter rather than crypto/rand, whose first code on a fresh
-// deployment is "AEAAAAAAAAAAAAAAAAAAAAAA". Both are catastrophic and both were
-// invisible, because the properties the suite checked were distinctness (a
-// counter is perfectly distinct) and that the digest is what gets stored (a
-// digest of a guessable input is a guessable credential). Unguessability was
-// asserted only in a comment, on the same line that would have to change to
-// break it.
-//
-// It matters more here than in most places: `403 not_invited` is a perfect
-// oracle. A guesser learns, on every attempt, whether the code they tried
-// exists — so entropy is the only thing between this beta and open sign-up.
-//
-// Every code below is minted through MintInvite, the production entry point, so
-// there is no seam between what is measured and what an operator runs.
-// The randomness comes from crypto/rand, measured against invite.go's syntax
-// tree rather than against its output.
-//
-// This is the half of unguessability a statistical test CANNOT see.
-// TestMintedInviteCodesAreUnguessable samples 256 codes from one process, and
-// `math/rand.New(rand.NewSource(1))` passes every statistic it computes —
-// uniform per position, pairwise independent, all distinct — while producing
-// the SAME 256 codes on every deployment that ever runs the binary. The
-// property that fails there is not the distribution, it is the seed, and the
-// only place the seed is visible is the import.
-//
-// So: crypto/rand imported, math/rand not imported at all (in either version),
-// and MintInvite actually calling rand.Read rather than importing the good
-// package and using something else.
 func TestTheInviteCodeSourceIsCryptoRand(t *testing.T) {
 	t.Parallel()
 	fset := token.NewFileSet()
@@ -201,8 +159,7 @@ func TestMintedInviteCodesAreUnguessable(t *testing.T) {
 	pool := pgtest.New(t)
 
 	const (
-		sample = 256
-		// A base32 character is 5 bits; the alphabet is 32 symbols.
+		sample    = 256
 		wantChars = 24
 		wantBytes = 15
 		wantBits  = 120
@@ -214,8 +171,6 @@ func TestMintedInviteCodesAreUnguessable(t *testing.T) {
 		codes = append(codes, mintCode(t, pool, ""))
 	}
 
-	// --- Shape. A short code fails HERE, before any statistic: 2 bytes encode
-	// to 4 characters, and no amount of sampling is needed to see that.
 	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
 	for _, code := range codes {
 		if len(code) != wantChars {
@@ -229,8 +184,6 @@ func TestMintedInviteCodesAreUnguessable(t *testing.T) {
 					code, r, alphabet)
 			}
 		}
-		// Mint and redemption must agree on what "the same code" is, and a
-		// freshly minted code is already in normal form.
 		if NormalizeInviteCode(code) != code {
 			t.Fatalf("NormalizeInviteCode(%q) = %q: a minted code is not in the form it is "+
 				"redeemed in", code, NormalizeInviteCode(code))
@@ -245,15 +198,6 @@ func TestMintedInviteCodesAreUnguessable(t *testing.T) {
 		decoded = append(decoded, raw)
 	}
 
-	// --- Every position varies. This is the assertion a counter fails, and it
-	// is deliberately not "the codes differ" or "no shared prefix": a
-	// little-endian counter varies its LEADING bytes fastest, so 256 counter
-	// codes have 256 distinct values and 256 distinct 4-character prefixes.
-	// What a counter cannot do is vary byte 14.
-	//
-	// With crypto/rand, 256 draws from 256 values give ~162 distinct on
-	// average; the floor below is a quarter of that, and a frozen position
-	// scores 1.
 	for i := 0; i < wantBytes; i++ {
 		seen := map[byte]bool{}
 		for _, raw := range decoded {
@@ -265,8 +209,6 @@ func TestMintedInviteCodesAreUnguessable(t *testing.T) {
 				i, len(seen), sample, wantBits)
 		}
 	}
-	// The same measurement on the encoded form, which is what a low-entropy
-	// ALPHABET would show up in: 32 symbols per position, ~32 expected.
 	for i := 0; i < wantChars; i++ {
 		seen := map[byte]bool{}
 		for _, code := range codes {
@@ -278,12 +220,6 @@ func TestMintedInviteCodesAreUnguessable(t *testing.T) {
 		}
 	}
 
-	// --- No code is close to any other. Sequential minting is exactly this
-	// failure: consecutive counter values share 13 or 14 of their 15 bytes.
-	//
-	// For crypto/rand the chance that a given pair agrees in 7 or more of 15
-	// byte positions is C(15,7)·256⁻⁷ ≈ 9e-14; across the 32,640 pairs here
-	// that is ~3e-9, so this is a bound, not a flake.
 	const maxShared = 6
 	for i := 0; i < len(decoded); i++ {
 		for j := i + 1; j < len(decoded); j++ {
@@ -301,7 +237,6 @@ func TestMintedInviteCodesAreUnguessable(t *testing.T) {
 		}
 	}
 
-	// --- And, as a corollary rather than the headline, they are all distinct.
 	seen := map[string]bool{}
 	for _, code := range codes {
 		if seen[code] {

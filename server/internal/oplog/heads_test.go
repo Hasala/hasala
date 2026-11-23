@@ -14,9 +14,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// Signed heads (spec 01 §7.1, R-02) and the epoch rule (§8.3) on the append
-// path, and the batch-aligned pull (spec 02 §11.3).
-
 const headWriter = "ios-00000000-0000-4000-8000-00000000000a"
 
 func TestABatchNeedsItsWritersHeadSignature(t *testing.T) {
@@ -48,7 +45,6 @@ func TestABatchNeedsItsWritersHeadSignature(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Stored on the last row only.
 	var signed, unsigned int
 	if err := pool.QueryRow(bg, `SELECT count(*) FILTER (WHERE head_sig IS NOT NULL), count(*) FILTER (WHERE head_sig IS NULL)
 		FROM op_log WHERE user_id = $1`, u).Scan(&signed, &unsigned); err != nil {
@@ -57,8 +53,6 @@ func TestABatchNeedsItsWritersHeadSignature(t *testing.T) {
 	if signed != 1 || unsigned != 2 {
 		t.Fatalf("%d signed and %d unsigned rows, want 1 and 2", signed, unsigned)
 	}
-	// A byte-identical replay returns the original seqs without re-verifying
-	// the head (spec 01 §8.3): a client whose response was lost resends it.
 	again, err := a.AppendClient(bg, u, headWriter, blob.StreamHot, rows, nil)
 	if err != nil || len(again) != 3 || again[0] != seqs[0] {
 		t.Fatalf("replay: %v, %v; want %v", again, err, seqs)
@@ -100,7 +94,6 @@ func TestAboveTheHeadEveryFrameCarriesTheCurrentEpoch(t *testing.T) {
 	if _, err := a.AppendClient(bg, u, headWriter, blob.StreamHot, first, testHeadSig(u, headWriter, first)); err != nil {
 		t.Fatal(err)
 	}
-	// A frame sealed at epoch 2 while the account is at 1: 409 stale_epoch.
 	prev := [32]byte(first[0].BlobHash)
 	s, err := blobtest.Seal3(blob.Envelope{UserID: u, Stream: blob.StreamHot, WriterID: headWriter, WriterCounter: 2},
 		2, blobtest.TestEpochKey, prev, []byte(`{}`))
@@ -114,7 +107,6 @@ func TestAboveTheHeadEveryFrameCarriesTheCurrentEpoch(t *testing.T) {
 	if !errors.As(err, &stale) || !errors.Is(err, ErrStaleEpoch) || stale.Current != 1 || stale.Frame != 2 {
 		t.Fatalf("epoch 2 at current 1: %v", err)
 	}
-	// The epoch rises; a replay of the epoch-1 batch is still recognised.
 	if _, err := pool.Exec(bg, `UPDATE account_keys SET current_epoch = 2 WHERE user_id = $1`, u); err != nil {
 		t.Fatal(err)
 	}

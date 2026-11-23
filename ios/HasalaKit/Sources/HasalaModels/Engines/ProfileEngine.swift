@@ -1,42 +1,28 @@
-// Profile · Your profile (and its page-14 variant with Sign-in & security) and Categories and rules.
-
 public struct ProfileSnapshot: Sendable, Hashable {
   public var displayName: String
   public var initial: String
   public var email: String
   public var emailStatus: String
   public var mailbox: MailboxHealth
-  /// "4 accounts · net worth 227,568", or "No accounts yet".
   public var accounts: MoneyPhrase
-  /// Some account has a balance (`AccountsSnapshot.hasBalances`): Accounts has something
-  /// true to show.
   public var accountsKnown: Bool
-  /// "9 tracked · 1 new found".
   public var bills: String
-  /// Bills found and waiting for a decision (the row's badge).
   public var newBills: Int
-  /// "18 categories · 23 rules".
   public var categoriesAndRules: String
   public var projects: MoneyPhrase
   public var signIn: SignInMethod
   public var prefs: DevicePrefs
-  /// "← Want · Need →".
   public var swipeSummary: String
-  /// What VoiceOver reads for it: "Swipe left for Want, right for Need" (arrows aren't speech).
   public var swipeSpoken: String
   public var archivedTxns: Int
 }
 
 public struct RuleRowModel: Sendable, Hashable, Identifiable {
   public var id: RuleID
-  /// "\"CAREEM\" or \"UBER\"" (curly quotes).
   public var pattern: String
   public var patterns: [String]
-  /// "Starts with · Transport · 18 matches".
   public var detail: String
-  /// "Starts with · Transport": how it matches and where it sorts.
   public var match: String
-  /// "18 matches".
   public var matchesLabel: String
   public var glyph: Glyph
   public var hue: Hue
@@ -109,7 +95,6 @@ public enum ProfileEngine {
     return out
   }
 
-  /// Rules, most used first, with match counts over every transaction.
   public static func rules(_ s: LedgerState) -> [RuleRowModel] {
     let counts = matchCounts(s)
     return s.rules.map { r in

@@ -12,34 +12,12 @@ import (
 	"github.com/salehtl/hasala/server/oracle/corpus"
 )
 
-// The cross-executor corpus check.
-//
-// conformance/normalizer/*.json pins 37 real messages and 88 synthetic ones.
-// That is 0.53% of the corpus, and a conformance suite that covers only the
-// cases someone thought to select is exactly the shape of a suite that agrees
-// on 6,997 messages and disagrees on the one that matters.
-//
-// So the two executors are also compared over EVERY message the corpus holds.
-// This test exports what Go produces; client/scripts/crossexec.ts runs the
-// TypeScript normalizer over the same bytes and diffs the two field by field.
-// Neither side recomputes the other's answer, and neither shares code with the
-// other, which is what makes the comparison mean something.
-//
-//	S=/scratch
-//	HASALA_CORPUS_DB=$S/corpus.db HASALA_CROSSEXEC_OUT=$S/go-corpus.jsonl \
-//	  go test ./internal/norm/ -run TestWriteCrossExecutorCorpus -timeout 20m
-//	(cd client && bun run scripts/crossexec.ts $S/go-corpus.jsonl)
-//
-// The output is ~100 MB for 7,002 messages and is deliberately NOT committed:
-// it is a measurement, reproducible from the corpus, not a fixture.
-
-// crossExecRow is one message's Go result, as the TypeScript side reads it.
 type crossExecRow struct {
 	ID         int64  `json:"id"`
 	ReceivedAt string `json:"received_at"`
 	RawBase64  string `json:"raw_base64"`
 
-	Error      string `json:"error"` // "" | "no_text_part" | other
+	Error      string `json:"error"`
 	Text       string `json:"text_base64"`
 	Part       string `json:"part"`
 	Charset    string `json:"charset"`

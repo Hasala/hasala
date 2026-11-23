@@ -1,10 +1,5 @@
 import SwiftUI
 
-// The sign-in, forgot-password and recovery screens' entry points (plan B7.3): each is
-// `init(store: OnboardingStore)`, with the store's `signIn` model and the signed-out
-// path (`store.signup.path`) for its navigation. The initializers are frozen; the bodies
-// are the screens'. Back is the system's (decision 7): the stack pops itself.
-
 extension SignInView {
   init(store: OnboardingStore) {
     self.init(
@@ -24,7 +19,6 @@ extension ForgotEmailView {
   }
 }
 
-/// Forgot password · 2 of 4 · "Check your email" (Paper G2U).
 struct ForgotCodeView: View {
   let store: OnboardingStore
 
@@ -80,8 +74,6 @@ extension RecoverWordsView {
   }
 }
 
-/// Recover account · the emailed code (Paper G5E). The service takes the words first, so
-/// this is step 2 of 3 here; the code is checked with the new way to sign in.
 struct RecoverCodeView: View {
   let store: OnboardingStore
 
@@ -116,7 +108,6 @@ extension RecoverPasswordView {
   }
 }
 
-/// "Without your recovery phrase, we can't open your data" (Paper H9F), signed out.
 struct HonestEndView: View {
   let store: OnboardingStore
 
@@ -126,7 +117,6 @@ struct HonestEndView: View {
 
   var body: some View {
     HonestEndScreen(context: .signedOut) {
-      // "I found my words": the recovery's entry, in place of this page.
       if store.signup.path.last == .honestEnd { store.signup.path.removeLast() }
       store.signup.go(.recoverWords)
     }
@@ -134,8 +124,6 @@ struct HonestEndView: View {
 }
 
 extension OnboardingStore {
-  /// After `recover/verify` + `recover/finish`: "You're back in" shows in place (the model's
-  /// `recovered`); a refused code goes back to the code page, which says why.
   func recoveryResult(_ r: SignInModel.RecoveryResult) {
     switch r {
     case .done, .failed: break

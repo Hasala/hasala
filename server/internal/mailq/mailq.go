@@ -1,10 +1,3 @@
-// Package mailq is the email outbox and the email log (spec 07 §2.8, §6): one
-// mail_log row per email, enqueued inside the transaction that causes it,
-// rendered at send time by a per-kind Renderer that mints whatever secret the
-// email carries (and stores only its hash), sent by a worker in `serve`, and
-// kept for 30 days without a subject, a body, a link or a secret.
-//
-// This is the only package that calls mail.Sender.Send (spec 07 F7-5).
 package mailq
 
 import (
@@ -30,20 +23,16 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtx"
 )
 
-// Lane orders and rate-limits rows (spec 07 §6.5).
 type Lane string
 
-// The lanes.
 const (
 	LaneTransactional Lane = "transactional"
 	LaneWaitlist      Lane = "waitlist"
 	LaneBulk          Lane = "bulk"
 )
 
-// Status is a row's state (spec 07 §3.5).
 type Status string
 
-// The statuses.
 const (
 	StatusQueued     Status = "queued"
 	StatusSending    Status = "sending"
@@ -53,13 +42,10 @@ const (
 	StatusSuppressed Status = "suppressed"
 )
 
-// Tagger computes email_tag (spec 01 §4.11) under the server's auth key.
 type Tagger interface {
 	EmailTag(emailNorm string) []byte
 }
 
-// paramsAllowed is spec 07 §6.3's per-kind allow-list. An unknown key is a
-// programming error and is refused at enqueue.
 var paramsAllowed = map[string][]string{
 	"waitlist":             nil,
 	"waitlist_already":     {"variant"},
@@ -74,8 +60,6 @@ var paramsAllowed = map[string][]string{
 	"test":                 nil,
 }
 
-// retryWindow is how long a transient failure may keep retrying (spec 07
-// §6.2): a code is dead after 10 minutes, anything else gets a day.
 func retryWindow(kind string) time.Duration {
 	if slices.Contains(codeKinds, kind) {
 		return codeRetryWindow
@@ -101,7 +85,6 @@ var backoff = []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute, 2 
 
 var outcomeRetries = []time.Duration{100 * time.Millisecond, 500 * time.Millisecond, 2 * time.Second, 5 * time.Second, 10 * time.Second}
 
-// Lease and send bounds.
 const (
 	leaseFor       = 2 * time.Minute
 	sendTimeout    = 20 * time.Second
@@ -116,12 +99,11 @@ const (
 	tagBatchSize   = 50
 )
 
-// Enqueue describes one email to queue.
 type Enqueue struct {
 	Kind, Subkind string
 	Lane          Lane
-	To            string // email_norm
-	Tag           []byte // email_tag(To); computed by the queue's Tagger when nil
+	To            string
+	Tag           []byte
 	UserID        *uuid.UUID
 	EntryID       *uuid.UUID
 	InviteID      *uuid.UUID
@@ -129,7 +111,6 @@ type Enqueue struct {
 	Params        map[string]any
 }
 
-// Row is a leased row, as a Renderer sees it.
 type Row struct {
 	ID           int64
 	Kind         string
@@ -146,21 +127,16 @@ type Row struct {
 	CreatedAt    time.Time
 }
 
-// Renderer builds a row's message at send time, inside its own transaction,
-// minting any secret the kind carries and storing only its hash.
 type Renderer interface {
 	Render(ctx context.Context, tx pgx.Tx, row Row) (mail.Message, error)
 }
 
-// RenderFunc adapts a function to Renderer.
 type RenderFunc func(ctx context.Context, tx pgx.Tx, row Row) (mail.Message, error)
 
-// Render calls f.
 func (f RenderFunc) Render(ctx context.Context, tx pgx.Tx, row Row) (mail.Message, error) {
 	return f(ctx, tx, row)
 }
 
-// ErrNoRenderer is a row whose kind has no registered renderer.
 var ErrNoRenderer = errors.New("mailq: no renderer for this kind")
 
 var errRenderRetry = errors.New("mailq: render failed; retrying")
@@ -192,28 +168,21 @@ func transientRender(err error) bool {
 	return errors.As(err, &ce) || errors.As(err, &ne)
 }
 
-// Queue is the outbox. Build it with New.
 type Queue struct {
-	Pool   *pgxpool.Pool
-	Sender mail.Sender
-	Tagger Tagger
-	// Rates are rows per hour per lane; a missing or zero entry is uncapped
-	// (the transactional lane).
+	Pool      *pgxpool.Pool
+	Sender    mail.Sender
+	Tagger    Tagger
 	Rates     map[Lane]int
 	Retention time.Duration
-	// Bounced, when set, runs once a bounced row that names an account is
-	// final (spec 02 §14.7: the account's address is marked undeliverable). It
-	// makes no network call.
-	Bounced func(ctx context.Context, tx pgx.Tx, row Row) error
-	Unsent  func(ctx context.Context, tx pgx.Tx, row Row) (func(), error)
-	Sent    func(ctx context.Context, tx pgx.Tx, row Row) error
+	Bounced   func(ctx context.Context, tx pgx.Tx, row Row) error
+	Unsent    func(ctx context.Context, tx pgx.Tx, row Row) (func(), error)
+	Sent      func(ctx context.Context, tx pgx.Tx, row Row) error
 
 	renderers map[string]Renderer
 	stopped   atomic.Bool
 	wake      chan struct{}
 }
 
-// New builds a queue with spec 07 §14.1's default rates and retention.
 func New(pool *pgxpool.Pool, s mail.Sender, tagger Tagger) *Queue {
 	return &Queue{Pool: pool, Sender: s, Tagger: tagger,
 		Rates:     map[Lane]int{LaneWaitlist: 60, LaneBulk: 120},
@@ -221,7 +190,6 @@ func New(pool *pgxpool.Pool, s mail.Sender, tagger Tagger) *Queue {
 		renderers: map[string]Renderer{}, wake: make(chan struct{}, 1)}
 }
 
-// Register installs kind's renderer.
 func (q *Queue) Register(kind string, r Renderer) {
 	if q.renderers == nil {
 		q.renderers = map[string]Renderer{}
@@ -229,10 +197,8 @@ func (q *Queue) Register(kind string, r Renderer) {
 	q.renderers[kind] = r
 }
 
-// Stopped reports whether an auth failure stopped the worker (until restart).
 func (q *Queue) Stopped() bool { return q.stopped.Load() }
 
-// Hint is spec 07 §4.5's masked address: m•••@example.com.
 func Hint(addr string) string {
 	at := strings.LastIndexByte(addr, '@')
 	if at < 0 {
@@ -289,8 +255,6 @@ func nilIfEmpty(s string) any {
 	return s
 }
 
-// EnqueueTx writes a queued row inside the caller's transaction and notifies
-// the worker at commit.
 func (q *Queue) EnqueueTx(ctx context.Context, tx pgx.Tx, e Enqueue) (int64, error) {
 	tag, params, err := q.prepare(&e)
 	if err != nil {
@@ -312,9 +276,6 @@ func (q *Queue) EnqueueTx(ctx context.Context, tx pgx.Tx, e Enqueue) (int64, err
 	return id, nil
 }
 
-// SendNow sends an email whose secret the caller minted and which must never
-// touch the database (spec 02's codes): the row is written as sending, render
-// is called, the message is sent and the row finalized. One attempt.
 func (q *Queue) SendNow(ctx context.Context, e Enqueue, render func() (mail.Message, error)) error {
 	tag, params, err := q.prepare(&e)
 	if err != nil {
@@ -352,13 +313,11 @@ func (q *Queue) SendNow(ctx context.Context, e Enqueue, render func() (mail.Mess
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	pid, sendErr := q.Sender.Send(sctx, msg)
 	cancel()
-	msg = mail.Message{} // the rendered secret is never kept
+	msg = mail.Message{}
 	q.finalize(ctx, row, lease, pid, sendErr, true)
 	return sendErr
 }
 
-// Kick wakes an idle worker (EnqueueTx's NOTIFY does the same across
-// processes).
 func (q *Queue) Kick() {
 	select {
 	case q.wake <- struct{}{}:
@@ -366,7 +325,6 @@ func (q *Queue) Kick() {
 	}
 }
 
-// Run starts the listener and the workers until ctx is done.
 func (q *Queue) Run(ctx context.Context) <-chan struct{} {
 	done := make(chan struct{})
 	finished := make(chan struct{}, workerCount+1)
@@ -401,8 +359,6 @@ func (q *Queue) Run(ctx context.Context) <-chan struct{} {
 	return done
 }
 
-// listen holds one connection on LISTEN hasala_mail and kicks the workers on
-// every notification; it reconnects after a failure.
 func (q *Queue) listen(ctx context.Context) {
 	for ctx.Err() == nil {
 		conn, err := q.Pool.Acquire(ctx)
@@ -422,7 +378,6 @@ func (q *Queue) listen(ctx context.Context) {
 			q.Kick()
 			q.Kick()
 		}
-		// The connection may be mid-wait; never hand it back to the pool.
 		_ = conn.Conn().Close(context.WithoutCancel(ctx))
 		conn.Release()
 	}
@@ -437,8 +392,6 @@ func sleep(ctx context.Context, d time.Duration) {
 	}
 }
 
-// Drain sends due rows until none is left (or the worker is stopped). It
-// returns how many rows it processed.
 func (q *Queue) Drain(ctx context.Context) (int, error) {
 	return q.drain(ctx, ctx)
 }
@@ -459,9 +412,6 @@ func (q *Queue) drain(ctx, stop context.Context) (int, error) {
 	return n, nil
 }
 
-// fillTags computes the missing recipient tags of due queued rows (rows the
-// console or the CLI wrote, which cannot compute one), and for a CLI invite
-// the invite's own tag (spec 07 §6.2 "Tags first").
 func (q *Queue) fillTags(ctx context.Context) error {
 	if q.Tagger == nil {
 		return nil
@@ -506,7 +456,6 @@ func (q *Queue) fillTags(ctx context.Context) error {
 	return tx.Commit(ctx)
 }
 
-// lanesAtRate lists the lanes that have used their hourly rate.
 func (q *Queue) lanesAtRate(ctx context.Context, tx pgx.Tx) ([]string, error) {
 	out := []string{}
 	for lane, rate := range q.Rates {
@@ -527,7 +476,6 @@ func (q *Queue) lanesAtRate(ctx context.Context, tx pgx.Tx) ([]string, error) {
 	return out, nil
 }
 
-// ProcessOne leases, renders, sends and finalizes at most one due row.
 func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
 	if err := q.settleExpiredLeases(ctx); err != nil {
 		return false, err
@@ -564,7 +512,7 @@ func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	pid, sendErr := q.Sender.Send(sctx, msg)
 	cancel()
-	msg = mail.Message{} // the rendered message is never kept
+	msg = mail.Message{}
 	q.finalize(ctx, &row, lease, pid, sendErr, false)
 	return true, nil
 }
@@ -647,10 +595,6 @@ func clip(s string) string {
 	return s
 }
 
-// finalize records a send's outcome. The UPDATE is conditional on the row's
-// own lease, so a row a purge suppressed meanwhile stays suppressed. A row
-// that has become final loses its address at once when it is a `deleted`
-// email (O-17).
 func (q *Queue) finalize(ctx context.Context, row *Row, lease time.Time, pid string, sendErr error, oneShot bool) {
 	ctx = context.WithoutCancel(ctx)
 	kind := row.Kind
@@ -902,8 +846,6 @@ func runDone(after []func()) {
 	}
 }
 
-// Sweep is spec 07 §2.11's mail rows: retention, redaction of subject-less
-// rows 7 days after they became final, and the 24-hour bound on `deleted`.
 func (q *Queue) Sweep(ctx context.Context) (string, error) {
 	ret := q.Retention
 	if ret <= 0 {

@@ -1,42 +1,5 @@
 package tmpl
 
-// corpus_test.go writes conformance/templates/*.json — the shared half of the
-// dual-executor contract for the EXECUTOR, as conformance/dialect/patterns.json
-// is for the dialect.
-//
-// The dialect fixture proves the two validators agree about which patterns are
-// legal, and the two engines agree about what those patterns match. Neither
-// claim says anything about the executor built on top: first-entry-wins,
-// override, on_match, the typed conversions, the date layouts, the
-// empty-group diagnostic and the required-field gate are all decisions ABOVE
-// the regex engine, and every one of them is a place two hand-written
-// implementations can differ while every regex in the template behaves
-// identically.
-//
-// So this file runs the published seed templates over the operator's real v1
-// mail — the same 7,002-message corpus the normalizer conformance is cut from —
-// and records what Go's executor produced, field by field. The TypeScript side
-// (client/src/tmpl/conformance.test.ts) re-runs the same inputs and demands the
-// same answer. Neither side recomputes the other's expectation.
-//
-// # Why the inputs are already normalized
-//
-// A case carries norm.Result.Subject and norm.Result.Text, not raw RFC822. The
-// normalizer has its own conformance set (conformance/normalizer/) which pins
-// Go and TypeScript to byte-identical output over the same corpus; feeding raw
-// mail in here would make every template disagreement indistinguishable from a
-// normalizer disagreement. Two layers, two fixtures, two failures that name
-// themselves.
-//
-// # Why one file per template rather than one per case
-//
-// The brief sketched one JSON file per case, each carrying its own copy of the
-// definition. At the 500-case cap that is 1,500 files and about a megabyte of
-// duplicated definition, in a directory nobody can read. One file per template
-// carries the definition once and keeps `ls` meaningful; the TypeScript runner
-// still declares one `test()` per case, so a failure still names the single
-// message that broke.
-
 import (
 	"encoding/base64"
 	"encoding/json"
@@ -51,9 +14,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/privatefixtures"
 )
 
-// The fixture types, the seed template list and the writer's helpers live in
-// fixtures.go, exported for the oracle module's corpus writer
-// (server/oracle/gates/tmpl, spec 02 §4.3).
 type (
 	templateFixture = TemplateFixture
 	templateCase    = TemplateCase
@@ -66,21 +26,11 @@ var (
 )
 
 const (
-	// templateConformanceDir holds the SYNTHETIC fixtures (synthetic-*.json),
-	// which are committed here.
 	templateConformanceDir = "../../../conformance/templates"
-	// corpusTemplateDir is CorpusTemplateDir (fixtures.go).
-	corpusTemplateDir = CorpusTemplateDir
-	smsFixtureSubdir  = "sms"
+	corpusTemplateDir      = CorpusTemplateDir
+	smsFixtureSubdir       = "sms"
 )
 
-// TestTemplateFixturesAreWhatThisBuildProduces is the guard against the
-// committed set going stale, and it needs NO corpus: every case carries its own
-// inputs, so the whole file can be re-executed from what is in the repository.
-//
-// Without it, a change to a conversion rule would leave the TypeScript executor
-// checking itself against a snapshot of a Go executor that no longer exists —
-// and it would keep passing, because both sides read the same stale file.
 func TestTemplateFixturesAreWhatThisBuildProduces(t *testing.T) {
 	files := readTemplateFixtures(t)
 	total, matched := 0, 0
@@ -92,18 +42,12 @@ func TestTemplateFixturesAreWhatThisBuildProduces(t *testing.T) {
 		total += n
 		matched += m
 	}
-	// A fixture set that matched nothing would pass every assertion above while
-	// proving nothing about extraction.
 	if matched < 100 {
 		t.Fatalf("only %d of %d cases matched; the fixture set is not exercising extraction", matched, total)
 	}
 	t.Logf("%d cases across %d templates, %d matched", total, len(files), matched)
 }
 
-// TestTemplateFixturesCoverEveryFieldAndEveryFailureMode is the check that the
-// committed set is worth running. A conformance corpus that happens to contain
-// only successful card purchases would agree perfectly and say nothing about
-// the date fallback, the empty-group diagnostic or the required-field gate.
 func TestTemplateFixturesCoverEveryFieldAndEveryFailureMode(t *testing.T) {
 	files := readTemplateFixtures(t)
 	var (
@@ -162,13 +106,6 @@ func TestTemplateFixturesCoverEveryFieldAndEveryFailureMode(t *testing.T) {
 		amounts, dates, merchants, last4s, credits, debits, transfers, emptyGroups, noMatch, missingField)
 }
 
-// readTemplateFixtures returns the whole committed set: the real-mail
-// corpus-*.json files from the private checkout and the synthetic-*.json files
-// from this repository, in file-name order. It skips the calling test when
-// HASALA_PRIVATE_FIXTURES is unset, because every assertion made over this set
-// (a corpus file per seed template, >= 100 matched cases, every field and
-// failure mode covered) is a claim about the real mail; the synthetic files on
-// their own are pinned by TestSyntheticFixturesAreWhatThisBuildProduces.
 func readTemplateFixtures(t *testing.T) []templateFixture {
 	t.Helper()
 	privatefixtures.Path(t, path.Join(corpusTemplateDir, smsFixtureSubdir))

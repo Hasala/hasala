@@ -1,19 +1,9 @@
-// The hash chain (spec 01 §7; wire/chain.ts, ported):
-//
-//   blob_hash[c] = SHA256(blob_hash[c−1] ‖ frame[c]),  blob_hash[0] = 0^32,
-//
-// per (user_id, writer_id, stream). It hashes the stored, framed, padded bytes,
-// so the server recomputes it without a key. Linkage proves drops, reorders,
-// substitutions and forged `prev_hash` inside a fetched range; truncation and a
-// re-chained history need a pinned head (and the v3 AD's `prev_hash` binding
-// makes a re-chained history fail AEAD at the first spliced frame).
 import CoreJSON
 import CorePrimitives
 import Foundation
 import HasalaText
 
 public enum Chain {
-  /// `SHA256(prev ‖ frame)`.
   public static func hash(prev: Hash32, frame: some DataProtocol) -> Hash32 {
     var buf = Data(capacity: Hash32.byteCount + frame.count)
     buf.append(prev.bytes)
@@ -21,8 +11,6 @@ public enum Chain {
     return Hash32.of(buf)
   }
 
-  /// A chain position: the counter and the hash at it. Counter 0 with
-  /// ``Hash32/zero`` is the empty chain.
   public struct Head: Sendable, Hashable {
     public let counter: Int64
     public let hash: Hash32
@@ -33,7 +21,6 @@ public enum Chain {
     public static let genesis = Head(counter: 0, hash: .zero)
   }
 
-  /// A pulled row with its body.
   public struct Row: Sendable, Hashable {
     public let writerID: String
     public let stream: String
@@ -51,7 +38,6 @@ public enum Chain {
     }
   }
 
-  /// A row of a hash list (no body).
   public struct HashRow: Sendable, Hashable {
     public let seq: Int64
     public let writerID: String
@@ -71,9 +57,6 @@ public enum Chain {
     public let message: String
   }
 
-  /// Verifies `rows` as the continuation of writer `writerID`'s `stream` chain
-  /// from `pinned`: consecutive counters, each `prev_hash` the previous hash, each
-  /// `blob_hash` the hash of its bytes.
   public static func verify(writerID: String, stream: String, rows: [Row], pinned: Head) throws(Break) {
     let key = "\(writerID)|\(stream)"
     var prev = pinned.hash
@@ -94,14 +77,11 @@ public enum Chain {
     }
   }
 
-  /// The head after `rows` (or `pinned` when there are none).
   public static func headAfter(_ rows: [Row], pinned: Head) -> Head {
     guard let last = rows.last else { return pinned }
     return Head(counter: last.counter, hash: last.blobHash)
   }
 
-  /// Verifies a hash list's linkage from `pinned` and returns its head. Without
-  /// bodies this proves linkage only, never that a hash belongs to any bytes.
   public static func verifyHashList(writerID: String, stream: String, list: [HashRow], pinned: Head) throws(Break)
     -> Head
   {
@@ -127,7 +107,6 @@ public enum Chain {
     return Head(counter: want - 1, hash: prev)
   }
 
-  /// Verifies fetched bodies against hashes pinned earlier by a hash list.
   public static func verifyFetchedRange(pinned: [Int64: Hash32], rows: [Row]) throws(Break) {
     for r in rows {
       guard let want = pinned[r.counter] else {

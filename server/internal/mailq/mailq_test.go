@@ -62,8 +62,6 @@ func TestHint(t *testing.T) {
 	}
 }
 
-// F7-6: no template carries a script, an inline style, an http:// link or a
-// remote image, and every href is on https://hasala.app/.
 func TestTemplatesAreContentFree(t *testing.T) {
 	href := regexp.MustCompile(`href="([^"]*)"`)
 	n := 0
@@ -99,8 +97,6 @@ func TestTemplatesAreContentFree(t *testing.T) {
 		if strings.Contains(r.Subject, "\n") || strings.HasPrefix(r.Text, "\n") {
 			t.Errorf("%s: subject/body split", kind)
 		}
-		// Every kind with an HTML part is in the shared layout, whose one image
-		// is the PNG logo on hasala.app.
 		if kind != "test" && (strings.Count(r.HTML, "<img") != 1 ||
 			!strings.Contains(r.HTML, `<img src="`+mail.LogoURL+`" width="40" height="24" alt="">`)) {
 			t.Errorf("%s: the HTML part has no logo, or another image", kind)
@@ -108,10 +104,6 @@ func TestTemplatesAreContentFree(t *testing.T) {
 	}
 }
 
-// The goodbye a purge queues goes out styled: the renderer the server
-// registers for `deleted` gives an HTML part in the shared layout, with the
-// logo, Paper's summary table and the time from the row's params. It used to
-// be plain text only.
 func TestDeletedRendererSendsTheStyledLayout(t *testing.T) {
 	m, err := DeletedRenderer(context.Background(), nil, Row{Kind: "deleted", Recipient: "gone@example.com",
 		Params:    map[string]any{"deleted_at": "2026-10-11T09:40:00Z"},
@@ -137,7 +129,6 @@ func TestWorkerOutcomes(t *testing.T) {
 	q := New(pool, fake, fixedTagger{})
 	q.Register("test", TestRenderer)
 
-	// Sent.
 	id := enqueue(t, pool, q, Enqueue{Kind: "test", To: "a@example.com"})
 	if n, err := q.Drain(bg); err != nil || n != 1 {
 		t.Fatalf("drain %d %v", n, err)
@@ -146,7 +137,6 @@ func TestWorkerOutcomes(t *testing.T) {
 		t.Fatalf("sent row %s %d", st, att)
 	}
 
-	// Transient: back to queued with a backoff.
 	fake.Err = errors.New("mail: upstream: http 503 code 0")
 	id = enqueue(t, pool, q, Enqueue{Kind: "test", To: "b@example.com"})
 	_, _ = q.Drain(bg)
@@ -162,7 +152,6 @@ func TestWorkerOutcomes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Permanent and bounced: final.
 	fake.Err = mail.ErrPermanent
 	id = enqueue(t, pool, q, Enqueue{Kind: "test", To: "c@example.com"})
 	_, _ = q.Drain(bg)
@@ -176,7 +165,6 @@ func TestWorkerOutcomes(t *testing.T) {
 		t.Fatalf("bounced %s", st)
 	}
 
-	// A `deleted` email loses its address the moment it is final (O-17).
 	fake.Err = nil
 	q.Register("deleted", RenderFunc(func(_ context.Context, _ pgx.Tx, r Row) (mail.Message, error) {
 		return mail.Message{To: r.Recipient, Subject: "s", Text: "t"}, nil
@@ -187,7 +175,6 @@ func TestWorkerOutcomes(t *testing.T) {
 		t.Fatalf("deleted row %s keeps %v", st, rcp)
 	}
 
-	// Auth: the row goes back to queued and every lane stops.
 	fake.Err = mail.ErrAuth
 	id = enqueue(t, pool, q, Enqueue{Kind: "test", To: "e@example.com"})
 	_, _ = q.Drain(bg)
@@ -199,7 +186,6 @@ func TestWorkerOutcomes(t *testing.T) {
 		t.Fatal("a stopped worker sent")
 	}
 
-	// Params outside the allow-list are a programming error.
 	err := pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error {
 		_, err := q.EnqueueTx(bg, tx, Enqueue{Kind: "test", To: "f@example.com", Params: map[string]any{"name": "Maya"}})
 		return err
@@ -254,8 +240,6 @@ func TestSendNowAndSweep(t *testing.T) {
 	}
 }
 
-// serve without [email]: a send fails for good at once, so the log never says
-// `sent` for a message that went nowhere and the row is not retried.
 func TestUnconfiguredSenderFailsRowsAtOnce(t *testing.T) {
 	pool := pgtest.New(t)
 	q := New(pool, mail.Unconfigured{}, fixedTagger{})
@@ -273,9 +257,6 @@ func TestUnconfiguredSenderFailsRowsAtOnce(t *testing.T) {
 	}
 }
 
-// Spec 02 §14.7: a bounce to an account's address runs the hook in the
-// finalizing transaction, for a queued row and for a SendNow code alike; a
-// bounce with no account runs nothing.
 func TestABounceRunsTheHook(t *testing.T) {
 	pool := pgtest.New(t)
 	user := oplogtest.NewUserWithoutKeys(t, pool)
@@ -302,8 +283,6 @@ func TestABounceRunsTheHook(t *testing.T) {
 	}
 }
 
-// SendNow writes the row before the send, keeps no secret in it, and makes
-// one attempt: a transient failure is final.
 func TestSendNowLogsTheSendAndNeverTheSecret(t *testing.T) {
 	pool := pgtest.New(t)
 	fake := &mail.Fake{}
@@ -328,10 +307,6 @@ func TestSendNowLogsTheSendAndNeverTheSecret(t *testing.T) {
 	}
 }
 
-// Spec 07 §2.11, §6.6: the sweep drops a final subject-less row's address
-// seven days after it became final, never a row with a subject, a queued row
-// or one being sent; past the retention it deletes every row but one being
-// sent.
 func TestTheLogSweepRedactsAndExpiresRows(t *testing.T) {
 	pool := pgtest.New(t)
 	user := oplogtest.NewUserWithoutKeys(t, pool)

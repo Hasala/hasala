@@ -10,10 +10,6 @@ import (
 	"time"
 )
 
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
-
 func mustLoad(t *testing.T, path string) Definition {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -27,10 +23,6 @@ func mustLoad(t *testing.T, path string) Definition {
 	return d
 }
 
-// mustDef parses an inline definition and refuses one that would not publish.
-// Every inline fixture in this file is therefore a definition the store would
-// actually accept — a test built on a definition that could never be published
-// proves nothing about the executor as it is really used.
 func mustDef(t *testing.T, src string) Definition {
 	t.Helper()
 	d, err := ParseDefinition([]byte(src))
@@ -46,14 +38,8 @@ func mustDef(t *testing.T, src string) Definition {
 const dibCardBody = "إشعار مشتريات\nالمبلغ\nAED 250.00\nبتاريخ 05-06-2026\n" +
 	"الدفع الى\nCARREFOUR DUBAI\nرقم البطاقة\nXXXX1234"
 
-// The DIB account layout: an "إيداع" (deposit) notice — so the four-way cascade
-// says credit — whose description nonetheless ends in DEBIT.
 const dibAccountBody = "إشعار إيداع\nالمبلغ\nAED 1,250.75\nبتاريخ 05-06-2026\n" +
 	"المعاملة\nSALARY TRNSFER DEBIT\nمن حساب\n0123456789"
-
-// ---------------------------------------------------------------------------
-// the seed shapes
-// ---------------------------------------------------------------------------
 
 func TestTheTestdataTemplatesAreValidDefinitions(t *testing.T) {
 	for _, f := range []string{"dib.card.v1", "dib.account.v1", "enbd.alert.v1"} {
@@ -98,7 +84,6 @@ func TestBodyNotContainsSeparatesTheTwoDIBLayouts(t *testing.T) {
 	if e.Matched {
 		t.Fatal("a gated-out message must not report Matched")
 	}
-	// ...and the account layout still matches its own body.
 	if _, err := Execute(account, "", dibAccountBody); err != nil {
 		t.Fatalf("account body: %v", err)
 	}
@@ -110,7 +95,6 @@ func TestOverrideReplacesAnAlreadySetDirection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// "إشعار إيداع" makes the cascade say credit; the description ends DEBIT.
 	if e.Direction != "debit" {
 		t.Fatalf("Direction = %q, want debit (the override entry must win)", e.Direction)
 	}
@@ -121,8 +105,6 @@ func TestOverrideReplacesAnAlreadySetDirection(t *testing.T) {
 		t.Fatalf("%+v", e)
 	}
 
-	// Without the override entry the cascade's value survives — which is the
-	// whole reason override exists. Same definition, override entry removed.
 	stripped := d
 	stripped.Extract = nil
 	for _, x := range d.Extract {
@@ -154,13 +136,10 @@ func TestSubjectSourceUsesTheEffectiveSubject(t *testing.T) {
 	if e.AmountMinor != 1275000 || e.Direction != "debit" || e.Currency != "AED" {
 		t.Fatalf("%+v", e)
 	}
-	// date_from is "email": the caller supplies norm.Result.EmailDate, so the
-	// executor must leave PostedAt at the zero time rather than invent one.
 	if !e.PostedAt.IsZero() {
 		t.Fatalf("PostedAt = %s, want zero for date_from=email", e.PostedAt)
 	}
 
-	// The same template with no subject loses only the last4.
 	e2, err := Execute(d, "", body)
 	if err != nil {
 		t.Fatal(err)
@@ -181,8 +160,6 @@ func TestOnMatchSetsDirectionOnlyWhenUnset(t *testing.T) {
 		t.Fatalf("%+v", e)
 	}
 
-	// An entry that sets direction BEFORE the amount entry runs wins: on_match
-	// never overwrites (rule 4).
 	def := mustDef(t, `{
 	  "id":"onmatch","version":1,"bank":"t","normalizer_version":1,
 	  "match":{"sender_domain":["example.com"]},
@@ -201,10 +178,6 @@ func TestOnMatchSetsDirectionOnlyWhenUnset(t *testing.T) {
 		t.Fatalf("Direction = %q; on_match must not overwrite an already-set field", e2.Direction)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// rule 3: conversion failure falls through
-// ---------------------------------------------------------------------------
 
 func dateDef(t *testing.T, layouts, required string) Definition {
 	t.Helper()
@@ -244,14 +217,10 @@ func TestDateLayoutsAreTriedInOrderAndFallBackToTheFirstToken(t *testing.T) {
 }
 
 func TestDateParsingSemanticsTheTypeScriptMirrorMustReproduce(t *testing.T) {
-	// Go's time.Parse decides these; a hand-written TypeScript parser (Task 20)
-	// would not reproduce any of them by accident, and each one is the
-	// difference between a transaction dated correctly on the server and dated
-	// differently on the phone. Measured against Go 1.25, 2026-08-01.
 	d := dateDef(t, `"DD-MM-YYYY","DD/Mon/YYYY hh:mm A","DD/Mon/YYYY"`, `"amount","direction"`)
 	for _, tc := range []struct {
 		text string
-		want string // RFC3339, or "" for a conversion failure
+		want string
 		why  string
 	}{
 		{"05/jun/2026", "2026-06-05T00:00:00Z", "month NAMES fold case"},
@@ -279,12 +248,6 @@ func TestDateParsingSemanticsTheTypeScriptMirrorMustReproduce(t *testing.T) {
 }
 
 func TestExecuteBoundsExceedTheLargestStorableMail(t *testing.T) {
-	// ledgerd's SMTP DATA cap was 1,000,000 bytes (blob.MaxColdMail, retired with
-	// the SMTP lane); the Swift port keeps the bound for Gmail messages. Normalization can INFLATE a
-	// message — a base64'd UTF-16 part decodes to longer UTF-8 — so a body bound
-	// equal to the raw cap would refuse mail the receiver had already accepted
-	// and stored. Asserted rather than left as arithmetic in a comment, so
-	// raising one of the two numbers without the other fails here.
 	const maxRawMail = 1_000_000
 	if MaxBodyBytes < 2*maxRawMail {
 		t.Fatalf("MaxBodyBytes = %d, want at least 2x the raw mail cap (%d)", MaxBodyBytes, maxRawMail)
@@ -295,9 +258,6 @@ func TestExecuteBoundsExceedTheLargestStorableMail(t *testing.T) {
 }
 
 func TestAConversionFailureFallsThroughRatherThanZeroing(t *testing.T) {
-	// date is NOT required: the entry yields nothing, the template still
-	// matches, and PostedAt is the zero time because nothing produced one —
-	// never time.Time{} presented as an extracted value.
 	d := dateDef(t, `"DD-MM-YYYY"`, `"amount","direction"`)
 	e, err := Execute(d, "", "Amt: 1.00\nDate: not a date")
 	if err != nil {
@@ -310,7 +270,6 @@ func TestAConversionFailureFallsThroughRatherThanZeroing(t *testing.T) {
 		t.Fatal("the template must still match: date is not required")
 	}
 
-	// The same failure with date required fails CLOSED and names the field.
 	req := dateDef(t, `"DD-MM-YYYY"`, `"amount","direction","date"`)
 	e2, err := Execute(req, "", "Amt: 1.00\nDate: not a date")
 	if !errors.Is(err, ErrMissingField) {
@@ -336,8 +295,6 @@ func TestAFailingPatternFallsThroughToTheNextPatternInTheSameEntry(t *testing.T)
 	  ],
 	  "required":["amount","direction"]}`)
 
-	// Pattern 1 MATCHES but its capture does not convert (no decimals), so the
-	// executor must try pattern 2 rather than give up on the entry.
 	e, err := Execute(d, "", "Total: three hundred\nAmount: 12.50")
 	if err != nil {
 		t.Fatal(err)
@@ -348,11 +305,6 @@ func TestAFailingPatternFallsThroughToTheNextPatternInTheSameEntry(t *testing.T)
 }
 
 func TestAnEntryThatProducesNothingFallsThroughToTheNextEntryForTheSameField(t *testing.T) {
-	// The other half of rule 3, and the half a "did it come back zero?"
-	// assertion cannot see: an entry whose conversion failed must not COUNT as
-	// having produced the field, or the next entry for that field is skipped and
-	// the value is lost. Found by mutation — writing the failed conversion
-	// through and marking the field set passes every zero-value assertion.
 	d := mustDef(t, `{
 	  "id":"entryfallthrough","version":1,"bank":"t","normalizer_version":1,
 	  "match":{"sender_domain":["example.com"]},
@@ -403,8 +355,6 @@ func TestFirstEntryWinsAndLaterEntriesForTheSameFieldAreSkipped(t *testing.T) {
 
 func TestAnUnconditionalConstEntryIsTheConditionalDefault(t *testing.T) {
 	d := mustLoad(t, "testdata/dib.account.v1.json")
-	// Neither إيداع nor خصم nor من الحساب: the unconditional credit entry is
-	// the only one left, exactly like v1's `default:` branch.
 	body := "إشعار تحويل\nالمبلغ\nAED 10.00\nبتاريخ 05-06-2026\nالمعاملة\nSOMETHING\nمن حساب\n0000001111"
 	e, err := Execute(d, "", body)
 	if err != nil {
@@ -414,7 +364,6 @@ func TestAnUnconditionalConstEntryIsTheConditionalDefault(t *testing.T) {
 		t.Fatalf("Direction = %q, want credit", e.Direction)
 	}
 
-	// ...and "من الحساب" reaches the conditional debit branch first.
 	body2 := strings.Replace(body, "المعاملة\nSOMETHING", "من الحساب\nالمعاملة\nSOMETHING", 1)
 	e2, err := Execute(d, "", body2)
 	if err != nil {
@@ -424,10 +373,6 @@ func TestAnUnconditionalConstEntryIsTheConditionalDefault(t *testing.T) {
 		t.Fatalf("Direction = %q, want debit", e2.Direction)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// typed conversion
-// ---------------------------------------------------------------------------
 
 func amountDef(t *testing.T) Definition {
 	t.Helper()
@@ -456,13 +401,13 @@ func TestAmountConversion(t *testing.T) {
 		{"0.00", 0, "AED", true},
 		{"12,750.00", 1275000, "AED", true},
 		{"USD 12.34", 1234, "USD", true},
-		{"usd 12.34", 1234, "USD", true}, // flags ["i"]: ASCII-uppercased
-		{"250", 0, "", false},            // no decimal part is a conversion failure, not a guess
+		{"usd 12.34", 1234, "USD", true},
+		{"250", 0, "", false},
 		{"250.5", 0, "", false},
 		{"250.005", 0, "", false},
-		{"-250.00", 0, "", false}, // money is always positive; direction carries the sign
+		{"-250.00", 0, "", false},
 		{"+250.00", 0, "", false},
-		{"99999999999999999999.00", 0, "", false}, // int64 overflow
+		{"99999999999999999999.00", 0, "", false},
 		{".50", 0, "", false},
 		{"", 0, "", false},
 	} {
@@ -501,8 +446,8 @@ func TestLast4KeepsTheLastFourASCIIDigits(t *testing.T) {
 		{"XXXX1234", "1234"},
 		{"4321-8765-****-1234", "1234"},
 		{"12", "12"},
-		{"card ٤٣٢١", ""}, // Arabic-Indic digits are NOT ASCII digits
-		{"no digits", ""}, // fewer than one digit is a conversion failure
+		{"card ٤٣٢١", ""},
+		{"no digits", ""},
 		{"٠١٢٣ 9", "9"},
 	} {
 		e, err := Execute(d, "", "A: 1.00\nC: "+tc.in)
@@ -515,13 +460,8 @@ func TestLast4KeepsTheLastFourASCIIDigits(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// empty capture groups (rule 10)
-// ---------------------------------------------------------------------------
-
 func TestExecuteRecordsEmptyCaptureGroups(t *testing.T) {
 	d := mustLoad(t, "testdata/dib.card.v1.json")
-	// The merchant line is present but blank.
 	body := strings.Replace(dibCardBody, "الدفع الى\nCARREFOUR DUBAI", "الدفع الى\n", 1)
 	e, err := Execute(d, "", body)
 	if err != nil {
@@ -536,9 +476,6 @@ func TestExecuteRecordsEmptyCaptureGroups(t *testing.T) {
 }
 
 func TestAGroupThatDidNotParticipateIsNotAnEmptyGroup(t *testing.T) {
-	// dib.card's optional (?P<ccy>...) does not participate when the body
-	// carries no currency prefix. Conflating "absent" with "matched the empty
-	// string" is exactly how this diagnostic goes wrong.
 	d := mustLoad(t, "testdata/dib.card.v1.json")
 	body := strings.Replace(dibCardBody, "AED 250.00", "250.00", 1)
 	e, err := Execute(d, "", body)
@@ -556,8 +493,6 @@ func TestAGroupThatDidNotParticipateIsNotAnEmptyGroup(t *testing.T) {
 }
 
 func TestEmptyGroupsSurviveAFailedMatch(t *testing.T) {
-	// The whole point of the diagnostic is the case where nothing parsed: the
-	// pipeline records empty_groups on a row whose matched is false.
 	d := mustLoad(t, "testdata/dib.card.v1.json")
 	body := strings.Replace(dibCardBody, "بتاريخ 05-06-2026", "بتاريخ", 1)
 	body = strings.Replace(body, "الدفع الى\nCARREFOUR DUBAI", "الدفع الى\n", 1)
@@ -595,10 +530,6 @@ func TestEmptyGroupsAreSortedAndDeduplicated(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// failing closed
-// ---------------------------------------------------------------------------
-
 func TestExecuteFailsClosedOnMissingRequiredField(t *testing.T) {
 	d := mustLoad(t, "testdata/dib.card.v1.json")
 	body := strings.Replace(dibCardBody, "المبلغ\nAED 250.00", "المبلغ\n", 1)
@@ -615,15 +546,15 @@ func TestExecuteFailsClosedOnMissingRequiredField(t *testing.T) {
 }
 
 func TestMatchesSenderDomainIsASuffixMatchOnLabelBoundaries(t *testing.T) {
-	d := mustLoad(t, "testdata/dib.card.v1.json") // sender_domain: ["dib.ae"]
+	d := mustLoad(t, "testdata/dib.card.v1.json")
 	for _, tc := range []struct {
 		domain string
 		want   bool
 	}{
 		{"dib.ae", true},
 		{"notifications.dib.ae", true},
-		{"DIB.AE", true},  // a verified domain may arrive in any case
-		{"dib.ae.", true}, // trailing root dot
+		{"DIB.AE", true},
+		{"dib.ae.", true},
 		{"evildib.ae", false},
 		{"dib.ae.evil.com", false},
 		{"ae", false},
@@ -656,13 +587,6 @@ func TestValidateExtractionRefusesIncoherentResults(t *testing.T) {
 		}
 	}
 
-	// The coherence half, checked against a definition that requires NOTHING.
-	// Every publishable definition requires amount, and Produced("amount") is
-	// itself "Currency != \"\"", so the Required check shadows the coherence
-	// check whenever both apply — a caller validating an extraction it did not
-	// just execute (the ingest pipeline, re-checking before it writes) is the
-	// case these branches actually defend. Found by mutation: disabling the
-	// currency check changed nothing until this loop existed.
 	bare := Definition{DateFrom: DateFromEmail}
 	for name, e := range map[string]Extraction{
 		"amount with no currency":           {AmountMinor: 500},
@@ -677,7 +601,6 @@ func TestValidateExtractionRefusesIncoherentResults(t *testing.T) {
 		}
 	}
 
-	// date_from = "email" means the executor must not have produced a date.
 	alert := mustLoad(t, "testdata/enbd.alert.v1.json")
 	bad := Extraction{AmountMinor: 1, Currency: "AED", Direction: "debit", PostedAt: time.Now()}
 	if err := ValidateExtraction(bad, alert); err == nil {
@@ -686,9 +609,6 @@ func TestValidateExtractionRefusesIncoherentResults(t *testing.T) {
 }
 
 func TestIsTransferCannotBeRequired(t *testing.T) {
-	// A flag that is false is indistinguishable from one that was never set, so
-	// "required" cannot be honestly enforced for it. It must fail at the publish
-	// gate, and fail closed at execution if it ever got past one.
 	src := `{
 	  "id":"flagreq","version":1,"bank":"t","normalizer_version":1,
 	  "match":{"sender_domain":["example.com"]},
@@ -757,10 +677,6 @@ func TestCompileRejectsADefinitionTheExecutorCannotRun(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// hostile input
-// ---------------------------------------------------------------------------
-
 func TestExecuteRefusesAnInputBeyondItsSizeBound(t *testing.T) {
 	d := mustLoad(t, "testdata/dib.card.v1.json")
 	big := strings.Repeat("x", MaxBodyBytes+1)
@@ -770,8 +686,6 @@ func TestExecuteRefusesAnInputBeyondItsSizeBound(t *testing.T) {
 	if _, err := Execute(d, strings.Repeat("s", MaxSubjectBytes+1), dibCardBody); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("subject: err = %v, want ErrTooLarge", err)
 	}
-	// The bound is a refusal, never a truncation: a truncated body would parse
-	// a DIFFERENT message from the one that arrived.
 	if _, err := Execute(d, "", dibCardBody+strings.Repeat("x", MaxBodyBytes)); !errors.Is(err, ErrTooLarge) {
 		t.Fatal("an oversize body that happens to start with a matching one must still be refused")
 	}
@@ -779,8 +693,6 @@ func TestExecuteRefusesAnInputBeyondItsSizeBound(t *testing.T) {
 
 func TestAnEnormousCaptureIsAConversionFailureRatherThanAMerchant(t *testing.T) {
 	d := mustLoad(t, "testdata/dib.card.v1.json")
-	// One line, no newline to stop [^\n]+: the merchant group would otherwise
-	// swallow 400 KB and hand it to the transaction store.
 	huge := strings.Repeat("A", 400_000)
 	body := strings.Replace(dibCardBody, "CARREFOUR DUBAI", huge, 1)
 	e, err := Execute(d, "", body)
@@ -796,18 +708,6 @@ func TestAnEnormousCaptureIsAConversionFailureRatherThanAMerchant(t *testing.T) 
 }
 
 func TestExecuteIsLinearOnInputsThatWouldReDoSABacktrackingEngine(t *testing.T) {
-	// DEFENCE IN DEPTH, and the two halves are separate claims.
-	//
-	// Every pattern here is now REFUSED by the dialect (Task 20's
-	// multiple_unbounded_quantifiers rule), which is what protects the
-	// TypeScript executor — under a backtracking engine the third one takes ~88
-	// SECONDS on 400 characters. But the dialect is a publish-time gate, and a
-	// gate can be bypassed by a bug, a hand-edited row or a future rule change.
-	// Go's RE2 has no backtracking at all, so the SERVER cannot be hung by mail
-	// chosen to maximise match cost even by a pattern that should never have
-	// been stored. That is the property asserted below, and it is asserted on
-	// the shapes the dialect refuses precisely because those are the ones where
-	// the two engines' costs diverge.
 	for _, p := range []string{
 		`(?P<v>[0-9]+)[0-9]+z`,
 		`(?P<v>[0-9]+)[0-9]+[0-9]+z`,
@@ -819,10 +719,6 @@ func TestExecuteIsLinearOnInputsThatWouldReDoSABacktrackingEngine(t *testing.T) 
 			t.Errorf("%q is the polynomial shape and the dialect must refuse it: %v",
 				p, codesOf(ValidatePattern(p, nil)))
 		}
-		// ParseDefinition + Compile rather than mustDef: the definition is
-		// deliberately one the publish gate would reject, and the point is that
-		// the executor survives it anyway. Compile is what the ingest path calls
-		// on an already-stored template, so this is the real path.
 		d, err := ParseDefinition([]byte(fmt.Sprintf(`{
 		  "id":"redos","version":1,"bank":"t","normalizer_version":1,
 		  "match":{"sender_domain":["example.com"]},
@@ -848,52 +744,6 @@ func TestExecuteIsLinearOnInputsThatWouldReDoSABacktrackingEngine(t *testing.T) 
 }
 
 func TestKNOWNASingleUnboundedQuantifierIsStillQuadraticInJavaScript(t *testing.T) {
-	// The successor to Task 19's
-	// TestKNOWNTheDialectDoesNotStopPolynomialBacktrackingInJavaScript, which
-	// Task 20 deleted by closing the gap it pinned. This is the part that is
-	// still open, stated with the numbers rather than left to be rediscovered.
-	//
-	// MEASURED 2026-08-01, Bun 1.3.14, `new RegExp(p, "u").test(input)`:
-	//
-	//   [0-9]+z                      "1"x50,000        1,162 ms
-	//   [0-9]+z                      "1"x100,000       4,459 ms
-	//   [0-9]+z                      "1"x200,000      17,935 ms
-	//
-	// One unbounded quantifier is quadratic in a backtracking engine when the
-	// match FAILS, because every start position is retried. MaxBodyBytes is
-	// 2,000,000, so the dialect does not by itself bound what a template costs
-	// on the phone.
-	//
-	// What bounds it is a property of the PUBLISHED TEMPLATES rather than of the
-	// dialect, and there are two ways to have it: a mandatory literal prefix, so
-	// the engine's prefix scan discards almost every start position, or a
-	// bounded run, so each start position is cheap. Measured on the same build,
-	// against a hostile 1 MB body:
-	//
-	//   الدفع الى\n([^\n]+)                                    1.8 ms   literal prefix
-	//   المبلغ\n(?:[A-Z]{3} )?([0-9][0-9,]{0,24}\.[0-9]{2})      3.5 ms   literal prefix
-	//   ([0-9][0-9,]*\.[0-9]{2})[ \n]has been[ \n]…       333,859 ms   NEITHER
-	//   ([0-9][0-9,]{0,24}\.[0-9]{2})[ \n]has been[ \n]…      15.6 ms   bounded run
-	//
-	// The third row is the ENBD alert anchor as v1 wrote it, and Task 20 found
-	// it by timing the seeds in the client engine rather than by reasoning about
-	// them. Its first mandatory atom is [0-9], so the engine tries every digit
-	// in the body. The seed templates now use the fourth row's bounded run;
-	// {0,24} covers every amount an int64 can hold and all 13,798 corpus rows
-	// extract identically before and after.
-	//
-	// Banning an anchorless pattern is NOT the fix: `DEBIT$` is a seed and has
-	// no leading literal at all, and a rule shaped "must start with a literal"
-	// would make the ENBD amount anchor — which starts with an optional currency
-	// group — inexpressible, which is the exact defect the dialect's
-	// accept/reject table exists to prevent. The bound lives where it can be
-	// measured instead: client/src/tmpl/cost.test.ts times every published
-	// template against ten hostile bodies.
-	//
-	// This test asserts only the part Go can assert: that the shape is still
-	// dialect-LEGAL, so the note above is about a pattern that can really be
-	// published. It fails the day someone bans it, which is the signal to
-	// rewrite this note.
 	for _, p := range []string{`[0-9]+z`, `[^\n]+X`, `DEBIT$`} {
 		if errs := ValidatePattern(p, nil); len(errs) != 0 {
 			t.Fatalf("the dialect now rejects %q (%v) — rewrite this note", p, errs)
@@ -922,8 +772,6 @@ func TestExecuteSurvivesHostileBodies(t *testing.T) {
 					t.Errorf("%s: panic: %v", name, r)
 				}
 			}()
-			// Both the gated and ungated paths, so the hostile body reaches the
-			// extraction loop as well as the Match gate.
 			_, _ = Execute(d, "", body)
 			_, _ = Execute(d, "", "إشعار مشتريات\n"+body)
 		}()
@@ -954,8 +802,6 @@ func TestCompiledIsSafeForConcurrentUse(t *testing.T) {
 }
 
 func TestExecuteMatchesExactlyWhenItReturnsNoError(t *testing.T) {
-	// The invariant every caller depends on: Matched is never true alongside an
-	// error, and never false alongside a nil one.
 	d := mustLoad(t, "testdata/dib.card.v1.json")
 	for _, body := range []string{
 		dibCardBody,

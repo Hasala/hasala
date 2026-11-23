@@ -1,34 +1,14 @@
-// The replay engine (replay/replay.ts, ported; spec 04 §2.2 CoreReplay, 03c §2
-// and §10 for the v4 dispatch).
-//
-// Four rules make every replica folding the same log reach the same state:
-//   1. `seq` is the order; the fold refuses to go backwards.
-//   2. `authored_at` decides entity forks and nothing else.
-//   3. A version is a function of the total order (a fork advances it whichever
-//      side wins).
-//   4. Nothing is silently dropped: every refusal lands in `anomalies` or
-//      `forks` with its seq. Neither stops a sync.
-//
-// The exit contract: `apply` returns, or throws `ReplayStop.order` (a position
-// the fold cannot use: a caller bug) or `ReplayStop.newerVersion` (a log this
-// build must not interpret). Everything wrong with an OP becomes an anomaly.
-// Swift arithmetic in here never traps: money goes through `Int128` or
-// reporting-overflow operations (spec 04 §2.4 R9).
 import CoreJSON
 import CoreTime
 import CoreWire
 import HasalaText
 import OrderedCollections
 
-/// The two conditions that stop a fold.
 public enum ReplayStop: Error, Sendable, Equatable {
-  /// A seq that does not move forward, or an op with no writer.
   case order(String)
-  /// An op or blob newer than this build reads: "Update Hasala".
   case newerVersion(String)
 }
 
-/// One opened (plaintext) blob body at its log position.
 public struct PositionedBlob: Sendable {
   public var writerID: String
   public var stream: String
@@ -45,7 +25,6 @@ public struct PositionedBlob: Sendable {
   }
 }
 
-/// One op at its position. `writerID` is the blob's writer (AAD-bound), never a payload field.
 public struct LogEntry: Sendable {
   public var op: Op
   public var position: OpPosition
@@ -61,16 +40,12 @@ public struct LogEntry: Sendable {
 }
 
 public enum Replay {
-  /// Folds a fresh state from `blobs`.
   public static func fold(_ blobs: [PositionedBlob]) throws(ReplayStop) -> State {
     var s = State()
     for b in blobs { try foldBlob(b, into: &s) }
     return s
   }
 
-  /// Decodes and folds one opened blob (replay.ts `foldBlobs`, one item). The
-  /// cursor advances BEFORE the decode, so a blob that will not decode still
-  /// consumes its seq; an unknown newer version stops the fold.
   public static func foldBlob(_ b: PositionedBlob, into s: inout State) throws(ReplayStop) {
     try advance(to: b.seq, &s)
     switch OpCodec.decodeR10(b.body) {
@@ -87,15 +62,12 @@ public enum Replay {
     }
   }
 
-  /// Folds the already-decoded ops of one blob at `seq` (the blob position rules
-  /// of ``foldBlob`` apply).
   public static func foldOps(_ ops: [Op], seq: Int64, writerID: String, into s: inout State) throws(ReplayStop) {
     try advance(to: seq, &s)
     try applyBlobOps(ops, seq: seq, writerID: writerID, into: &s)
   }
 
   static func advance(to seq: Int64, _ s: inout State) throws(ReplayStop) {
-    // Strictly increasing, checked against the STATE: one blob is one row.
     guard seq > s.cursors.hot else {
       throw .order("blob at seq \(seq) does not follow \(s.cursors.hot): one blob is one row, one seq")
     }
@@ -109,7 +81,6 @@ public enum Replay {
     }
   }
 
-  /// Applies one op at its position (replay.ts `applyOp`).
   public static func apply(_ e: LogEntry, to s: inout State) throws(ReplayStop) {
     let op = e.op
     let seq = e.seq
@@ -130,7 +101,6 @@ public enum Replay {
       return
     }
     s.appliedAtCursor.append(op.opID)
-    // 03c §1.8.2: every op visited, applied or refused.
     if let ms = try? parseInstantMs(op.authoredAt), ms > s.maxAuthored[e.writerID, default: Int64.min] {
       s.maxAuthored[e.writerID] = ms
     }
@@ -168,7 +138,6 @@ extension State {
     case .budgetSplitSet: try applyBudgetSplitSet(e)
     case .categoryDefined: try applyCategoryDefined(e)
     case .writerCheckpoint: try applyCheckpoint(e)
-    // v4 parent-free families (Replay/V4/)
     case .txnAnnotated: try applyTxnAnnotated(e)
     case .merchantNamed: try applyMerchantNamed(e)
     case .merchantCategoryRejected: try applyMerchantCategoryRejected(e)
@@ -182,14 +151,11 @@ extension State {
     case .cardLinked: try applyCardLinked(e)
     case .accountCheckin: try applyAccountCheckin(e)
     case .mailboxRetired: try applyMailboxRetired(e)
-    // versioned entities
     case .txnIngested, .txnSuperseded, .txnCategorized, .txnSplit, .txnEdited, .txnDuplicateDisposition,
       .ruleAdded, .projectDefined, .goalDefined, .billSet, .txnCopyResolved:
       try applyCausal(e)
     }
   }
-
-  // MARK: - Parent-free v3 ops (§3.7:126)
 
   private mutating func applyHomeCurrencySet(_ e: LogEntry) throws(PayloadError) {
     let ccy = try P.currency(try P.object(e.op), "currency", v: e.op.v)
@@ -226,8 +192,6 @@ extension State {
     onRateUnset(ccy)
     rateUpdatedAt[ccy] = e.op.authoredAt
   }
-
-  // MARK: - Configuration (schema v3)
 
   private mutating func applyBankDeclared(_ e: LogEntry) throws(PayloadError) {
     let p = try P.object(e.op)
@@ -272,7 +236,6 @@ extension State {
     categories[ExactKey(id)] = CategoryDef(shape: 3, id: id, name: name, kind: kind, bucket: bucket, color: color, icon: nil, active: active)
   }
 
-  /// replay.ts `bucketFor`: a spending category carries a bucket; the others none.
   static func bucketFor(_ kind: String, _ v: JSONValue?) throws(PayloadError) -> String? {
     if kind != "spending" {
       if let v, !v.isNull { throw PayloadError("a \(kind) category must not carry a bucket, got \(showValue(v))") }
@@ -301,10 +264,6 @@ extension State {
 }
 
 extension Replay {
-  /// The payload problem the fold would record as `invalid_payload` for `op`, or
-  /// nil. Authors run it on every op before it enters the outbox (03c §2,
-  /// AT-30): one bad op would cost its whole blob on every device. Causal
-  /// refusals (which depend on what other devices did) are not predicted here.
   public static func payloadProblem(_ op: Op) -> String? {
     var scratch = State()
     let e = LogEntry(op: op, position: OpPosition(seq: 1, index: 0), writerID: "author-check")
@@ -322,8 +281,6 @@ extension Replay {
 }
 
 extension Replay {
-  /// A blob the reader set aside (spec 01 §6.6 R7-R10): it still consumes its
-  /// seq, and is listed in `unreadable` with a content-free reason.
   public static func foldSetAside(
     seq: Int64, writerID: String, stream: String = "hot", writerCounter: Int64, reason: String, into s: inout State
   ) throws(ReplayStop) {

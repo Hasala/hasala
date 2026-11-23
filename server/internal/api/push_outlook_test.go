@@ -21,21 +21,17 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// Synthetic clientStates, the link's shape: 43 base64url characters.
 var (
 	testClientState  = strings.Repeat("Q", 40) + "x-_"
 	otherClientState = strings.Repeat("r", 40) + "9Z_"
-	// A message id and resource shaped like Graph's, synthetic.
-	testMessageID = "AAMkADsyntheticmessageid000000000000000000000000000000AAA="
-	testResource  = "Users/00000000-0000-0000-0000-000000000000/Messages/" + testMessageID
+	testMessageID    = "AAMkADsyntheticmessageid000000000000000000000000000000AAA="
+	testResource     = "Users/00000000-0000-0000-0000-000000000000/Messages/" + testMessageID
 )
 
 func outlookPushOn() *OutlookPush {
 	return &OutlookPush{NotificationURL: testOutlookNotify, LifecycleURL: testOutlookLife}
 }
 
-// outlookLinkRow inserts an Outlook link for a fresh account, routed by
-// SHA-256(clientState).
 func outlookLinkRow(h *harness, o *OutlookOptions, sub, writer, clientState string) uuid.UUID {
 	h.t.Helper()
 	u := h.user(sub)
@@ -65,8 +61,6 @@ func (h *harness) graph(path, query string, body []byte) *httptest.ResponseRecor
 	return w
 }
 
-// graphBody is a notification collection shaped like Graph's: every entry
-// names the message through resource and resourceData.
 func graphBody(t *testing.T, entries ...map[string]any) []byte {
 	t.Helper()
 	for _, e := range entries {
@@ -99,8 +93,6 @@ func TestOutlookHookPathsAreTheConfiguredOnes(t *testing.T) {
 	}
 }
 
-// The hooks exist only with the Outlook push: not with the link alone, nor
-// with Gmail's push.
 func TestOutlookHookIsMountedOnlyWithItsPush(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -124,9 +116,6 @@ func TestOutlookHookIsMountedOnlyWithItsPush(t *testing.T) {
 	}
 }
 
-// The validation handshake: the token back as text/plain, with nosniff and
-// no-store, after no database work, and counted by the per-IP and global
-// budgets.
 func TestOutlookHookValidation(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -134,7 +123,6 @@ func TestOutlookHookValidation(t *testing.T) {
 	push.HookPerIP = NewLimiter(0, 8, 16, time.Now)
 	_, o, _ := withOutlook(h, push)
 
-	// No database: the handshake still answers.
 	dead, err := pgxpool.New(bg, h.pool.Config().ConnString())
 	if err != nil {
 		t.Fatal(err)
@@ -164,7 +152,6 @@ func TestOutlookHookValidation(t *testing.T) {
 		t.Fatalf("validations counted %d", o.Push.Counters.Validations.Load())
 	}
 
-	// Refused tokens: too long, not printable ASCII, empty, twice.
 	for _, q := range []string{
 		"validationToken=" + strings.Repeat("x", 257),
 		"validationToken=" + url.QueryEscape("line\nbreak"),
@@ -182,7 +169,6 @@ func TestOutlookHookValidation(t *testing.T) {
 		t.Fatalf("bad validations counted %d", o.Push.Counters.BadValidation.Load())
 	}
 
-	// hook-ip: the handshakes above spent the budget of 8.
 	w := h.graph(outlookHookPath, "validationToken=abc", nil)
 	wantStatus(t, w, http.StatusTooManyRequests)
 }
@@ -210,7 +196,6 @@ func TestOutlookHookUnverifiedRequestsSpendNoGlobalBudget(t *testing.T) {
 	}
 }
 
-// A token with a body is no handshake: 204, a counter, no echo, no wake.
 func TestOutlookHookTokenWithBody(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -223,9 +208,6 @@ func TestOutlookHookTokenWithBody(t *testing.T) {
 	}
 }
 
-// Notifications: the holder is woken for mail, duplicates collapse, unknown
-// and bad clientStates are counters, malformed bodies are 204, and nothing
-// that names the message or the clientState reaches the log or the database.
 func TestOutlookHookNotifications(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -236,7 +218,6 @@ func TestOutlookHookNotifications(t *testing.T) {
 	holder := "ios-62222222-2222-4222-8222-222222222222"
 	u := outlookLinkRow(h, o, "notify", holder, testClientState)
 
-	// One notification, three times in one body: one wake, for mail.
 	w := h.graph(outlookHookPath, "", graphBody(t, note(testClientState), note(testClientState), note(testClientState)))
 	wantStatus(t, w, http.StatusAccepted)
 	if w.Body.Len() != 0 {
@@ -252,7 +233,6 @@ func TestOutlookHookNotifications(t *testing.T) {
 		t.Fatalf("last_wake_hour not recorded: %v", err)
 	}
 
-	// Unknown and badly shaped clientStates: 202, counted, nobody woken.
 	wantStatus(t, h.graph(outlookHookPath, "", graphBody(t, note(otherClientState))), http.StatusAccepted)
 	wantStatus(t, h.graph(outlookHookPath, "", graphBody(t, note("short"), map[string]any{"changeType": "created"},
 		note(testClientState[:42]+"="))), http.StatusAccepted)
@@ -260,7 +240,6 @@ func TestOutlookHookNotifications(t *testing.T) {
 		t.Fatalf("unknown %d, bad %d", c.Unknown.Load(), c.BadClientState.Load())
 	}
 
-	// Malformed bodies: 204 and a counter, as Gmail's hook answers.
 	many := make([]map[string]any, 101)
 	for i := range many {
 		many[i] = note(testClientState)
@@ -275,8 +254,6 @@ func TestOutlookHookNotifications(t *testing.T) {
 	big := append([]byte(`{"value":[{"clientState":"`+testClientState+`","pad":"`), bytes.Repeat([]byte("x"), 64<<10)...)
 	wantStatus(t, h.graph(outlookHookPath, "", append(big, `"}]}`...)), http.StatusRequestEntityTooLarge)
 
-	// Nothing that names the message, nor the clientState or its hash, was
-	// logged or stored.
 	sum := sha256.Sum256([]byte(testClientState))
 	for _, s := range []string{testMessageID, "Messages/", testClientState, otherClientState, hex.EncodeToString(sum[:])} {
 		if strings.Contains(logs.String(), s) {
@@ -287,7 +264,6 @@ func TestOutlookHookNotifications(t *testing.T) {
 	assertNoAddress(t, h, testClientState)
 }
 
-// Lifecycle events wake the holder with a nudge; other events wake nobody.
 func TestOutlookLifecycleHook(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -306,7 +282,6 @@ func TestOutlookLifecycleHook(t *testing.T) {
 	if ws := wk.take(); len(ws) != 0 || o.Push.Counters.Ignored.Load() != 2 {
 		t.Fatalf("an unknown lifecycle event woke %+v (ignored %d)", ws, o.Push.Counters.Ignored.Load())
 	}
-	// A nudge is not mail: no wake hour.
 	var hour *time.Time
 	if err := h.pool.QueryRow(bg, `SELECT last_wake_hour FROM mailbox_links WHERE user_id = $1`, u).Scan(&hour); err != nil ||
 		hour != nil {
@@ -314,7 +289,6 @@ func TestOutlookLifecycleHook(t *testing.T) {
 	}
 }
 
-// hook-link: one link's burst runs out; another link is unaffected.
 func TestOutlookHookLinkLimiter(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -378,9 +352,6 @@ func TestOutlookHookOverTheGlobalBudgetKeepsTheLinkBudget(t *testing.T) {
 	}
 }
 
-// Made-up clientStates never reach hook-link: a flood of them cannot fill the
-// limiter and push a real link into its shared fallback, so the real link is
-// still woken and nothing is counted as link-limited.
 func TestOutlookHookUnknownClientStatesSpendNoLinkBudget(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -408,7 +379,6 @@ func TestOutlookHookUnknownClientStatesSpendNoLinkBudget(t *testing.T) {
 	}
 }
 
-// A route that cannot be read is 503, so Graph retries; nobody is woken.
 func TestOutlookHookDatabaseFailure(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -433,8 +403,6 @@ func TestOutlookHookDatabaseFailure(t *testing.T) {
 	}
 }
 
-// The hooks are exempt from the headroom fuse, like Gmail's, and skip the
-// wake-hour write while it is tripped.
 func TestOutlookHookPassesTheHeadroomFuse(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -455,7 +423,6 @@ func TestOutlookHookPassesTheHeadroomFuse(t *testing.T) {
 	}
 }
 
-// The clientState the link returns is the one the hook routes by.
 func TestOutlookLinkThenHook(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t).passkeys()
@@ -472,8 +439,6 @@ func TestOutlookLinkThenHook(t *testing.T) {
 	}
 }
 
-// The Gmail hook routes only Gmail links, even to an Outlook row that carries
-// the very address HMAC the notice computes.
 func TestGmailHookIgnoresOutlookLinks(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -490,7 +455,6 @@ func TestGmailHookIgnoresOutlookLinks(t *testing.T) {
 	if ws := wk.take(); len(ws) != 0 || g.Push.Counters.Unknown.Load() != 1 {
 		t.Fatalf("the Gmail hook woke an Outlook link: %+v", ws)
 	}
-	// And the two hooks share one per-IP budget, but not the global one.
 	if g.Push.HookPerIP != o.Push.HookPerIP {
 		t.Fatal("the hooks have separate per-IP budgets")
 	}
@@ -499,7 +463,6 @@ func TestGmailHookIgnoresOutlookLinks(t *testing.T) {
 	}
 }
 
-// The nudge visits only the providers whose push is on.
 func TestNudgeIsPerProvider(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

@@ -1,24 +1,4 @@
 #!/usr/bin/env bash
-# private-fixtures-lock.sh — pins the private real-mail fixtures this commit
-# expects (salehtl/hasala-fixtures) in private-fixtures.lock at the repo root.
-#
-#   scripts/private-fixtures-lock.sh write [CHECKOUT]   # record the checkout's state
-#   scripts/private-fixtures-lock.sh check [CHECKOUT]   # verify a checkout against it
-#
-# CHECKOUT defaults to $HASALA_PRIVATE_FIXTURES. The lock holds the fixtures
-# repository's commit and one sha256 per fixture file (README.md and .gitignore
-# are not fixtures and are not pinned). Whole-file digests of the messages are
-# safe to publish: they identify a file, they do not reveal it. The three small
-# expectation files (deploy-expect.json, tamper.json, exit-expect.json) hold
-# low-entropy values; their digests stay unguessable only because each also
-# carries a long free-text note that is never published. Keep those notes, and
-# never copy any of those files' text into this repository.
-#
-# `check` fails when a pinned file is missing or different, or when the
-# checkout holds a fixture the lock does not name, so a stale, partial or
-# edited checkout cannot pass as the real corpus. A different commit with
-# identical files is reported but is not a failure (a README-only change).
-# scripts/check.sh runs `check` whenever HASALA_PRIVATE_FIXTURES is set.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -43,9 +23,6 @@ sha() {
 	fi
 }
 
-# The fixture files of a checkout, sorted, repo-relative. A git checkout lists
-# what is committed AND anything untracked that is not ignored, so an extra file
-# dropped into a checkout is seen; anything else lists what is on disk.
 fixture_files() {
 	if git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 		git -C "$dir" ls-files --cached --others --exclude-standard
@@ -59,7 +36,6 @@ commit_of() {
 }
 
 if [[ "$mode" == "write" ]]; then
-	# The lock names a commit, so it may only describe committed state.
 	if [[ "$(git -C "$dir" rev-parse --is-inside-work-tree --show-prefix 2>/dev/null)" != "true" ]]; then
 		echo "private-fixtures-lock: $dir is not the top of a git checkout; write needs a checkout of salehtl/hasala-fixtures" >&2
 		exit 1

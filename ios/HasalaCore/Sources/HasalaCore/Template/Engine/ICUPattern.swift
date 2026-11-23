@@ -1,66 +1,31 @@
-// The translation layer from a stored dialect pattern to an ICU pattern (spec 04 §2.2
-// CoreTemplate "ICU engine + translation"; inventory client-core-b §2.3).
-//
-// The stored pattern is what Go (RE2) and TypeScript (`new RegExp(toJS(p), flags + "u")`)
-// run. ICU differs from both by default: `\d` and `\w` are Unicode classes, `$` also matches
-// before a final line terminator, case-insensitive matching uses FULL case folding, set syntax
-// has operators (`[a--b]`, `[a&&b]`, nested `[...]`), and group names may not contain `_`.
-// So the translator does not pass pattern text through. It parses the pattern with
-// JavaScript's `u`-mode grammar and re-emits it in a form ICU cannot read differently:
-//
-//   - every literal is `\x{HEX}` (ASCII letters and digits as themselves);
-//   - every class, and every `\d \D \w \W`, becomes an explicit set of code point ranges,
-//     computed with JavaScript-`u` semantics (`\d` = [0-9], `\w` = [0-9A-Za-z_]);
-//   - with flag `i`, every literal and every set is closed under SIMPLE case folding (the
-//     orbit of `k` is {K, k, U+212A}), and ICU compiles case-sensitively;
-//   - `$` becomes `\z` (end of input only), `^` stays (start of input without MULTILINE);
-//   - `(?P<name>` becomes a plain capture group and the name is kept on the side.
-//
-// It also refuses what JavaScript refuses under `u` (a lone `]` or `}`, a reversed range, a
-// class escape as a range end) and what Go's regexp.Compile refuses (a repetition count over
-// 1,000), so `Dialect.validate`'s `not_compilable` backstop rejects the union of both
-// engines' compile failures: a pattern either engine cannot run is not loaded here.
 import HasalaICU
 
 enum EngineError: Error, Equatable, Sendable {
-  /// The pattern does not compile (in JavaScript-`u`, Go or ICU terms).
   case notCompilable
-  /// ICU's time or stack limit stopped a match (ReDoS backstop).
   case limitExceeded
   case matchFailed
 }
 
-/// A translated pattern: ICU source and the names of its capture groups.
 struct ICUPattern: Equatable {
-  /// The ICU pattern text.
   let source: String
-  /// `groups[k]` names capture group `k + 1` (nil for an unnamed group), in order.
   let groups: [String?]
 
-  /// Go's regexp/syntax repeat limit (`invalid repeat count` above it).
   static let maxRepeat = 1000
 
   static func translate(_ pattern: String, caseInsensitive: Bool) throws(EngineError) -> ICUPattern {
     var p = Parser(src: Array(pattern.unicodeScalars), ci: caseInsensitive)
     try p.disjunction()
-    guard p.i == p.src.count else { throw .notCompilable }  // an unbalanced `)`
+    guard p.i == p.src.count else { throw .notCompilable }
     return ICUPattern(source: p.out, groups: p.groups)
   }
 
-  /// Translates and compiles `pattern`.
   static func compile(_ pattern: String, caseInsensitive: Bool) throws(EngineError) -> ICURegex {
     try ICURegex(try translate(pattern, caseInsensitive: caseInsensitive))
   }
 
-  // MARK: - Sets
-
   static let digit = CodePointSet(ranges: [0x30...0x39])
   static let word = CodePointSet(ranges: [0x30...0x39, 0x41...0x5A, 0x5F...0x5F, 0x61...0x7A])
-  /// JavaScript's WordCharacters under `iu`: also every character whose simple fold is a word
-  /// character (U+017F and U+212A), which is what Go's folded `\w` holds too.
   static let wordCI = word.caseClosed
-  /// What `.` matches in JavaScript (no `s` flag): anything but the four line terminators.
-  /// (Unreachable: the dialect refuses a bare dot before a pattern gets here.)
   static let dot = CodePointSet([0x0A, 0x0D, 0x2028, 0x2029]).complement
 
   static func hex(_ v: UInt32) -> String { String(v, radix: 16, uppercase: true) }
@@ -81,8 +46,6 @@ struct ICUPattern: Equatable {
     }
     return s + "]"
   }
-
-  // MARK: - The parser (JavaScript `u`-mode grammar, the dialect's subset)
 
   struct Parser {
     let src: [Unicode.Scalar]
@@ -146,7 +109,6 @@ struct ICUPattern: Equatable {
       out += ICUPattern.emit(ci ? set.caseClosed : set)
     }
 
-    /// The set a class escape letter stands for, with `i` taken into account for `\w`/`\W`.
     func classEscape(_ e: Unicode.Scalar) -> CodePointSet? {
       switch e {
       case "d": ICUPattern.digit
@@ -157,7 +119,6 @@ struct ICUPattern: Equatable {
       }
     }
 
-    /// One CharacterEscape after the backslash (not a class escape): its code point.
     mutating func characterEscape(inClass: Bool) throws(EngineError) -> UInt32 {
       guard let e = peek() else { throw .notCompilable }
       i += 1
@@ -176,7 +137,6 @@ struct ICUPattern: Equatable {
       case "-" where inClass:
         return 0x2D
       default:
-        // IdentityEscape under `u`: a SyntaxCharacter or `/`, nothing else.
         guard Self.isSyntax(e) || e == "/" else { throw .notCompilable }
         return e.value
       }
@@ -205,7 +165,7 @@ struct ICUPattern: Equatable {
             groups.append(text)
             out += "("
           } else {
-            throw .notCompilable  // lookaround, inline flags, comments: not in the dialect
+            throw .notCompilable
           }
         } else {
           groups.append(nil)
@@ -217,7 +177,7 @@ struct ICUPattern: Equatable {
         out += ")"
       case "[":
         i += 1
-        out += ICUPattern.emit(try charClass())  // already case-closed and negated
+        out += ICUPattern.emit(try charClass())
       case "\\":
         i += 1
         guard let e = peek() else { throw .notCompilable }
@@ -231,8 +191,6 @@ struct ICUPattern: Equatable {
         i += 1
         emitSet(ICUPattern.dot)
       default:
-        // `* + ? { } ] ) |` here are JavaScript-`u` SyntaxErrors ("nothing to repeat",
-        // "lone quantifier brackets").
         guard !Self.isSyntax(c) else { throw .notCompilable }
         i += 1
         emitLiteral(c.value)
@@ -247,7 +205,6 @@ struct ICUPattern: Equatable {
       return word(f) && name.dropFirst().allSatisfy { word($0) || Self.isDigit($0) }
     }
 
-    /// One ClassAtom: a single code point, or a class escape's set.
     enum ClassAtom {
       case char(UInt32)
       case set(CodePointSet)
@@ -268,9 +225,6 @@ struct ICUPattern: Equatable {
       return .char(c.value)
     }
 
-    /// The body of `[...]` after the `[`, through the `]`: the set it matches. With `i` the
-    /// members are closed under simple case folding BEFORE a `^` negates them (JavaScript's
-    /// CharSetMatcher with invert, and Go's folded-then-negated class).
     mutating func charClass() throws(EngineError) -> CodePointSet {
       var negate = false
       if peek() == "^" {
@@ -280,7 +234,7 @@ struct ICUPattern: Equatable {
       var ranges: [ClosedRange<UInt32>] = []
       var set = CodePointSet.empty
       while true {
-        guard let c = peek() else { throw .notCompilable }  // unterminated
+        guard let c = peek() else { throw .notCompilable }
         if c == "]" {
           i += 1
           break
@@ -347,32 +301,10 @@ struct ICUPattern: Equatable {
   }
 }
 
-// MARK: - The compiled engine
-
-/// A compiled ICU regular expression. The prototype is never matched against directly: every
-/// match runs on a clone (cheap: the compiled pattern is shared), so one compiled template can
-/// serve concurrent callers.
 final class ICURegex: @unchecked Sendable {
-  // @unchecked: `proto` is written once in init, only ever read by uregex_clone (which ICU
-  // documents as safe to call on a shared original) and closed in deinit.
   private let proto: OpaquePointer
   let groups: [String?]
 
-  /// ICU's processing limit per search (uregex_setTimeLimit), in its time units of 10,000
-  /// match-engine operations each. It counts operations, not wall time, so the verdict is the
-  /// same on every device.
-  ///
-  /// The dialect bounds a pattern's SHAPE, not its cost on a given body, and ICU backtracks
-  /// roughly ten times slower than V8, where the dialect's costs were calibrated. Measured on
-  /// an Apple M-series Mac (2026-10-11, release build): the dialect-accepted
-  /// `[0-9]{1,32}[0-9]{1,32}z` takes 24 s on a 2 MB digit run and `[0-9]+z` 11.9 s on 50,000
-  /// digits, unlimited; one unit is about 90 µs there. 10,000 units (about 10^8 operations,
-  /// about 0.9 s on that Mac) is the smallest round limit under which every shipping template
-  /// completes on every hostile body in CoreTemplateTests up to `maxBodyBytes` (the slowest,
-  /// enbd.alert.v1's amount anchor on 2 MB of digits, needs between 5,000 and 10,000), so
-  /// their verdicts stay the oracle's; a pattern that would run longer is stopped and the
-  /// message refused as `too_large`. Re-measure on the oldest test iPhone before TestFlight
-  /// (inventory client-core-b §2.3).
   static let timeLimit: Int32 = 10_000
   static let stackOverflow: HasalaUErrorCode = 0x10311
   static let timeOut: HasalaUErrorCode = 0x10312
@@ -399,21 +331,16 @@ final class ICURegex: @unchecked Sendable {
 
   deinit { uregex_close(proto) }
 
-  /// A match: UTF-16 ranges of the whole match and of each capture group (nil when the group
-  /// did not participate).
   struct Match: Equatable {
     let range: Range<Int>
     let groups: [Range<Int>?]
   }
 
-  /// The leftmost match in `text` (UTF-16), or nil. Throws `.limitExceeded` when ICU's time or
-  /// stack limit stops the search.
   func firstMatch(in text: [UInt16], timeLimit: Int32 = ICURegex.timeLimit) throws(EngineError) -> Match? {
     var status: HasalaUErrorCode = 0
     guard let re = uregex_clone(proto, &status), status <= 0 else { throw .matchFailed }
     defer { uregex_close(re) }
     uregex_setTimeLimit(re, timeLimit, &status)
-    // ICU refuses a NULL text pointer, which an empty array would hand over.
     let buffer = text.isEmpty ? [0] : text
     let result: Match?? = buffer.withUnsafeBufferPointer { buf -> Match?? in
       uregex_setText(re, buf.baseAddress, Int32(text.count), &status)

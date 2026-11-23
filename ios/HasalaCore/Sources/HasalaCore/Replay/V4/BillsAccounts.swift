@@ -1,12 +1,3 @@
-// 03b §3.2-§4.4: bills and accounts, folded so a v4 log carrying them folds
-// without anomalies and the records reach the projection.
-//
-// Beta scope (TODO(03b parity)): the payload grammars of 03b §3.2-§4.4 and the
-// fold rules (head check, `forget`/`clear` removals, check-in account pinning)
-// are implemented; 03b §1.5's write memory and `RecordOverwrite` notices are
-// not yet (they never change an installed value, only add a notice), and the
-// derived engines (detector, matcher, balance) live above the fold and are not
-// part of this lane.
 import CoreJSON
 import CoreTime
 import CoreWire

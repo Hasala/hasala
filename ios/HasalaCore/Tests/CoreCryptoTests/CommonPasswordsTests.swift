@@ -1,4 +1,3 @@
-// The bundled common-password list (spec 04 §4.6, §6.1.2) as the app loads it.
 import CoreResources
 import Testing
 

@@ -1,7 +1,3 @@
-// `TaxonomyView` (spec 03c §4.4): taxonomy v1 overlaid with the account's
-// `category_defined` records. Built-ins keep their taxonomy `ord`; a user
-// category's ord is 100 + its first-definition index (fold order, which the
-// snapshot preserves). Applied at read time, never in the fold (03c §1.11).
 import CoreCategorize
 import CoreReplay
 import HasalaText
@@ -17,7 +13,6 @@ public struct TaxonomyView: Sendable, CategoryLookup {
     byID = m
   }
 
-  /// The effective table of a folded state.
   public init(state: State) {
     var infos: [CategoryInfo] = []
     for b in TaxonomyV1.builtins {
@@ -44,6 +39,5 @@ public struct TaxonomyView: Sendable, CategoryLookup {
 
   public func info(_ id: String) -> CategoryInfo? { byID[ExactKey(id)] }
 
-  /// Spending at read time (03a §2): defined, kind spending.
   public func isSpending(_ id: String) -> Bool { byID[ExactKey(id)]?.kind == .spending }
 }

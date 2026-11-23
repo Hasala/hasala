@@ -11,14 +11,6 @@ import Testing
 
 @testable import Hasala
 
-/// The live service over CoreSync's real ceremonies, against `MiniHasalad` (the in-app
-/// fake of `02` §7's password routes, see `LiveAccountFlowTests`), and its failure
-/// mapping (spec 04 §6.1.5): each server refusal and ceremony failure lands on the copy
-/// block the screens show.
-///
-/// CoreTestSupport's `FakeServer` can't be linked into this target: Xcode then builds
-/// HasalaCore's products dynamically and drops the HasalaICU system library, so the
-/// signature-checking scenarios (writer revocation, sync) stay in HasalaCore's own suites.
 @MainActor
 @Suite("Live account service")
 struct LiveAccountServiceTests {
@@ -26,7 +18,6 @@ struct LiveAccountServiceTests {
   static let email = "maya@example.com"
   static let password = "copper lantern quietly 42"
 
-  /// One iPhone: its own Keychain and approval key, the shared server.
   static func phone(_ server: MiniHasalad, passkeys: (any PasskeyProvider)? = nil) -> AccountEnvironment {
     AccountEnvironment(
       client: AuthClient(transport: server), secrets: Secrets(store: MemorySecretStore(), apiHost: "api.hasala.app"),
@@ -43,7 +34,6 @@ struct LiveAccountServiceTests {
     return (env, store)
   }
 
-  /// C1-P through the service: invite, email code, the words, one `password/register`.
   static func signUp(_ server: MiniHasalad, _ env: AccountEnvironment) async throws -> (LiveAccountService, [String]) {
     let a = LiveAccountService(env: env)
     let ticket = try await a.beginSignup(
@@ -96,17 +86,12 @@ struct LiveAccountServiceTests {
     let a = LiveAccountService(env: Self.phone(MiniHasalad(invite: Self.invite)))
     #expect(a.capabilities == .beta)
     #expect(!a.capabilities.contains(.resetPassword) && !a.capabilities.contains(.recoverWithPassword))
-    // Recovery to a new passkey: someone who lost theirs gets back in and can delete.
     #expect(a.capabilities.contains(.recoverAccess))
     #expect(a.capabilities.contains(.deleteAccount))
     #expect(a.capabilities.contains(.addPasskey))
-    // Sign-in & security has no "Remove this iPhone" row, so the beta doesn't claim it.
     #expect(!a.capabilities.contains(.removeThisIPhone))
   }
 
-  /// Recovery's refusals land on their copy: words no account has (`recover/begin` 404),
-  /// a ceremony this service didn't start, and a new password (not in this build) refused
-  /// before anything is sent, so the emailed code isn't spent.
   @Test func recoveryRefusalsSayWhy() async throws {
     let a = LiveAccountService(env: Self.phone(MiniHasalad(invite: Self.invite)))
     await #expect(throws: AuthFailure.noAccountForPhrase) {
@@ -127,8 +112,6 @@ struct LiveAccountServiceTests {
     let bindingA = try #require(try envA.secrets.binding())
     #expect(a.enrolled?.writerID.string == bindingA.writer_id)
 
-    // GET /account carries the review flag the runtime reads (#40); a relaunch learns
-    // the sign-in method from it.
     server.reviewAccounts = true
     let token = try #require(try envA.secrets.session()).token
     let info = try await envA.client.account(bearer: token)
@@ -137,7 +120,6 @@ struct LiveAccountServiceTests {
     relaunched.noteAccount(info)
     #expect(relaunched.profile == AccountProfile(displayName: "Maya Rahman", email: Self.email, method: .password))
 
-    // C2-P on a new iPhone: signed in, data sealed; C3 with the words enrols it.
     let envB = Self.phone(server)
     let b = LiveAccountService(env: envB)
     #expect(try await b.signInWithPassword(email: Self.email, password: Self.password) == .needsUnlock(passkeyCanUnlock: false))
@@ -148,7 +130,6 @@ struct LiveAccountServiceTests {
     let bindingB = try #require(try envB.secrets.binding())
     #expect(bindingB.user_id == bindingA.user_id && bindingB.writer_id != bindingA.writer_id)
 
-    // "Remove this iPhone" needs the open account's engine; without one it refuses.
     await #expect(throws: AuthFailure.refused) {
       try await b.perform(.removeDevice(id: bindingB.writer_id), password: Self.password)
     }
@@ -157,8 +138,6 @@ struct LiveAccountServiceTests {
     }
     #expect(try envB.secrets.binding() != nil)
 
-    // Delete on A: step-up account.delete (password + approval key), #41, then a wipe,
-    // and the runtime is told this iPhone left.
     var left = 0
     a.hooks = LiveAccountHooks(left: { left += 1 })
     try await a.perform(.deleteAccount, password: Self.password)
@@ -169,10 +148,6 @@ struct LiveAccountServiceTests {
     #expect(left == 1)
   }
 
-  /// gmail-sync: the deleted account's Gmail grant is ended at Google (users.stop, then the
-  /// revoke) BEFORE this iPhone leaves the account for Welcome, from the token read before
-  /// the wipe. That ending acts on the Google account and the app's client id, so a new
-  /// account linking the same Gmail here next must not get there first.
   @Test func aDeletionEndsItsGmailGrantBeforeItLeaves() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let env = Self.phone(server)
@@ -191,7 +166,6 @@ struct LiveAccountServiceTests {
     try await a.perform(.deleteAccount, password: Self.password)
 
     #expect(log.all == ["end gmail:synthetic-refresh-a stopWatch=true", "left"])
-    // Nothing of the account's mailbox stays here for the next account.
     #expect(try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).read() == nil)
     #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
   }
@@ -528,15 +502,11 @@ struct LiveAccountServiceTests {
     await a.signOut()
     #expect(left == 1)
     #expect(try env.secrets.session() == nil)
-    #expect(try env.secrets.binding() != nil)  // local data stays (S-26)
-    // C2b-P: the bound writer signs the login nonce; the keys are here.
+    #expect(try env.secrets.binding() != nil)
     let again = LiveAccountService(env: env)
     #expect(try await again.signInWithPassword(email: Self.email, password: Self.password) == .ready)
   }
 
-  /// One account per iPhone: a signup, or a sign-in to another address, while this
-  /// iPhone holds an account's data opens the "Remove this iPhone's data" wall and
-  /// leaves the binding (and the first account's keys) alone.
   @Test func aBoundIPhoneAsksToRemoveItsDataBeforeAnotherAccount() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let env = Self.phone(server)
@@ -556,7 +526,6 @@ struct LiveAccountServiceTests {
     }
     #expect(walls == [Self.email, Self.email])
     #expect(try env.secrets.binding() == binding)
-    // The bound account's own address (any case) signs in again (C2b-P).
     #expect(try await again.signInWithPassword(email: "Maya@Example.com", password: Self.password) == .ready)
     #expect(walls.count == 2)
   }
@@ -730,8 +699,6 @@ struct LiveAccountServiceTests {
     #expect(a.keysOnThisIPhone)
   }
 
-  /// §4.7 row 1: an offline sign-out keeps the session item marked `pending_logout`; the
-  /// logout is retried later, and the item goes once the server confirms.
   @Test func anOfflineSignOutIsFinishedLater() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let env = Self.phone(server)
@@ -740,7 +707,7 @@ struct LiveAccountServiceTests {
     server.offline = true
     await a.signOut()
     #expect(try env.secrets.session()?.pending_logout == true)
-    #expect(await LiveAccountService.retryPendingLogout(env) == token)  // still offline
+    #expect(await LiveAccountService.retryPendingLogout(env) == token)
     #expect(try env.secrets.session()?.pending_logout == true)
     server.offline = false
     #expect(await LiveAccountService.retryPendingLogout(env) == nil)
@@ -784,15 +751,13 @@ struct LiveAccountServiceTests {
     await #expect(throws: (any Error).self) { _ = try await env.client.session(bearer: old) }
   }
 
-  /// After a relaunch the binding doesn't say how the account signs in: the step-up asks
-  /// `GET /account` rather than assume a passkey.
   @Test func aRelaunchAsksTheServerHowTheAccountSignsIn() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let env = Self.phone(server)
     _ = try await Self.signUp(server, env)
     let relaunched = LiveAccountService(env: env)
     relaunched.loadProfile()
-    #expect(relaunched.profile?.method == .passkey)  // the binding's guess
+    #expect(relaunched.profile?.method == .passkey)
     #expect(await relaunched.usesPasskey() == false)
     #expect(relaunched.profile?.method == .password)
   }
@@ -831,14 +796,12 @@ struct LiveAccountServiceTests {
     #expect(LiveAccountService.map(.noPRF) == .noCredential)
   }
 
-  /// "View your 12 words" with a passkey that has no PRF says why, not "not in this build".
   @Test func aPasskeyWithoutPRFSaysItCantShowTheWords() throws {
     let m = try #require(AuthFailure.passkeyCantShowPhrase.message)
     #expect(m.contains("12 words") && !m.contains("build"))
     #expect(AuthFailure.passkeyCantShowPhrase != .notInThisBuild)
   }
 
-  /// `GET /account`'s freeze: who froze it, and the trigger in the app's +04:00 clock.
   @Test func theFreezeIsReadFromTheAccount() {
     let inOct2026: Int64 = 1_792_000_000_000
     func fields(frozen: Bool, by: String?, at: String? = nil, restricted: Bool = false) -> AccountInfo {
@@ -847,7 +810,6 @@ struct LiveAccountServiceTests {
     #expect(LiveAccountService.freeze(fields(frozen: false, by: nil), nowMs: inOct2026) == nil)
     #expect(LiveAccountService.freeze(fields(frozen: true, by: "operator"), nowMs: inOct2026) == FreezeInfo(by: .operator, when: nil))
     #expect(LiveAccountService.freeze(fields(frozen: true, by: "holder"), nowMs: inOct2026) == FreezeInfo(by: .holder, when: nil))
-    // A restricted session reads as frozen even before `frozen` says so; unknown is the holder's.
     #expect(LiveAccountService.freeze(fields(frozen: false, by: nil, restricted: true), nowMs: inOct2026)?.by == .holder)
     #expect(
       LiveAccountService.freeze(fields(frozen: true, by: "holder", at: "2026-10-11T17:20:05.123456Z"), nowMs: inOct2026)?.when

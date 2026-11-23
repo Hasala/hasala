@@ -1,12 +1,3 @@
-// conformance/templates: the Go executor's literal output, which CoreTemplate must reproduce
-// field by field (all ten `expect` fields, on every case, matched or not: a partial extraction
-// and its reason are what the diagnostics store). Two families:
-//
-//   - synthetic-*.json (public): the classes real mail never exercises (malformed amounts,
-//     every date layout edge, empty groups, fall-through, currency forms).
-//   - corpus-*.json (private, HASALA_PRIVATE_FIXTURES): the operator's real bank mail, already
-//     normalized, for the four shipping templates. "[real-corpus] ..." tests, disabled by name
-//     without the variable; their failure messages name the case, never its content.
 import CoreJSON
 import CorePrimitives
 import CoreResources
@@ -94,7 +85,6 @@ enum TemplateFixtures {
   static func synthetic() -> [TemplateFixtureFile] { files(publicDir, prefix: "synthetic-") }
   static func corpus() -> [TemplateFixtureFile] { files(privateDir, prefix: "corpus-") }
 
-  /// Runs every case of one fixture file; returns (cases, matched, failures).
   static func run(_ f: TemplateFixtureFile) throws -> (Int, Int, [String]) {
     let doc = try f.load()
     let def = try TemplateDefinition(json: try #require(doc["definition"]))
@@ -169,6 +159,6 @@ struct TemplateFixtureTests {
       #expect(failures.isEmpty, "\(f.file): \(failures.count) failing cases, e.g. \(failures.prefix(10).joined(separator: "; "))")
     }
     #expect(total > 1000)
-    #expect(matched > 100)  // a set that matched nothing would agree perfectly and prove nothing
+    #expect(matched > 100)
   }
 }

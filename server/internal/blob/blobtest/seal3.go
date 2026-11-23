@@ -17,26 +17,13 @@ import (
 	"github.com/salehtl/hasala/server/internal/blob"
 )
 
-// The frame v3 reference sealer (spec 01 §6.4–§6.5). TEST ONLY: the device's
-// CoreCrypto.Sealer is the production sealer, and the server never seals or
-// opens anything. WS-2 owns the vector generator and the tamper suite; this
-// is the smallest correct sealer the server's own tests need to produce
-// frames that pass LooksSealed, the upload path and the op_log CHECKs.
-
-// Domain strings (spec 01 §3, D11 and D12).
 const (
 	domainBlob    = "hasala/v1/blob"
 	domainBlobKey = "hasala/v1/blob-key"
 )
 
-// TestEpochKey is a fixed K_e for tests that do not care which key sealed a
-// frame. It is not a secret: it is 32 bytes of 0x42.
 var TestEpochKey = bytes.Repeat([]byte{0x42}, 32)
 
-// SealRegion3 is the AEAD layer of §6.4 with every input explicit, so the
-// anchor vectors A09 and A10 can pin it: AD = "hasala/v1/blob" ‖ 0x00 ‖ header
-// ‖ prev_hash; K_blob = HKDF(K_e, salt = nonce, info = "hasala/v1/blob-key" ‖
-// 0x00 ‖ SHA256(AD)); frame = header ‖ nonce ‖ AES-256-GCM(K_blob, nonce, R, AD).
 func SealRegion3(epochKey, header []byte, prevHash [32]byte, nonce, region []byte) ([]byte, error) {
 	if len(epochKey) != 32 {
 		return nil, fmt.Errorf("blobtest: epoch key is %d bytes, want 32", len(epochKey))
@@ -59,7 +46,6 @@ func SealRegion3(epochKey, header []byte, prevHash [32]byte, nonce, region []byt
 	return gcm.Seal(out, nonce, region, ad), nil
 }
 
-// BlobKey3 exposes K_blob for the anchor test.
 func BlobKey3(epochKey, header []byte, prevHash [32]byte, nonce []byte) ([]byte, error) {
 	return blobKey(epochKey, nonce, associatedData(header, prevHash))
 }
@@ -86,10 +72,6 @@ func newGCM(key []byte) (cipher.AEAD, error) {
 	return cipher.NewGCM(c)
 }
 
-// Seal3 seals plaintext for an envelope as spec 01 §6.5 does: gzip, pick the
-// smallest bucket with 39 + L + |G| ≤ bucket, build R = u32be(|G|) ‖ G ‖ zero
-// padding, draw a fresh nonce, seal, and re-seal once if the frame trips
-// LooksSealed (probability 2⁻²⁴, from the gzip check).
 func Seal3(e blob.Envelope, epoch uint32, epochKey []byte, prevHash [32]byte, plaintext []byte) (blob.Sealed, error) {
 	header, err := blob.Header3(e, epoch)
 	if err != nil {
@@ -128,7 +110,6 @@ func Seal3(e blob.Envelope, epoch uint32, epochKey []byte, prevHash [32]byte, pl
 	return blob.Sealed{}, errors.New("blobtest: sealer fault: two seals in a row tripped LooksSealed")
 }
 
-// MustSeal3 is Seal3 under TestEpochKey and epoch 1, panicking on error.
 func MustSeal3(e blob.Envelope, prevHash [32]byte, plaintext []byte) blob.Sealed {
 	s, err := Seal3(e, 1, TestEpochKey, prevHash, plaintext)
 	if err != nil {
@@ -137,8 +118,6 @@ func MustSeal3(e blob.Envelope, prevHash [32]byte, plaintext []byte) blob.Sealed
 	return s
 }
 
-// Open3 reverses Seal3 for a frame expected at e after prevHash (spec 01
-// §6.6, R3–R9, without the roster and head checks a device also runs).
 func Open3(e blob.Envelope, epochKey []byte, prevHash [32]byte, frame []byte) ([]byte, error) {
 	f, err := blob.Parse3(frame)
 	if err != nil {
@@ -162,9 +141,6 @@ func Open3(e blob.Envelope, epochKey []byte, prevHash [32]byte, frame []byte) ([
 	return out, nil
 }
 
-// OpenRegion3 is the AEAD layer of §6.4 in reverse: it splits a frame whose
-// aad_len is in range into header, nonce and ct ‖ tag, derives K_blob and
-// opens R. It checks nothing a reader checks before R7; the caller does.
 func OpenRegion3(epochKey []byte, prevHash [32]byte, frame []byte) ([]byte, error) {
 	if len(frame) < blob.FixedHeaderSize {
 		return nil, errors.New("blobtest: frame is shorter than its header")
@@ -187,8 +163,6 @@ func OpenRegion3(epochKey []byte, prevHash [32]byte, frame []byte) ([]byte, erro
 	return gcm.Open(nil, nonce, ct, ad)
 }
 
-// RegionPayload reads R = u32be(m) ‖ G ‖ padding and returns G, refusing
-// m > |R| − 4 (spec 01 §6.6 R8).
 func RegionPayload(region []byte) ([]byte, error) {
 	if len(region) < 4 {
 		return nil, errors.New("blobtest: region is shorter than its length field")
@@ -200,9 +174,6 @@ func RegionPayload(region []byte) ([]byte, error) {
 	return region[4 : 4+m], nil
 }
 
-// GunzipStrict is spec 01 §6.6 R9: exactly one gzip member, CRC32 and ISIZE
-// verified (compress/gzip checks both at EOF), no trailing bytes, and the
-// output capped at MaxPlaintext while inflating.
 func GunzipStrict(g []byte) ([]byte, error) {
 	br := bytes.NewReader(g)
 	zr, err := gzip.NewReader(br)
@@ -223,11 +194,8 @@ func GunzipStrict(g []byte) ([]byte, error) {
 	return out, nil
 }
 
-// Gzip is the reference compressor (level 9, mtime 0). Byte identity of G
-// across Go and Swift is not required (spec 01 §6.7).
 func Gzip(plaintext []byte) ([]byte, error) { return gzip3(plaintext) }
 
-// Region3 builds R = u32be(|G|) ‖ G ‖ 0x00… of exactly n bytes.
 func Region3(g []byte, n int) ([]byte, error) {
 	if len(g)+4 > n {
 		return nil, fmt.Errorf("blobtest: %d bytes of payload do not fit a %d-byte region", len(g), n)
@@ -238,8 +206,6 @@ func Region3(g []byte, n int) ([]byte, error) {
 	return r, nil
 }
 
-// SealWithNonce3 seals plaintext as Seal3 does but with the nonce given and no
-// re-seal: the vector generator needs reproducible frames.
 func SealWithNonce3(e blob.Envelope, epoch uint32, epochKey []byte, prevHash [32]byte, nonce, plaintext []byte) (blob.Sealed, error) {
 	header, err := blob.Header3(e, epoch)
 	if err != nil {

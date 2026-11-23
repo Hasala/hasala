@@ -15,10 +15,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
 func newPasskeys(t *testing.T, pool *pgxpool.Pool) *Passkeys {
 	t.Helper()
 	p, err := NewPasskeys(pool, authtest.RPID, authtest.RPDisplayName, []string{authtest.RPOrigin})
@@ -28,7 +24,6 @@ func newPasskeys(t *testing.T, pool *pgxpool.Pool) *Passkeys {
 	return p
 }
 
-// enroll runs a whole registration and returns the account it created.
 func enroll(t *testing.T, p *Passkeys, code string) (uuid.UUID, *authtest.Authenticator) {
 	t.Helper()
 	id, opts, _, err := p.BeginRegistration(bgctx, code, authtest.AuthorityPub(t))
@@ -52,10 +47,6 @@ func countCeremonies(t *testing.T, pool *pgxpool.Pool) int {
 	return n
 }
 
-// ---------------------------------------------------------------------------
-// (a) registration
-// ---------------------------------------------------------------------------
-
 func TestPasskeyRegistrationWithAValidInviteCreatesOnePasskeyUserAndSpendsTheCode(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -75,7 +66,6 @@ func TestPasskeyRegistrationWithAValidInviteCreatesOnePasskeyUserAndSpendsTheCod
 	if err := pool.QueryRow(bgctx, `SELECT user_handle FROM users WHERE id = $1`, userID).Scan(&handle); err != nil {
 		t.Fatal(err)
 	}
-	// The account is addressable from an assertion's handle and from nothing else.
 	if !bytes.Equal(handle, a.Handle) {
 		t.Fatal("users.user_handle is not the handle the authenticator was given")
 	}
@@ -88,7 +78,6 @@ func TestPasskeyRegistrationWithAValidInviteCreatesOnePasskeyUserAndSpendsTheCod
 		t.Fatalf("invite was not redeemed by the account it created: redeemed_at=%v by=%v", redeemed, by)
 	}
 
-	// The credential is stored, and the ceremony is not.
 	var (
 		storedUser   uuid.UUID
 		storedHandle []byte
@@ -114,10 +103,6 @@ func TestPasskeyRegistrationWithAValidInviteCreatesOnePasskeyUserAndSpendsTheCod
 	}
 }
 
-// ---------------------------------------------------------------------------
-// (b) an already-claimed signup (its invite is spent with it)
-// ---------------------------------------------------------------------------
-
 func TestPasskeyRegistrationWithASpentCodeIsRefusedAndCreatesNothing(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -125,12 +110,8 @@ func TestPasskeyRegistrationWithASpentCodeIsRefusedAndCreatesNothing(t *testing.
 	code := mustMint(t, pool, "spent once")
 	first, _ := enroll(t, p, code)
 
-	// The gate is at finish, in the transaction that creates the account, so
-	// begin is allowed to hand out a ceremony for a code that is about to fail.
 	id, opts, _, err := p.BeginRegistration(bgctx, code, authtest.AuthorityPub(t))
 	if err != nil {
-		// A begin-time pre-check is permitted, and if it fires it must fire as
-		// exactly this error.
 		if !errors.Is(err, ErrCodeRejected) {
 			t.Fatalf("BeginRegistration with a claimed signup: %v, want ErrCodeRejected", err)
 		}
@@ -160,9 +141,6 @@ func TestPasskeyRegistrationWithASpentCodeIsRefusedAndCreatesNothing(t *testing.
 	}
 }
 
-// The begin-time pre-check is a convenience; the REDEMPTION is the gate. Two
-// ceremonies begun while the code was still live both pass that pre-check, and
-// exactly one of them may end with an account.
 func TestTwoRegistrationsBegunAgainstOneLiveCodeYieldOneAccount(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -196,22 +174,6 @@ func TestTwoRegistrationsBegunAgainstOneLiveCodeYieldOneAccount(t *testing.T) {
 	}
 }
 
-// A registration that fails AFTER the account has been upserted must leave the
-// invite code exactly as it found it — unredeemed, still noted, still spendable.
-//
-// This is the regression for the defect the Task 4 review found: the account and
-// the credential used to be two separate transactions, with a hand-written
-// `DELETE FROM users` compensating on failure. Because invite_codes.redeemed_by
-// is ON DELETE SET NULL and 00023's trigger clears the note, that compensation
-// left `redeemed_at` set, `redeemed_by` NULL and the note gone: a beta code
-// permanently burned, for an account that does not exist, and the operator
-// unable to tell whose it had been.
-//
-// The failure is forced without a hook: a second authenticator presenting a
-// credential id that is already the primary key of an enrolled one. The insert
-// is the last statement in the transaction, so this reaches it only after the
-// user, the counter row, the ingest writer and the redemption are all in place —
-// which is precisely the window the defect lived in.
 func TestARegistrationThatFailsAfterTheUpsertDoesNotBurnTheInvite(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -224,17 +186,15 @@ func TestARegistrationThatFailsAfterTheUpsertDoesNotBurnTheInvite(t *testing.T) 
 		t.Fatal(err)
 	}
 	clash := authtest.New(t)
-	clash.CredID = first.CredID // collides with the primary key already stored
+	clash.CredID = first.CredID
 
 	if _, _, err := p.FinishRegistration(bgctx, id, clash.Create(t, opts)); err == nil {
 		t.Fatal("a duplicate credential id was accepted")
 	}
 
-	// Nothing was created...
 	if n := countUsers(t, pool); n != 1 {
 		t.Fatalf("users = %d, want 1", n)
 	}
-	// ...and, the point of this test, nothing was SPENT.
 	var (
 		redeemed *time.Time
 		by       *uuid.UUID
@@ -253,7 +213,6 @@ func TestARegistrationThatFailsAfterTheUpsertDoesNotBurnTheInvite(t *testing.T) 
 			"is the half of this defect that cannot be repaired by hand", note)
 	}
 
-	// And it is still usable, which is the only thing the beta tester cares about.
 	if _, _, err := enrollErr(t, p, code); err != nil {
 		t.Fatalf("the code did not survive as spendable: %v", err)
 	}
@@ -262,7 +221,6 @@ func TestARegistrationThatFailsAfterTheUpsertDoesNotBurnTheInvite(t *testing.T) 
 	}
 }
 
-// enrollErr is enroll without the t.Fatal, for the one test that retries.
 func enrollErr(t *testing.T, p *Passkeys, code string) (uuid.UUID, *authtest.Authenticator, error) {
 	t.Helper()
 	id, opts, _, err := p.BeginRegistration(bgctx, code, authtest.AuthorityPub(t))
@@ -274,10 +232,6 @@ func enrollErr(t *testing.T, p *Passkeys, code string) (uuid.UUID, *authtest.Aut
 	return userID, a, err
 }
 
-// ---------------------------------------------------------------------------
-// (c) login
-// ---------------------------------------------------------------------------
-
 func TestPasskeyLoginReturnsTheSameUserTheRegistrationCreated(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -288,8 +242,6 @@ func TestPasskeyLoginReturnsTheSameUserTheRegistrationCreated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BeginLogin: %v", err)
 	}
-	// A discoverable login names nobody: the server does not know who is
-	// signing in until the authenticator answers.
 	if len(opts.Response.AllowedCredentials) != 0 {
 		t.Fatal("the login options list credentials; that is not a discoverable login")
 	}
@@ -322,14 +274,6 @@ func TestPasskeyLoginReturnsTheSameUserTheRegistrationCreated(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// WebAuthnName carries no per-account suffix and is never a lookup key
-// ---------------------------------------------------------------------------
-
-// TestPasskeyUserNameIsTheRPNameAloneRegardlessOfHandle guards the display
-// string directly: WebAuthnName/WebAuthnDisplayName must equal the RP's own
-// name and must NOT vary with the handle. A handle-derived suffix is exactly
-// what made Keychain read "Ledger" over "Ledger YHeaynbu".
 func TestPasskeyUserNameIsTheRPNameAloneRegardlessOfHandle(t *testing.T) {
 	t.Parallel()
 	a := passkeyUser{handle: []byte{1, 2, 3}, rpName: "Ledger by Example Co"}
@@ -347,15 +291,6 @@ func TestPasskeyUserNameIsTheRPNameAloneRegardlessOfHandle(t *testing.T) {
 	}
 }
 
-// TestTwoAccountsWithIdenticalPasskeyNamesStillLoginToDistinctAccounts proves
-// discoverable login is unaffected by dropping the handle suffix from
-// WebAuthnName: two real accounts share the exact same WebAuthnName (both
-// just the RP's name — see above) yet each authenticator still resolves to
-// its own account. Login is keyed on the user handle returned in the
-// assertion (BeginDiscoverableLogin, handleSubject), never on this string. If
-// a future change made the name load-bearing for lookup, one of these two
-// logins would resolve to the wrong account (or fail), and this test would
-// catch it.
 func TestTwoAccountsWithIdenticalPasskeyNamesStillLoginToDistinctAccounts(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -391,20 +326,12 @@ func TestTwoAccountsWithIdenticalPasskeyNamesStillLoginToDistinctAccounts(t *tes
 	}
 }
 
-// ---------------------------------------------------------------------------
-// (d) an unknown credential
-// ---------------------------------------------------------------------------
-
 func TestPasskeyLoginWithAnUnknownCredentialIsRefused(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	_, enrolled := enroll(t, p, mustMint(t, pool, "the real one"))
 
-	// A different key, a different credential id — and the handle of the
-	// account it is trying to impersonate, which is the interesting case: a
-	// caller who has seen a handle must still not be able to assert with a
-	// credential nobody enrolled.
 	stranger := authtest.New(t)
 	stranger.Handle = enrolled.Handle
 
@@ -418,10 +345,6 @@ func TestPasskeyLoginWithAnUnknownCredentialIsRefused(t *testing.T) {
 		t.Fatalf("FinishLogin with an unknown credential: %v, want ErrPasskeyRejected", err)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// (e) single use
-// ---------------------------------------------------------------------------
 
 func TestPasskeyCeremonyIsSingleUse(t *testing.T) {
 	t.Parallel()
@@ -437,7 +360,6 @@ func TestPasskeyCeremonyIsSingleUse(t *testing.T) {
 	if _, _, err := p.FinishLogin(bgctx, id, body); err != nil {
 		t.Fatalf("first FinishLogin: %v", err)
 	}
-	// Byte-identical replay of a ceremony that has already been spent.
 	if _, _, err := p.FinishLogin(bgctx, id, body); !errors.Is(err, ErrCeremonyUnknown) {
 		t.Fatalf("replayed ceremony: %v, want ErrCeremonyUnknown", err)
 	}
@@ -445,10 +367,6 @@ func TestPasskeyCeremonyIsSingleUse(t *testing.T) {
 		t.Fatalf("ceremonies = %d after a spent login, want 0", n)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// (f) expiry
-// ---------------------------------------------------------------------------
 
 func TestExpiredPasskeyCeremonyIsRefused(t *testing.T) {
 	t.Parallel()
@@ -465,16 +383,11 @@ func TestExpiredPasskeyCeremonyIsRefused(t *testing.T) {
 	}
 	body := a.Assert(t, opts, 2)
 
-	// One second past the TTL, on the clock that decides.
 	now = now.Add(CeremonyTTL + time.Second)
 	if _, _, err := p.FinishLogin(bgctx, id, body); !errors.Is(err, ErrCeremonyUnknown) {
 		t.Fatalf("expired ceremony: %v, want ErrCeremonyUnknown", err)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// (g) a signature counter that goes backwards
-// ---------------------------------------------------------------------------
 
 func TestPasskeySignCountGoingBackwardsIsRefusedAsCloneEvidence(t *testing.T) {
 	t.Parallel()
@@ -482,7 +395,6 @@ func TestPasskeySignCountGoingBackwardsIsRefusedAsCloneEvidence(t *testing.T) {
 	p := newPasskeys(t, pool)
 	_, a := enroll(t, p, mustMint(t, pool, "cloned"))
 
-	// A good login first, which moves the stored counter to 9.
 	id, opts, err := p.BeginLogin(bgctx)
 	if err != nil {
 		t.Fatal(err)
@@ -491,9 +403,6 @@ func TestPasskeySignCountGoingBackwardsIsRefusedAsCloneEvidence(t *testing.T) {
 		t.Fatalf("FinishLogin at counter 9: %v", err)
 	}
 
-	// Now the same credential asserts at a LOWER counter: either two copies of
-	// the private key exist, or the authenticator is malfunctioning. Either way
-	// it is not a sign-in.
 	id, opts, err = p.BeginLogin(bgctx)
 	if err != nil {
 		t.Fatal(err)
@@ -502,7 +411,6 @@ func TestPasskeySignCountGoingBackwardsIsRefusedAsCloneEvidence(t *testing.T) {
 		t.Fatalf("a counter that went backwards: %v, want ErrClonedAuthenticator", err)
 	}
 
-	// And the stored counter was not moved backwards by the refused attempt.
 	var signCount int64
 	if err := pool.QueryRow(bgctx,
 		`SELECT sign_count FROM webauthn_credentials WHERE credential_id = $1`, a.CredID).
@@ -514,15 +422,6 @@ func TestPasskeySignCountGoingBackwardsIsRefusedAsCloneEvidence(t *testing.T) {
 	}
 }
 
-// A permanent-zero signature counter is the COMMON case, not an edge one: every
-// synced passkey provider (iCloud Keychain, Google Password Manager) reports
-// zero for ever, because a counter is meaningless for a credential that exists
-// on several devices at once.
-//
-// Two things must hold for them, and one of them did not: repeated sign-ins must
-// not be refused as clone evidence, and last_used_at must actually be recorded.
-// touchCredential's `WHERE sign_count < $2` matched no row at zero, so "last
-// used" would have read NULL for ever for most users.
 func TestAPermanentZeroCounterSignsInRepeatedlyAndStillRecordsLastUsed(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -570,10 +469,6 @@ func TestAPermanentZeroCounterSignsInRepeatedlyAndStillRecordsLastUsed(t *testin
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Adding a second passkey to an existing account
-// ---------------------------------------------------------------------------
-
 func TestAddingASecondPasskeyKeepsOneAccountAndOneHandle(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -592,8 +487,6 @@ func TestAddingASecondPasskeyKeepsOneAccountAndOneHandle(t *testing.T) {
 	if !bytes.Equal(credID, second.CredID) {
 		t.Fatal("FinishAdd named a different credential")
 	}
-	// One handle, because a second handle would be a second SUBJECT and
-	// therefore a second account.
 	if !bytes.Equal(second.Handle, first.Handle) {
 		t.Fatal("the add ceremony minted a new user handle instead of reusing the account's")
 	}
@@ -601,7 +494,6 @@ func TestAddingASecondPasskeyKeepsOneAccountAndOneHandle(t *testing.T) {
 		t.Fatalf("users = %d, want 1", n)
 	}
 
-	// And the new credential signs in as the same account.
 	lid, lopts, err := p.BeginLogin(bgctx)
 	if err != nil {
 		t.Fatal(err)
@@ -627,8 +519,6 @@ func TestAddCeremonyIsBoundToTheSessionThatStartedIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := authtest.New(t)
-	// The attacker's own live session, finishing a ceremony that was begun for
-	// somebody else's account.
 	if _, err := p.testFinishAdd(bgctx, id, attacker, a.Create(t, opts)); err == nil {
 		t.Fatal("a ceremony begun for one account was finished by another")
 	} else if !errors.Is(err, ErrPasskeyRejected) {
@@ -636,8 +526,6 @@ func TestAddCeremonyIsBoundToTheSessionThatStartedIt(t *testing.T) {
 	}
 }
 
-// A password-only account adds its first passkey under the account's own
-// handle (spec 02 §10.5: a device proof lets it), never a second identity.
 func TestAddUsesTheAccountsHandleEvenWithNoPasskeyYet(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -655,10 +543,6 @@ func TestAddUsesTheAccountsHandleEvenWithNoPasskeyYet(t *testing.T) {
 		t.Fatal("the add ceremony does not name the account's handle")
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Housekeeping
-// ---------------------------------------------------------------------------
 
 func TestExpiredCeremoniesAreSwept(t *testing.T) {
 	t.Parallel()
@@ -699,7 +583,6 @@ func TestPasskeyCeremonyOptionsRequireADiscoverableCredential(t *testing.T) {
 		t.Fatalf("residentKey = %q, want %q — username-less login needs a discoverable credential",
 			sel.ResidentKey, protocol.ResidentKeyRequirementRequired)
 	}
-	// UV is required in every ceremony (spec 01 §10.2, spec 02 §8.1).
 	if sel.UserVerification != protocol.VerificationRequired {
 		t.Fatalf("userVerification = %q, want %q", sel.UserVerification, protocol.VerificationRequired)
 	}

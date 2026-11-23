@@ -1,25 +1,5 @@
 package tmpl_test
 
-// The cross-executor corpus check for the template executor.
-//
-// conformance/templates/ pins 1,062 real messages out of 6,930 the seed
-// templates are eligible for — 15% — plus 102 synthetic cases. A conformance
-// suite that covers only the cases someone thought to select is exactly the
-// shape of a suite that agrees on 6,929 messages and disagrees on the one that
-// matters, so the two executors are ALSO compared over every message the
-// corpus holds. This test exports what Go produced;
-// client/scripts/crossexec-tmpl.ts runs the TypeScript executor over the same
-// inputs and diffs them field by field. Neither side recomputes the other's
-// answer and the two share no code.
-//
-//	S=/scratch
-//	HASALA_CORPUS_DB=$S/corpus.db HASALA_CROSSEXEC_OUT=$S/go-templates.jsonl \
-//	  go test ./internal/tmpl/ -run TestWriteCrossExecutorTemplates -timeout 20m
-//	(cd client && bun run scripts/crossexec-tmpl.ts $S/go-templates.jsonl)
-//
-// The output is tens of MB and is deliberately NOT committed: it is a
-// measurement, reproducible from the corpus, not a fixture.
-
 import (
 	"bufio"
 	"encoding/base64"
@@ -32,7 +12,6 @@ import (
 	"github.com/salehtl/hasala/server/oracle/corpus"
 )
 
-// crossExecTemplateRow is one (template, message) pair as TypeScript reads it.
 type crossExecTemplateRow struct {
 	Template   string `json:"template"`
 	Definition string `json:"definition_base64"`
@@ -87,9 +66,6 @@ func TestWriteCrossExecutorTemplates(t *testing.T) {
 			normFailed++
 			return nil
 		}
-		// EVERY eligible template, not the first that matches: the ingest path
-		// runs the whole published set for a sender, and a disagreement about a
-		// template that does not match is still a disagreement.
 		subject := base64.StdEncoding.EncodeToString([]byte(r.Subject))
 		body := base64.StdEncoding.EncodeToString([]byte(r.Text))
 		for i, d := range defs {

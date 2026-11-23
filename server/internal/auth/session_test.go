@@ -18,21 +18,14 @@ import (
 
 func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
 
-// newSessions is a store whose idle window and absolute cap are both ttl.
 func newSessions(pool *pgxpool.Pool, ttl time.Duration, c *clock) *Sessions {
 	return &Sessions{Pool: pool, TTL: ttl, Max: ttl, Now: c.now}
 }
 
-// newTestUser creates an account row (and its oplog_seq row) the way the
-// fixtures of every package do.
 func newTestUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	return oplogtest.NewUserWithoutKeys(t, pool)
 }
-
-// ---------------------------------------------------------------------------
-// Session tokens
-// ---------------------------------------------------------------------------
 
 func TestSessionTokenIsNeverStoredInTheClear(t *testing.T) {
 	t.Parallel()
@@ -70,9 +63,6 @@ func TestSessionTokenIsNeverStoredInTheClear(t *testing.T) {
 	}
 }
 
-// A session token is a bearer credential; it has to be unguessable. 32 bytes
-// from crypto/rand is the requirement, and the encoding must not silently
-// shrink that.
 func TestIssuedTokensAreDistinctAnd32BytesOfEntropy(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -120,16 +110,11 @@ func TestExpiredSessionIsRejected(t *testing.T) {
 	if !errors.Is(err, ErrSessionExpired) {
 		t.Fatalf("resolve after expiry: %v, want ErrSessionExpired", err)
 	}
-	// Every rejection reason must also satisfy the general predicate, so a
-	// caller can write one check and not accidentally admit a revoked or
-	// expired session by matching only the unknown-token case.
 	if !errors.Is(err, ErrSessionInvalid) || !errors.Is(ErrSessionIdle, ErrSessionInvalid) {
 		t.Fatal("ErrSessionExpired and ErrSessionIdle must wrap ErrSessionInvalid")
 	}
 }
 
-// Spec 02 §9.2: the idle window slides with use (at most one write per
-// session-hour) up to the absolute cap, which nothing extends.
 func TestSessionsSlideUpToTheirAbsoluteCap(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -141,7 +126,6 @@ func TestSessionsSlideUpToTheirAbsoluteCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	created := c.now()
-	// Used every 20 days: it never idles out, until the 90-day cap.
 	for i := 0; i < 4; i++ {
 		c.advance(20 * 24 * time.Hour)
 		info, err := s.Info(bgctx, tok)
@@ -155,12 +139,11 @@ func TestSessionsSlideUpToTheirAbsoluteCap(t *testing.T) {
 			t.Fatalf("the cap moved: %v", info.ExpiresAt)
 		}
 	}
-	c.advance(11 * 24 * time.Hour) // day 91
+	c.advance(11 * 24 * time.Hour)
 	if _, err := s.Resolve(bgctx, tok); !errors.Is(err, ErrSessionExpired) {
 		t.Fatalf("past the cap: %v, want ErrSessionExpired", err)
 	}
 
-	// One write per session-hour.
 	tok2, _ := s.Issue(bgctx, u)
 	i1, _ := s.Info(bgctx, tok2)
 	c.advance(30 * time.Minute)
@@ -168,14 +151,12 @@ func TestSessionsSlideUpToTheirAbsoluteCap(t *testing.T) {
 	if !i2.LastUsedAt.Equal(i1.LastUsedAt) {
 		t.Fatal("a use within the hour moved last_used_at")
 	}
-	// Unused for 30 days: dead.
 	c.advance(30 * 24 * time.Hour)
 	if _, err := s.Resolve(bgctx, tok2); !errors.Is(err, ErrSessionIdle) {
 		t.Fatalf("idle 30 days: %v, want ErrSessionIdle", err)
 	}
 }
 
-// Every revocation says why (spec 02 §9.3): logout, writer, others.
 func TestRevocationsRecordTheirReason(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -223,8 +204,6 @@ func TestRevokedSessionIsRejected(t *testing.T) {
 		t.Fatal("ErrSessionRevoked must wrap ErrSessionInvalid")
 	}
 
-	// Revocation is permanent and idempotent: a second Revoke must not move
-	// the recorded time, and must certainly not un-revoke.
 	var first time.Time
 	if err := pool.QueryRow(bgctx, `SELECT revoked_at FROM sessions`).Scan(&first); err != nil {
 		t.Fatal(err)
@@ -266,8 +245,6 @@ func TestResolveRejectsUnknownAndEmptyTokens(t *testing.T) {
 	}
 }
 
-// "Sign out everywhere" and, later, the account-deletion path both need this.
-// It must not touch another user's sessions.
 func TestRevokeAllForUserRevokesOnlyThatUser(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)

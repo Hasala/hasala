@@ -1,11 +1,3 @@
-// Command gen-crypto-vectors writes conformance/crypto-v3/ and
-// conformance/api-v1/{messages,stepup}.json (spec 01 §15.1, spec 02 §22).
-//
-//	cd server && go run ./cmd/gen-crypto-vectors [-root ..] [-check]
-//
-// -check writes nothing and exits 1 if any file on disk differs from what
-// would be written, or if crypto-v3/ holds a file the generator does not
-// write. It is never part of hasalad (spec 01 §12.2).
 package main
 
 import (
@@ -46,8 +38,6 @@ func main() {
 	}
 }
 
-// Diff lists every generated file whose bytes differ on disk, and every file
-// under crypto-v3/ the generator does not write.
 func Diff(root string, files vectors.Files) []string {
 	var out []string
 	for p, b := range files {

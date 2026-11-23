@@ -6,21 +6,11 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// The root of the window.
-///
-/// Every build runs the live graph (spec 04 §15.2): the account gate (`BootController`)
-/// in front of the tab shell over the account's projection. Debug builds run a mock
-/// scenario instead only when launched with `-HasalaScenario <name>` or a Debug screen
-/// launch (`ScreenLaunch`; spec 04 §15.3: the UI tests, previews and screenshots); no
-/// Release code path reaches HasalaMocks (spec 04 §1.4, AT-REV-4).
 struct RootView: View {
   #if HASALA_MOCKS
-    /// The mock scenario, when one was asked for.
     @State private var mock: MockGraph? = MockGraph.fromLaunchArguments(ProcessInfo.processInfo.arguments)
   #endif
 
-  /// The motion policy (plan B1.2) is set here once, above the gate, the shell and their
-  /// sheets, so every part of the design system reads the same Reduce Motion answer.
   @Environment(\.scenePhase) private var scenePhase
   @State private var shield = ShieldWindow()
 
@@ -62,8 +52,6 @@ struct RootView: View {
           LiveRootView()
         }
       }
-      // `-HasalaMotion off|reduce` (plan B6): end states at once for screenshots, or the
-      // Reduce Motion substitutes without the system setting.
       .hMotionPolicy(
         settled: MotionLaunch.current?.settled ?? false,
         forceReduceMotion: MotionLaunch.current?.reduceMotion ?? false
@@ -75,9 +63,7 @@ struct RootView: View {
   }
 }
 
-/// The live graph: the account gate, setup, and the app over the open account.
 struct LiveRootView: View {
-  /// One live graph per process (`@State`'s initial value is evaluated on every init).
   @State private var boot = AppGraph.live()
   @Environment(\.scenePhase) private var scenePhase
 
@@ -94,7 +80,6 @@ struct LiveRootView: View {
           }
         }
         .id(ObjectIdentifier(boot.session))
-        // Under a wall the gate keeps its place (a sign-in screen stays where it was).
         .accessibilityHidden(boot.wall != nil || boot.syncHalt != nil)
       }
     }
@@ -113,7 +98,6 @@ struct LiveRootView: View {
     }
   }
 
-  /// The app shows its own placeholder while the runtime opens; only setup waits here.
   private var isReady: Bool { boot.session.phase == .ready }
 }
 
@@ -132,7 +116,6 @@ struct SnapshotCover: View {
   }
 }
 
-/// The wordmark on the launch background while the account opens.
 struct LaunchView: View {
   var body: some View {
     VStack(spacing: 24) {
@@ -151,15 +134,11 @@ struct LaunchView: View {
 }
 
 #if HASALA_MOCKS
-  /// A Debug mock scenario (`-HasalaScenario <name>`, or a screen's own with
-  /// `-HasalaScreen <id>`): the Maya ledger in memory, the account mock's starting state,
-  /// and the process's one onboarding store (`RootView` keeps this graph for the process).
   @MainActor
   final class MockGraph {
     let app: AppModel
     let session: AccountSession
     let onboarding: OnboardingStore
-    /// Where setup resumes in this scenario.
     let setupFacts: OnboardingStep.Facts
     let widgets: WidgetPublisher
     let lock: AppLockController
@@ -179,8 +158,6 @@ struct LaunchView: View {
       onboarding = OnboardingStore(services: session.services, session: { [session] in session })
     }
 
-    /// The graph for a mock launch, nil for the live one. A launched screen picks its
-    /// scenario (an explicit `-HasalaScenario` wins), then opens over it (`ScreenLaunch`).
     static func fromLaunchArguments(_ given: [String]) -> MockGraph? {
       guard ScreenLaunch.isMockLaunch(given) else { return nil }
       let launch = ScreenLaunch.from(given)

@@ -1,12 +1,9 @@
 ---
-/** The supported banks as tiles: on the home page, and on /how-it-works with the alerts each one covers. */
 import { BANKS } from '../data/site';
 import Icon from './Icon.astro';
 
 interface Props {
-  /** Show which alerts Hasala reads from each bank. */
   detail?: boolean;
-  /** Home page version: logo and "Supported" chip, then the name and what is read. Extra content (slot) becomes the last tile. */
   home?: boolean;
 }
 const { detail = false, home = false } = Astro.props;
@@ -117,7 +114,6 @@ const { detail = false, home = false } = Astro.props;
       letter-spacing: -0.02em;
       line-height: 28px;
     }
-    /* Beside prose (/how-it-works): narrower, so the names stay on one line. */
     .tiles--detail .tile {
       padding: 20px;
     }
@@ -127,7 +123,6 @@ const { detail = false, home = false } = Astro.props;
     }
   }
 
-  /* Home page (Paper 08 Banks): phone = one row per bank, desktop = card per bank */
   .tile__chip {
     display: inline-flex;
     flex: none;
@@ -206,7 +201,6 @@ const { detail = false, home = false } = Astro.props;
       display: block;
       padding: 28px;
     }
-    /* logo left, chip right, text underneath */
     .tiles--home .tile:not(.tile--more) {
       display: grid;
       grid-template-columns: auto 1fr;

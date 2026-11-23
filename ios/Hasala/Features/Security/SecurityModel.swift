@@ -1,19 +1,12 @@
 import Foundation
 import Observation
 
-/// Profile › Sign-in & security (spec 04 §6.9; Paper P2.5, P2.6). Every change goes through
-/// "Confirm it's you" first: a passkey account confirms with Face ID (the system's passkey
-/// sheet), a password-only account types its password and this iPhone's key signs too.
 @MainActor
 @Observable
 final class SecurityModel {
-  /// What a "Confirm it's you" sheet confirms.
   enum Confirmation: Equatable, Identifiable {
-    /// A change on the server, behind its step-up.
     case perform(SecurityAction)
-    /// "View recovery phrase" (`phrase.view`, passkey accounts only).
     case viewPhrase
-    /// The step-up before a new address is typed.
     case changeEmail
 
     var id: String {
@@ -25,8 +18,6 @@ final class SecurityModel {
     }
   }
 
-  /// Which page presents the confirmation: the one on top, so the sheet never opens from a
-  /// page under another (and only the profile's large sheet sits under it).
   enum Host: Equatable { case page, passwordEditor, lockdown }
 
   private let session: AccountSession
@@ -35,18 +26,13 @@ final class SecurityModel {
   private(set) var state: SecurityState?
   var busy = false
   var failure: AuthFailure?
-  /// A one-line confirmation after a change ("Removed from your Hasala account…").
   var notice: String?
 
-  /// The change waiting in "Confirm it's you", and the page that shows the sheet.
   private(set) var confirming: Confirmation?
   private(set) var confirmHost: Host = .page
   var confirmPassword = ""
-  /// This iPhone has no key to sign with (its data is still sealed): the sheet says so.
   private(set) var lacksDeviceKey = false
 
-  /// Set or change the password: the page is open. However it closes (Back, a swipe, the
-  /// change through), the typed passwords leave memory with it (c2 §12 rule 7).
   var editingPassword = false {
     didSet {
       if !editingPassword {
@@ -58,7 +44,6 @@ final class SecurityModel {
   var newPassword = ""
   var confirmNewPassword = ""
 
-  /// The phrase while "View your 12 words" is open; cleared when it closes.
   var viewedPhrase: [String]?
   var phraseRevealed = false {
     didSet {
@@ -70,11 +55,8 @@ final class SecurityModel {
   var phraseMasked = false {
     didSet { if phraseMasked { phraseRevealed = false } }
   }
-  /// A change of address under way (its cover is open).
   var emailChange: EmailChangeTicket?
 
-  /// What opens once the confirmation sheet has gone (a sheet and a cover never present
-  /// together).
   private var pendingPhrase: [String]?
   private var pendingEmailChange: EmailChangeTicket?
 
@@ -84,22 +66,16 @@ final class SecurityModel {
 
   var isFrozen: Bool { state?.frozen != nil }
 
-  /// The account actions this build can carry out; the screen offers only these.
   var capabilities: AccountCapabilities { session.capabilities }
 
-  /// The account's address, for the confirmations' "We email … about it".
   var email: String { state?.email ?? account.profile?.email ?? "" }
 
-  /// "Let's lock it down" (spec 04 §6.12) is a checklist of these steps; a build that can't
-  /// carry them out doesn't offer it (Sign out everywhere and support stay on the page).
   var offersLockdown: Bool {
     capabilities.isSuperset(of: [
       .signOutEverywhere, .removePasskey, .removeDevice, .changePassword, .rotatePhrase, .freeze,
     ])
   }
 
-  /// Whether any action Sign-in & security can show is missing from this build, so the
-  /// screen points to support for it instead.
   var lacksAnAction: Bool {
     !capabilities.isSuperset(of: [
       .changeEmail, .addPasskey, .removePasskey, .changePassword, .removeDevice, .rotatePhrase, .freeze,
@@ -126,17 +102,12 @@ final class SecurityModel {
     }
   }
 
-  // MARK: Confirm it's you
-
-  /// Starts a change: "Confirm it's you" opens on `host` (P2.6: one pattern for every
-  /// sensitive action).
   func request(_ action: SecurityAction, host: Host = .page) async {
     guard let state else { return }
     if isFrozen, action != .unfreeze {
       failure = .frozen
       return
     }
-    // The app never attempts #66 for an operator freeze (spec 04 §6.11).
     if action == .unfreeze, state.frozen?.by != .holder { return }
     if case .removePasskey = action, session.services.unseenPhrase.unseen {
       notice = nil
@@ -146,7 +117,6 @@ final class SecurityModel {
     ask(.perform(action), host: host)
   }
 
-  /// "View recovery phrase": passkey accounts only (S-41), never while frozen.
   func requestPhrase() {
     guard let state, state.hasPasskey, capabilities.contains(.viewPhrase) else { return }
     if isFrozen {
@@ -156,7 +126,6 @@ final class SecurityModel {
     ask(.viewPhrase, host: .page)
   }
 
-  /// Email "Change".
   func requestEmailChange() {
     guard state != nil, capabilities.contains(.changeEmail) else { return }
     if isFrozen {
@@ -175,13 +144,11 @@ final class SecurityModel {
     confirming = c
   }
 
-  /// How this account confirms.
   var confirmFactor: ConfirmRequest.Factor {
     if state?.hasPasskey == true { return .faceID }
     return lacksDeviceKey ? .noKey : .password
   }
 
-  /// The sheet's words for the change waiting in it.
   var confirmRequest: ConfirmRequest? {
     guard let confirming else { return nil }
     let (title, bullets) = Self.words(for: confirming, email: email, state: state)
@@ -189,9 +156,6 @@ final class SecurityModel {
                           otherDevice: state?.devices.first { !$0.isThisDevice }?.title)
   }
 
-  /// The sheet's primary: the change, behind its step-up. A wrong password or a closed
-  /// Face ID keeps the sheet; a missing key turns it into "can't confirm yet"; anything
-  /// else closes it and the page says why.
   func confirm() async {
     guard let c = confirming else { return }
     let password = state?.hasPasskey == true ? nil : confirmPassword
@@ -213,8 +177,6 @@ final class SecurityModel {
         pendingEmailChange = ticket
       }
     } catch .cancelled {
-      // Face ID or the passkey sheet closed: still up, nothing to say. A password that was
-      // sent is used, so it goes; the person types it again to retry.
       confirmPassword = ""
     } catch .stepUpFailed {
       confirmPassword = ""
@@ -227,7 +189,6 @@ final class SecurityModel {
       failure = nil
       lacksDeviceKey = true
     } catch .frozenByOperator {
-      // Only the operator lifts it: the banner and this page show their freeze instead.
       closeConfirmation()
       session.learnedOperatorFreeze()
       await load()
@@ -237,7 +198,6 @@ final class SecurityModel {
       await load()
       failure = .frozen
     } catch .sessionEnded {
-      // The server ended the session (an operator freeze revokes them all): sign in again.
       closeConfirmation()
       session.signedOut()
     } catch {
@@ -246,7 +206,6 @@ final class SecurityModel {
     }
   }
 
-  /// Close (or a swipe down) on the sheet: nothing changes.
   func cancelConfirmation() {
     guard !busy else { return }
     closeConfirmation()
@@ -259,7 +218,6 @@ final class SecurityModel {
     lacksDeviceKey = false
   }
 
-  /// The confirmation sheet has gone: what it opened can show now.
   func confirmationDismissed() {
     if let words = pendingPhrase {
       pendingPhrase = nil
@@ -280,8 +238,6 @@ final class SecurityModel {
     case .freeze:
       session.froze(FreezeInfo(by: .holder, when: "just now", inApp: true))
     case .deleteAccount, .signOutEverywhere:
-      // Delete ends the account; sign out everywhere ends this iPhone's session too
-      // (`02` §9.3: every session, the caller's included). Its keys stay here.
       session.signedOut()
       return
     case .removeThisIPhoneLosingUnsent:
@@ -290,7 +246,6 @@ final class SecurityModel {
     case .unfreeze:
       session.unfroze()
     case .setPassword, .changePassword:
-      // Closing the page empties the new password and its repeat.
       editingPassword = false
     default:
       break
@@ -310,8 +265,6 @@ final class SecurityModel {
     }
   }
 
-  /// The sheet's title and bullets for each change (Paper IHY, INK; the rest in their
-  /// voice).
   static func words(for c: Confirmation, email: String, state: SecurityState?) -> (String, [String]) {
     let weEmail = email.isEmpty ? "We email you about it" : "We email \(email) about it"
     switch c {
@@ -324,10 +277,6 @@ final class SecurityModel {
       case .addPasskey:
         return ("Add a passkey", ["iOS asks where to save it next", weEmail])
       case .removePasskey(let id):
-        // Paper IHY says "The Work iPad can't sign in any more": its mock passkey is named
-        // after a device. Live rows are named by their provider ("iCloud Keychain",
-        // "1Password"), which can still sign in to everything else, so the bullet names the
-        // passkey.
         guard let name = state?.passkeys.first(where: { $0.id == id })?.provider else {
           return ("Remove this passkey", ["This passkey can't sign in any more", weEmail])
         }
@@ -356,8 +305,6 @@ final class SecurityModel {
     }
   }
 
-  // MARK: Password
-
   var newPasswordAssessment: PasswordAssessment {
     PasswordRules.assess(newPassword, personal: [state?.email ?? "", session.account.profile?.displayName ?? ""])
   }
@@ -366,26 +313,17 @@ final class SecurityModel {
 
   var newPasswordReady: Bool { newPasswordAssessment.acceptable && newPasswordsMatch }
 
-  /// "Save password" on the password page: its confirmation opens over the page, which
-  /// closes once the change is through.
   func savePassword() async {
     guard newPasswordReady, let state else { return }
-    // The typed password stays while the page is open: a cancelled confirmation leaves the
-    // page as it was. Closing the page empties it (`editingPassword`).
     let pw = newPassword
     await request(state.hasPassword ? .changePassword(new: pw) : .setPassword(new: pw), host: .passwordEditor)
   }
-
-  // MARK: Phrase
 
   func closePhrase() {
     phraseRevealed = false
     viewedPhrase = nil
   }
 
-  // MARK: Email change
-
-  /// The change-email cover closed (done or cancelled).
   func finishEmailChange(to newEmail: String?) async {
     emailChange = nil
     if let newEmail {
@@ -396,14 +334,10 @@ final class SecurityModel {
 
   var accountForEmailChange: AccountService { account }
 
-  // MARK: Sign out
-
   func signOut() async {
     await session.signOut()
   }
 
-  /// IYT "Enter my 12 words": this iPhone opens its data with the words, which gives it
-  /// the key a password confirmation needs.
   func enterWordsToUnlock() {
     closeConfirmation()
     session.signedIn(.needsUnlock(passkeyCanUnlock: false))

@@ -1,35 +1,10 @@
 ---
-/**
- * "Request an invite", in the states of the Paper board "Waitlist · States"
- * (default, focus, error, success) plus "another bank". The section around
- * it carries the heading. "Another bank" is also how people ask for their
- * bank: its "Which one?" field suggests OTHER_BANKS. PUBLIC_WAITLIST_MODE
- * (src/lib/env.ts) decides where a request goes.
- *
- * "api": a real form. Without JavaScript it posts to the API like any form
- * (the browser checks the fields first; the server answers with a 303 to
- * /joined). With it, the script validates, posts JSON and shows the success
- * card in place: "Check your email", which asks for the tap on Confirm my
- * email within 7 days. "You're on the list" is only for the page after that
- * confirm link works (/waitlist/confirm). Every valid submission gets the same
- * answer whether or not the address is already on the list (Hasala design
- * archive, private).
- *
- * "email" (the fallback while the API is down): nothing is posted and Turnstile is never
- * loaded. With JavaScript the script validates the same way, then opens a
- * pre-filled email to SITE.supportEmail and shows how to finish. Without it,
- * the fields have no names, so submitting sends nothing and only opens
- * /joined, which says to email us. There is no confirmation step, so the
- * address added is the one the email comes from, not the one typed here;
- * the copy says so.
- */
 import Icon from './Icon.astro';
 import WaitlistCoin from './brand/WaitlistCoin.astro';
 import { BANKS, OTHER_BANKS, SITE } from '../data/site';
 import { API_BASE, TURNSTILE_SITEKEY, WAITLIST_MODE } from '../lib/env';
 
 const byEmail = WAITLIST_MODE === 'email';
-/** Field names are sent only to the API; in "email" mode a no-JS submit must carry nothing. */
 const named = (name: string): string | undefined => (byEmail ? undefined : name);
 ---
 
@@ -176,9 +151,6 @@ const named = (name: string): string | undefined => (byEmail ? undefined : name)
     align-items: center;
     width: 100%;
   }
-  /* The coin's viewBox has headroom above the slot for the lift (108 of 616
-     units); Paper's crop (250x150, 190x114) has none, so pull the layout
-     up by that headroom. The slot sits 4px above the card. */
   .waitlist :global(.wl-coin) {
     width: var(--coin-w);
     height: auto;
@@ -313,8 +285,6 @@ const named = (name: string): string | undefined => (byEmail ? undefined : name)
     flex: none;
     margin-top: 2px;
   }
-  /* Errors, "Another bank" and the success card arrive instead of appearing
-     (with reduced motion: a fade only). */
   .field__error:not([hidden]) {
     transition:
       opacity 160ms var(--ease-out-soft),
@@ -495,7 +465,6 @@ const named = (name: string): string | undefined => (byEmail ? undefined : name)
     }
   }
 
-  /* The coin: waits, lifts on focus, bounces off the rim on an error, drops in on success. */
   .waitlist :global(.wl-coin .wl-coin-body) {
     transform-box: fill-box;
     transform-origin: 50% 50%;

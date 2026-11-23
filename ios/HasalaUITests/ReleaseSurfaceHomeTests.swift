@@ -1,16 +1,10 @@
 import XCTest
 
-/// Home on the Release surface: no control without a screen behind it, and every control
-/// that remains goes somewhere. The bell is there (its "Needs a look" comes from the ledger,
-/// plan B7.6 decision 12); "Earlier" and "Notification settings" are not (no history, no
-/// in-app setting behind them yet).
 final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
   @MainActor
   func testHomeShowsOnlyWhatWorks() throws {
     let app = launchRelease()
 
-    // The hero, its Insights link and the bell; no Needs-you rail. "Edit" and "Add widget"
-    // arrange Home in every build.
     attach(app, "Release · Home")
     assertNoPlaceholders(app, "Home")
     assertPersonalAccountsOnly(app, "Home")
@@ -27,7 +21,6 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     tap(app, "period.close")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
 
-    // The bell counts what needs a look and opens it.
     let bell = app.buttons["header.notifications"].firstMatch
     XCTAssertTrue(bell.exists, "Home has no bell")
     XCTAssertEqual(bell.label, "Notifications, 3 need a look")
@@ -42,7 +35,6 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     assertPersonalAccountsOnly(app, "Notifications")
     attach(app, "Release · Notifications")
     try audit(app)
-    // A row opens its screen: du's new price opens du, with Accept new amount.
     tap(app, "bell.row.price.du")
     XCTAssertTrue(el(app, "bills.detail.accept").waitForExistence(timeout: uiWait))
     assertNoPlaceholders(app, "du")
@@ -136,11 +128,8 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     try audit(app)
   }
 
-  /// With nothing to look at the bell has no badge and the sheet says so; mail's row
-  /// promises no work or school account.
   @MainActor
   func testAllClearAndTheMailRow() throws {
-    // All clear: the caught-up queue, AXA paid, du accepted, the found bill dismissed.
     var app = launchRelease("mayaCaughtUp", waitForHome: false, screen: "home.allClear")
     XCTAssertTrue(el(app, "bell.allClear").waitForExistence(timeout: 15))
     assertText(app, "Nothing needs you", "Notifications · all clear")
@@ -151,7 +140,6 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
     XCTAssertEqual(app.buttons["header.notifications"].firstMatch.label, "Notifications")
 
-    // No mailbox: the bell's last row asks to connect it and opens Bank alerts in Profile.
     app = launchRelease("gmailSkipped")
     let bell = app.buttons["header.notifications"].firstMatch
     XCTAssertEqual(bell.label, "Notifications, 4 need a look")

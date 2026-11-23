@@ -6,12 +6,6 @@ import Foundation
 import LocalAuthentication
 import Security
 
-/// The device approval key (spec 04 §6.1.3; 01 §4.9): a Secure Enclave P-256 key per
-/// writer, usable only while the iPhone has a passcode, and only after Face ID or the
-/// passcode. Its SE-wrapped handle (not the key) lives in `SecretItem.approvalKey`.
-///
-/// The simulator has no Secure Enclave, so this reports `.unavailable` there; Debug
-/// scenarios never reach it (they run on the account mock).
 nonisolated final class SecureEnclaveApprovalKey: ApprovalKeySigner, @unchecked Sendable {
   private let store: any SecretStore
 

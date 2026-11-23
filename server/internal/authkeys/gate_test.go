@@ -8,9 +8,6 @@ import (
 	"time"
 )
 
-// AT-RL-7 (spec 02 §16.2): at most Concurrency hashes at once, at most Queue
-// callers waiting, first in first out, each for at most Wait.
-
 func TestGateRefusesACallerBeyondTheQueue(t *testing.T) {
 	g := NewGate(1, 1, time.Second)
 	release, err := g.Acquire(context.Background())
@@ -80,7 +77,7 @@ func TestGateIsFirstInFirstOut(t *testing.T) {
 				return nil
 			})
 		}(i)
-		waitForWaiters(t, g, i+1) // queue them in a known order
+		waitForWaiters(t, g, i+1)
 	}
 	release()
 	wg.Wait()

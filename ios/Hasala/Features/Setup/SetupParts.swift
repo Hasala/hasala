@@ -2,21 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-// Parts the setup steps share (Paper row 10 and P2.9): a scaffold for the two steps that
-// `AccountScreen`'s scrolling column doesn't fit (the docked keypad, a screen with no
-// header), the step rows of the scan and done cards, the app icon tile, and the dock's
-// lock note.
-
-/// A setup step on Paper's frame when `AccountScreen` can't draw it: the wash, the system
-/// bar as the account header (back, step indicator, Skip), the question block, then the
-/// content and a dock pinned to the bottom.
-///
-/// `.fill` gives the content all the height between the question and the dock (the income
-/// step centres its figure there, Paper 56S); it scrolls only when the text is too large to
-/// fit. It is one scroll view either way (no second layout swapped in at a larger text
-/// size), so the text on it keeps its identity as it grows. `.scroll` is a plain scrolling
-/// column, with the question `top` under a hidden bar (the notifications step, 28 under the
-/// status bar, Paper GMV).
 struct SetupScreen<Content: View, Dock: View>: View {
   enum Layout { case fill, scroll }
 
@@ -27,14 +12,11 @@ struct SetupScreen<Content: View, Dock: View>: View {
   var trailing: (title: String, action: () -> Void)?
   var wash: HWash = .setup
   var layout: Layout = .scroll
-  /// The question under the header (16), or under the status bar when there is none.
   var top: CGFloat = 16
   @ViewBuilder var content: () -> Content
   @ViewBuilder var dock: () -> Dock
 
   var body: some View {
-    // The reader sees the room between the header and the dock (the safe area); the
-    // scroll view inside still runs under both.
     GeometryReader { viewport in
       ScrollView {
         switch layout {
@@ -66,9 +48,6 @@ struct SetupScreen<Content: View, Dock: View>: View {
   }
 }
 
-/// A column that is at least `minHeight` tall: given exactly that when its content fits
-/// (so a `maxHeight: .infinity` part takes the room left), and its own height when it
-/// doesn't (the scroll view around it then scrolls).
 private struct FillOrGrow: Layout {
   var minHeight: CGFloat
 
@@ -83,7 +62,6 @@ private struct FillOrGrow: Layout {
   }
 }
 
-/// The question block (Paper "Question"): Title 1 and a body line on the wash, 8 apart.
 struct SetupQuestion: View {
   let title: String
   let subtitle: String?
@@ -106,8 +84,6 @@ struct SetupQuestion: View {
   }
 }
 
-/// The note above a step's button (Paper "Note row"): a 16 lock in a 20 lane and 15/20
-/// secondary text, 8 in from the dock's edges.
 struct DockNote: View {
   var icon: HIcon = .lock
   var text: String
@@ -128,7 +104,6 @@ struct DockNote: View {
   }
 }
 
-/// A setup failure as the steps show it: the account banner (one line of copy).
 struct SetupFailureBanner: View {
   var failure: SetupFailure?
 

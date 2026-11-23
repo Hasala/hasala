@@ -1,9 +1,5 @@
 package budget
 
-// account_refusals has ONE writer, and these are the properties that keep it
-// that way. ledgerd once had two (this gate and the SMTP receiver's store) with
-// two different day clocks; the receiver is gone, and the rule stays.
-
 import (
 	"reflect"
 	"regexp"
@@ -16,9 +12,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// CountRefusals is what the refusal-only paths call (the upload limiter, the
-// headroom fuse, suspension), so it must accept every resource the closed set
-// allows, not only the ledger's.
 func TestCountRefusalsAcceptsEveryResourceTheClosedSetAllows(t *testing.T) {
 	pool := pgtest.New(t)
 	u := newUser(t, pool)
@@ -38,10 +31,6 @@ func TestCountRefusalsAcceptsEveryResourceTheClosedSetAllows(t *testing.T) {
 	}
 }
 
-// The Go allowlist and the database's CHECK constraint are the same set, in
-// both directions. A name in Go that the constraint does not know is a
-// violation raised inside a retry loop; a name in the constraint that Go does
-// not know is a refusal with nowhere to go.
 func TestTheAllowlistIsExactlyTheDatabasesClosedSet(t *testing.T) {
 	pool := pgtest.New(t)
 	var def string
@@ -79,8 +68,6 @@ func TestCountRefusalsRefusesWhatItCannotRecord(t *testing.T) {
 	if err := CountRefusals(bg, nil, u, ResourceHeadroom, 1); err == nil {
 		t.Fatal("a nil pool was accepted")
 	}
-	// Zero and negative are no-ops, not errors: a caller flushing a buffer can
-	// legitimately hold nothing for a key.
 	if err := CountRefusals(bg, pool, u, ResourceHeadroom, 0); err != nil {
 		t.Fatalf("n = 0 must be a no-op: %v", err)
 	}
@@ -89,10 +76,6 @@ func TestCountRefusalsRefusesWhatItCannotRecord(t *testing.T) {
 	}
 }
 
-// The purged-account guard, which only ONE of the two old writers had. These
-// writes are retried out of an in-memory buffer, so an error that can never
-// succeed is an error that is retried forever — and a foreign key violation for
-// a deleted account is exactly that.
 func TestARefusalForAPurgedAccountIsSkippedRatherThanFailed(t *testing.T) {
 	pool := pgtest.New(t)
 	u := newUser(t, pool)
@@ -107,8 +90,6 @@ func TestARefusalForAPurgedAccountIsSkippedRatherThanFailed(t *testing.T) {
 	}
 }
 
-// n accumulates rather than overwriting: a caller may hand over a BATCH of counts,
-// and a DO UPDATE SET count = 1 would turn a hundred refusals into one.
 func TestCountRefusalsAccumulates(t *testing.T) {
 	pool := pgtest.New(t)
 	u := newUser(t, pool)
@@ -123,21 +104,15 @@ func TestCountRefusalsAccumulates(t *testing.T) {
 	}
 }
 
-// One day clock, and it is the database's. Both paths — the gate's ceiling
-// refusal and a refusal-only one — must land on the same date for the same instant,
-// or "what was declined today" means two different things depending on which
-// wall the account hit.
 func TestBothRefusalPathsShareTheDatabasesDay(t *testing.T) {
 	pool := pgtest.New(t)
 	g := New(pool)
 	setDefaultLimit(t, pool, 1)
 	u := newUser(t, pool)
 
-	// The gate's path.
 	if err := admit(t, g, u, ResourceOplogHotBytes, 2); err == nil {
 		t.Fatal("want a refusal")
 	}
-	// A refusal-only path, through the same writer.
 	if err := CountRefusals(bg, pool, u, ResourceHeadroom, 1); err != nil {
 		t.Fatal(err)
 	}
@@ -172,9 +147,6 @@ func TestBothRefusalPathsShareTheDatabasesDay(t *testing.T) {
 	}
 }
 
-// The gate's day override is a TEST SEAM and nothing else. If New ever starts
-// setting it, or a caller reaches it another way, production grows a second day
-// clock again — so assert the seam is off by default.
 func TestTheDayOverrideIsOffUnlessATestSetsIt(t *testing.T) {
 	pool := pgtest.New(t)
 	if got := New(pool).overrideDay(); got != nil {
@@ -188,11 +160,6 @@ func TestTheDayOverrideIsOffUnlessATestSetsIt(t *testing.T) {
 	}
 }
 
-// A sanity check on the doc claim that CountRefusals cannot be handed a
-// transaction: it takes a *pgxpool.Pool, so "do not write the receipt inside
-// the doomed transaction" is a compile-time property. This test exists to fail
-// LOUDLY at review time if the signature is ever widened to an interface that a
-// pgx.Tx satisfies.
 func TestCountRefusalsTakesAPoolAndNotATransaction(t *testing.T) {
 	if got := reflect.TypeOf(CountRefusals).String(); !strings.Contains(got, "*pgxpool.Pool") {
 		t.Fatalf("CountRefusals takes %s; a receipt written in the caller's transaction is "+

@@ -1,15 +1,3 @@
-// The production `MailboxLedger` (spec 04 §7.5, §3): the Gmail lane's view of
-// the account's ledger, over the same sync engine, observer, outbox and
-// projection the screens use.
-//
-//   syncToHead       a `refresh` run: reconcile, pull (fold + project), flush
-//   senderTrust      the projection's `sender_trust` (pending overlay included)
-//   projectedMessageIDs / isIngested   the projection, plus pending ops for ingest ids
-//   authorSenderTrust `sender_trust_set` through OpAuthor's typed-input rules
-//   flush            an `authored` run, mapped onto `FlushOutcome`
-//
-// Authored blobs go through the Outbox (durable before the call returns), then
-// the observer re-projects so the next read sees them at once.
 import CoreDomain
 import CoreOutbox
 import CoreProjection
@@ -21,11 +9,9 @@ public actor RuntimeMailboxLedger: MailboxLedger {
   let engine: SyncEngine
   let observer: LedgerPageObserver
   let outbox: Outbox
-  /// The persistence's op author; its stamps follow this ledger's pulls.
   public let authoring: MailboxAuthoring
   public nonisolated let textWrites = WriteSerial()
 
-  /// Display names of the banks (03b §4.2 table).
   public static let bankNames: [String: String] = [
     "enbd": "Emirates NBD", "dib": "DIB", "adib": "ADIB", "adcb": "ADCB", "fab": "FAB", "mashreq": "Mashreq",
     "rakbank": "RAKBANK", "cbd": "CBD", "ei": "Emirates Islamic", "hsbc": "HSBC", "citi": "Citibank", "nbf": "NBF",
@@ -34,8 +20,6 @@ public actor RuntimeMailboxLedger: MailboxLedger {
 
   public static func bankName(_ bank: String) -> String { bankNames[bank] ?? bank.uppercased() }
 
-  /// `authoring` must be the one given to `LedgerMailboxPersistence`, built
-  /// with `MailboxAuthoring(observer:)` so it shares the observer's stamps.
   public init(engine: SyncEngine, observer: LedgerPageObserver, outbox: Outbox, authoring: MailboxAuthoring) {
     self.engine = engine
     self.observer = observer
@@ -93,8 +77,6 @@ public actor RuntimeMailboxLedger: MailboxLedger {
     return (try? observer.context.store.pendingCount()) == 0 ? .flushed : .failed
   }
 
-  /// Builds one blob with `body` (under the account's shared stamps),
-  /// enqueues it and re-projects.
   func author(_ body: (inout OpAuthor) throws(AuthorError) -> Void) async throws(MailboxLedgerError) {
     let ctx: AuthorContext
     do { ctx = try await observer.authorContext() } catch { throw MailboxLedgerError("context_\(Self.code(error))") }
@@ -105,8 +87,6 @@ public actor RuntimeMailboxLedger: MailboxLedger {
     try? await observer.reproject()
   }
 
-  /// A stop the lane may read through: the pull reached what it could and the
-  /// projection is the last good one (rate limits, a latched outbox).
   static func tolerable(_ stop: SyncStop) -> Bool {
     switch stop {
     case .rateLimited, .latched, .suspended: return true

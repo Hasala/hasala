@@ -1,53 +1,32 @@
-// Accounts · Net worth: the accounts add up to net worth, split into everyday money (counts
-// in the plan) and tracking (net worth only), with the last 12 months when the ledger has
-// them.
-
-/// One account row (page 16 §14): a bank plate, the name, the balance and when it was last
-/// checked.
 public struct AccountRowModel: Sendable, Hashable, Identifiable {
-  /// What the 40 plate shows: a bank's initials ("ENBD", "DIB", "S"), or the cash glyph.
   public enum Plate: Sendable, Hashable {
     case initials(String)
     case cash
   }
 
   public var id: AccountID
-  /// "Emirates NBD Current".
   public var name: String
   public var plate: Plate
   public var hue: Hue
-  /// Positive for money held, negative for money owed (card debt shows "−").
   public var balance: Money
-  /// "···4412 · checked in 3 days ago · 6 since", "Updated by you".
   public var detail: String
 }
 
-/// The Last 12 months line (page 16 §14 chart card).
 public struct NetWorthChart: Sendable, Hashable {
-  /// Net worth at the end of each month, oldest first, the last one this month, as permille
-  /// of the drawn range (geometry only; never an amount).
   public var points: [Int]
-  /// Twelve month initials ending with this month ("N", "D", … "O").
   public var months: [String]
 }
 
 public struct AccountsSnapshot: Sendable, Hashable {
   public var netWorth: Money
   public var netWorthMark: TotalMark?
-  /// The change since the start of this month; nil when the ledger has no history for it.
   public var monthChange: Money?
-  /// Nil when the ledger has no history (live has none yet: check-ins only set balances).
   public var chart: NetWorthChart?
-  /// Counts in your plan.
   public var everyday: [AccountRowModel]
   public var everydayTotal: Money
   public var everydayMark: TotalMark?
-  /// Counts in net worth, not in your plan.
   public var tracking: [AccountRowModel]
-  /// How many accounts there are.
   public var count: Int
-  /// Some account has a balance. Balances come from check-ins; without one, every account
-  /// reads 0.00 and the screen would say nothing true.
   public var hasBalances: Bool
 }
 
@@ -80,9 +59,6 @@ public enum AccountsEngine {
     return AccountRowModel(id: a.id, name: a.name, plate: plate, hue: hue(a.kind), balance: a.balance, detail: detail)
   }
 
-  /// A bank's initials from its short name, as the plates draw them: an all-caps word of four
-  /// letters or fewer as it is, the initial of each other capitalised word ("Emirates NBD" →
-  /// "ENBD", "DIB card" → "DIB", "RAKBANK" → "R", "Sarwa" → "S"), at most four.
   static func initials(_ name: String) -> String {
     let marks = name.split(whereSeparator: \.isWhitespace).compactMap { word -> String? in
       let letters = word.filter(\.isLetter)
@@ -93,8 +69,6 @@ public enum AccountsEngine {
     return String((marks.isEmpty ? fallback : marks).prefix(4))
   }
 
-  /// The plate's hue says what kind of account it is: a current account sky, a card sand,
-  /// cash mint, an investment lilac.
   static func hue(_ kind: AccountKind) -> Hue {
     switch kind {
     case .current: .sky
@@ -104,7 +78,6 @@ public enum AccountsEngine {
     }
   }
 
-  /// Twelve month initials ending with `month`.
   static func months(ending month: YearMonth) -> [String] {
     var out: [String] = []
     var m = month

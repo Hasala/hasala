@@ -1,11 +1,5 @@
 import XCTest
 
-/// The Gate A0 smoke test: the Debug app launches into the Maya scenario, Home shows the
-/// board's hero (spent on needs and wants), the bell opens what needs a look, every tab opens,
-/// Hide amounts hides and restores figures, and the profile sheet shows the build footer.
-/// Screenshots are attached to the report. Every screen it reaches also passes
-/// `performAccessibilityAudit()` (spec 04 §17), here at the default text size and in
-/// `testAccessibilityAtLargeTextSizes` at `.accessibility3`.
 final class SmokeTests: XCTestCase {
   override func setUp() {
     continueAfterFailure = false
@@ -19,7 +13,6 @@ final class SmokeTests: XCTestCase {
     XCTAssertTrue(hero.waitForExistence(timeout: 15), "Home hero did not appear")
     XCTAssertTrue(hero.waitForLabel("AED 11,115.62"), hero.label)
     XCTAssertTrue(app.staticTexts["Your widgets"].exists)
-    // Home has no Needs-you rail any more (decided 14 Oct): the bell counts what needs a look.
     XCTAssertFalse(app.staticTexts["Needs you"].exists)
     XCTAssertEqual(app.buttons["header.notifications"].firstMatch.label, "Notifications, 3 need a look")
     attach(app, "Home · Default")
@@ -34,7 +27,6 @@ final class SmokeTests: XCTestCase {
     app.swipeDown()
     app.swipeDown()
 
-    // The bell: "Needs a look" with its four rows, then "Earlier" (Debug's feed).
     app.buttons["header.notifications"].firstMatch.tap()
     XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
     XCTAssertTrue(app.staticTexts["Needs a look"].exists)
@@ -48,20 +40,16 @@ final class SmokeTests: XCTestCase {
     el(app, "bell.close").tap()
     XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))
 
-    // Hide amounts: the hero reads as hidden, the toast appears and goes by itself.
     app.buttons["header.hideAmounts"].firstMatch.tap()
     XCTAssertTrue(el(app, "toast").waitForExistence(timeout: uiWait))
     XCTAssertEqual(hero.label, "Amount hidden")
     XCTAssertFalse(app.staticTexts["11,115.62"].exists)
     attach(app, "Home · Amounts hidden")
-    // Audit the hidden state once the toast has gone by itself, not while it animates away
-    // mid-audit.
     XCTAssertTrue(el(app, "toast").waitForNonExistence(timeout: 20))
     try audit(app)
     app.buttons["header.hideAmounts"].firstMatch.tap()
     XCTAssertTrue(hero.waitForLabel("AED 11,115.62"), hero.label)
 
-    // Every tab opens; coming back to Home shows the hero as it was (no replay).
     let tabBar = app.tabBars.firstMatch
     tabBar.buttons["Projects"].tap()
     XCTAssertTrue(el(app, "projects.new").waitForExistence(timeout: uiWait))
@@ -76,7 +64,6 @@ final class SmokeTests: XCTestCase {
     XCTAssertTrue(hero.waitForExistence(timeout: uiWait))
     XCTAssertEqual(hero.label, "AED 11,115.62")
 
-    // The profile sheet carries the build footer.
     app.buttons["header.profile"].firstMatch.tap()
     let footer = app.staticTexts["profile.buildFooter"]
     XCTAssertTrue(footer.waitForExistence(timeout: uiWait))
@@ -92,8 +79,6 @@ final class SmokeTests: XCTestCase {
     XCTAssertTrue(tabBar.buttons["Home"].isSelected, "Search left Home")
   }
 
-  /// A bell row closes the sheet and opens its screen (spec 10 §4.4): the late bill inside
-  /// Home, then the transactions to sort as the review deck once the sheet has gone.
   @MainActor
   func testTheBellOpensWhatNeedsALook() throws {
     let app = launch(scenario: "maya")
@@ -102,7 +87,6 @@ final class SmokeTests: XCTestCase {
     app.buttons["header.notifications"].firstMatch.tap()
     tap(app, "bell.row.bill.axa")
     XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))
-    // The bill is pushed inside Home: the tab root's header (and its bell) has gone.
     XCTAssertTrue(app.buttons["header.notifications"].waitForNonExistence(timeout: uiWait), "no bill pushed")
     XCTAssertEqual(app.tabBars.firstMatch.buttons["Home"].isSelected, true)
     attach(app, "Bell · AXA Insurance")
@@ -181,8 +165,6 @@ final class SmokeTests: XCTestCase {
     XCTAssertEqual(bell.label, "Notifications")
   }
 
-  /// Home and the tabs at `.accessibility3` (UIKit's AccessibilityXL): the layouts reflow
-  /// instead of truncating, and the audit passes (spec 04 §17).
   @MainActor
   func testAccessibilityAtLargeTextSizes() throws {
     let app = launch(scenario: "maya", arguments: [
@@ -194,8 +176,6 @@ final class SmokeTests: XCTestCase {
     XCTAssertTrue(hero.waitForLabel("AED 11,115.62"), hero.label)
     attach(app, "AX3 · Home")
     try audit(app, atLargeText: true)
-    // Down the whole page: the tiles, then each widget. The audit can move the scroll
-    // position, so each stop scrolls to its own element first.
     for id in ["widget.budgetPace", "widget.nextBill", "widget.netWorth", "widget.project.japan",
                "widget.goal.emergency", "widget.today"] {
       let target = el(app, id)
@@ -205,7 +185,6 @@ final class SmokeTests: XCTestCase {
       try audit(app, atLargeText: true)
     }
 
-    // The bell's sheet at AX3: rows stack, nothing clips.
     for _ in 0..<6 where !app.buttons["header.notifications"].firstMatch.isHittable { app.swipeDown() }
     app.buttons["header.notifications"].firstMatch.tap()
     XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
@@ -280,13 +259,6 @@ final class SmokeTests: XCTestCase {
     attach(app, "Activity · scrolled")
   }
 
-  /// The first reveal after launch keeps the owner's timing with amounts shown, so the figure
-  /// rolls with the fill: the bar fills over 300 ms, the tick starts to drop as it lands, the
-  /// verdict fades in after the tick and is in by 570 ms (0–300–420–570). The app stamps the
-  /// frames it draws (Debug, `-HasalaRevealTiming`), in milliseconds from the frame the fill
-  /// started on. A frame is 17 ms. The marks are frames drawn, so a CI runner that drops a
-  /// few can stamp one mark late and the next on time: the order is what holds exactly, and
-  /// each gap and bound allows a few frames (seen: the verdict 85 ms after the tick, not 120).
   @MainActor
   func testTheFirstRevealKeepsItsTimingWithAmountsShown() throws {
     let app = launch(scenario: "maya", arguments: ["-HasalaRevealTiming"])
@@ -306,19 +278,13 @@ final class SmokeTests: XCTestCase {
     let tick = try XCTUnwrap(marks["tick"], value)
     let verdict = try XCTUnwrap(marks["verdict"], value)
     let done = try XCTUnwrap(marks["done"], value)
-    // The bar fills in 300 ms; the tick waits for it, and nothing holds the tick back.
     XCTAssertTrue((250...360).contains(filled), value)
     XCTAssertTrue((filled...400).contains(tick), value)
-    // The verdict follows the tick's 120 ms, and the whole reveal is in by 570 ms, within
-    // the owner's 600 ms.
     XCTAssertTrue((tick + 50...510).contains(verdict), value)
     XCTAssertTrue((verdict...620).contains(done), value)
     XCTAssertEqual(el(app, "home.hero.left").label, "AED 11,115.62")
   }
 
-  /// Home's wash sits behind the scroll view (owner's TestFlight report: a pull to refresh
-  /// carried it down with the content). It still scrolls away with the content, as in Paper
-  /// (absolute, 420 tall), and comes back when the content returns to the top.
   @MainActor
   func testTheWashScrollsAwayWithHomeAndComesBack() throws {
     let app = launch(scenario: "maya", release: true, motion: "off")
@@ -326,7 +292,6 @@ final class SmokeTests: XCTestCase {
     XCTAssertTrue(hero.waitForExistence(timeout: 15), "Home hero did not appear")
     XCTAssertTrue(hero.waitForLabel("AED 11,115.62"), hero.label)
 
-    // Under the bar, at the leading edge (no content there): the wash's blue, or the canvas.
     let probe = CGPoint(x: 6, y: 150)
     let atRest = try XCTUnwrap(pixel(app.screenshot(), probe))
     XCTAssertGreaterThan(atRest[2] - atRest[0], 0.08, "no wash at rest: \(atRest)")
@@ -342,7 +307,6 @@ final class SmokeTests: XCTestCase {
     XCTAssertLessThan(distance(atRest, back), 0.03, "the wash did not come back: \(atRest), \(back)")
   }
 
-  /// The RGBA (0...1) of a screenshot at a point in points.
   @MainActor
   private func pixel(_ shot: XCUIScreenshot, _ point: CGPoint) -> [CGFloat]? {
     guard let image = shot.image.cgImage else { return nil }

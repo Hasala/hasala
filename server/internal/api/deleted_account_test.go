@@ -8,13 +8,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/purge"
 )
 
-// A device has to be able to tell "sign in again" from "there is nothing to
-// sign in to", because only the second one may make it wipe local data.
-//
-// The account is destroyed through the REAL purge, not by deleting rows this
-// test picked: the whole hazard 00021 exists for is that the state the naive
-// check looks for ("session resolves, user row missing") is unreachable in
-// production, and a test that arranged that state by hand would pass over it.
 func TestADeletedAccountAnswers410AndAnExpiredSessionStill401(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -31,7 +24,6 @@ func TestADeletedAccountAnswers410AndAnExpiredSessionStill401(t *testing.T) {
 	if got := w.Body.String(); got != `{"error":"account_deleted"}` {
 		t.Fatalf("body = %s, want the byte-identical account_deleted answer", got)
 	}
-	// Every authenticated route, not just the one the client happened to call.
 	for _, path := range []string{"/api/v1/sync?stream=hot", "/api/v1/sync/hashes?stream=hot", "/api/v1/key-history"} {
 		if code := h.req("GET", path, tok, nil).Code; code != http.StatusGone {
 			t.Fatalf("%s answered %d, want 410", path, code)
@@ -41,9 +33,6 @@ func TestADeletedAccountAnswers410AndAnExpiredSessionStill401(t *testing.T) {
 
 func TestAnExpiredSessionIsStillA401(t *testing.T) {
 	t.Parallel()
-	// The case a client must NOT wipe on, and the common one. If this ever
-	// becomes a 410, every routine token expiry destroys an offline user's
-	// outbox.
 	h := newHarness(t)
 	u := h.user("sub-expiring")
 	tok := h.session(u)
@@ -61,9 +50,6 @@ func TestAnExpiredSessionIsStillA401(t *testing.T) {
 	}
 }
 
-// An unknown token is a 401 and must never be answered as a deleted account:
-// that would confirm to an unauthenticated caller that a guessed token was once
-// real.
 func TestAnUnknownTokenIsA401(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

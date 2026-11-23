@@ -1,7 +1,3 @@
-// `writer_checkpoint` payloads (wire/op.ts `encodeCheckpointPayload`,
-// `decodeCheckpointPayload`): the one payload whose bytes the executors must
-// agree on, so its heads are sorted by (writer_id, stream) in UTF-8 byte order
-// and each head's keys are in Go's struct order.
 import CoreJSON
 import CorePrimitives
 import Foundation
@@ -10,9 +6,7 @@ import HasalaText
 public struct CheckpointHead: Sendable, Hashable {
   public let writerID: String
   public let stream: String
-  /// A decimal string: counters are never JSON numbers.
   public let counter: String
-  /// 64 lower-case hex characters.
   public let hash: String
 
   public init(writerID: String, stream: String, counter: String, hash: String) {
@@ -24,7 +18,6 @@ public struct CheckpointHead: Sendable, Hashable {
 }
 
 public enum Checkpoint {
-  /// The canonical payload `{"heads":[…]}`: validated, sorted, duplicates refused.
   public static func encodePayload(_ heads: [CheckpointHead]) throws(OpValidationError) -> JSONValue {
     for h in heads {
       if let m = problem(h) { throw .invalid(m) }
@@ -36,7 +29,6 @@ public enum Checkpoint {
     return .object(JSONObject([("heads", .array(sorted.map { .object(object($0)) }))]))
   }
 
-  /// Reads a payload, refusing one that is not canonically ordered.
   public static func decodePayload(_ payload: JSONValue) throws(WireDecodeError) -> [CheckpointHead] {
     guard let o = payload.objectValue else { throw .setAside("checkpoint payload is not an object") }
     guard let raw = o["heads"]?.arrayValue else { throw .setAside("checkpoint payload has no heads array") }
@@ -71,7 +63,6 @@ public enum Checkpoint {
 
   static func problem(_ h: CheckpointHead) -> String? { rawProblem(object(h)) }
 
-  /// wire/op.ts `validateHead`, its messages included.
   static func rawProblem(_ r: JSONObject) -> String? {
     guard let w = r["writer_id"]?.stringValue, !w.isEmpty else { return "checkpoint head has no writer_id" }
     guard let stream = r["stream"]?.stringValue, !stream.isEmpty else {

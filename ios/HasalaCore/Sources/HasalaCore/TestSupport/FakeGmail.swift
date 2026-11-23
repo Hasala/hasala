@@ -1,21 +1,3 @@
-// FakeGmail: an in-process fake of Google's OAuth token endpoint and the Gmail REST surface the
-// lane uses (spec 04 §2.2 CoreTestSupport; port of the ledgerd PWA harness fakegmail.mjs
-// semantics, narrowed to PO G's sender-filtered listing).
-//
-// It answers `HTTPExchange`, so the request building and response parsing under test are the
-// production `GmailClient` / `GoogleOAuthClient` code. Behaviour kept from fakegmail.mjs:
-//   - a refresh token only on the authorization_code grant, never echoed on a refresh;
-//   - an `invalid_grant` knob for both /token and /revoke;
-//   - an id_token that is a real three-part JWT (alg "none") carrying `email` and the `nonce`
-//     of the last authorize URL, as Google does;
-//   - raw messages served base64url and UNPADDED.
-// Added for PO G: `messages.list` evaluates the lane's query shape
-// (`{from:a from:b} after:<sec> -in:trash`) against each message's From domain (subdomains
-// match, the AT-GMAIL-10 assumption) and internalDate; an unfiltered listing is answered 400 so
-// a test fails loudly if the client ever sends one. Every request is recorded.
-//
-// SYNTHETIC mail only (`SyntheticMail`): hand-written DIB- and ENBD-shaped alerts with fictional
-// amounts, cards and merchants. Real mail is never in this repository.
 import CoreJSON
 import CoreMailbox
 import CorePrimitives
@@ -29,7 +11,6 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
     public var trashed = false
     public var spam = false
     public var sizeEstimate: Int64?
-    /// The From header value (for listing); parsed from `raw` when built with `SyntheticMail`.
     public var from: String
 
     public init(id: String, raw: [UInt8], internalDateMs: Int64, from: String, trashed: Bool = false) {
@@ -62,25 +43,18 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
   public var refreshToken = "fake-refresh-token"
   public var expiresIn: Int64 = 3600
   public var invalidGrant = false
-  /// Drop the gmail.readonly scope from the token response (a granular-consent untick).
   public var omitGmailScope = false
   public var omitRefreshToken = false
   public var pageSize = 100
   public var watchExpirationMs: Int64 = 0
   public var noMailbox = false
-  /// When true every transport call fails (`HTTPExchangeError.offline`).
   public var offline = false
-  /// Asked before every Gmail API request with its path: a status answers it with Google's
-  /// rate-limit body (reason `rateLimitExceeded`), nil serves it. A test's model of the
-  /// per-user quota (250 units a second, a moving average).
   public var limiter: (@Sendable (_ path: String) -> Int?)?
 
   public static let tokenURL = "https://oauth2.googleapis.com/token"
   public static let revokeURL = "https://oauth2.googleapis.com/revoke"
 
   public init() {}
-
-  // MARK: Scripting
 
   public func add(_ m: Message) {
     lock.withLock {
@@ -96,9 +70,6 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
     }
   }
 
-  /// The next answers for any request whose path contains `pathContains` (e.g. a message id):
-  /// each status is used once, then the request is served normally. `reason` goes in Google's
-  /// error body (`error.errors[0].reason`, e.g. "userRateLimitExceeded" on a 403).
   public func fail(_ pathContains: String, with statuses: [Int], reason: String? = nil) {
     lock.withLock { failures += statuses.map { (pathContains, $0, reason) } }
   }
@@ -107,7 +78,6 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
   public func clearRequests() { lock.withLock { _requests = [] } }
   public var nonce: String { lock.withLock { lastNonce } }
 
-  /// The fake consent page: records the nonce and answers the redirect with a code.
   public func consent(authorizeURL: URL) -> URL {
     let c = URLComponents(url: authorizeURL, resolvingAgainstBaseURL: false)
     func q(_ n: String) -> String { c?.queryItems?.first { $0.name == n }?.value ?? "" }
@@ -116,8 +86,6 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
     back.queryItems = [URLQueryItem(name: "code", value: "fake-auth-code"), URLQueryItem(name: "state", value: q("state"))]
     return back.url!
   }
-
-  // MARK: HTTPExchange
 
   public func send(_ request: HTTPRequest) async throws(HTTPExchangeError) -> HTTPResponse {
     if lock.withLock({ offline }) { throw .offline }
@@ -189,8 +157,6 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
     }
   }
 
-  // MARK: Internals
-
   public static let noMailboxBody =
     #"{"error":{"code":400,"message":"Mail service not enabled","errors":[{"message":"Mail service not enabled","domain":"global","reason":"failedPrecondition"}],"status":"FAILED_PRECONDITION"}}"#
 
@@ -243,7 +209,6 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
         let d = BankDomains.domainOf(m.from)
         return BankDomains.isMember(d, of: parsed.from)
       }
-      // Gmail lists newest first.
       let sorted = matching.sorted { $0.internalDateMs > $1.internalDateMs }
       let start = Int(pageToken ?? "0") ?? 0
       let size = Swift.min(max, pageSize)
@@ -262,7 +227,6 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
     var excludeTrash: Bool
   }
 
-  /// `{from:a from:b} after:N -in:trash`; nil for anything without a from: group.
   static func parseQuery(_ q: String) -> Query? {
     guard let open = q.firstIndex(of: "{"), let close = q.firstIndex(of: "}"), open < close else { return nil }
     let terms = q[q.index(after: open)..<close].split(separator: " ")
@@ -282,7 +246,6 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
     return Query(from: from, after: after, excludeTrash: trash)
   }
 
-  /// The header fields of a raw message, unfolded, in order.
   static func headers(_ raw: [UInt8]) -> [(String, String)] {
     let text = String(decoding: raw, as: UTF8.self)
     let block = headerBlockOf(text)
@@ -320,12 +283,9 @@ extension FormEncoding {
   static func unescapeComponent(_ s: String) -> String { s.removingPercentEncoding ?? s }
 }
 
-/// Hand-written DIB- and ENBD-shaped alerts. Every value is fictional.
 public enum SyntheticMail {
   public static let defaultTo = "synthetic.user@example.com"
 
-  /// A text/plain RFC 822 message. `authDomain` nil omits the Authentication-Results header;
-  /// `arTopmost` false puts a foreign A-R above Gmail's (verdict `not_topmost`).
   public static func rfc822(
     from: String, subject: String, body: String, dateMs: Int64, authDomain: String?, arTopmost: Bool = true,
     dkimPass: Bool = true, to: String? = defaultTo, signedHeaders: String = "From:To:Subject"
@@ -355,7 +315,6 @@ public enum SyntheticMail {
     return Array((h.joined(separator: "\r\n") + "\r\n\r\n" + body.replacingOccurrences(of: "\n", with: "\r\n") + "\r\n").utf8)
   }
 
-  /// A DIB card purchase alert (dib.card.v1's shape; body date DD-MM-YYYY).
   public static func dibCard(
     id: String, amount: String = "250.00", day: String = "05-06-2026", merchant: String = "SYNTHETIC GROCER DUBAI",
     last4: String = "1234", dateMs: Int64, authDomain: String? = "dib.ae", fromDomain: String = "dib.ae",
@@ -397,7 +356,6 @@ public enum SyntheticMail {
       internalDateMs: dateMs, from: from)
   }
 
-  /// An ENBD account debit alert (enbd.alert.v1's shape; dated from the email).
   public static func enbdAlert(
     id: String, amount: String = "12.34", last4: String = "8642", dateMs: Int64,
     authDomain: String? = "emiratesnbd.com", fromDomain: String = "emiratesnbd.com"
@@ -411,7 +369,6 @@ public enum SyntheticMail {
       internalDateMs: dateMs, from: from)
   }
 
-  /// A bank-domain message no template reads (the empty review shape).
   public static func bankNotice(id: String, dateMs: Int64, domain: String = "emiratesnbd.com") -> FakeGmail.Message {
     let from = "Emirates NBD <news@\(domain)>"
     return FakeGmail.Message(
@@ -420,7 +377,6 @@ public enum SyntheticMail {
       internalDateMs: dateMs, from: from)
   }
 
-  /// A look-alike sender the query matched by display name but whose domains are not banks.
   public static func lookAlike(id: String, dateMs: Int64, listedAs bankDomain: String) -> FakeGmail.Message {
     let from = "Offers <offers@\(bankDomain).promo.example>"
     return FakeGmail.Message(
@@ -430,11 +386,6 @@ public enum SyntheticMail {
   }
 }
 
-// MARK: - Through URLSession
-
-/// Serves a `FakeGmail` (or any in-process fake, e.g. `FakeGraph`) to a real `URLSession` (spec
-/// 04 §2.2 "FakeGmail (URLProtocol)"), so the production `URLSessionHTTPExchange` is exercised
-/// too: request encoding, headers, status and body handling, with no socket and no network.
 public final class FakeGmailURLProtocol: URLProtocol, @unchecked Sendable {
   static let header = "X-Hasala-Fake-Gmail"
   private static let registry = NSLock()
@@ -443,7 +394,6 @@ public final class FakeGmailURLProtocol: URLProtocol, @unchecked Sendable {
 
   private var loading: Task<Void, Never>?
 
-  /// An ephemeral-configured exchange whose every request is answered by `fake`.
   public static func exchange(for fake: any HTTPExchange, maxResponseBytes: Int? = nil) -> FakeURLSessionExchange {
     let id = register(fake)
     let c = URLSessionConfiguration.ephemeral

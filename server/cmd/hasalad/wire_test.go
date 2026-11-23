@@ -27,8 +27,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// wireExtras turns every configured group on and leaves the rest off; nothing
-// here reaches the network (no wake is sent, no email leaves the fake).
 func TestWireExtrasFollowsTheConfiguration(t *testing.T) {
 	pool := pgtest.New(t)
 	dir := t.TempDir()
@@ -93,16 +91,12 @@ func TestWireExtrasFollowsTheConfiguration(t *testing.T) {
 	if p.Subscription != "projects/p/subscriptions/s" || p.ServiceAccount != "push@p.iam.gserviceaccount.com" {
 		t.Fatalf("push %+v", p)
 	}
-	// Each verifier has its own audience: the app's ID token is for the iOS
-	// client, Pub/Sub's is for the push URL. Swapped, every fake-verifier API
-	// test would still pass.
 	link, okLink := srv.Gmail.Link.(*googlejwt.Verifier)
 	hook, okHook := p.Hook.(*googlejwt.Verifier)
 	if !okLink || !okHook || link.Audience != "1-x.apps.googleusercontent.com" ||
 		hook.Audience != "https://api.hasala.app/hooks/gmail/pubsub" || srv.Gmail.IOSClientID != link.Audience {
 		t.Fatalf("verifiers: link %T %+v, hook %T %+v", srv.Gmail.Link, link, p.Hook, hook)
 	}
-	// Without HASALA_SALT_KEY_FILE the account ceremonies stay unmounted.
 	if srv.Accounts != nil {
 		t.Fatal("the account ceremonies were mounted with the auth key alone")
 	}
@@ -110,8 +104,6 @@ func TestWireExtrasFollowsTheConfiguration(t *testing.T) {
 	cancel()
 	ex.wait()
 
-	// The mailbox link without the Pub/Sub push: the link is mounted with the
-	// iOS client's audience; no hook, no topic and no renewal nudge.
 	var linkOnly []string
 	for _, kv := range env {
 		if !strings.HasPrefix(kv, "HASALA_GMAIL_PUBSUB_") {
@@ -137,7 +129,6 @@ func TestWireExtrasFollowsTheConfiguration(t *testing.T) {
 	cancel()
 	ex.wait()
 
-	// Both server keys: the account ceremonies are mounted on the same queue.
 	srv = &api.Server{Pool: pool}
 	ctx, cancel = context.WithCancel(context.Background())
 	ex, err = wireExtras(ctx, load(append(env, "HASALA_SALT_KEY_FILE="+write("salt", strings.Repeat("ef", 32)+"\n"))), pool, srv)
@@ -150,8 +141,6 @@ func TestWireExtrasFollowsTheConfiguration(t *testing.T) {
 	cancel()
 	ex.wait()
 
-	// The auth key without [email]: the worker runs (every send fails as
-	// not configured) but the website routes are not mounted.
 	var noEmail []string
 	for _, kv := range env {
 		if !strings.HasPrefix(kv, "HASALA_EMAIL_") {
@@ -170,7 +159,6 @@ func TestWireExtrasFollowsTheConfiguration(t *testing.T) {
 	cancel()
 	ex.wait()
 
-	// Without the groups: nothing optional is mounted.
 	bare, err := config.LoadEnv("", func(n string) (string, bool) {
 		switch n {
 		case "HASALA_PG_DSN":
@@ -238,9 +226,6 @@ func TestAServeWithNoAuthKeyFailsMailNoWorkerWillSend(t *testing.T) {
 	}
 }
 
-// HASALA_EMAIL_API_BASE_URL reaches the Cloudflare client (a local run's mail
-// capture); unset, the client talks to Cloudflare; without [email] nothing is
-// sent at all.
 func TestTheSenderFollowsTheEmailGroup(t *testing.T) {
 	tok := filepath.Join(t.TempDir(), "cftoken")
 	if err := os.WriteFile(tok, []byte("test-token\n"), 0o600); err != nil {

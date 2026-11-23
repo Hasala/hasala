@@ -2,8 +2,6 @@ import HasalaMocks
 import HasalaModels
 import Testing
 
-// Money formatting, phrases and permille (frozen after Stage F).
-
 @Suite("Money formatting")
 struct MoneyFormatTests {
   @Test(arguments: [

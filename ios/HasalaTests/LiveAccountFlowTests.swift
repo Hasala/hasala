@@ -12,16 +12,6 @@ import Testing
 
 @testable import Hasala
 
-/// The shipped view models over `LiveAccountService` and the real CoreSync ceremonies,
-/// against `MiniHasalad` below (spec 04 §15.1). The relaunch cases are what review L1/L2
-/// found missing: a new-iPhone sign-in killed before unlock must come back to Unlock,
-/// and the unlock must work from the Keychain's session alone.
-///
-/// CoreSync's own FakeServer can't be linked here (linking CoreTestSupport makes Xcode
-/// build HasalaCore's products dynamically, which loses the HasalaICU system library),
-/// so `MiniHasalad` is a small in-app fake of `02` §7's password routes: it keeps what
-/// the client sends and answers in `02`'s shapes, and checks no signatures (CoreSync's
-/// FakeServer suites check those).
 @MainActor
 @Suite("Live account flows")
 struct LiveAccountFlowTests {
@@ -46,7 +36,6 @@ struct LiveAccountFlowTests {
         apiBase: "https://api.hasala.app", accountsDirectory: accountsDirectory)
     }
 
-    /// The same Keychain after the app was killed and launched again.
     func relaunched() -> LiveAccountService { LiveAccountService(env: env) }
   }
 
@@ -57,7 +46,6 @@ struct LiveAccountFlowTests {
                            notifications: MockNotificationPermission())
   }
 
-  /// Signup with a password (C1-P) through `SignupModel`; returns the confirmed words.
   func signUp(_ phone: Phone, _ server: MiniHasalad) async throws -> [String] {
     let m = SignupModel(account: phone.relaunched())
     m.inviteText = Self.invite
@@ -83,7 +71,6 @@ struct LiveAccountFlowTests {
     return words
   }
 
-  /// A password sign-in (C2-P, C2b-P) through `SignInModel`; returns its outcome.
   func signIn(_ phone: Phone) async -> SignInOutcome? {
     var outcome: SignInOutcome?
     let m = SignInModel(account: phone.relaunched()) { outcome = $0 }
@@ -99,7 +86,6 @@ struct LiveAccountFlowTests {
     let words = try await signUp(a, server)
     #expect(a.binding != nil)
 
-    // A new iPhone signs in: data sealed there.
     let b = Phone(server)
     var outcome: SignInOutcome?
     let signIn = SignInModel(account: b.relaunched()) { outcome = $0 }
@@ -108,18 +94,15 @@ struct LiveAccountFlowTests {
     await signIn.signInWithPassword()
     #expect(outcome == .needsUnlock(passkeyCanUnlock: false))
 
-    // Killed before unlock. Boot alone can't tell this from an interrupted signup…
     #expect(Boot.decide(Boot.gather(b.env)) == .onboardingKeys)
     let (phase, wall) = BootController.initialPhase(Boot.decide(Boot.gather(b.env)), finished: false)
     #expect(phase == .checking && wall == nil)
-    // …the server's has_keys can.
     let account = b.relaunched()
     let session = AccountSession(services: services(account), phase: .checking)
     await session.resume()
     #expect(session.phase == .needsUnlock(passkeyCanUnlock: false))
     #expect(account.profile?.email == "maya@example.com")
 
-    // The words unlock from the Keychain's session alone (no sign-in in this run).
     var opened = false
     let unlock = UnlockModel(account: account, passkeyCanUnlock: false) { opened = true }
     unlock.phraseText = words.joined(separator: " ")
@@ -130,7 +113,7 @@ struct LiveAccountFlowTests {
     #expect(opened)
     #expect(b.binding?.user_id == a.binding?.user_id)
     #expect(b.binding?.writer_id != a.binding?.writer_id)
-    #expect(Boot.decide(Boot.gather(b.env)) == .restoring)  // in-memory store: bound, never the keys step
+    #expect(Boot.decide(Boot.gather(b.env)) == .restoring)
   }
 
   @Test func aKillOnWelcomeBackRelaunchesIntoTheApp() async throws {
@@ -184,7 +167,6 @@ struct LiveAccountFlowTests {
     #expect(!unlock.unlocked)
   }
 
-  /// A sign-in to a frozen account, and a relaunch after it, show who froze it and when.
   @Test func aFrozenAccountAfterARelaunchShowsWhoFrozeIt() async throws {
     let server = MiniHasalad(invite: Self.invite)
     _ = try await signUp(Phone(server), server)
@@ -197,14 +179,11 @@ struct LiveAccountFlowTests {
     #expect(session.phase == .frozen(info))
   }
 
-  /// The app never sends #66 for an operator freeze (spec 04 §6.11): `frozen_by` is read
-  /// first, and no step-up is asked for.
   @Test func anOperatorFreezeIsNeverSentToUnfreeze() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let a = Phone(server)
     _ = try await signUp(a, server)
     server.freezeAll(byOperator: true)
-    // The freeze revoked this iPhone's session: signed in again, it reads the freeze.
     #expect(await a.relaunched().freezeInfo() == nil)
     #expect(await signIn(a) == .frozen(FreezeInfo(by: .operator, when: "on Sun 11 Oct at 21:20", hasPassword: true)))
     let account = a.relaunched()
@@ -216,9 +195,6 @@ struct LiveAccountFlowTests {
     #expect(server.lastStepUpAction != "account.unfreeze")
   }
 
-  /// A holder's freeze unfreezes; an operator freeze that lands between the read and #66
-  /// revokes the session (as on hasalad), so this iPhone signs in again and the wall it
-  /// then shows is the operator's.
   @Test func aHolderUnfreezesAndALateOperatorFreezeShowsOnTheWall() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let a = Phone(server)
@@ -236,7 +212,7 @@ struct LiveAccountFlowTests {
     #expect(stale.phase == .signedOut)
     #expect(!forgotLayout)
     #expect(try a.env.secrets.session() == nil)
-    #expect(a.binding != nil)  // the data and keys stay
+    #expect(a.binding != nil)
     let operatorFreeze = FreezeInfo(by: .operator, when: "on Sun 11 Oct at 21:20", hasPassword: true)
     let outcome = try #require(await signIn(a))
     #expect(outcome == .frozen(operatorFreeze))
@@ -669,7 +645,7 @@ struct LiveAccountFlowTests {
     #expect(server.lastStepUpAction == "session.logout_all")
     #expect(session.phase == .signedOut)
     #expect(try a.env.secrets.session() == nil)
-    #expect(a.binding != nil)  // keys and writer stay (`02` §9.3)
+    #expect(a.binding != nil)
   }
 
   nonisolated final class StepUpLog: @unchecked Sendable {
@@ -725,10 +701,6 @@ struct LiveAccountFlowTests {
   }
 }
 
-// MARK: - The in-app fake
-
-/// A software approval key (the Secure Enclave isn't in the simulator): P-256 with the
-/// SE key's byte formats.
 nonisolated final class SoftDAK: ApprovalKeySigner, Sendable {
   private let keys = Mutex<[String: P256.Signing.PrivateKey]>([:])
 
@@ -811,7 +783,6 @@ nonisolated final class BareThenWrappedPasskeys: PasskeyProvider, @unchecked Sen
   func reportUnknown(credentialID: Data) async {}
 }
 
-/// `02` §7's password-account routes in memory, in `02`'s JSON shapes.
 nonisolated final class StubPasskeys: PasskeyProvider, @unchecked Sendable {
   func register(_ options: CreationOptions, prfSalt: Data?) async throws(PasskeyError) -> RawRegistration {
     let id = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
@@ -857,10 +828,7 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     var lastStepUpAction: String?
     var addCeremonies: [String: String] = [:]
     var reviewAccounts = false
-    /// #66 calls, refused ones included.
     var unfreezeCalls = 0
-    /// The operator freezes the account just before #66 runs (a stale `frozen_by`), which
-    /// revokes the session #66 was sent with.
     var operatorFreezesBeforeUnfreeze = false
     var passkeyLogins: Set<String> = []
     var passkeySignsInAs: String?
@@ -882,7 +850,6 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
 
   init(invite: String) { _state = State(invite: invite) }
 
-  /// Every read and write of the state runs under the lock.
   private var state: Locked { Locked(owner: self) }
 
   struct Locked {
@@ -943,15 +910,11 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     set { state.withLock { $0.offline = newValue } }
   }
 
-  /// Every account answers `review_account: true` on #40 (an App Review invite).
   var reviewAccounts: Bool {
     get { state.withLock { $0.reviewAccounts } }
     set { state.withLock { $0.reviewAccounts = newValue } }
   }
 
-  /// Freezes every account, triggered at 21:20 on Sun 11 Oct 2026 in the app's clock. As
-  /// on hasalad, the operator's freeze revokes every session (`OperatorFreeze`); the
-  /// holder's stands for "Freeze my account" on this iPhone (#65), which keeps them here.
   func freezeAll(byOperator: Bool) {
     state.withLock { s in
       for k in s.users.keys {
@@ -1084,7 +1047,6 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     }
     guard let bearer, let sess = s.sessions[bearer], !sess.revoked else { return error(401, "unauthorized") }
     guard var u = s.users[sess.user], !u.deleted else { return error(410, "account_deleted") }
-    // A frozen account reaches only `02` §9.8's list.
     let whileFrozen = [
       "GET /api/v1/account", "POST /api/v1/auth/logout", "POST /api/v1/auth/step-up/begin",
       "POST /api/v1/account/unfreeze",
@@ -1186,11 +1148,9 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
       for (t, x) in s.sessions where x.user == u.id { s.sessions[t]?.revoked = true }
       return APIResponse(status: 204)
     case "POST /api/v1/account/unfreeze":
-      // #66: refused while the operator froze the account (nothing consumed).
       guard b["step_up"] != nil else { return error(403, "step_up_required") }
       s.unfreezeCalls += 1
       if s.operatorFreezesBeforeUnfreeze {
-        // The operator's freeze revoked this session before #66 arrived.
         s.users[u.id]?.frozenBy = "operator"
         for (t, x) in s.sessions where x.user == u.id { s.sessions[t]?.revoked = true }
         return error(401, "unauthorized")
@@ -1237,7 +1197,6 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     return APIResponse(status: status, headers: ["Content-Type": "application/json"], body: data)
   }
 
-  /// JSON null for a missing value.
   private func opt(_ v: String?) -> Any { v ?? NSNull() }
 
   private func error(_ status: Int, _ code: String) -> APIResponse {

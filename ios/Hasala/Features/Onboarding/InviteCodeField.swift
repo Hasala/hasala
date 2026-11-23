@@ -2,28 +2,16 @@ import HasalaDesign
 import SwiftUI
 import UIKit
 
-/// The invite code field (Paper P2.1 E47-0; spec 07 S2, spec 04 §6.1.4): the grouped code in
-/// the field's box (`InviteCodeView` draws the box, its rings and the line under it).
-///
-/// A UIKit text view rather than a SwiftUI `TextField`: it takes each edit as UIKit
-/// delivers it, applies it through `InviteCodeEntry`, and sets the grouped text and the
-/// caret itself before the next key arrives. A `TextField` regrouped from `onChange`
-/// wrote its text back a render pass later, after more keys had landed at a caret the
-/// rewrite then moved, so fast typing came out reordered ("ABCD-EGHI-FJKL-…").
 struct InviteCodeField: UIViewRepresentable {
   static let placeholder = "ABCD-EFGH-IJKL-MNOP-QRST-UVWX"
 
-  /// The code characters (`InviteCode.entryCharacters`); the field shows them grouped.
   @Binding var text: String
   @Binding var focused: Bool
   var identifier: String
-  /// A pasted `https://hasala.app/i/<CODE>#<KEY>`.
   var onLink: (InviteLink) -> Void
 
   func makeUIView(context: Context) -> InviteCodeTextView {
     let v = InviteCodeTextView()
-    // Paper's field value size (17), monospaced so every character can be checked against
-    // the email, semibold, scaled with Dynamic Type. One line at the default size.
     let font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .monospacedSystemFont(ofSize: 17, weight: .semibold))
     v.font = font
     v.adjustsFontForContentSizeCategory = true
@@ -55,7 +43,6 @@ struct InviteCodeField: UIViewRepresentable {
 
   func updateUIView(_ v: InviteCodeTextView, context: Context) {
     context.coordinator.parent = self
-    // Set from outside the field (the Paste button, an invite link): caret at the end.
     let entry = InviteCodeEntry(text)
     if v.text != entry.text {
       v.show(entry.text)
@@ -63,9 +50,6 @@ struct InviteCodeField: UIViewRepresentable {
     }
   }
 
-  /// The width offered, and the height the text (or, while empty, the placeholder) wraps
-  /// to there, so the code reflows at large text sizes instead of clipping; never less
-  /// than a tap target.
   func sizeThatFits(_ proposal: ProposedViewSize, uiView v: InviteCodeTextView, context: Context) -> CGSize? {
     guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
     return CGSize(width: width, height: v.fittingHeight(width: width))
@@ -93,8 +77,6 @@ struct InviteCodeField: UIViewRepresentable {
       return false
     }
 
-    /// A change UIKit made without asking first (dictation, for one): regrouped where the
-    /// caret is.
     func textViewDidChange(_ v: UITextView) {
       let caret = NSRange(location: NSMaxRange(v.selectedRange), length: 0)
       apply(InviteCodeEntry.edit(v.text, range: caret, replacement: ""), to: v)
@@ -112,8 +94,6 @@ struct InviteCodeField: UIViewRepresentable {
   }
 }
 
-/// A text view that wraps instead of scrolling, and shows a placeholder while empty. It is
-/// at least 44 points tall with its text centred, so the whole of it takes a tap.
 final class InviteCodeTextView: UITextView {
   static let minimumHeight: CGFloat = 44
   let placeholderLabel = UILabel()
@@ -132,8 +112,6 @@ final class InviteCodeTextView: UITextView {
   @available(*, unavailable)
   required init?(coder: NSCoder) { nil }
 
-  /// Replaces the text (never through the keyboard: `shouldChangeTextIn` refuses its edits
-  /// and applies them here).
   func show(_ text: String) {
     self.text = text
     placeholderLabel.isHidden = !text.isEmpty
@@ -149,12 +127,10 @@ final class InviteCodeTextView: UITextView {
     placeholderLabel.frame = CGRect(x: 0, y: top, width: bounds.width, height: height)
   }
 
-  /// The height for `width`: the content's, and at least `minimumHeight`.
   func fittingHeight(width: CGFloat) -> CGFloat {
     ceil(max(Self.minimumHeight, contentHeight(width: width)))
   }
 
-  /// The text wrapped to `width` (while empty, the placeholder), without the centring inset.
   private func contentHeight(width: CGFloat) -> CGFloat {
     let fit = CGSize(width: width, height: .greatestFiniteMagnitude)
     let own = sizeThatFits(fit).height - textContainerInset.top - textContainerInset.bottom

@@ -21,8 +21,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/mailq"
 )
 
-// AT-DEL-3 (spec 02 §9.6): a suspended account keeps account deletion, and
-// step-up begin for account.delete only.
 func TestASuspendedAccountCanStillDeleteItself(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t).passkeys()
@@ -36,15 +34,12 @@ func TestASuspendedAccountCanStillDeleteItself(t *testing.T) {
 	if got := decodeJSON[errorBody](t, w).Error; got != "account_suspended" {
 		t.Fatalf("step-up begin for writer.revoke while suspended: %q", got)
 	}
-	// The account.delete step-up begins, and the deletion goes through.
 	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, h)), http.StatusNoContent)
 	if h.accountExists(t, acc.u) {
 		t.Fatal("a suspended account could not delete itself")
 	}
 }
 
-// AT-RL-7 (spec 02 §16.2): a busy PBKDF2 gate answers 503 unavailable with
-// Retry-After: 2 and runs no PBKDF2; the same request succeeds once it frees.
 func TestABusyGateAnswers503WithRetryAfter(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -74,8 +69,6 @@ func TestABusyGateAnswers503WithRetryAfter(t *testing.T) {
 	}
 }
 
-// logSink collects every log line the server, the mail queue and the mailer
-// write, and the standard and slog loggers' too.
 type logSink struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -95,9 +88,6 @@ func (l *logSink) String() string {
 	return l.buf.String()
 }
 
-// AT-LOG-1, AT-NAME-4: the account ceremonies, driven through their success
-// and failure paths, log no session token, address, address tag, S, code,
-// freeze token, nonce, display name or Cf-Connecting-Ip value.
 func TestNothingSecretReachesTheLog(t *testing.T) {
 	sink := &logSink{}
 	prevOut, prevFlags, prevSlog := log.Writer(), log.Flags(), slog.Default()
@@ -127,7 +117,6 @@ func TestNothingSecretReachesTheLog(t *testing.T) {
 
 	const addr = "canary.person@example.com"
 	a := h.passwordSignup(keys, fake, addr)
-	// From here, the provider refuses one send, so the worker logs a failure.
 	failOnce := true
 	fake.ErrFor = func(mail.Message) error {
 		if failOnce {
@@ -136,7 +125,6 @@ func TestNothingSecretReachesTheLog(t *testing.T) {
 		}
 		return nil
 	}
-	// Sign-ins: right, wrong, and an unknown ceremony.
 	w := h.passwordLogin(a, a.s)
 	wantStatus(t, w, http.StatusOK)
 	second := decodeJSON[SignInResponse](t, w).SessionToken
@@ -144,7 +132,6 @@ func TestNothingSecretReachesTheLog(t *testing.T) {
 	wrong[0] ^= 1
 	wantStatus(t, h.passwordLogin(a, wrong), http.StatusForbidden)
 	h.req("POST", "/api/v1/auth/password/login/finish", "", PasswordLoginFinishRequest{CeremonyID: "nope", Verifier: b64(a.s)})
-	// Signup and reset with wrong codes, for the account and a stranger.
 	code, _ := auth.MintInvite(bg, h.pool, auth.MintOptions{Now: time.Now()})
 	w = h.req("POST", "/api/v1/auth/signup/begin", "", SignupBeginRequest{InviteCode: code, Email: addr, DisplayName: "Canary Name"})
 	sb := decodeJSON[SignupBeginResponse](t, w)
@@ -157,7 +144,6 @@ func TestNothingSecretReachesTheLog(t *testing.T) {
 			h.req("POST", "/api/v1/auth/password/reset/verify", "", ResetCodeRequest{ResetID: rb.ResetID, Code: "123456"})
 		}
 	}
-	// Freeze links, device freeze, bad sessions, a bad step-up.
 	h.req("POST", "/api/v1/account/freeze", "", map[string]string{"token": strings.Repeat("A", 43)})
 	unknown := authtest.NewDevice(t)
 	h.req("POST", "/api/v1/auth/device-freeze/challenge", "", DeviceFreezeChallengeRequest{WriterID: unknown.WriterID})
@@ -166,7 +152,6 @@ func TestNothingSecretReachesTheLog(t *testing.T) {
 	h.req("GET", "/api/v1/account", "not-a-token", nil)
 	h.req("POST", "/api/v1/auth/step-up/begin", a.token, StepUpBeginRequest{Action: "nonsense.action", ParamsHash: strings.Repeat("0", 64), ProofKind: "evil-kind"})
 	h.req("PUT", "/api/v1/account/display-name", a.token, map[string]string{"display_name": "Canary\u0000Name"})
-	// The worker: one transient failure, then the rest.
 	for i := 0; i < 3; i++ {
 		if _, err := q.Drain(bg); err != nil {
 			t.Fatal(err)

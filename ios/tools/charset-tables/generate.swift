@@ -1,21 +1,3 @@
-// Generates ios/HasalaCore/Sources/HasalaCore/Norm/CharsetTables.swift (spec 04 §1.1, §2.2
-// CoreNorm) from conformance/normalizer/charset-tables.ts.
-//
-//   swift ios/tools/charset-tables/generate.swift           # rewrite the Swift file
-//   swift ios/tools/charset-tables/generate.swift --check   # exit 1 if it is stale
-//
-// Run from the repository root. The chain of custody is:
-//
-//   Go's charset registry (go-message/charset + golang.org/x/text, the normalizer's own)
-//     --(server/internal/norm TestWriteTwinArtifacts, with a Go freshness test)-->
-//   conformance/normalizer/charset-tables.ts
-//     --(this script; CoreNormTests re-parses the TypeScript file and compares)-->
-//   CharsetTables.swift
-//
-// so the Swift tables equal Go's by construction. The platform's own converters
-// (String.Encoding.windowsCP1256, CFStringConvertEncoding) are never used: they follow
-// Apple's mapping tables, which disagree with Go's at undefined positions exactly as
-// TextDecoder does (windows-1252 at 5 bytes, iso-8859-6 at 32).
 import Foundation
 
 let tsPath = "conformance/normalizer/charset-tables.ts"
@@ -31,7 +13,6 @@ guard let source = try? String(contentsOfFile: tsPath, encoding: .utf8) else {
 }
 let lines = source.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
 
-/// The lines strictly between `const <name>... = [` (or `{`) and the closing `];` / `};`.
 func block(_ name: String) -> [String] {
   guard let start = lines.firstIndex(where: { $0.hasPrefix("const \(name):") }) else {
     fail("\(tsPath) has no `const \(name)`")
@@ -44,8 +25,6 @@ func block(_ name: String) -> [String] {
   fail("`const \(name)` is not terminated")
 }
 
-/// Decodes one JavaScript double-quoted string literal (the subset the Go writer emits:
-/// `\u{h…}`, `\uXXXX`, `\t \n \r \" \\` and printable ASCII).
 func jsString(_ literal: Substring) -> [Unicode.Scalar] {
   var out: [Unicode.Scalar] = []
   var it = Array(literal.unicodeScalars)[...]
@@ -79,7 +58,6 @@ func jsString(_ literal: Substring) -> [Unicode.Scalar] {
   return out
 }
 
-/// `  "label": 12,` lines.
 func labelMap(_ name: String) -> [(String, Int)] {
   block(name).compactMap { line -> (String, Int)? in
     let t = line.trimmingCharacters(in: .whitespaces)
@@ -91,7 +69,6 @@ func labelMap(_ name: String) -> [(String, Int)] {
   }
 }
 
-/// `  "label", // comment` lines.
 func labelList(_ name: String) -> [String] {
   block(name).compactMap { line -> String? in
     let t = line.trimmingCharacters(in: .whitespaces)

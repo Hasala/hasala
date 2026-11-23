@@ -1,16 +1,3 @@
-// A strict JSON value that keeps what `JSONSerialization` and `JSONDecoder`
-// throw away (spec 04 §2.2; spec 03c §1.1-§1.2):
-//
-//   - the NUMBER LITERAL, exactly as written: `1`, `1.0` and `1e0` are three
-//     different literals, and the v4 decoders refuse the last two where an
-//     integer is required. A literal past 2^53 stays exact.
-//   - OBJECT KEY ORDER, as first seen. Duplicate keys are last-wins, as
-//     `JSON.parse` does: the key keeps its first position and takes the last
-//     value.
-//   - the difference between `1` and `true` (no NSNumber bridging).
-//
-// Byte-exact module (spec 04 §2.4 R2): no Foundation JSON, no Double on any
-// path that decides a value, no Character iteration.
 import HasalaText
 
 public enum JSONValue: Sendable, Hashable {
@@ -21,9 +8,6 @@ public enum JSONValue: Sendable, Hashable {
   case array([JSONValue])
   case object(JSONObject)
 
-  // Equality and hashing compare strings by UTF-8 BYTES. The synthesized
-  // versions would use `String ==`, under which NFC and NFD spellings are
-  // equal: two values that write different bytes would compare equal.
   public static func == (a: JSONValue, b: JSONValue) -> Bool {
     switch (a, b) {
     case (.null, .null): true
@@ -48,42 +32,30 @@ public enum JSONValue: Sendable, Hashable {
   }
 }
 
-/// A JSON number, held as its literal text (RFC 8259 grammar, validated on
-/// construction).
 public struct JSONNumber: Sendable, Hashable, CustomStringConvertible {
   public let literal: String
 
-  /// `nil` unless `literal` is an RFC 8259 number:
-  /// `-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?`.
   public init?(literal: String) {
     guard JSONNumber.isNumberLiteral(Array(literal.utf8)) else { return nil }
     self.literal = literal
   }
 
-  /// An integer, written in its canonical decimal form.
   public init(_ value: Int64) { literal = String(value) }
 
   init(validated literal: String) { self.literal = literal }
 
   public var description: String { literal }
 
-  /// Whether the literal is a plain integer: `-?(0|[1-9][0-9]*)`. `1.0`, `1e0`
-  /// and `-0` included as written; see ``v4Int`` for the v4 rule.
   public var isIntegerLiteral: Bool {
     var u = Substring(literal).utf8[...]
     if u.first == 0x2d { u = u.dropFirst() }
     return !u.isEmpty && u.allSatisfy(ASCII.isDigit)
   }
 
-  /// The value as `Int64` when the literal is an integer literal that fits
-  /// (`-0` reads as 0); `nil` for a fraction, an exponent or an out-of-range
-  /// literal. No rounding ever happens.
   public var int64Value: Int64? {
     isIntegerLiteral ? Int64(literal) : nil
   }
 
-  /// The spec 03c §1.2 v4 `Int`: an integer literal with no fraction, no
-  /// exponent and not `-0`, in `[-(2^53-1), 2^53-1]`. `nil` otherwise.
   public var v4Int: Int64? {
     guard literal != "-0", let v = int64Value, v >= -JSONNumber.maxSafeInteger,
       v <= JSONNumber.maxSafeInteger
@@ -91,7 +63,6 @@ public struct JSONNumber: Sendable, Hashable, CustomStringConvertible {
     return v
   }
 
-  /// 2^53 - 1, JavaScript's `Number.MAX_SAFE_INTEGER`.
   public static let maxSafeInteger: Int64 = 9_007_199_254_740_991
 
   static func isNumberLiteral(_ u: [UInt8]) -> Bool {
@@ -126,7 +97,6 @@ public struct JSONNumber: Sendable, Hashable, CustomStringConvertible {
   }
 }
 
-/// An ordered JSON object. Keys are unique; insertion order is kept.
 public struct JSONObject: Sendable, Hashable {
   public struct Member: Sendable, Hashable {
     public let key: String
@@ -140,8 +110,6 @@ public struct JSONObject: Sendable, Hashable {
   }
 
   public private(set) var members: [Member]
-  /// Position of each key, by its UTF-8 bytes (a `String` key would hash by
-  /// canonical equivalence and merge NFC and NFD spellings).
   private var positions: [[UInt8]: Int]
 
   public init() {
@@ -149,8 +117,6 @@ public struct JSONObject: Sendable, Hashable {
     positions = [:]
   }
 
-  /// Builds an object from pairs in order. A repeated key is last-wins at its
-  /// first position, as `JSON.parse` and a JavaScript object literal do.
   public init(_ pairs: [(String, JSONValue)]) {
     self.init()
     members.reserveCapacity(pairs.count)
@@ -160,9 +126,6 @@ public struct JSONObject: Sendable, Hashable {
   public var count: Int { members.count }
   public var keys: [String] { members.map(\.key) }
 
-  /// The value for `key` (compared by UTF-8 bytes, never canonical equivalence),
-  /// or `nil` when absent. Setting `nil` removes the key; setting a present key
-  /// replaces its value in place.
   public subscript(key: String) -> JSONValue? {
     get { index(of: key).map { members[$0].value } }
     set {
@@ -184,7 +147,6 @@ public struct JSONObject: Sendable, Hashable {
 
   private func index(of key: String) -> Int? { positions[Array(key.utf8)] }
 
-  // Identity is the ordered members; the position index is derived.
   public static func == (a: JSONObject, b: JSONObject) -> Bool { a.members == b.members }
   public func hash(into h: inout Hasher) { h.combine(members) }
 }
@@ -197,12 +159,8 @@ extension JSONValue {
   public var boolValue: Bool? { if case .bool(let b) = self { b } else { nil } }
   public var isNull: Bool { if case .null = self { true } else { false } }
 
-  /// Member lookup on an object; `nil` for a non-object or an absent key.
   public subscript(key: String) -> JSONValue? { objectValue?[key] }
 
-  /// A copy with every object's keys sorted by UTF-8 bytes, recursively: the
-  /// key order of replay/state.ts `canonical()` (`serializeState`). Array order
-  /// is kept.
   public func sortingKeysByUTF8() -> JSONValue {
     switch self {
     case .array(let a): return .array(a.map { $0.sortingKeysByUTF8() })

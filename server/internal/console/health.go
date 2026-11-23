@@ -1,16 +1,5 @@
 package console
 
-// health.go is the console's second listener (spec 07 §13.3,
-// HASALA_CONSOLE_METRICS_LISTEN): GET /healthz for probe P8. It is not behind
-// identify (Prometheus and the health probe reach it on loopback) and says
-// nothing about any person: the database, the App Store Connect key and how
-// many requests carrying a Cloudflare header reached the console in the last
-// 24 hours. Any such refusal turns it 503, so a tunnel leak to the console
-// pages the owner.
-//
-// The count lives in memory, so a restart forgets it (the refusal is also an
-// ERROR in the journal). /metrics is not built yet and answers 404.
-
 import (
 	"context"
 	"encoding/json"
@@ -21,7 +10,6 @@ import (
 
 const healthDBTimeout = 2 * time.Second
 
-// refusalLog keeps the times of recent refusals, bounded.
 type refusalLog struct {
 	mu    sync.Mutex
 	times []time.Time
@@ -50,7 +38,6 @@ func (l *refusalLog) since(t time.Time) int {
 	return n
 }
 
-// HealthBody is GET /healthz's body.
 type HealthBody struct {
 	Status           string `json:"status"`
 	DB               string `json:"db"`
@@ -58,7 +45,6 @@ type HealthBody struct {
 	TunnelRefusals24 int    `json:"tunnel_refusals_24h"`
 }
 
-// HealthHandler serves the metrics listener: GET /healthz only.
 func (c *Console) HealthHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {

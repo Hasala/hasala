@@ -16,12 +16,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
-// runAccount is `hasalad account review <uuid> on|off --confirm <uuid>`
-// (spec 02 §14.2, §18.3): the operator turns an account's review flag on or
-// off. The account id is typed twice, as for purge-user. A review invite
-// (`invite mint --review`) already sets the flag at signup; this is for an
-// account made another way, and for turning it off after Beta App Review.
-// It writes an admin_audit row (actor cli:<operator>).
 func runAccount(env *runEnv, args []string) error {
 	positional, rest := splitPositional(args)
 	var confirm string

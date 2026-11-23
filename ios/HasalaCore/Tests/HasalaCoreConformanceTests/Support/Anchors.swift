@@ -1,6 +1,3 @@
-// The anchor inputs of spec 01 §15.5, and the server-only derivations the Swift
-// tests reproduce for A19 and A19-K (D27-D30, D41). The server derivations live
-// here, in test code, because the device never holds `salt_key` or `auth_key`.
 import CoreCrypto
 import CorePrimitives
 import CoreSoftAuth
@@ -8,7 +5,6 @@ import CoreWire
 import Foundation
 
 enum Anchor {
-  /// `a..b`: the run of consecutive byte values (spec 01 §1).
   static func run(_ a: UInt8, _ b: UInt8) -> Data { Data(a...b) }
   static func hex(_ s: String) -> Data { try! Hex.decode(s.filter { !$0.isWhitespace }) }
 
@@ -36,7 +32,6 @@ enum Anchor {
   static let authKeyA19 = run(0x11, 0x30)
   static let authKeyA19K = run(0x31, 0x50)
   static let address = "  Maya.Rahman+Hasala@Gmail.COM "
-  /// NFD: `e` + U+0301.
   static let passwordNFD = "Hasala cafe\u{301} 2026!"
   static let pwSalt = run(0xa0, 0xaf)
   static let phraseBoxNonce = run(0xf0, 0xfb)
@@ -49,7 +44,6 @@ enum Anchor {
   static let loginChallenge = run(0x70, 0x8f)
   static let recoverNonce = run(0x90, 0xaf)
 
-  /// `R = u32be(16) ‖ 00..0f ‖ zeros` to `|R|` (an AEAD-layer anchor; not gzip).
   static func region(_ length: Int) -> Data {
     var r = Data([0, 0, 0, 16]) + run(0x00, 0x0f)
     r.append(Data(count: length - r.count))
@@ -57,7 +51,6 @@ enum Anchor {
   }
 }
 
-/// Server-only derivations (spec 01 §4.11), for the A19/A19-K vectors only.
 enum ServerKeys {
   static let zero32 = Data(count: 32)
   static func subkey(_ k: Data, _ d: Domain) -> Data {
@@ -86,7 +79,6 @@ enum ServerKeys {
   }
 }
 
-/// A13's DAK, as a software approval key with the fixed scalar `01..20`.
 enum SoftDAK {
   static func signer() throws -> SoftwareApprovalKeySigner {
     let s = SoftwareApprovalKeySigner()

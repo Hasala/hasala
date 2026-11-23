@@ -33,8 +33,6 @@ type webRig struct {
 func newWebRig(t *testing.T) *webRig {
 	t.Helper()
 	h := newHarness(t).passkeys()
-	// One queue and one tag for the waitlist and the account ceremonies, as
-	// serve wires them.
 	tagger, fake, q := h.accounts()
 	q.Register("test", mailq.TestRenderer)
 	q.Register("invite", invites.Renderer{WebBase: "https://hasala.app", ManualTestFlight: true})
@@ -90,7 +88,6 @@ func TestWaitlistDoubleOptInInviteAndJoin(t *testing.T) {
 		return r.post("/api/v1/waitlist", `{"email":"`+email+`","bank":"`+bank+`","source":"web"}`, nil)
 	}
 
-	// A new address: 202 check_email, and one confirmation email.
 	w := submit("Maya@Example.com", "enbd")
 	wantStatus(t, w, http.StatusAccepted)
 	answer := w.Body.String()
@@ -109,14 +106,11 @@ func TestWaitlistDoubleOptInInviteAndJoin(t *testing.T) {
 		t.Fatalf("links %v in %q", l, sent[0].Text)
 	}
 
-	// The same address again within 10 minutes: the same answer, no email.
 	wantStatus(t, submit("maya@example.com", "enbd"), http.StatusAccepted)
 	if sent := r.drain(); len(sent) != 0 {
 		t.Fatalf("a capped resubmission sent %d emails", len(sent))
 	}
 
-	// Confirm: once confirmed, then already_confirmed; a bad token is 410.
-	// The operator's notice hook runs for the first only.
 	notices := 0
 	r.wl.OnConfirmed = func() { notices++ }
 	if w := r.post("/api/v1/waitlist/confirm", `{"token":"`+l["waitlist/confirm"]+`"}`, nil); w.Body.String() != `{"status":"confirmed"}` {
@@ -134,7 +128,6 @@ func TestWaitlistDoubleOptInInviteAndJoin(t *testing.T) {
 	wantStatus(t, r.post("/api/v1/waitlist/confirm", `{"token":"`+strings.Repeat("A", 43)+`"}`, nil), http.StatusGone)
 	wantStatus(t, r.post("/api/v1/waitlist/confirm", `{"token":"short"}`, nil), http.StatusBadRequest)
 
-	// The operator approves (C5): the worker mints the code and link key.
 	var entry uuid.UUID
 	if err := h.pool.QueryRow(bg, `SELECT id FROM waitlist_entries WHERE email_norm = 'maya@example.com'`).Scan(&entry); err != nil {
 		t.Fatal(err)
@@ -162,7 +155,6 @@ func TestWaitlistDoubleOptInInviteAndJoin(t *testing.T) {
 	if strings.Contains(sent[0].Subject, code) {
 		t.Fatal("the code is in the subject")
 	}
-	// What the link proves (spec 07 §4.4).
 	tag := r.tagger.EmailTag("maya@example.com")
 	rawKey, _ := base64.RawURLEncoding.DecodeString(key)
 	res, err := invites.Resolve(bg, h.pool, code, rawKey, tag, time.Now())
@@ -175,7 +167,6 @@ func TestWaitlistDoubleOptInInviteAndJoin(t *testing.T) {
 	if _, err := invites.Resolve(bg, h.pool, code, rawKey, r.tagger.EmailTag("someone@example.com"), time.Now()); !errors.Is(err, invites.ErrNotInvited) {
 		t.Fatalf("another address was accepted: %v", err)
 	}
-	// While invited, a resubmission says so by email (after the 10-minute cap).
 	if _, err := h.pool.Exec(bg, `UPDATE mail_log SET created_at = created_at - interval '1 day'`); err != nil {
 		t.Fatal(err)
 	}
@@ -185,12 +176,6 @@ func TestWaitlistDoubleOptInInviteAndJoin(t *testing.T) {
 		t.Fatalf("already-invited email %+v", sent)
 	}
 
-	// An addressed invite at signup/begin (spec 02 §14.1, spec 07 §4.4): the
-	// code sits in the link's path, which scanners see, so it proves nothing
-	// alone. With another address it is the same not_invited as an unknown
-	// code; with its own address and no key (or another key) the address
-	// still needs a signup code; a malformed key is a 400; only the link's key
-	// proves the address.
 	begin := func(email, key string) *httptest.ResponseRecorder {
 		return h.req("POST", "/api/v1/auth/signup/begin", "", SignupBeginRequest{InviteCode: code, Email: email,
 			DisplayName: "Maya Rahman", InviteLinkKey: key})
@@ -209,13 +194,11 @@ func TestWaitlistDoubleOptInInviteAndJoin(t *testing.T) {
 	for _, k := range []string{"short", key + "A", strings.Repeat("*", 43)} {
 		wantStatus(t, begin("maya@example.com", k), http.StatusBadRequest)
 	}
-	// A refused unknown code answers the same bytes.
 	if w := h.req("POST", "/api/v1/auth/signup/begin", "", SignupBeginRequest{InviteCode: strings.Repeat("A", 24),
 		Email: "maya@example.com", DisplayName: "Maya"}); w.Body.String() != notInvited {
 		t.Fatalf("unknown code: %s", w.Body)
 	}
 
-	// Redemption (with the link's key) joins the entry and forgets its address.
 	w = begin("maya@example.com", key)
 	wantStatus(t, w, http.StatusOK)
 	signup := decodeJSON[SignupBeginResponse](t, w)
@@ -232,7 +215,6 @@ func TestWaitlistDoubleOptInInviteAndJoin(t *testing.T) {
 	if sess.SessionToken == "" {
 		t.Fatal("no session")
 	}
-	// The code is spent.
 	if _, err := invites.Resolve(bg, h.pool, code, nil, tag, time.Now()); !errors.Is(err, invites.ErrNotInvited) {
 		t.Fatal("a redeemed code still resolves")
 	}
@@ -246,7 +228,6 @@ func TestWaitlistAnswersAreUniform(t *testing.T) {
 	if _, err := h.pool.Exec(bg, `UPDATE users SET email_norm = 'holder@example.com' WHERE id = $1`, u); err != nil {
 		t.Fatal(err)
 	}
-	// An entry in every later state (spec 07 §5.9: one answer for all).
 	entry := func(email, state string) {
 		t.Helper()
 		var norm any = email
@@ -264,7 +245,6 @@ func TestWaitlistAnswersAreUniform(t *testing.T) {
 	entry("confirmed@example.com", "confirmed")
 	entry("invited@example.com", "invited")
 	entry("joined@example.com", "joined")
-	// Joined, then the account was deleted: the purge removes the entry.
 	entry("gone@example.com", "joined")
 	if _, err := h.pool.Exec(bg, `DELETE FROM waitlist_entries WHERE email_tag = $1`, r.tagger.EmailTag("gone@example.com")); err != nil {
 		t.Fatal(err)
@@ -293,7 +273,6 @@ func TestWaitlistAnswersAreUniform(t *testing.T) {
 		t.Fatalf("subjects %v", subjects)
 	}
 
-	// Honeypot: the same answer, nothing stored.
 	w := r.post("/api/v1/waitlist", `{"email":"bot@example.com","bank":"enbd","source":"web","website":"x"}`, nil)
 	if w.Code != http.StatusAccepted || w.Body.String() != bodies[0] {
 		t.Fatalf("honeypot %d %s", w.Code, w.Body)
@@ -304,7 +283,6 @@ func TestWaitlistAnswersAreUniform(t *testing.T) {
 		t.Fatal("the honeypot queued an email")
 	}
 
-	// Validation.
 	for body, code := range map[string]string{
 		`{"email":"nope","bank":"enbd","source":"web"}`:                             "bad_email",
 		`{"email":"a@example.com","bank":"nobank","source":"web"}`:                  "bad_bank",
@@ -345,7 +323,6 @@ func TestWebRoutesCORSMethodsAndForms(t *testing.T) {
 			t.Fatalf("%s: %d %v", m, w.Code, w.Header())
 		}
 	}
-	// A script-free form post gets a 303 to the done page.
 	form := url.Values{"email": {"form@example.com"}, "bank": {"other"}, "source": {"web"}}
 	req := httptest.NewRequest("POST", "/api/v1/waitlist", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -375,7 +352,6 @@ func TestWaitlistLeave(t *testing.T) {
 	r := newWebRig(t)
 	wantStatus(t, r.post("/api/v1/waitlist", `{"email":"leaver@example.com","bank":"enbd","source":"web"}`, nil), http.StatusAccepted)
 	l := links(r.drain()[0])
-	// Any well-formed token gets the same answer.
 	for _, tok := range []string{strings.Repeat("B", 43), l["waitlist/leave"]} {
 		w := r.post("/api/v1/waitlist/leave", `{"token":"`+tok+`"}`, nil)
 		if w.Code != http.StatusOK || w.Body.String() != `{"status":"done"}` {
@@ -479,7 +455,6 @@ func TestBankRequests(t *testing.T) {
 	wantStatus(t, r.post("/api/v1/bank-requests", `{"bank":"other","source":"web"}`, nil), http.StatusBadRequest)
 	wantStatus(t, r.post("/api/v1/bank-requests", `{"bank":"adcb","source":"app"}`, nil), http.StatusBadRequest)
 
-	// Signed in: once per bank per account.
 	u := h.user("bank-app")
 	tok := h.session(u)
 	for range 2 {
@@ -493,8 +468,6 @@ func TestBankRequests(t *testing.T) {
 	wantStatus(t, h.req("POST", "/api/v1/bank-requests", tok, map[string]any{"bank": "adcb", "source": "web"}), http.StatusBadRequest)
 }
 
-// The CLI's `invite mint --email`: queued without any tag (the CLI holds no
-// auth key); the worker tags the row and the invite, mints and sends.
 func TestCLIEmailedInviteIsTaggedAndMintedByTheWorker(t *testing.T) {
 	t.Parallel()
 	r := newWebRig(t)

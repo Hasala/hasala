@@ -1,17 +1,10 @@
 #!/usr/bin/env bash
-# privacy-lint.sh (spec 06 §5.4) against synthetic trees: a used category must be
-# declared, ActiveKeyboards must not be used, a declared category without a hit only
-# warns, comments don't count, and the Debug-only and test-only sources are not scanned.
-#
-# Offline: each case copies privacy-lint.sh into a temporary ios/ tree whose Swift files
-# and privacy manifest are written here.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 fail=0
 
-# tree NAME CATEGORY...: a fresh ios/ tree whose manifest declares the given categories.
 tree() {
 	local t="$work/$1"
 	shift
@@ -31,7 +24,6 @@ tree() {
 	echo "$t"
 }
 
-# lint NAME WANT DIR: privacy-lint.sh in DIR exits WANT.
 lint() {
 	local rc=0
 	"$3/scripts/privacy-lint.sh" >"$work/out" 2>&1 || rc=$?
@@ -84,7 +76,6 @@ lint "an identifier ending in stat( is not stat(" 0 "$t"
 echo 'let r = stat(path, &buf)' >"$t/Hasala/Stat.swift"
 lint "...but stat( itself is FileTimestamp" 1 "$t"
 
-# Apple's list goes beyond spec 06's table: each of these is a use of its category.
 n=0
 for c in "DiskSpace:let r = fstatfs(fd, &buf)" "DiskSpace:let r = fstatvfs(fd, &buf)" \
 	"DiskSpace:let k = URLResourceKey.volumeTotalCapacityKey" "DiskSpace:let s = attrs[.systemSize]" \
@@ -102,7 +93,6 @@ for c in "DiskSpace:let r = fstatfs(fd, &buf)" "DiskSpace:let r = fstatvfs(fd, &
 	}
 done
 
-# A helper of our own named like an API is not the API: no hit for a longer name.
 t="$(tree lookalike)"
 echo 'let v = systemSizeClass + volumeName + amountCell(1)' >"$t/Hasala/Look.swift"
 lint "systemSizeClass is not systemSize" 0 "$t"
@@ -112,7 +102,6 @@ echo 'let d = UserDefaults.standard; let m = UITextInputMode.activeInputModes' >
 echo 'let d = UserDefaults.standard' >"$t/HasalaCore/Sources/HasalaCore/TestSupport/T.swift"
 lint "HasalaMocks and TestSupport are not scanned" 0 "$t"
 
-# widgets TREE CATEGORY...: gives TREE a widget extension whose manifest declares CATEGORY...
 widgets() {
 	local t="$1"
 	shift

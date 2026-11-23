@@ -1,5 +1,3 @@
-// Unit tests for CoreSoftAuth (owner: WS-11). So far: the software approval key,
-// which must have the Secure Enclave key's byte formats (spec 01 §4.9).
 import CoreAuth
 import CoreCrypto
 import CorePrimitives

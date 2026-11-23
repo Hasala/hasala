@@ -1,10 +1,5 @@
-# Renderers for Hasala's own PostgreSQL cluster (spec 05 §5.3.2–§5.3.4):
-# postgresql.conf, pg_hba.conf and pg_ident.conf. Imported by module.nix.
 { lib }:
 rec {
-  # §5.3.2. The keys a host may not override through database.settings (M9):
-  # the socket, the auth files and every log_* key (security C7: nothing may
-  # make the server echo a statement, a parameter or a failing row).
   forbiddenSetting =
     k:
     lib.elem k [
@@ -17,10 +12,7 @@ rec {
 
   baseSettings = {
     listen_addresses = "";
-    # 0770 octal: the socket's group is the server's group, hasala-db.
     unix_socket_permissions = 504;
-    # Spec 05 review 2 row 1 raises this to 48 for hasala_console's
-    # CONNECTION LIMIT 8; that role is deferred (see ident below), so 40.
     max_connections = 40;
     superuser_reserved_connections = 3;
     shared_buffers = "256MB";
@@ -41,13 +33,11 @@ rec {
     timezone = "UTC";
     log_timezone = "UTC";
     idle_in_transaction_session_timeout = "60s";
-    log_destination = "stderr"; # journald
+    log_destination = "stderr";
     logging_collector = "off";
     log_line_prefix = "%m [%p] %q%u@%d ";
-    log_statement = "none"; # security C7
+    log_statement = "none";
     log_min_duration_statement = -1;
-    # Never echo the failing statement's text, and drop DETAIL: a CHECK
-    # violation's DETAIL prints the whole failing row (a refused plaintext blob).
     log_min_error_statement = "panic";
     log_error_verbosity = "terse";
     log_parameter_max_length = 0;
@@ -59,7 +49,6 @@ rec {
     shared_preload_libraries = "";
   };
 
-  # Integers bare, everything else single-quoted with ' doubled.
   renderValue =
     v:
     if builtins.isInt v then
@@ -87,8 +76,6 @@ rec {
       lib.mapAttrsToList (k: v: "${k} = ${renderValue v}\n") (lib.filterAttrs (_: v: v != null) all)
     );
 
-  # §5.3.3: peer authentication over the socket only, one line per role; every
-  # other local connection and every TCP connection is rejected.
   hba = ''
     # TYPE  DATABASE  USER            ADDRESS    METHOD
     local   all       hasala_su                  peer map=hasala
@@ -100,17 +87,6 @@ rec {
     host    all       all             ::/0       reject
   '';
 
-  # §5.3.4: OS user → role. Root has no mapping.
-  #
-  # The console shares hasala_runtime with serve and the CLI. This deviates
-  # from spec 05 review 2 row 1 (F-10), which supersedes spec 07 §14.1 and
-  # maps hasala-console and a new hasala-cli to their own role,
-  # hasala_console, until spec 02/07's grants for that role exist: the
-  # baseline migration grants DML to hasala_runtime only, so mapping the
-  # console to a role with no grants would break it. When 02/07 split the
-  # grants, this file, setup.sql (the role, CONNECTION LIMIT 8), the hba line,
-  # max_connections (48), module.nix's console DSN and hasala-admin move
-  # together.
   ident =
     { console }:
     ''

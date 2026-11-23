@@ -2,8 +2,6 @@ import HasalaMocks
 import HasalaModels
 import Testing
 
-/// Activity, the transaction sheet and the review deck over MayaLedger reproduce their boards.
-/// Owned by P6 from Stage P, with the swipe physics and split draft rules below.
 @Suite("Maya ledger · Activity, transaction and review parity")
 struct ActivityReviewEngineParityTests {
   let s = MayaLedger.state
@@ -17,7 +15,6 @@ struct ActivityReviewEngineParityTests {
     #expect(a.chips.first { $0.kind == .toReview }?.count == 6)
     #expect(a.comingUp.map(\.name) == ["DEWA", "AXA Insurance"])
     #expect(a.chips.map(\.kind) == [.all, .toReview, .bills, .transfers, .income, .archived])
-    // A bill that hasn't come yet is past its usual day; Hasala can't know it is late.
     #expect(a.comingUp.last?.trailingNote == .status("3 days past usual", .error))
     #expect(a.comingUp.first?.trailingNote == .text("in 4 days"))
     let days = a.days.prefix(4)
@@ -30,10 +27,6 @@ struct ActivityReviewEngineParityTests {
     #expect(a.days[2].rows[1].detail == "Subscriptions · monthly bill")
   }
 
-  /// Paper's Activity board draws "Bills 8", but its own data has six October payments
-  /// linked to a bill (rent, the standing order, Sarwa, du, Netflix, Spotify); 03b §12 #1
-  /// leaves that open and its §7 read counts linked payments, so the chip follows the
-  /// data until the board or the definition changes.
   @Test func theBillsChipCountsPaymentsLinkedToABill() {
     let a = ActivityEngine.snapshot(s, now: now, filter: .all)
     #expect(a.chips.first { $0.kind == .bills }?.count == 6)
@@ -49,7 +42,6 @@ struct ActivityReviewEngineParityTests {
     #expect(a.summary?.caption.rendered(hidden: false) == "40% of Dining's 1,600")
     #expect(a.summary?.verdict == .overPace)
     #expect(a.review == nil)
-    // One card, newest first, each row naming its day instead of the category.
     #expect(a.rows.map(\.merchant) == ["Talabat", "Starbucks DIFC", "Zuma", "Common Grounds", "Talabat"])
     #expect(a.rows.prefix(2).map(\.detail) == ["Sat 10 Oct · 13:20", "Sat 10 Oct · 09:05"])
     #expect(ActivityEngine.snapshot(s, now: now, filter: .all).rows.isEmpty)
@@ -57,8 +49,6 @@ struct ActivityReviewEngineParityTests {
     #expect(groceries.summary?.caption.rendered(hidden: false) == "36% of Groceries' 2,200")
   }
 
-  /// Income: money that came in and stays in. Maya's only money in this month is the
-  /// transfer still waiting in review, so the list is empty until it is sorted as income.
   @Test func theIncomeChipListsMoneyIn() throws {
     #expect(ActivityEngine.snapshot(s, now: now, filter: TxnFilter(kind: .income)).rowCount == 0)
     var sorted = s
@@ -67,7 +57,6 @@ struct ActivityReviewEngineParityTests {
     sorted.txns[i].categoryID = "freelance"
     let income = ActivityEngine.snapshot(sorted, now: now, filter: TxnFilter(kind: .income))
     #expect(income.days.flatMap(\.rows).map(\.merchant) == ["Transfer from ···7890"])
-    // A transfer between accounts is not income.
     sorted.txns[i].isTransfer = true
     #expect(ActivityEngine.snapshot(sorted, now: now, filter: TxnFilter(kind: .income)).rowCount == 0)
   }
@@ -174,7 +163,6 @@ struct SwipePhysicsTests {
 
   @Test func flicksCommitWithLittleTravel() {
     #expect(SwipePhysics.commit(dx: 30, dy: 0, vx: 600, vy: 0) == .right)
-    // Too short to be intentional, or flung back against the drag.
     #expect(SwipePhysics.commit(dx: 20, dy: 0, vx: 900, vy: 0) == nil)
     #expect(SwipePhysics.commit(dx: 40, dy: 0, vx: -900, vy: 0) == nil)
   }
@@ -185,8 +173,6 @@ struct SwipePhysicsTests {
     #expect(SwipePhysics.preview(dx: 25, dy: 5) == .right)
   }
 
-  /// The card follows the finger: the lean grows continuously, the tilt reaches 3° at
-  /// the commit point and stops there, and the pill wakes past the commit distance.
   @Test func theLiveCardFollowsTheFinger() {
     #expect(SwipePhysics.strength(dx: 47, dy: 0) == 0.47)
     #expect(SwipePhysics.strength(dx: 0, dy: -250) == 1)
@@ -212,7 +198,6 @@ struct SplitDraftTests {
   let total = Money.aed(342_15)
 
   @Test func anEmptyLineNeverAddsUp() {
-    // The editor's seed: the whole amount on line 1, line 2 not filled in yet.
     #expect(TransactionEngine.splitDraftVerdict([342_15, nil], total: total) == .emptyLine)
     #expect(TransactionEngine.splitDraftVerdict([342_15, 0], total: total) == .emptyLine)
     #expect(TransactionEngine.splitDraftVerdict([342_15], total: total) == .emptyLine)

@@ -1,15 +1,5 @@
 package auth
 
-// Tests for passkey_manage.go. The properties with teeth are not "it lists" and
-// "it deletes". They are:
-//
-//   - the LAST credential cannot be removed, even by two callers racing;
-//   - removing a credential takes its PRF key wrap with it, which is the
-//     SCHEMA's cascade and therefore worth asserting rather than assuming;
-//   - removing a credential ends the account's other sessions and spares the
-//     caller's own;
-//   - one account cannot see or touch another's credentials.
-
 import (
 	"bytes"
 	"errors"
@@ -24,8 +14,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// addPasskey enrols a second (third, ...) credential through the real add
-// ceremony, so the rows under test are the ones production writes.
 func addPasskey(t *testing.T, p *Passkeys, userID uuid.UUID) *authtest.Authenticator {
 	t.Helper()
 	id, opts, err := p.testBeginAdd(t, userID)
@@ -49,11 +37,9 @@ func countCredentials(t *testing.T, pool *pgxpool.Pool, userID uuid.UUID) int {
 	return n
 }
 
-// putWrap stores a PRF wrap for one credential, exactly as
-// api.handlePutKeyWrap does. Its survival is what the cascade test measures.
 func putWrap(t *testing.T, pool *pgxpool.Pool, userID uuid.UUID, credID []byte) {
 	t.Helper()
-	wrap := append([]byte{1, 2}, bytes.Repeat([]byte{7}, 125)...) // spec 01 §5.1: 127 bytes, header 01 02
+	wrap := append([]byte{1, 2}, bytes.Repeat([]byte{7}, 125)...)
 	if _, err := pool.Exec(bgctx,
 		`INSERT INTO account_key_wraps (user_id, credential_id, wrap, wrap_version, created_at)
 		 VALUES ($1, $2, $3, 1, $4)`, userID, credID, wrap, time.Now().UTC()); err != nil {
@@ -71,13 +57,6 @@ func countWraps(t *testing.T, pool *pgxpool.Pool, userID uuid.UUID) int {
 	return n
 }
 
-// ---------------------------------------------------------------------------
-// Attribution: which credential minted a session (00034)
-// ---------------------------------------------------------------------------
-
-// TestIssueRecordsTheCredentialThatAuthenticated pins the write half of 00034,
-// including that plain Issue records NOTHING rather than a placeholder — the
-// ID-token exchange authenticates no credential and must not appear to have.
 func TestIssueRecordsTheCredentialThatAuthenticated(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -110,9 +89,6 @@ func TestIssueRecordsTheCredentialThatAuthenticated(t *testing.T) {
 		t.Fatalf("Issue recorded credential %x; a session no credential authenticated must record NULL", got)
 	}
 
-	// An EMPTY credential id is "unknown", not a credential named by zero bytes.
-	// Stored as a zero-length bytea it would satisfy no foreign key and would
-	// read as attributed, so it is normalized to NULL.
 	empty, err := sessions.IssueForCredential(bgctx, userID, []byte{})
 	if err != nil {
 		t.Fatalf("IssueForCredential with an empty id: %v", err)
@@ -125,16 +101,11 @@ func TestIssueRecordsTheCredentialThatAuthenticated(t *testing.T) {
 		t.Fatalf("an empty credential id was stored as %#v, want NULL", got)
 	}
 
-	// The foreign key is real: a credential this deployment never enrolled
-	// cannot be recorded as having authenticated anything.
 	if _, err := sessions.IssueForCredential(bgctx, userID, []byte("no such credential")); err == nil {
 		t.Fatal("issued a session attributed to a credential that does not exist")
 	}
 }
 
-// TestCredentialForSessionAnswersOnlyWhatItKnows is the read half — the source
-// of the listing's "this device" marker. Three states, one answer each, and the
-// two ignorant ones must be indistinguishable from each other.
 func TestCredentialForSessionAnswersOnlyWhatItKnows(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -166,10 +137,6 @@ func TestCredentialForSessionAnswersOnlyWhatItKnows(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Listing
-// ---------------------------------------------------------------------------
-
 func TestListCredentialsReturnsTheAccountsOwnCredentialsOldestFirst(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -190,15 +157,11 @@ func TestListCredentialsReturnsTheAccountsOwnCredentialsOldestFirst(t *testing.T
 	if got[0].CreatedAt.IsZero() {
 		t.Fatal("created_at is zero")
 	}
-	// Neither has signed in yet: registration and the add ceremony both leave
-	// last_used_at NULL, and a fabricated timestamp here would be the server
-	// claiming a device was used when it was not.
 	if got[0].LastUsedAt != nil || got[1].LastUsedAt != nil {
 		t.Fatalf("last_used_at = %v/%v, want nil for credentials that have never asserted",
 			got[0].LastUsedAt, got[1].LastUsedAt)
 	}
 
-	// A sign-in moves it, which is what makes the field worth showing.
 	lid, lopts, err := p.BeginLogin(bgctx)
 	if err != nil {
 		t.Fatal(err)
@@ -241,10 +204,6 @@ func TestListCredentialsNeverShowsAnotherAccountsCredentials(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// The refusal
-// ---------------------------------------------------------------------------
-
 func TestDeleteCredentialRefusesTheAccountsLastPasskey(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -257,8 +216,6 @@ func TestDeleteCredentialRefusesTheAccountsLastPasskey(t *testing.T) {
 	if n := countCredentials(t, pool, userID); n != 1 {
 		t.Fatalf("%d credentials survive, want 1 — the refusal did not protect the row", n)
 	}
-	// And it is still a working sign-in, which is the fact the refusal exists to
-	// preserve: a refusal that left an unusable credential would be worthless.
 	lid, lopts, err := p.BeginLogin(bgctx)
 	if err != nil {
 		t.Fatal(err)
@@ -286,13 +243,6 @@ func TestDeleteCredentialRefusesTheLastOneEvenAfterOthersWereRemoved(t *testing.
 	}
 }
 
-// TestConcurrentDeletesCannotEmptyAnAccount is the check-then-act this code
-// takes a row lock to prevent: two callers, two different credentials, an
-// account holding exactly two. Unlocked, both see two, both delete one, and the
-// account is left with nothing to sign in with.
-//
-// It MEASURES rather than asserts a mechanism: whatever the locking does, the
-// account must end with a credential and exactly one caller must be refused.
 func TestConcurrentDeletesCannotEmptyAnAccount(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -337,16 +287,12 @@ func TestConcurrentDeletesCannotEmptyAnAccount(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Somebody else's credential
-// ---------------------------------------------------------------------------
-
 func TestDeleteCredentialCannotTouchAnotherAccountsPasskey(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
 	attacker, _ := enroll(t, p, mustMint(t, pool, "attacker"))
-	addPasskey(t, p, attacker) // so the attacker is not stopped by the last-passkey rule
+	addPasskey(t, p, attacker)
 	victim, victimCred := enroll(t, p, mustMint(t, pool, "victim"))
 
 	_, err := p.deleteCredential(bgctx, attacker, victimCred.CredID, nil)
@@ -361,15 +307,6 @@ func TestDeleteCredentialCannotTouchAnotherAccountsPasskey(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// The two consequences
-// ---------------------------------------------------------------------------
-
-// TestDeletingACredentialTakesItsKeyWrapWithIt asserts account_key_wraps' ON DELETE
-// CASCADE (00010_keys). It is the schema and not this package that enforces it, which is
-// exactly why it is measured: a wrap that outlived its credential is a row
-// nothing can ever open, left behind by the operation the user believed removed
-// that authenticator.
 func TestDeletingACredentialTakesItsKeyWrapWithIt(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -399,11 +336,6 @@ func TestDeletingACredentialTakesItsKeyWrapWithIt(t *testing.T) {
 	}
 }
 
-// TestDeletingACredentialEndsOnlyThatCredentialsSessions is the point of the
-// feature AND the narrowing 00034 bought: "remove my lost phone" has to end the
-// lost phone's access and must NOT end the laptop's.
-//
-// Four sessions, one of each population the file header enumerates.
 func TestDeletingACredentialEndsOnlyThatCredentialsSessions(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -412,8 +344,6 @@ func TestDeletingACredentialEndsOnlyThatCredentialsSessions(t *testing.T) {
 	userID, lost := enroll(t, p, mustMint(t, pool, "lost phone"))
 	laptop := addPasskey(t, p, userID)
 
-	// The caller is standing on the laptop's credential and is removing the
-	// phone's, which is the ordinary shape of this operation.
 	caller, err := sessions.IssueForCredential(bgctx, userID, laptop.CredID)
 	if err != nil {
 		t.Fatal(err)
@@ -422,13 +352,10 @@ func TestDeletingACredentialEndsOnlyThatCredentialsSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A second laptop session, same surviving credential: it must live.
 	otherLaptop, err := sessions.IssueForCredential(bgctx, userID, laptop.CredID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A session this server cannot attribute — pre-00034, or the ID-token
-	// exchange. It goes, because it might be the phone.
 	legacy, err := sessions.Issue(bgctx, userID)
 	if err != nil {
 		t.Fatal(err)
@@ -464,10 +391,6 @@ func TestDeletingACredentialEndsOnlyThatCredentialsSessions(t *testing.T) {
 	}
 }
 
-// TestRemovingTheCredentialYourOwnSessionUsesSignsYouOut pins the answer to the
-// one case keepSessionHash does NOT cover. The caller is spared from the
-// unattributed sweep, never from the credential's own: they removed the thing
-// that let them in, so they sign in again with a passkey they still hold.
 func TestRemovingTheCredentialYourOwnSessionUsesSignsYouOut(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -497,14 +420,6 @@ func TestRemovingTheCredentialYourOwnSessionUsesSignsYouOut(t *testing.T) {
 	}
 }
 
-// TestRemovingACredentialDoesNotDeleteItsSessionRows is the CASCADE-versus-SET
-// NULL decision, asserted rather than trusted to a schema nobody re-reads.
-//
-// A cascade would remove the session row outright. Resolve would then answer
-// ErrSessionUnknown ("someone typed garbage") instead of ErrSessionRevoked
-// ("someone is using a revoked credential"), and — the reason that matters —
-// 00021's BEFORE DELETE trigger on users would find no row to tombstone, so
-// that device could never be told 410 and would never wipe its local ledger.
 func TestRemovingACredentialDoesNotDeleteItsSessionRows(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.New(t)
@@ -537,7 +452,6 @@ func TestRemovingACredentialDoesNotDeleteItsSessionRows(t *testing.T) {
 	if cred != nil {
 		t.Fatalf("credential_id is %x, want NULL: the FK did not SET NULL", cred)
 	}
-	// And the token still answers the useful 401 rather than the useless one.
 	if _, err := sessions.Resolve(bgctx, tok); !errors.Is(err, ErrSessionRevoked) {
 		t.Fatalf("Resolve says %v, want ErrSessionRevoked", err)
 	}

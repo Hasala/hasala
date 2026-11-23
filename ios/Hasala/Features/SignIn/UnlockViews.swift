@@ -2,23 +2,17 @@ import HasalaDesign
 import Observation
 import SwiftUI
 
-/// Unlock your data on a new iPhone (spec 04 §6.10; Paper P2.3 G80, K34, GDD, GJJ, GL7):
-/// signed in, data sealed here. A passkey with a PRF wrap unlocks in one glance; otherwise
-/// the 12 words do (S-14). A password never does.
 @MainActor
 @Observable
 final class UnlockModel {
-  /// What opens the data here: the passkey's PRF wrap, or the 12 words.
   enum Way: Equatable { case passkey, words }
 
-  /// Where the unlock is: choosing a way, opening the data, or open.
   enum Stage: Equatable {
     case choosing
     case unlocking(Way)
     case unlocked
   }
 
-  /// The pages pushed over the choice: the words, and the honest end.
   enum Route: Hashable { case words, honestEnd }
 
   let account: AccountService
@@ -30,11 +24,8 @@ final class UnlockModel {
   var pastedChangeCount: Int?
   var busy = false
   var failure: AuthFailure?
-  /// The failure came from the words (it shows on the entry page, not the choice).
   private(set) var failedOnWords = false
-  /// How this iPhone was unlocked (Welcome back offers a passkey after the words).
   private(set) var unlockedWith: Way?
-  /// "Add a passkey" on Welcome back: the confirmation is up.
   var addingPasskey = false
   var confirmPassword = ""
   private(set) var passkeyAdded = false
@@ -49,14 +40,12 @@ final class UnlockModel {
   var capabilities: AccountCapabilities { account.capabilities }
   var profile: AccountProfile? { account.profile }
 
-  /// "Enter my 12 words" / "Enter words".
   func enterWords() {
     failure = nil
     failedOnWords = false
     path = [.words]
   }
 
-  /// "I don't have my words" / "I don't have either".
   func noWords() {
     failure = nil
     path = [.honestEnd]
@@ -72,10 +61,8 @@ final class UnlockModel {
       unlockedWith = .passkey
       stage = .unlocked
     } catch .cancelled {
-      // The person closed Face ID: back to the choice, nothing to say.
       stage = .choosing
     } catch .noCredential, .unsupported {
-      // No PRF output: the words instead (S-28).
       stage = .choosing
       failure = .badPhrase("Your passkey provider can't unlock your data. Use your 12 words.")
       failedOnWords = true
@@ -87,8 +74,6 @@ final class UnlockModel {
     }
   }
 
-  /// The words are checked here first (length, list, checksum), then opened by the
-  /// service; a refusal goes back to the entry with the words kept.
   func unlockWithWords() async {
     switch PhraseRules.validate(phraseText) {
     case .failure(let f):
@@ -97,7 +82,6 @@ final class UnlockModel {
     case .success(let words):
       busy = true
       failure = nil
-      // The progress replaces the entry where it stands, without a pop that looks like Back.
       instantly {
         path = []
         stage = .unlocking(.words)
@@ -119,13 +103,10 @@ final class UnlockModel {
     }
   }
 
-  /// Welcome back offers a passkey to a password account that opened with its words, in a
-  /// build that can add one (Paper GL7 "Offers a passkey").
   var offersPasskey: Bool {
     capabilities.contains(.addPasskey) && unlockedWith == .words && profile?.method != .passkey && !passkeyAdded
   }
 
-  /// "Add a passkey": its step-up is the password and this iPhone's new key (P2.6).
   func addPasskey() async {
     let pw = confirmPassword
     busy = true
@@ -137,8 +118,6 @@ final class UnlockModel {
       addingPasskey = false
       failure = nil
     } catch .cancelled {
-      // Face ID or the passkey sheet closed: the sheet stays, and the password that was
-      // sent goes (it is typed again to retry).
       confirmPassword = ""
     } catch {
       confirmPassword = ""
@@ -159,8 +138,6 @@ struct UnlockView: View {
   @FocusState private var typing: Bool
   @State private var edit: PhraseEdit?
 
-  /// A password reset another iPhone approved led here (Paper GUM: "You're in. Your data
-  /// is still locked.").
   @Environment(OnboardingStore.self) private var store: OnboardingStore?
 
   init(model: UnlockModel, onSignOut: @escaping () -> Void) {
@@ -194,8 +171,6 @@ struct UnlockView: View {
     case .unlocked: welcomeBack
     }
   }
-
-  // MARK: Choose (G80, K34, GUM)
 
   private var signedInEmail: String? {
     guard let email = model.profile?.email, !email.isEmpty else { return nil }
@@ -248,8 +223,6 @@ struct UnlockView: View {
     }
   }
 
-  // MARK: Enter 12 words (GDD)
-
   private var words: some View {
     let state = PhraseEntryState(model.phraseText)
     return AccountScreen(
@@ -276,15 +249,11 @@ struct UnlockView: View {
     .revealsPhraseEntry(model.phraseText)
   }
 
-  // MARK: Unlocking (GJJ)
-
   private func unlocking(_ method: UnlockModel.Way) -> some View {
     ProgressCelebrationScreen(
       title: "Unlocking your data",
       subtitle: "Keep Hasala open for about a minute."
     ) {
-      // The service reports no progress: the words are checked here before it starts, the
-      // rest is under way together.
       StatusListCard(rows: method == .words
         ? [
           StatusListRow(title: "Words checked", value: "Done", state: .done),
@@ -302,8 +271,6 @@ struct UnlockView: View {
     }
     .accessibilityIdentifier("unlock.unlocking")
   }
-
-  // MARK: Welcome back (GL7)
 
   private var welcomeBack: some View {
     let name = model.profile?.greetingName ?? ""

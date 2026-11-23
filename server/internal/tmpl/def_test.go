@@ -15,8 +15,6 @@ func mustParse(t *testing.T, s string) Definition {
 	return d
 }
 
-// A complete, valid definition, used as the base for the negative cases below
-// so each one differs from a passing definition in exactly one way.
 const validDefinitionJSON = `{
   "id": "dib.card.v1",
   "version": 1,
@@ -60,8 +58,6 @@ func TestParseDefinitionReadsTheFormat(t *testing.T) {
 	}
 }
 
-// A key nobody reads is how a template "compiles, validates, publishes and
-// silently matches nothing".
 func TestParseDefinitionRejectsUnknownKeys(t *testing.T) {
 	_, err := ParseDefinition([]byte(`{"id":"x","versoin":1}`))
 	if err == nil {
@@ -78,20 +74,12 @@ func TestParseDefinitionRejectsTrailingData(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Canonical()
-// ---------------------------------------------------------------------------
-
 func TestCanonicalDoesNotHTMLEscape(t *testing.T) {
 	d := mustParse(t, `{"id":"x","version":1,"extract":[{"field":"merchant","type":"text","source":"body","patterns":["A & B"]}]}`)
 	b, err := d.Canonical()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The brief writes this assertion as bytes.Contains(b, []byte(`&`)), which
-	// is an HTML entity that survived into the markdown: the escape Go emits is
-	// the six characters \u0026, and searching for a bare "&" can only ever fire
-	// on the "A & B" the fixture is made of.
 	for _, esc := range []string{`\u0026`, `\u003c`, `\u003e`} {
 		if bytes.Contains(b, []byte(esc)) {
 			t.Fatalf("Canonical emitted %s; Go and TypeScript would hash the same template differently", esc)
@@ -102,10 +90,6 @@ func TestCanonicalDoesNotHTMLEscape(t *testing.T) {
 	}
 }
 
-// The second escaping divergence, and the one the brief's prescribed mechanism
-// does NOT fix: encoding/json escapes U+2028 and U+2029 even with
-// SetEscapeHTML(false), while JSON.stringify emits them raw. Measured, not
-// assumed - see server/internal/tmpl/v2-template-format.md.
 func TestCanonicalEmitsU2028AndU2029RawLikeJSONStringify(t *testing.T) {
 	src := "{\"id\":\"x\",\"version\":1,\"extract\":[{\"field\":\"merchant\",\"type\":\"text\",\"source\":\"body\",\"patterns\":[\"a\u2028b\u2029c\"]}]}"
 	d := mustParse(t, src)
@@ -124,9 +108,6 @@ func TestCanonicalEmitsU2028AndU2029RawLikeJSONStringify(t *testing.T) {
 }
 
 func TestCanonicalEscapesExactlyWhatJSONStringifyEscapes(t *testing.T) {
-	// left: the Go string; right: what JSON.stringify produces for it.
-	// The right-hand column is pinned in conformance/dialect/patterns.json and
-	// re-checked from Bun by client/src/tmpl/agreement.test.ts.
 	for _, tc := range []struct{ in, want string }{
 		{"a\"b", `"a\"b"`},
 		{"a\\b", `"a\\b"`},
@@ -173,8 +154,6 @@ func TestCanonicalSortsKeysAndIsTotal(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := string(b)
-	// Every key is always present (no omitempty), so a TypeScript mirror never
-	// has to reproduce Go's emptiness rules, and keys are lexicographic.
 	want := `{"bank":"","date_from":"","default_currency":"","extract":[],"id":"x",` +
 		`"match":{"body_contains":[],"body_not_contains":[],"sender_domain":[],"subject_contains":[]},` +
 		`"normalizer_version":0,"required":[],"version":1}`
@@ -201,10 +180,6 @@ func TestCanonicalRejectsInvalidUTF8(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// ValidateDefinition
-// ---------------------------------------------------------------------------
-
 func validateJSON(t *testing.T, s string) []error {
 	t.Helper()
 	return ValidateDefinition(mustParse(t, s))
@@ -230,7 +205,6 @@ func TestValidateDefinitionRequiresAmountAndDirection(t *testing.T) {
 	if errs := validateJSON(t, s); len(errs) != 0 {
 		t.Fatalf("every listed field IS produced here: %v", errs)
 	}
-	// A Required field no Extract entry can ever produce is a dead template.
 	s = strings.Replace(validDefinitionJSON, `{"field":"date","type":"date","source":"body",`,
 		`{"field":"merchant","type":"text","source":"body",`, 1)
 	s = strings.Replace(s, `"layouts":["DD-MM-YYYY"]`, `"flags":[]`, 1)
@@ -308,7 +282,6 @@ func TestValidateDefinitionEnforcesTheRequiredGroupNamesPerType(t *testing.T) {
 			}
 		})
 	}
-	// ccy is optional on an amount pattern, not required.
 	s := strings.Replace(validDefinitionJSON, `(?P<ccy>[A-Z]{3} )?`, ``, 1)
 	if s == validDefinitionJSON {
 		t.Fatal("test setup: fixture text not found")
@@ -367,8 +340,6 @@ func TestValidateDefinitionRequiresPatternsWhereTheTypeNeedsThem(t *testing.T) {
 	if errs := ValidateDefinition(mustParse(t, s)); len(errs) == 0 {
 		t.Fatal("a text entry with no patterns can never produce a value")
 	}
-	// A const entry with no patterns is the unconditional default and is legal
-	// - it is how v1's four-way DIB direction cascade ends.
 	if errs := ValidateDefinition(mustParse(t, validDefinitionJSON)); len(errs) != 0 {
 		t.Fatalf("the unconditional const entry must stay legal: %v", errs)
 	}

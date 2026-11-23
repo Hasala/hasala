@@ -1,7 +1,3 @@
-// hasalad's mailbox routes (spec 02 §7 routes 2, 34-38; §13.2), over an `HTTPExchange` that
-// already carries the session (the composition root wraps the app's session transport). Times
-// on the wire are RFC 3339 UTC with milliseconds (spec 02 §7 conventions). Error bodies are
-// `{"error":"<code>"}`; only the code is kept.
 import CoreJSON
 import CoreTime
 import Foundation
@@ -10,8 +6,6 @@ public struct HTTPMailboxServer: MailboxServer {
   let http: any HTTPExchange
   let base: String
 
-  /// `base` is the API origin, e.g. `https://api.hasala.app` (a trailing "/"
-  /// is dropped, so paths never start with "//").
   public init(http: any HTTPExchange, base: String) {
     self.http = http
     var b = Substring(base)
@@ -49,8 +43,6 @@ public struct HTTPMailboxServer: MailboxServer {
     try await linkStatusAndProvider().0
   }
 
-  /// Route 37 with the link's provider (`provider`; absent from a server before the Outlook
-  /// link, which links only Gmail). The provider is nil with no link.
   public func linkStatusAndProvider() async throws(MailboxServerError) -> (MailboxLinkStatus, MailProviderID?) {
     do {
       let o = try await call(.get, "/api/v1/mailbox/link", body: nil)
@@ -72,8 +64,6 @@ public struct HTTPMailboxServer: MailboxServer {
     return n
   }
 
-  /// `provider` is omitted for Gmail (the route's default), so a server from before the Outlook
-  /// link, which refuses unknown fields, still accepts a Gmail link.
   public func putLink(provider: MailProviderID, idToken: String, stepUp: JSONValue) async throws(MailboxServerError)
     -> MailboxLinkResult
   {

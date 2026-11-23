@@ -1,31 +1,14 @@
 import HasalaModels
 import SwiftUI
 
-/// Pill buttons (Paper page 10, "A pill for every action."): pills only, in three heights,
-/// Large 54, Medium 44, Small 36. Type says how important the action is; size says where it
-/// lives. One primary per decision.
-///
-/// Pressed darkens the fill and scales to 0.97 at once, then eases back (decision 1, `.press`);
-/// with Reduce Motion only the colour changes. Disabled greys out (`apple-fills-secondary`, as
-/// the account screens draw it) but stays readable. Loading
-/// shows a spinner before the label (pass the verb, "Saving"), keeps the button's size and
-/// colour, and blocks a second tap; the spinner waits about 300 ms so fast actions don't flash.
 public struct PillButtonStyle: ButtonStyle {
   public enum Kind: Sendable {
-    /// The one main action: accent fill, white label.
     case primary
-    /// The other choice: accent-subtle fill, link label.
     case secondary
-    /// A quiet action on the grey canvas: white fill, link label.
     case onGrouped
-    /// Text only, no fill (Cancel under a Large).
     case tertiary
-    /// The last step of a loss: destructive fill, white label.
     case destructive
-    /// A red label that opens a confirm ("Sign out"): white fill on the grey canvas.
     case destructiveQuiet
-    /// A red label with no fill and an 8 inset ("Archive"). The old name for the quiet kind
-    /// without a fill; kept.
     case destructiveText
   }
 
@@ -60,9 +43,6 @@ public struct PillButtonStyle: ButtonStyle {
   let leadingIcon: HIcon?
   let greysWhenDisabled: Bool
 
-  /// `fill` stretches the pill to the width it is offered (sheet CTAs, a pair in a card).
-  /// `leadingIcon` is for a known system act only (Face ID, export, add): 18 with an 8 gap,
-  /// Face ID 22 with a 10 gap, in the label's colour.
   public init(_ kind: Kind = .primary, size: Size = .large, fill: Bool = false, loading: Bool = false,
               leadingIcon: HIcon? = nil, greysWhenDisabled: Bool = false)
   {
@@ -121,7 +101,6 @@ struct PillButtonBody: View {
   @Environment(\.isEnabled) private var isEnabled
   @Environment(\.pillDisabledBase) private var disabledBase
   @ResolvedMotion private var motion: MotionPolicy
-  /// The spinner shows only once loading has lasted about 300 ms (page 17 · ButtonLoading).
   @State private var showsSpinner = false
 
   var body: some View {
@@ -137,26 +116,21 @@ struct PillButtonBody: View {
       }
       configuration.label
         .multilineTextAlignment(.center)
-        // One line at the default size; above it the label wraps and the pill grows.
         .lineLimitAtDefaultTextSize(1)
     }
     .hType(size == .small ? .smallButton : .button)
     .foregroundStyle(foreground)
-    // A hugging pill pads by its size's inset; a filling one centres its label (page 10 §01).
     .padding(.horizontal, kind == .destructiveText ? 8 : (fill ? 12 : size.inset))
     .padding(.vertical, 4)
     .frame(maxWidth: fill ? .infinity : nil, minHeight: size.height)
     .background(background(pressed: pressed), in: Capsule())
     .background {
-      // The disabled grey is translucent; in a dock, content scrolling behind would read
-      // through it.
       if !isEnabled, let disabledBase, disabledFillIsTranslucent {
         Capsule().fill(disabledBase)
       }
     }
     .contentShape(Capsule().inset(by: -size.hitOutset))
     .scaleEffect(pressed && !motion.isStill ? HMotion.pressScale : 1)
-    // Down at once, back over 120 ms.
     .animation(pressed ? nil : motion.animation(.press), value: pressed)
     .allowsHitTesting(!loading)
     .accessibilityValue(loading ? Text("In progress") : Text(""))
@@ -186,7 +160,6 @@ struct PillButtonBody: View {
     }
   }
 
-  /// The disabled fill is `appleFillsSecondary` (see `background(pressed:)`).
   private var disabledFillIsTranslucent: Bool {
     switch kind {
     case .onGrouped: greysWhenDisabled
@@ -209,19 +182,14 @@ struct PillButtonBody: View {
   }
 }
 
-/// The press for a custom button (a card that opens one thing, a tile): scale 0.97 and the
-/// pressed state layer at once, 120 ms back (`.press`). With Reduce Motion, the layer only.
-/// Rows and list groups never scale: use `HRowPressStyle`.
 public struct HPressStyle: ButtonStyle {
   let shape: AnyShape
   let scales: Bool
 
-  /// A pill or a circle (the default shape is a capsule).
   public init(scales: Bool = true) {
     self.init(in: Capsule(), scales: scales)
   }
 
-  /// A card or tile: pass its shape, so the pressed layer follows the corners.
   public init<S: Shape>(in shape: S, scales: Bool = true) {
     self.shape = AnyShape(shape)
     self.scales = scales
@@ -248,8 +216,6 @@ public struct HPressStyle: ButtonStyle {
   }
 }
 
-/// A row in a list card: the whole row takes the pressed fill for the touch (100 ms), card
-/// corners only on end rows (the card clips). Rows never scale (page 15 §03).
 public struct HRowPressStyle: ButtonStyle {
   public init() {}
 
@@ -261,9 +227,6 @@ public struct HRowPressStyle: ButtonStyle {
   }
 }
 
-/// "Continue with Google" / "Continue with Microsoft" (page 15 · Mailboxes): the Primary Large
-/// pill, full width, with the provider's mark in a 26 white disc. One per screen, after the
-/// person has picked a provider. The label names the company, not the app.
 public struct ProviderButton: View {
   let provider: MailProviderKind
   let loading: Bool
@@ -310,8 +273,5 @@ public extension ButtonStyle where Self == HInlineLinkStyle {
 }
 
 public extension EnvironmentValues {
-  /// The opaque surface a disabled pill's translucent grey is laid on, where content can
-  /// scroll behind the pill (a screen's dock, which sets the canvas, `surfaceSecondary`, as
-  /// Paper's plain dock draws it, LRH-0). Nil draws the grey alone.
   @Entry var pillDisabledBase: Color? = nil
 }

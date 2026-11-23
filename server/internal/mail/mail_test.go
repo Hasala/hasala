@@ -69,7 +69,6 @@ func TestCloudflareClassifiesAnswers(t *testing.T) {
 		}
 	}
 
-	// With a display name, from is the API's named-address object.
 	status, answer = 200, `{"success":true,"errors":[],"result":{"delivered":["a@example.com"],"permanent_bounces":[],"queued":[]}}`
 	c.FromName, c.ReplyTo = "Hasala", "support@hasala.app"
 	if _, err := c.Send(ctx, Message{To: "a@example.com", Subject: "s", Text: "t"}); err != nil {
@@ -112,8 +111,6 @@ func TestCloudflareClassifiesAnswers(t *testing.T) {
 
 var url = regexp.MustCompile(`https?://\S+`)
 
-// Spec 02 §14.6's rules over every template: plain text, the greeting rule,
-// the footer, and no link but the freeze link of two alerts.
 func TestTheTemplatesAreContentFree(t *testing.T) {
 	at := time.Date(2026, 10, 11, 9, 40, 0, 0, time.UTC)
 	if When(at) != "Sun 11 Oct 2026, 13:40 UAE time" {

@@ -1,25 +1,15 @@
 ---
-/**
- * The detail pages (/how-it-works, /budgeting, /how-privacy-works, /faq):
- * a plain header (the page's question as the H1, one sentence under it),
- * the page's sections, then "Read next" and the invite button. The home
- * page links here for anything longer than a line.
- */
 import Base from './Base.astro';
 import Icon from '../components/Icon.astro';
 import { NAV } from '../data/site';
 import { webPageLd } from '../lib/json-ld';
 
 interface Props {
-  /** The page part of <title>: "Hasala · {title}". */
   title: string;
-  /** The H1. */
   heading: string;
-  /** One or two sentences under the H1; also the meta description unless `description` is set. */
   lead: string;
   description?: string;
   path: string;
-  /** Extra JSON-LD nodes for this page (a WebPage and its breadcrumb are added here). */
   jsonLd?: Record<string, unknown>[];
 }
 

@@ -1,6 +1,3 @@
-// The Maya scenario (spec 04 §15.3; 03a §7.1 inputs), authored through
-// `OpAuthor` as ordinary v4 ops, folded, and projected. Maya Rahman is the
-// fictional persona of the Paper boards; every row is synthetic.
 import CoreCategorize
 import CoreDomain
 import CoreJSON
@@ -10,7 +7,6 @@ import CoreTime
 import CoreWire
 import Foundation
 
-/// A deterministic `RandomSource` (counter-mode SHA-256).
 final class CountingRandom: RandomSource, @unchecked Sendable {
   private let lock = NSLock()
   private var n: UInt64 = 0
@@ -36,7 +32,6 @@ struct Maya {
   static let october = CivilMonth(year: 2026, month: 10)!
   static let september = CivilMonth(year: 2026, month: 9)!
   static let november = CivilMonth(year: 2026, month: 11)!
-  /// `2026-10-10T09:40:00Z` (13:40 in Dubai).
   static let nowMs: Int64 = 1_791_625_200_000
 
   var state = State()
@@ -63,14 +58,11 @@ struct Maya {
     ownLast = blob.lastAuthoredMs
   }
 
-  /// Local wall time "2026-10-03 12:00" at +04:00 → UTC instant text.
   static func posted(_ day: String, _ time: String = "12:00") -> String {
     let ms = try! parseInstantMs("\(day)T\(time):00Z") - LocalClock.offsetMs
     return Instant.iso(ms)!
   }
 
-  /// Ingests a row as the mailbox lane would (uncategorized, in review), then,
-  /// when `category` is given and `review` is false, sorts it as a person would.
   mutating func txn(
     _ key: String, _ merchant: String, _ amount: Int64, _ day: String, _ time: String = "12:00", category: String?, direction: String = "debit",
     review: Bool = false, last4: String = "4412", bank: String = "enbd"
@@ -108,7 +100,6 @@ struct Maya {
     ]
     try commit { a in for (c, v) in budgets { a.setBudget(category: c, month: Self.september, amountMinor: v) } }
 
-    // The trip and the emergency fund (03c §6, through 03a §9's defineProject / defineGoal).
     let project = "01JC0000000000000000000P01"
     let goal = "01JC0000000000000000000G01"
     try commit { a in
@@ -126,7 +117,6 @@ struct Maya {
     ids["project"] = project
     ids["goal"] = goal
 
-    // September: salary, savings, the trip's spending (carved out), dining.
     try txn("salary-sep", "SALARY TRANSFER", 2_500_000, "2026-09-28", category: "salary", direction: "credit")
     try txn("savings-sep", "STANDING ORDER SAVINGS", 300_000, "2026-09-02", category: "savings")
     try txn("emirates", "EMIRATES AIRLINE", 412_000, "2026-09-12", category: "travel")
@@ -137,7 +127,6 @@ struct Maya {
       try commit { a in a.annotate(txnID: id, set: [("project_id", project)]) }
     }
 
-    // October, counted (20 rows).
     try txn("rent", "AL HABTOOR PROPERTIES", 750_000, "2026-10-01", category: "rent")
     try txn("du", "DU TELECOM", 42_790, "2026-10-05", category: "utilities")
     try txn("spinneys", "SPINNEYS JUMEIRAH", 27_025, "2026-10-03", category: "groceries")
@@ -159,7 +148,6 @@ struct Maya {
     try txn("savings-oct", "STANDING ORDER SAVINGS", 300_000, "2026-10-02", category: "savings")
     try txn("sarwa", "SARWA", 200_000, "2026-10-02", category: "investments")
 
-    // October, to review (6 rows): AED 827.28 of debits and one credit.
     try txn("lulu", "LULU HYPERMARKET", 21_430, "2026-10-09", category: nil, review: true)
     try txn("dubaitaxi", "DUBAI TAXI", 3_850, "2026-10-08", category: nil, review: true)
     try txn("apple", "APPLE.COM/BILL", 1_499, "2026-10-07", category: nil, review: true)
@@ -168,7 +156,6 @@ struct Maya {
     try txn("credit", "TRANSFER FROM 1234567890", 125_000, "2026-10-04", category: nil, direction: "credit", review: true)
   }
 
-  /// 03b §3.12's October expectations for the bills categories (03a §7.1 table).
   static func bills() -> [BillExpectation] {
     func d(_ day: Int) -> CivilDate { CivilDate(year: 2026, month: 10, day: day)! }
     return [

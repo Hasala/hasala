@@ -1,5 +1,3 @@
-// The engine over FakeGmail (spec 04 §7.4-§7.8; the fetch.ts behaviours §7.5 keeps, each pinned
-// here). Every message is synthetic.
 import CoreJSON
 import CoreMail
 import CoreMailbox
@@ -19,7 +17,6 @@ let day: Int64 = 86_400_000
     #expect(try rig.keychain.read() == "fake-refresh-token")
     let puts = await rig.server.puts
     #expect(puts.count == 1)
-    // Step-up over P = SHA-256(id_token).
     #expect(puts[0].1["p"] == .string(Hex.encode(sha256(Data(puts[0].0.utf8)))))
     #expect(puts[0].1["kind"] == .string("mailbox.link"))
     #expect(await rig.server.linkedProviders == [.gmail])
@@ -95,10 +92,9 @@ let day: Int64 = 86_400_000
     rig.gmail.add(SyntheticMail.dibCard(id: "d3", last4: "9999", dateMs: Rig.t0 - 3 * day))
     rig.gmail.add(SyntheticMail.enbdAlert(id: "e1", dateMs: Rig.t0 - 2 * day))
     rig.gmail.add(SyntheticMail.bankNotice(id: "n1", dateMs: Rig.t0 - day))
-    rig.gmail.add(SyntheticMail.dibCard(id: "old", dateMs: Rig.t0 - 120 * day))  // outside 90 days
+    rig.gmail.add(SyntheticMail.dibCard(id: "old", dateMs: Rig.t0 - 120 * day))
     _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
 
-    // One run lists the window, stages it, then authors it: no card is asked about.
     let done = await rig.engine.runCycle(trigger: .launch)
     #expect(done.staged == 5)
     #expect(done.ops == 5 && done.review == 1 && done.toReview == 2)
@@ -115,7 +111,6 @@ let day: Int64 = 86_400_000
     let s = await rig.state()
     #expect(s.watermarkMs == Rig.t0 && s.profileHistoryID == "1000")
     #expect(await rig.stagedCount() == 0)
-    // No history.list and never an unfiltered listing (PO G).
     #expect(!rig.gmail.requests.contains { $0.path.contains("/history") })
     #expect(rig.listRequests.allSatisfy { r in r.query.contains { $0.0 == "q" && $0.1.hasPrefix("{from:") } })
   }
@@ -134,7 +129,6 @@ let day: Int64 = 86_400_000
     let rig = Rig()
     rig.gmail.add(SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - day))
     _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 30)
-    // What an older build left behind: the scan staged, waiting for "Are these your cards?".
     var parked = await rig.state()
     parked.phase = .awaitingCards
     var c = MailboxCommit()
@@ -187,17 +181,11 @@ let day: Int64 = 86_400_000
     for i in 0..<4 { rig.gmail.add(SyntheticMail.dibCard(id: "d\(i)", dateMs: Rig.t0 - Int64(i + 1) * day)) }
     _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 30)
     let done = await rig.engine.runCycle(trigger: .launch)
-    // The two staged rows, then the rest of the window listed again and authored directly.
     #expect(done.staged == 2 && done.haltedOn == .stagingFull)
     #expect(done.ops == 4 && done.review == 0 && done.phase == .active)
     #expect(Set(await rig.enqueued().map(\.messageID)) == ["d0", "d1", "d2", "d3"])
   }
 
-  /// gmail-sync: an account deleted on this iPhone, then a new account linking the SAME
-  /// mailbox here. Nothing the first account's lane kept (its accounted ids, watermark,
-  /// staged rows, refresh token) belongs to the second one, which has its own store and
-  /// Keychain item, so the second scan reads the whole window again and authors it all
-  /// under its own grant id.
   @Test func aNewAccountOnTheSameMailboxReadsItInFull() async throws {
     let gmail = FakeGmail()
     gmail.add(SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - 5 * day))
@@ -207,8 +195,6 @@ let day: Int64 = 86_400_000
     #expect(Set(await first.enqueued().map(\.messageID)) == ["d1", "e1"])
     #expect(await first.state().phase == .active)
 
-    // The first account is deleted (its store and Keychain item go); a new one links the
-    // same Google account with a new consent.
     gmail.refreshToken = "fake-refresh-token-second-account"
     let second = Rig(gmail: gmail) { $0.grantID = "00000000-0000-4000-8000-00000000000b" }
     let r = await second.engine.connect(presenter: FakePresenter(gmail: gmail), backfillDays: 90)
@@ -257,7 +243,7 @@ let day: Int64 = 86_400_000
     rig.gmail.add(SyntheticMail.dibCard(id: "new1", dateMs: rig.clock.nowMs() - 60_000))
     rig.gmail.historyID = "1001"
     let r = await rig.engine.runCycle(trigger: .silentPush)
-    #expect(r.ops == 1 && r.review == 0 && r.completed)  // a card the ledger does not know files itself
+    #expect(r.ops == 1 && r.review == 0 && r.completed)
     #expect(await rig.ledger.flushes >= 1)
     let s = await rig.state()
     #expect(s.watermarkMs == rig.clock.nowMs() && s.profileHistoryID == "1001")
@@ -266,7 +252,7 @@ let day: Int64 = 86_400_000
     rig.gmail.historyID = "1002"
     let again = await rig.engine.runCycle(trigger: .silentPush)
     #expect(again.ops == 0 && again.listed == 1)
-    #expect(rig.rawRequests.isEmpty)  // accounted: never re-downloaded
+    #expect(rig.rawRequests.isEmpty)
     #expect(await rig.enqueued().count == 1)
   }
 
@@ -277,7 +263,6 @@ let day: Int64 = 86_400_000
     let r = await rig.engine.runCycle(trigger: .silentPush)
     #expect(r.completed && r.listed == 0)
     #expect(rig.listRequests.isEmpty)
-    // A pull-to-refresh lists anyway.
     _ = await rig.engine.runCycle(trigger: .refresh)
     #expect(!rig.listRequests.isEmpty)
   }
@@ -308,12 +293,12 @@ let day: Int64 = 86_400_000
     let rig = Rig()
     await rig.connectAndActivate()
     var m = SyntheticMail.lookAlike(id: "fake", dateMs: rig.clock.nowMs() - 1000, listedAs: "emiratesnbd.com")
-    m.from = "Emirates NBD <alerts@emiratesnbd.com>"  // what Gmail's from: matched (display name)
+    m.from = "Emirates NBD <alerts@emiratesnbd.com>"
     rig.gmail.add(m)
     rig.gmail.clearRequests()
     let r = await rig.engine.runCycle(trigger: .refresh)
     #expect(r.setAside == 1 && r.ops == 0)
-    #expect(rig.rawRequests.isEmpty)  // only From + A-R were read
+    #expect(rig.rawRequests.isEmpty)
     let status = await rig.engine.status()
     #expect(status.setAside.map(\.domain) == ["promo.example"])
   }
@@ -348,7 +333,6 @@ let day: Int64 = 86_400_000
     let r = await rig.engine.runCycle(trigger: .refresh)
     #expect(r.haltedOn == .gmail && !r.completed)
     #expect(await rig.state().watermarkMs == before)
-    // The next run reads it.
     let r2 = await rig.engine.runCycle(trigger: .refresh)
     #expect(r2.ops == 1 && r2.completed)
   }
@@ -363,10 +347,10 @@ let day: Int64 = 86_400_000
     let r = await rig.engine.runCycle(trigger: .refresh)
     #expect(r.haltedOn == .accountFull && r.phase == .halted)
     #expect(await rig.state().watermarkMs == before)
-    #expect(await rig.engine.runCycle(trigger: .silentPush).haltedOn == .accountFull)  // stays halted
+    #expect(await rig.engine.runCycle(trigger: .silentPush).haltedOn == .accountFull)
     await rig.ledger.setFlush(.flushed)
     let retry = await rig.engine.runCycle(trigger: .retry)
-    #expect(retry.phase == .active && retry.completed && retry.ops == 0)  // the op was already queued
+    #expect(retry.phase == .active && retry.completed && retry.ops == 0)
     #expect(await rig.enqueued().filter { $0.messageID == "big" }.count == 1)
   }
 
@@ -398,8 +382,8 @@ let day: Int64 = 86_400_000
     await rig.connectAndActivate()
     let before = await rig.state().watermarkMs
     for i in 0..<3 { rig.gmail.add(SyntheticMail.dibCard(id: "c\(i)", amount: "\(i + 1).00", dateMs: rig.clock.nowMs() - Int64(i + 1) * 1000)) }
-    rig.gmail.historyID = "2000"  // new mail moves the mailbox's historyId
-    rig.gmail.fail("/messages/c1", with: [503])  // costs 400 ms of (fake) backoff, pushing past the deadline
+    rig.gmail.historyID = "2000"
+    rig.gmail.fail("/messages/c1", with: [503])
     let r = await rig.engine.runCycle(trigger: .appRefresh, deadlineMs: rig.clock.nowMs() + 5_200)
     #expect(!r.completed && r.ops >= 1 && r.ops < 3)
     #expect(await rig.state().watermarkMs == before)
@@ -445,9 +429,8 @@ let day: Int64 = 86_400_000
     let r = await rig.engine.runCycle(trigger: .launch)
     #expect(r.phase == .otherDevice && r.haltedOn == .notHolder)
     #expect(try rig.keychain.read() == nil)
-    // Deleted here but never revoked at Google: a revoke would end the new holder's grant too.
     #expect(!rig.gmail.requests.contains { $0.form.contains { $0.0 == "token" } })
-    #expect(!rig.gmail.requests.contains { $0.path.hasSuffix("/stop") })  // never users.stop
+    #expect(!rig.gmail.requests.contains { $0.path.hasSuffix("/stop") })
     #expect(await rig.engine.status().hero == .otherDevice)
   }
 
@@ -473,8 +456,6 @@ let day: Int64 = 86_400_000
     #expect(await quiet.engine.status().watchActive == false)
   }
 
-  /// A server whose Pub/Sub push is turned on after the app read a null topic: the topic is read
-  /// again once per holder-check interval, and the next due cycle watches and reports.
   @Test func aTopicTheServerGainsLaterIsWatchedWithoutARelaunch() async {
     let rig = Rig()
     await rig.server.setTopic(nil)
@@ -485,7 +466,7 @@ let day: Int64 = 86_400_000
 
     await rig.server.setTopic("projects/synthetic/topics/hasala-gmail-test")
     _ = await rig.engine.runCycle(trigger: .refresh)
-    #expect(await rig.server.topicReads == reads)  // inside the interval: the null topic stands
+    #expect(await rig.server.topicReads == reads)
     #expect(!rig.gmail.requests.contains { $0.path.hasSuffix("/watch") })
 
     rig.clock.advance(MailboxEngineConfig(grantID: "x").holderCheckIntervalMs)
@@ -496,8 +477,6 @@ let day: Int64 = 86_400_000
     #expect(await rig.engine.status().watchActive)
   }
 
-  /// A clock that jumps back after a null topic was read does not postpone the re-read until it
-  /// catches up: the next cycle reads the topic again.
   @Test func aBackwardsClockJumpDoesNotPostponeTheTopicReRead() async {
     let rig = Rig()
     await rig.server.setTopic(nil)
@@ -512,9 +491,6 @@ let day: Int64 = 86_400_000
     #expect(rig.gmail.requests.contains { $0.path.hasSuffix("/watch") })
   }
 
-  /// Route 36's `409 no_watch_topic`: the server turned its Pub/Sub push off after the app read
-  /// the topic. The watch nobody relays is stopped, no live watch is shown, and the topic is read
-  /// again (null now), so no further watch is made.
   @Test func aWatchTheServerNoLongerRelaysIsStoppedAndTheTopicReadAgain() async {
     let rig = Rig()
     await rig.connectAndActivate()
@@ -523,7 +499,7 @@ let day: Int64 = 86_400_000
 
     await rig.server.setTopic(nil)
     await rig.server.setWatchRefusal(.noWatchTopic)
-    rig.clock.advance(5 * day)  // the watch is due for renewal (inside the 3-day window)
+    rig.clock.advance(5 * day)
     _ = await rig.engine.runCycle(trigger: .refresh)
     #expect(rig.gmail.requests.filter { $0.path.hasSuffix("/watch") }.count == 2)
     #expect(rig.gmail.requests.contains { $0.path.hasSuffix("/stop") })
@@ -597,7 +573,6 @@ let day: Int64 = 86_400_000
     await rig.connectAndActivate()
     #expect(await rig.engine.disconnect())
     #expect(rig.gmail.requests.contains { $0.path.hasSuffix("/stop") })
-    // Google's grant is revoked (`POST /revoke token=<refresh>`), not only forgotten here.
     #expect(rig.gmail.requests.contains { $0.form.contains { $0.0 == "token" } })
     #expect(try rig.keychain.read() == nil)
     #expect(await rig.server.deletes == 1)
@@ -605,9 +580,6 @@ let day: Int64 = 86_400_000
     #expect(await rig.accountedCount() == 0)
   }
 
-  /// The Disconnect alert says Hasala ends its access at Google: a revoke that didn't go
-  /// through (a Google 5xx, offline) stops the disconnect with the token kept, the link and
-  /// the tables untouched, and the retry revokes it.
   @Test func aFailedRevokeKeepsTheTokenAndTheLink() async throws {
     let rig = Rig()
     await rig.connectAndActivate()
@@ -631,7 +603,6 @@ let day: Int64 = 86_400_000
     #expect(await rig.state().phase == .unlinked)
   }
 
-  /// A token Google no longer knows (400) is gone either way: the disconnect goes on.
   @Test func aRevokeOfAnUnknownTokenStillDisconnects() async throws {
     let rig = Rig()
     await rig.connectAndActivate()
@@ -653,11 +624,7 @@ let day: Int64 = 86_400_000
   }
 }
 
-/// The interruptions the review of the first lane found: a reconnect, a takeover or a crash
-/// during first-connect setup must resume the phase it cut short, never restart the scan.
 @Suite struct InterruptionTests {
-  /// A scan that staged two alerts and was cut before authoring them (as a deadline or a
-  /// killed app leaves it): the next cycle runs the backfill.
   static func stageTwoAndCut(_ rig: Rig) async throws {
     let d1 = SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - 3 * day)
     let e1 = SyntheticMail.enbdAlert(id: "e1", dateMs: Rig.t0 - 2 * day)
@@ -706,7 +673,6 @@ let day: Int64 = 86_400_000
     await rig.tokens.invalidate()
     rig.gmail.invalidGrant = true
     _ = await rig.engine.runCycle(trigger: .launch)
-    // The grant comes back (e.g. a blip at Google): "Try again" resumes the backfill.
     rig.gmail.invalidGrant = false
     try? rig.keychain.write("fake-refresh-token")
     let r = await rig.engine.runCycle(trigger: .retry)
@@ -716,7 +682,7 @@ let day: Int64 = 86_400_000
   @Test func takeoverDuringTheBackfillResumesItAfterReadThemHereInstead() async throws {
     let rig = Rig()
     try await Self.stageTwoAndCut(rig)
-    rig.clock.advance(11 * 60_000)  // the holder check is due again
+    rig.clock.advance(11 * 60_000)
     await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
     let cut = await rig.engine.runCycle(trigger: .launch)
     #expect(cut.phase == .otherDevice && cut.ops == 0)
@@ -754,7 +720,6 @@ let day: Int64 = 86_400_000
     let r = await rig.engine.runCycle(trigger: .refresh)
     #expect(r.ops == 1 && r.completed && r.phase == .active)
 
-    // Persisting past the retries is a transient halt, never "Reconnect Gmail".
     rig.gmail.add(SyntheticMail.dibCard(id: "busier", amount: "3.00", dateMs: rig.clock.nowMs() - 500))
     rig.gmail.fail("/messages/busier", with: [403, 403, 403, 403, 403], reason: "rateLimitExceeded")
     let r2 = await rig.engine.runCycle(trigger: .refresh)
@@ -796,7 +761,7 @@ let day: Int64 = 86_400_000
     let paths = rig.gmail.requests.map { r in r.path.hasSuffix("/messages") ? "list" : (r.query.contains { $0 == ("format", "raw") } ? "raw" : "") }
     let firstRaw = paths.firstIndex(of: "raw") ?? Int.max
     let lastList = paths.lastIndex(of: "list") ?? -1
-    #expect(firstRaw < lastList)  // interleaved, not "list everything first"
+    #expect(firstRaw < lastList)
     #expect(paths.filter { $0 == "list" }.count == 3)
   }
 

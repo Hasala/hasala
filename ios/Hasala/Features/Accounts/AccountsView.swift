@@ -3,13 +3,6 @@ import HasalaModels
 import Observation
 import SwiftUI
 
-/// Accounts · Net worth (Paper 1W6-0), pushed from Home's net worth widget and Profile ›
-/// Accounts. Read only: the net worth with this month's change, the last 12 months, then the
-/// accounts that count in your plan and the ones tracked for net worth only.
-///
-/// Live has no net worth history yet, so the change line and the chart show only when the
-/// ledger has them. A row's check-in sheet and "Add an account" aren't built (Debug shows
-/// "Add an account" as a placeholder).
 struct AccountsView: View {
   @Bindable var app: AppModel
   @State private var model: AccountsViewModel
@@ -40,7 +33,6 @@ struct AccountsView: View {
           .padding(.horizontal, HSpacing.insetPage)
       }
       if unfinished {
-        // TODO(spec 13 B3): "Add an account" (not drawn past the button).
         Button("Add an account", action: sayAddLater)
           .buttonStyle(.pill(.onGrouped, fill: true, leadingIcon: .add))
           .pillHeight()
@@ -52,7 +44,6 @@ struct AccountsView: View {
       if unfinished {
         ToolbarItem(placement: .topBarTrailing) {
           Button(action: sayAddLater) {
-            // Paper's glass Add: the plus at 22, stroke 2.3, in the glass ink.
             HIconView(.add, size: HSpacing.iconGlass, color: HColor.iconGlass, strokeWidth: 2.3)
           }
           .accessibilityLabel("Add an account")
@@ -63,7 +54,6 @@ struct AccountsView: View {
 
   private func sayAddLater() { app.say("Adding an account comes in a later build", icon: .add) }
 
-  /// "NET WORTH / AED 227,568.00 / ↑ +2,140.00 this month".
   private var hero: some View {
     VStack(alignment: .leading, spacing: 6) {
       Text("Net worth").hType(.overline).foregroundStyle(HColor.textOnWashSecondary)
@@ -90,7 +80,6 @@ struct AccountsView: View {
           }
         }
         .padding(.top, 4)
-        // One line of text to VoiceOver, so the audit doesn't take it for a small control.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(model.hidden
           ? "Amount hidden this month"
@@ -105,7 +94,6 @@ struct AccountsView: View {
     .padding(.top, 4)
   }
 
-  /// "Everyday money / Counts in your plan ……… 38,163.00" over its list card.
   private func section(_ title: String, subtitle: String, total: Money?, rows: [AccountRowModel])
     -> some View
   {
@@ -146,10 +134,6 @@ final class AccountsViewModel {
   var hidden: Bool { app.amountsHidden }
 }
 
-/// One account (page 16 §14 AccountRow): the bank plate (radius 12, initials in the hue's ink,
-/// or the cash glyph), the name and the balance on one baseline ("−" for card debt), and the
-/// last four with when it was checked. Min 64. VoiceOver: "Emirates NBD Current, AED 41,823.50,
-/// ···4412 · checked in 3 days ago · 6 since".
 private struct AccountRow: View {
   let row: AccountRowModel
   let hidden: Bool
@@ -202,12 +186,6 @@ private struct AccountRow: View {
   }
 }
 
-/// A bank's initials on its 40 plate, drawn like a logo (1W6-0 · Account plate): Inter bold
-/// (Paper's 800; the app bundles 700) at 17 for one letter ("S"), 12 for two or three
-/// ("DIB"), 11 for four ("ENBD"), tracked 0.02 em, in the hue's ink. The plate keeps its size
-/// at every text size, as the glyph plates do, and a mark too wide for it ("ENBD" is, by
-/// Paper's own drift note) is drawn a little smaller instead of wrapping. Drawn, not set as
-/// text, so it is not read: the row says the account's name.
 private struct PlateInitials: View {
   let initials: String
   let color: Color
@@ -231,17 +209,12 @@ private struct PlateInitials: View {
   }
 }
 
-/// "Last 12 months" (1W6-0 · Chart card): a smooth line in the accent over a fading area, a
-/// dashed baseline at the oldest month, the end dot on this month, and the month initials
-/// under it, this month in bold. The points are the ledger's permille geometry, right-aligned
-/// to the months, so a shorter history ends on this month too. One VoiceOver element.
 private struct NetWorthChartCard: View {
   let chart: NetWorthChart
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       Text("Last 12 months").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-      // The card's 14 gap, less Paper's −6 margin on the initials row.
       VStack(spacing: 8) {
         Canvas { context, size in draw(&context, size) }
           .frame(height: 120)
@@ -251,7 +224,6 @@ private struct NetWorthChartCard: View {
               .hType(HType(size: 12, leading: 16, weight: index == chart.months.count - 1 ? .bold : .medium,
                            textStyle: .caption))
               .foregroundStyle(index == chart.months.count - 1 ? HColor.textPrimary : HColor.textSecondary)
-              // A column is 1/12 of the card: a large letter shrinks to fit it.
               .lineLimit(1)
               .minimumScaleFactor(0.5)
               .frame(maxWidth: .infinity)
@@ -272,14 +244,11 @@ private struct NetWorthChartCard: View {
     .accessibilityIdentifier("accounts.chart")
   }
 
-  /// Rising, falling or level, from the first point to the last.
   private var trend: String {
     guard let first = chart.points.first, let last = chart.points.last else { return "" }
     return last > first ? "Rising" : last < first ? "Falling" : "Level"
   }
 
-  /// Paper's geometry on a 322 × 120 box: the line from y 102.44 (lowest) to 17.75 (highest),
-  /// each point in the middle of its month's column.
   private func draw(_ context: inout GraphicsContext, _ size: CGSize) {
     let columns = CGFloat(max(chart.months.count, 1))
     let column = size.width / columns
@@ -313,8 +282,6 @@ private struct NetWorthChartCard: View {
     context.stroke(dot, with: .color(HColor.white), lineWidth: 2.5)
   }
 
-  /// A Catmull-Rom curve through the points as cubic Béziers (control points a sixth of the
-  /// way to the neighbours), as Paper's path is drawn.
   static func smooth(_ p: [CGPoint]) -> Path {
     var path = Path()
     guard let first = p.first else { return path }

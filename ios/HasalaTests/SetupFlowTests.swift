@@ -7,9 +7,6 @@ import Testing
 
 @testable import Hasala
 
-/// Setup after the account (bank and email, then Home), on the in-memory mock: the email
-/// step's providers and failures, and what setup remembers for the life of the process
-/// (plan B3: Back never reverts, nothing is sent or signed in twice).
 @MainActor
 @Suite("Setup flows")
 struct SetupFlowTests: AccountSuite {
@@ -161,7 +158,6 @@ struct SetupFlowTests: AccountSuite {
     #expect(m.connectedMailbox?.provider == .outlook)
   }
 
-  /// Offline, the email step says so in the provider's words (spec copy), and stays put.
   @Test func anOfflineConnectNamesTheProvider() async throws {
     let s = services(MockAccountService(existing: .passkey, signedIn: true))
     let lane = try #require(s.mailbox as? MockMailbox)
@@ -176,8 +172,6 @@ struct SetupFlowTests: AccountSuite {
     #expect(SetupModel.setupFailure(.cancelled, .gmail) == .cancelled)
   }
 
-  /// The two failures the design draws a screen for push it; trying again from there,
-  /// once it works, goes Home. A closed Google sign-in changes nothing.
   @Test func outlookFailuresHaveTheirScreensAndTryAgainGoesOn() async throws {
     let s = services(MockAccountService(existing: .passkey, signedIn: true))
     let lane = try #require(s.mailbox as? MockMailbox)
@@ -259,7 +253,6 @@ struct SetupFlowTests: AccountSuite {
     #expect(finished)
   }
 
-  /// A closed Google sign-in is not an error: the screen stays as it was.
   @Test func aClosedGoogleSignInChangesNothing() async throws {
     let mailbox = CountingMailbox(MockMailbox())
     mailbox.cancelGmail = true
@@ -318,8 +311,6 @@ struct SetupFlowTests: AccountSuite {
     #expect(m.failure == nil && m.step == .finished)
   }
 
-  /// A relaunch whose facts say the mail is linked to Outlook, before the lane's status is
-  /// read (no rows yet): setup's provider is Outlook's.
   @Test func aRelaunchLinkedToOutlookShowsOutlookConnected() async throws {
     let lane = CountingMailbox(MockMailbox())
     lane.linkedOverride = .outlook
@@ -335,8 +326,6 @@ struct SetupFlowTests: AccountSuite {
     #expect(link.existing(.gmail) == nil)
   }
 
-  /// The payday strip's days: the next one from the ledger's today, a day a month doesn't
-  /// have on its last day, and the last working day (Monday to Friday) sent as its day.
   @Test func paydaysFallOnRealDays() {
     let today = LocalDate(2026, 10, 10)
     #expect(PaydayChoice.day(28).next(onOrAfter: today) == LocalDate(2026, 10, 28))
@@ -352,7 +341,6 @@ struct SetupFlowTests: AccountSuite {
       == [1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 31].map { PaydayChoice.day($0).spoken })
   }
 
-  /// The split's handles move in 5% steps; no bucket goes under 0% and the three make 100.
   @Test func theSplitHandlesKeepTheSplitWhole() {
     let start = StartingPlan()
     #expect(start.moving(handle: 0, to: 62) == StartingPlan(needsPercent: 60, wantsPercent: 20, savingsPercent: 20))
@@ -406,8 +394,6 @@ struct SetupFlowTests: AccountSuite {
     #expect(finished)
   }
 
-  // MARK: Support
-
   func services(with mailbox: MailboxConnecting, setup: MockSetupAuthoring = MockSetupAuthoring()) -> AccountServices {
     let account = MockAccountService(existing: .passkey, signedIn: true)
     account.delay = .zero
@@ -420,8 +406,6 @@ struct SetupFlowTests: AccountSuite {
   }
 }
 
-/// The mock lane, counting first scans (the import starts once per account) and able to
-/// close Google's sign-in.
 @MainActor
 @Observable
 final class CountingMailbox: MailboxConnecting {
@@ -431,9 +415,7 @@ final class CountingMailbox: MailboxConnecting {
   @ObservationIgnored var scanEndsAtOnce = false
   @ObservationIgnored var scanStream: AsyncStream<ScanProgress>?
   @ObservationIgnored var laneRows: [MailboxSnapshot]?
-  /// The link a relaunch remembers before the lane's rows are read.
   @ObservationIgnored var linkedOverride: MailProviderKind?
-  /// The account's link held by another iPhone (live: a new install or a recovered account).
   @ObservationIgnored var heldElsewhere: MailProviderKind?
   @ObservationIgnored var known = true
   @ObservationIgnored var offerOverride: MailOffer??

@@ -1,7 +1,3 @@
-// The production glue around the engine (spec 04 §7): the session exchange to
-// hasalad's mailbox routes, the refresh token's custody in `Secrets`, the op
-// author the persistence calls, and the at-ingest categorizer over the
-// projection. RuntimeMailboxLedger runs end to end in HasalaCoreE2ETests.
 import CoreAuth
 import CoreCategorize
 import CoreDomain
@@ -47,8 +43,6 @@ struct RuntimeGlueTests {
     return (s, store)
   }
 
-  // MARK: SessionHTTPExchange
-
   @Test("the session exchange sends path and query to the transport with the bearer from Secrets")
   func sessionExchange() async throws {
     let t = Recorder()
@@ -60,7 +54,6 @@ struct RuntimeGlueTests {
         body: Data("{}".utf8)))
     #expect(r.status == 200 && r.body == Data(#"{"nonce":"bm9uY2U"}"#.utf8))
     #expect(t.last == APIRequest(method: .put, path: "/api/v1/mailbox/link?a=1%202", body: Data("{}".utf8), bearer: "session-token"))
-    // HTTPMailboxServer over it.
     let server = HTTPMailboxServer(http: x, base: "https://api.hasala.app")
     #expect(try await server.linkChallenge() == "bm9uY2U")
     #expect(t.last?.method == .post && t.last?.path == "/api/v1/mailbox/link/challenge")
@@ -91,7 +84,6 @@ struct RuntimeGlueTests {
     let refused = Recorder(.success(APIResponse(status: 409, body: Data(#"{"error":"not_holder"}"#.utf8))))
     let server = HTTPMailboxServer(http: SessionHTTPExchange(transport: refused, secrets: s), base: "https://api.hasala.app")
     await #expect(throws: MailboxServerError.notHolder) { try await server.putWatch(expiresAtMs: Self.now) }
-    // hasalad without the Pub/Sub push: route 36 is refused with its own code.
     let noTopic = Recorder(.success(APIResponse(status: 409, body: Data(#"{"error":"no_watch_topic","detail":"x"}"#.utf8))))
     let quiet = HTTPMailboxServer(http: SessionHTTPExchange(transport: noTopic, secrets: s), base: "https://api.hasala.app")
     await #expect(throws: MailboxServerError.noWatchTopic) { try await quiet.putWatch(expiresAtMs: Self.now) }
@@ -103,14 +95,13 @@ struct RuntimeGlueTests {
     let (s, store) = try Self.secrets()
     let x = SessionHTTPExchange(transport: t, secrets: s)
     for url in ["https://api.hasala.app//api/v1/mailbox/link", "https://api.hasala.app//evil.example/x"] {
-      store.locked = true  // a read of the session would throw: the refusal comes first
+      store.locked = true
       await #expect(throws: HTTPExchangeError.offline) { try await x.send(HTTPRequest(method: .put, url: URL(string: url)!)) }
       store.locked = false
     }
     #expect(t.requests.withLock { $0.isEmpty })
     #expect(SessionHTTPExchange.isOriginPath("/") && SessionHTTPExchange.isOriginPath("/api/v1/x"))
     #expect(!SessionHTTPExchange.isOriginPath("//x") && !SessionHTTPExchange.isOriginPath("x") && !SessionHTTPExchange.isOriginPath(""))
-    // A trailing-slash base still builds single-slash paths.
     let server = HTTPMailboxServer(http: x, base: "https://api.hasala.app/")
     #expect(try await server.linkChallenge() == "bm9uY2U")
     #expect(t.last?.path == "/api/v1/mailbox/link/challenge" && t.last?.bearer == "session-token")
@@ -125,7 +116,6 @@ struct RuntimeGlueTests {
     let step = JSONValue.object(JSONObject([("kind", .string("device"))]))
     let gmail = try await server.putLink(provider: .gmail, idToken: "id", stepUp: step)
     #expect(gmail == MailboxLinkResult(status: .holder(isThisDevice: true, watchExpiresAtMs: nil), clientState: nil))
-    // A server from before the Outlook link refuses unknown fields: a Gmail body is unchanged.
     #expect(String(decoding: t.last?.body ?? Data(), as: UTF8.self) == #"{"id_token":"id","step_up":{"kind":"device"}}"#)
 
     let outlookLinked = #"{"provider":"outlook","holder":{"is_this_device":true},"client_state":"Y2xpZW50LXN0YXRl"}"#
@@ -170,7 +160,6 @@ struct RuntimeGlueTests {
     let off = server(#"{"gmail_watch_topic":null,"outlook_notification_url":"https://h/hooks/outlook/graph","outlook_lifecycle_url":null}"#)
     #expect(try await off.pushConfig(provider: .gmail) == MailboxPushConfig.none)
     #expect(try await off.pushConfig(provider: .outlook) == MailboxPushConfig.none)
-    // An older server's meta has no Outlook fields at all.
     let meta = try JSONDecoder().decode(MetaResponse.self, from: Data(#"{"rp_id":"hasala.app","gmail_watch_topic":null}"#.utf8))
     #expect(meta.outlook_notification_url == nil && meta.outlook_lifecycle_url == nil)
   }
@@ -189,8 +178,6 @@ struct RuntimeGlueTests {
     #expect(try store.read(.outlookClientState(userID: Self.user)) == nil)
   }
 
-  // MARK: SecretsGmailRefreshTokenStore
-
   @Test("the refresh token lives in .gmailRefresh(user): read nil, write, read back, locked throws, wiped with the account")
   func refreshTokenStore() throws {
     let (s, store) = try Self.secrets()
@@ -208,15 +195,12 @@ struct RuntimeGlueTests {
     try t.write("again")
     try t.delete()
     #expect(try t.read() == nil)
-    // An item that holds no token reads as absent (and is removed), never "not now" forever.
     for junk in [Data(), Data([0xFF, 0xFE])] {
       try store.write(.gmailRefresh(userID: Self.user), junk)
       #expect(try t.read() == nil)
       #expect(try store.read(.gmailRefresh(userID: Self.user)) == nil)
     }
   }
-
-  // MARK: MailboxAuthoring
 
   static func ledger() throws -> LedgerStore {
     let s = try LedgerStore.inMemory()
@@ -258,16 +242,13 @@ struct RuntimeGlueTests {
     #expect(pending.count == 2 && pending.allSatisfy { $0.opType == "txn_ingested" && $0.entityKind == "txn" })
     #expect(try store.hasPendingIngest(Self.draft(1).ingestID) && store.hasPendingIngest(Self.draft(2).ingestID))
     #expect(try await persistence.accounted(among: ["m1", "m2", "m3"]) == ["m1", "m2"])
-    // The stored bytes are the outbox's canonical op JSON, and they decode.
     let blob = Data(#"{"v":4,"kind":"ops","ops":["#.utf8) + pending[0].opJSON + Data(",".utf8) + pending[1].opJSON + Data("]}".utf8)
     let ops = try OpCodec.decodeBlobOps(blob)
     #expect(ops.map(\.ingestID) == [Self.draft(1).ingestID, Self.draft(2).ingestID])
     #expect(ops.map(\.payload) == [.object(Self.draft(1).payload), .object(Self.draft(2).payload)])
-    // The next commit stamps after these, even with the clock standing still.
     let rows = try authoring.author([Self.draft(3)], atMs: Self.now)
     let next = try OpCodec.decodeBlobOps(Data(#"{"v":4,"kind":"ops","ops":["#.utf8) + rows[0].opJSON + Data("]}".utf8))
     #expect(try parseInstantMs(next[0].authoredAt) > parseInstantMs(ops[1].authoredAt))
-    // Peers' newer stamps (within 24 h) push the base forward.
     authoring.updateSeen(["ios-1a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d": Self.now + 3_600_000])
     #expect(try authoring.context(nowMs: Self.now).baseMs == Self.now + 3_600_001)
   }
@@ -277,7 +258,6 @@ struct RuntimeGlueTests {
     let store = try Self.ledger()
     let stamps = AuthorStamps()
     let authoring = MailboxAuthoring(store: store, writerID: Self.writer.string, random: SeededRandom(), stamps: stamps)
-    // A screen context minted first, its blob built after a Gmail blob: neither enqueued.
     let screen = AuthorContext(writerID: Self.writer.string, nowMs: Self.now, ownLastMs: nil, maxAuthored: [:], random: SeededRandom(seed: "s"))
     let gmail = try authoring.author([Self.draft(1), Self.draft(2)], atMs: Self.now)
     let gmailLast = try parseInstantMs(
@@ -286,12 +266,10 @@ struct RuntimeGlueTests {
     let blob = try #require(try stamps.build(screen) { a in a.setHomeCurrency("AED") })
     #expect(try parseInstantMs(blob.ops[0].authoredAt) == gmailLast + 1)
     #expect(stamps.lastMs == blob.lastAuthoredMs)
-    // And the next Gmail blob stamps after the screen's.
     let next = try authoring.author([Self.draft(3)], atMs: Self.now)
     let nextAt = try parseInstantMs(
       try OpCodec.decodeBlobOps(Data(#"{"v":4,"kind":"ops","ops":["#.utf8) + next[0].opJSON + Data("]}".utf8))[0].authoredAt)
     #expect(nextAt == blob.lastAuthoredMs + 1)
-    // A body that adds nothing builds nothing and records nothing.
     #expect(try stamps.build(screen) { _ in } == nil)
     #expect(stamps.lastMs == nextAt)
   }
@@ -320,8 +298,6 @@ struct RuntimeGlueTests {
     #expect(ops[1].payload["parse_error"] == .string("payload_refused"))
     #expect(ops[1].payload["provenance"] == Self.draft(2).payload["provenance"])
   }
-
-  // MARK: PipelineCategorizer
 
   static func projection(rules: [OpAuthor.RuleDraft]) throws -> ProjectionStore {
     var s = State()
@@ -355,13 +331,11 @@ struct RuntimeGlueTests {
     #expect(c.decide(merchantRaw: "DIB TRANSFER", direction: "debit") == .none)
     #expect(c.decide(merchantRaw: "STARBUCKS", direction: "sideways") == .none)
 
-    // A new rule, projected later, applies to the next decision.
     var s = State()
     var a = OpAuthor(AuthorContext(writerID: Self.writer.string, nowMs: Self.now, ownLastMs: nil, maxAuthored: [:], random: SeededRandom(seed: "2")))
     a.setHomeCurrency("AED")
     try a.rule(OpAuthor.RuleDraft(patterns: ["starbucks"], match: .contains, category: "groceries"))
     try Replay.foldOps(try a.build().ops, seq: 1, writerID: Self.writer.string, into: &s)
-    // Projected at the same millisecond: the projection's generation, not its clock, invalidates.
     try p.project(s, pending: [], writerID: Self.writer.string, dictionary: dictionary, projectedAtMs: Self.now)
     #expect(c.decide(merchantRaw: "STARBUCKS DIFC", direction: "debit").category == "groceries")
     #expect(c.decide(merchantRaw: "CARREFOUR MOE", direction: "debit").category != "shopping")

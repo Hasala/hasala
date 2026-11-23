@@ -11,16 +11,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/privatefixtures"
 )
 
-// mustFixture returns the raw RFC822 bytes of a committed conformance fixture.
-//
-// The fixtures are the single source of truth for the sample mail this package
-// is tested against: they already carry the raw message base64-encoded, so
-// keeping a parallel tree of .eml files would be two copies of the same bytes
-// that can drift apart.
-//
-// They are real mail, so they come from the private fixtures checkout
-// (internal/privatefixtures): the calling test skips when
-// HASALA_PRIVATE_FIXTURES is unset.
 func mustFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	name = strings.TrimSuffix(name, ".eml")
@@ -35,10 +25,6 @@ func mustFixture(t *testing.T, name string) []byte {
 	}
 	return raw
 }
-
-// ---------------------------------------------------------------------------
-// Versioning
-// ---------------------------------------------------------------------------
 
 func TestNormalizeUnknownVersionIsAnError(t *testing.T) {
 	raw := []byte("Content-Type: text/plain; charset=utf-8\r\n\r\nhi\r\n")
@@ -71,10 +57,6 @@ func TestVersionsListsEverySupportedVersion(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Stages 5-9: HTML strip, entities, whitespace, trim
-// ---------------------------------------------------------------------------
-
 func TestNormalizeCollapsesNBSPAndTrimsExplicitSet(t *testing.T) {
 	raw := []byte("Content-Type: text/html; charset=utf-8\r\n\r\n" +
 		"<div>\u00a0\u00a0AED 100.00 </div><div>\ufeff x </div>")
@@ -91,11 +73,6 @@ func TestNormalizeCollapsesNBSPAndTrimsExplicitSet(t *testing.T) {
 }
 
 func TestNormalizeTrimsTheExplicitSetNotGoTrimSpace(t *testing.T) {
-	// U+0085 NEXT LINE and U+2028 LINE SEPARATOR are trimmed by Go's
-	// strings.TrimSpace but are NOT in the normalizer's explicit set, so they
-	// must survive. U+FEFF is the mirror image: not trimmed by TrimSpace, but
-	// in the explicit set, so it must vanish. Both directions are what keep the
-	// Go and TypeScript normalizers byte-identical.
 	raw := []byte("Content-Type: text/plain; charset=utf-8\r\n\r\n" +
 		"\u0085keep\u0085\n\ufeffdrop\ufeff\n\ufeff\u00a0\n\u200a\n")
 	got, err := Normalize(1, raw, time.Now())
@@ -121,10 +98,6 @@ func TestNormalizeStripsScriptAndStyleBeforeTags(t *testing.T) {
 }
 
 func TestNormalizeDecodesExactlySixEntitiesInOnePass(t *testing.T) {
-	// The entity decode is ONE left-to-right pass with no rescanning of what it
-	// just emitted. "&amp;lt;" must therefore become "&lt;" and stop, not "<".
-	// A TypeScript twin written as six sequential .replace() calls produces "<"
-	// and silently disagrees on every message containing a double-escaped entity.
 	raw := []byte("Content-Type: text/plain; charset=utf-8\r\n\r\n" +
 		"&amp;lt; &nbsp;x&amp;&lt;&gt;&quot;&#39; &copy;\r\n")
 	got, err := Normalize(1, raw, time.Now())
@@ -137,14 +110,7 @@ func TestNormalizeDecodesExactlySixEntitiesInOnePass(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Stages 2-4: MIME walk, transfer encoding, charset
-// ---------------------------------------------------------------------------
-
 func TestNormalizeDecodesQuotedPrintableAndCharset(t *testing.T) {
-	// windows-1256 Arabic, quoted-printable wrapped. 0xE3 0xC8 0xE1 0xDA is
-	// "مبلغ"-ish in windows-1256; the point is that the bytes are NOT valid
-	// UTF-8 and must be converted, not replaced.
 	raw := []byte("Content-Type: text/plain; charset=windows-1256\r\n" +
 		"Content-Transfer-Encoding: quoted-printable\r\n\r\n" +
 		"AED 100.00 =E3=C8=E1=\r\n=DA\r\n")
@@ -222,14 +188,7 @@ func TestNormalizeNoTextPartIsAnError(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Stage 3: WHATWG UTF-8 replacement
-// ---------------------------------------------------------------------------
-
 func TestInvalidUTF8BecomesWHATWGReplacementChars(t *testing.T) {
-	// One U+FFFD per maximal subpart, exactly as TextDecoder does — NOT one per
-	// contiguous invalid run (strings.ToValidUTF8) and NOT one per byte
-	// (a naive utf8.DecodeRune loop).
 	for _, tc := range []struct {
 		name string
 		in   []byte
@@ -257,27 +216,17 @@ func TestInvalidUTF8BecomesWHATWGReplacementChars(t *testing.T) {
 }
 
 func TestMislabelledCharsetProducesWHATWGReplacements(t *testing.T) {
-	// A windows-1256 body mislabelled utf-8. Every high byte here is a lone
-	// invalid start/continuation byte, so the contract is one U+FFFD each.
 	body := []byte{0xD9, 0xE5, 0xC7, ' ', 'A', 'E', 'D'}
 	raw := append([]byte("Content-Type: text/plain; charset=utf-8\r\n\r\n"), body...)
 	got, err := Normalize(1, raw, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 0xD9 is a valid 2-byte lead; 0xE5 is not a valid continuation, so 0xD9
-	// yields one U+FFFD and 0xE5 is reprocessed as a 3-byte lead, which then
-	// takes 0xC7 (not a valid continuation) -> another U+FFFD, and 0xC7 is
-	// reprocessed as a 2-byte lead whose next byte is ' ' -> a third U+FFFD.
 	want := "��� AED"
 	if got.Text != want {
 		t.Fatalf("got %q, want %q", got.Text, want)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Stage 10: unwrap (see also unwrap_test.go)
-// ---------------------------------------------------------------------------
 
 func TestUnwrapRecoversInnerSubjectFromAppleMailForward(t *testing.T) {
 	got, err := Normalize(1, mustFixture(t, "apple-forward-enbd-alert.eml"), time.Now())
@@ -318,9 +267,6 @@ func TestUnwrapRecoversInnerSubjectFromGmailForward(t *testing.T) {
 }
 
 func TestUnwrapUsesTheInnerDateNotTheArrivalTime(t *testing.T) {
-	// The fixture's inner message is dated 2026-03-03; this arrival time is a
-	// week later, which is exactly the "forwarded long after the purchase" case
-	// Decision 14 exists for.
 	recv := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
 	got, err := Normalize(1, mustFixture(t, "gmail-forward-1.eml"), recv)
 	if err != nil {
@@ -358,8 +304,6 @@ func TestNonForwardKeepsReceivedDateAndOwnHeaders(t *testing.T) {
 }
 
 func TestSubjectIsRFC2047Decoded(t *testing.T) {
-	// Two adjacent encoded words must join with NO space between them; the
-	// corpus's ENBD alert forward is exactly this shape.
 	raw := []byte("Subject: =?utf-8?B?RndkOiBFbWlyYXRlcyBOQkQgVHJhbnNhY3Rpb24gYWR2aWNlIGZvciBhY2Nv?= =?utf-8?B?dW50IGVuZGluZyB3aXRoIDk5OTk=?=\r\n" +
 		"From: a@b.c\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nx\r\n")
 	got, err := Normalize(1, raw, time.Now())

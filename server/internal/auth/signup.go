@@ -1,14 +1,5 @@
 package auth
 
-// Signup and account creation (spec 02 §10.7, spec 01 §10.3). Invites are the
-// only way in, and both methods start with the same step: signup/begin takes
-// the invite, the address and the display name; the address is proven by the
-// invite link's key (and the invite's own address) or by a signup code. The
-// account is created in one transaction by register/finish (a passkey) or
-// password/register (a password), which claim the signup, re-check the invite
-// and the address, insert the user under the reserved id, redeem the invite and
-// run spec 07's join hook.
-
 import (
 	"context"
 	"crypto/subtle"
@@ -27,31 +18,24 @@ import (
 	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
-// SignupTTL is how long a signup ceremony (and the plaintext address it holds)
-// lives.
 const SignupTTL = 30 * time.Minute
 
-// SignupBeginRequest is #43's body, decoded.
 type SignupBeginRequest struct {
 	InviteCode    string
 	Email         string
 	DisplayName   string
-	InviteLinkKey string // 43 b64url characters from the link's fragment, or ""
+	InviteLinkKey string
 }
 
-// SignupBegun is #43's answer. It depends only on the invite and link key the
-// caller sent and on the address's syntax and tag, never on whether the
-// address has an account.
 type SignupBegun struct {
 	SignupID    string
 	UserID      uuid.UUID
 	EmailProven bool
-	Salt        []byte // s_srv(email_norm)
-	Nonce       []byte // the signup nonce C1-P's AAK signatures use
+	Salt        []byte
+	Nonce       []byte
 	ExpiresAt   time.Time
 }
 
-// SignupBegin is #43 (after the per-IP limiters, which run in the API).
 func (a *Accounts) SignupBegin(ctx context.Context, req SignupBeginRequest) (SignupBegun, error) {
 	email, err := normEmail(req.Email)
 	if err != nil {
@@ -73,9 +57,6 @@ func (a *Accounts) SignupBegin(ctx context.Context, req SignupBeginRequest) (Sig
 	now := a.now()
 	codeHash := InviteCodeHash(req.InviteCode)
 	tag := a.Keys.EmailTag(email)
-	// An addressed invite used with another address is the same
-	// ErrNotInvited as an unknown code: the answer says nothing about whom an
-	// invite was for. Only the link key proves the address.
 	inv, err := invites.Resolve(ctx, a.Pool, req.InviteCode, linkKey, tag, now)
 	if err != nil {
 		return SignupBegun{}, err
@@ -129,8 +110,6 @@ func (a *Accounts) SignupBegin(ctx context.Context, req SignupBeginRequest) (Sig
 	return out, nil
 }
 
-// SignupVerify is #44: the signup code; success sets verified_at. Every
-// failure is ErrCodeRejected (or ErrRateLimited from the address's counter).
 func (a *Accounts) SignupVerify(ctx context.Context, signupID, code string) error {
 	now := a.now()
 	var (
@@ -163,8 +142,6 @@ func (a *Accounts) SignupVerify(ctx context.Context, signupID, code string) erro
 	})
 }
 
-// consumeCode verifies a code and runs then in one transaction. A wrong guess
-// is committed alone after the rollback.
 func (a *Accounts) consumeCode(ctx context.Context, c codeCheck, then func(ctx context.Context, tx pgx.Tx) error) error {
 	now := a.now()
 	tx, err := pgtx.BeginReadCommitted(ctx, a.Pool)
@@ -188,7 +165,6 @@ func (a *Accounts) consumeCode(ctx context.Context, c codeCheck, then func(ctx c
 	return tx.Commit(ctx)
 }
 
-// signupRow is a claimed (or claimable) signup.
 type signupRow struct {
 	ID          string
 	UserID      uuid.UUID
@@ -209,8 +185,6 @@ func scanSignup(row pgx.Row) (signupRow, error) {
 	return s, err
 }
 
-// readySignup reads a signup that is verified or proven, unexpired and
-// unclaimed (register/begin's check), or ErrCodeRejected.
 func readySignup(ctx context.Context, q querier, signupID string, now time.Time) (signupRow, error) {
 	s, err := scanSignup(q.QueryRow(ctx, `SELECT `+signupColumns+` FROM signup_ceremonies
 		WHERE id = $1 AND expires_at > $2 AND claimed_at IS NULL AND (email_proven OR verified_at IS NOT NULL)`,
@@ -224,9 +198,6 @@ func readySignup(ctx context.Context, q querier, signupID string, now time.Time)
 	return s, nil
 }
 
-// addressFree refuses an address that already has an account: 409
-// email_in_use for a proven signup (only the holder of that invite link can
-// learn it), else the uniform code_rejected.
 func addressFree(ctx context.Context, q querier, s signupRow) error {
 	var inUse bool
 	if err := q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE email_norm = $1)`, s.EmailNorm).Scan(&inUse); err != nil {
@@ -241,7 +212,6 @@ func addressFree(ctx context.Context, q querier, s signupRow) error {
 	return fmt.Errorf("%w: the address is in use", ErrCodeRejected)
 }
 
-// claimSignupTx claims a ready signup once, inside the account transaction.
 func claimSignupTx(ctx context.Context, tx pgx.Tx, signupID string, now time.Time) (signupRow, error) {
 	s, err := scanSignup(tx.QueryRow(ctx, `UPDATE signup_ceremonies SET claimed_at = $2
 		WHERE id = $1 AND expires_at > $2 AND claimed_at IS NULL AND (email_proven OR verified_at IS NOT NULL)
@@ -255,10 +225,6 @@ func claimSignupTx(ctx context.Context, tx pgx.Tx, signupID string, now time.Tim
 	return s, nil
 }
 
-// createAccountTx inserts the account a claimed signup describes, with the
-// given user handle, and redeems its invite and runs the join hook, all in
-// tx (spec 02 §10.7.2, §10.7.3). The address is re-checked here: a race with
-// another signup is ErrEmailInUse or ErrCodeRejected.
 func createAccountTx(ctx context.Context, tx pgx.Tx, s signupRow, handle []byte, now time.Time) error {
 	if err := addressFree(ctx, tx, s); err != nil {
 		return err
@@ -298,11 +264,9 @@ func createAccountTx(ctx context.Context, tx pgx.Tx, s signupRow, handle []byte,
 	return waitlist.OnInviteRedeemedTx(ctx, tx, inv.InviteID, s.UserID, s.Tag)
 }
 
-// signupEmailHash is the email_hash a C1-P bootstrap must carry.
 func signupEmailHash(s signupRow) []byte {
 	h := keyproto.EmailHash(s.EmailNorm)
 	return h[:]
 }
 
-// sameBytes is a constant-time equality for secrets and hashes.
 func sameBytes(a, b []byte) bool { return len(a) == len(b) && subtle.ConstantTimeCompare(a, b) == 1 }

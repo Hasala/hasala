@@ -3,8 +3,6 @@ import Testing
 
 @testable import HasalaDesign
 
-/// The amount keypad's input rules (page 11 · Behaviour): input that breaks a rule is ignored,
-/// so there is nothing to correct afterwards. Amounts are integer fils.
 @Suite("Amount entry")
 struct KeypadTests {
   private func typed(_ keys: [AmountKey]) -> AmountEntry {
@@ -48,7 +46,6 @@ struct KeypadTests {
     let e = AmountEntry(typing: "1234567890")
     #expect(e.text == "123456789")
     #expect(e.minor == 123_456_789_00)
-    // Decimals still go in after nine whole digits.
     #expect(AmountEntry(typing: "999999999.99").minor == 999_999_999_99)
   }
 

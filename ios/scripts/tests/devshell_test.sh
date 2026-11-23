@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-# The release scripts inside the repository's Nix devShell (.envrc: use flake), where
-# GNU coreutils, grep, sed and findutils come first on PATH: GNU `stat -f` and
-# `date -j -f` once broke asc-env.sh, build_number.sh and archive.sh there. Runs
-# every release-script test (build_number_test.sh, upload_precheck_test.sh and the
-# rest, through run.sh) under `nix develop -c`, after checking that the shell really
-# puts GNU stat and date first, so a pass means something. Both happen in one
-# `nix develop`, which evaluates the flake once rather than twice.
-#
-#   ios/scripts/tests/devshell_test.sh
 set -euo pipefail
 tests="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$tests/../../.." && pwd)"

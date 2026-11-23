@@ -6,9 +6,6 @@ import (
 	"time"
 )
 
-// SweepCeremonies is spec 02 §9.7's five-minute sweep: signup ceremonies (the
-// plaintext addresses), password-login, recovery, reset and email-change
-// ceremonies past their expiry.
 func (a *Accounts) SweepCeremonies(ctx context.Context) (int64, error) {
 	now := a.now()
 	var total int64
@@ -23,7 +20,6 @@ func (a *Accounts) SweepCeremonies(ctx context.Context) (int64, error) {
 	return total, nil
 }
 
-// SweepHourly is the rest of spec 02 §9.7's account sweeps.
 func (a *Accounts) SweepHourly(ctx context.Context) (int64, error) {
 	now := a.now()
 	steps := []struct {

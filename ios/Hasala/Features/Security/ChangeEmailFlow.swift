@@ -2,9 +2,6 @@ import HasalaDesign
 import Observation
 import SwiftUI
 
-/// Changing the account's address (Paper P2.5 LPY, LRC), after "Confirm it's you": the
-/// new address, then a code from each of the two addresses, checked together. Nothing
-/// changes until both match.
 @MainActor
 @Observable
 final class ChangeEmailModel {
@@ -18,7 +15,6 @@ final class ChangeEmailModel {
   var newCode = ""
   var busy = false
   var failure: AuthFailure?
-  /// The step the failure belongs to (the address, or the codes).
   private(set) var failedOnCodes = false
 
   init(account: AccountService, ticket: EmailChangeTicket) {
@@ -26,7 +22,6 @@ final class ChangeEmailModel {
     self.ticket = ticket
   }
 
-  /// A new address, not the one the account has.
   var newEmailReady: Bool {
     guard let norm = AccountFields.email(newEmail) else { return false }
     return norm != ticket.currentEmail
@@ -34,7 +29,6 @@ final class ChangeEmailModel {
 
   var codesReady: Bool { currentCode.count == 6 && newCode.count == 6 }
 
-  /// "Send both codes".
   func sendCodes() async -> Bool {
     guard newEmailReady else { return false }
     busy = true
@@ -53,7 +47,6 @@ final class ChangeEmailModel {
     }
   }
 
-  /// "Change email": both codes together. A wrong one keeps the digits to compare.
   func finish() async -> Bool {
     guard codesReady else { return false }
     busy = true
@@ -69,14 +62,11 @@ final class ChangeEmailModel {
     }
   }
 
-  /// Typing again clears a wrong code's ring and line.
   func codesEdited() {
     if failedOnCodes, case .codeWrong = failure { failure = nil }
   }
 }
 
-/// The change-email cover: its own stack, so the two steps keep the account template's
-/// system back (decision 7). `onDone` gets the new address, or nil when cancelled.
 struct ChangeEmailFlow: View {
   @State private var model: ChangeEmailModel
   var onDone: (String?) -> Void
@@ -101,7 +91,6 @@ struct ChangeEmailFlow: View {
   }
 }
 
-/// Paper LPY "Change your email" (1 of 2).
 private struct NewAddressStep: View {
   @Bindable var model: ChangeEmailModel
   var onCancel: () -> Void
@@ -131,7 +120,6 @@ private struct NewAddressStep: View {
   }
 }
 
-/// Paper LRC "Enter both codes" (2 of 2).
 private struct CodesStep: View {
   @Bindable var model: ChangeEmailModel
   var onCancel: () -> Void
@@ -183,8 +171,6 @@ private struct CodesStep: View {
   }
 }
 
-/// A code group (Paper LRC "CodeGroup"): the address it came from, its status ("Done" once
-/// six digits are in, else the resend countdown), and six boxes over one hidden field.
 private struct CodeGroup: View {
   var label: String
   @Binding var code: String
@@ -233,9 +219,6 @@ private struct CodeGroup: View {
   }
 }
 
-/// Six 56-tall boxes across the content width (Paper LRC "CodeBoxes"), drawn over one
-/// hidden `.oneTimeCode` field: the next box rings inside and shows the caret; a wrong code
-/// rings every box and keeps the digits.
 private struct CodeBoxes6: View {
   @Binding var code: String
   var wrong: Bool
@@ -288,8 +271,6 @@ private struct CodeBoxes6: View {
   }
 }
 
-/// A field that can't be edited (Paper LPY "Current email"): the quaternary fill and the
-/// value in secondary.
 struct ReadOnlyField: View {
   var label: String
   var value: String

@@ -1,16 +1,3 @@
-// 03a §3-§4: the plan family's fold (`budget_set`, `budget_moved`,
-// `income_source_set`, `category_plan_role_set`). Every type is parent-free;
-// keyed records are last write by position (03a §3.0.1) with the P-11
-// overwrite notice; moves are additive facts.
-//
-// Deviation (spec 04 §2.2 / 03a §4.2): the family folds here, in CoreReplay's
-// V4 carve-out, rather than through a `FoldFamily` registered from CoreDomain.
-// The rules and the witness shape are 03a's; only the placement differs. It
-// keeps `State` a plain Codable value (the snapshot) with no existential family
-// box in the hot fold path. `PlanState` is still the 03a type.
-//
-// The fold never consults the taxonomy, the transactions or a clock
-// (03a §4.1): every cross-record rule is a read-time rule in `PlanEngine`.
 import CoreJSON
 import CoreTime
 import CoreWire
@@ -22,7 +9,6 @@ extension State {
     PlanWrite(opID: e.op.opID, writerID: e.writerID, atMs: (try? parseInstantMs(e.op.authoredAt)) ?? 0)
   }
 
-  /// 03a §3.0.1 rule 2: another writer replacing a value with an EARLIER stamp.
   private mutating func noteOverwrite(_ kind: String, _ key: String, _ cur: PlanWrite?, _ curValue: String?, _ w: PlanWrite, seq: Int64) {
     guard let cur, !utf8Equal(cur.writerID, w.writerID), w.atMs < cur.atMs else { return }
     plan.overwrites.append(
@@ -69,7 +55,6 @@ extension State {
       }
       reversed = rec.position
     }
-    // Every new value is computed with checked arithmetic before any mutation.
     var staged: [(String, PlanCell)] = []
     for (leg, delta) in [(from, -a), (to, a)] {
       guard let leg else { continue }
@@ -118,8 +103,6 @@ extension State {
     plan.roles[c] = PlanRoleRecord(role: role, write: w)
   }
 
-  /// `batch_id` / `undoes`: absent and null are equivalent; otherwise a
-  /// non-empty printable-ASCII string of at most 64 bytes.
   private func optionalToken(_ v: JSONValue?, _ what: String) throws(PayloadError) -> String? {
     guard let v = P.present(v) else { return nil }
     guard let s = v.stringValue, (1...64).contains(s.utf8.count), s.utf8.allSatisfy({ $0 > 0x20 && $0 < 0x7f }) else {

@@ -1,17 +1,9 @@
-// `LedgerReader`'s bills-and-accounts queries (03b, beta scope) and the records
-// the plan and the Gmail lane read: money accounts, card links, check-ins, bills
-// and their resolutions, projects, income sources, sender trust. Every query
-// returns CoreReplay's record types as the fold materialized them, in a stable
-// order, with the pending overlay already applied by the projector.
 import CoreJSON
 import CoreReplay
 import Foundation
 import GRDB
 
 extension LedgerReader {
-  // MARK: Accounts and cards (03b §4.2-§4.4)
-
-  /// Every money account, active or closed, in fold order (first definition first).
   public func accounts() throws -> [Account] {
     try db.read { db in
       try Row.fetchAll(db, sql: "SELECT * FROM account ORDER BY first_seq, rowid").map { r in
@@ -23,7 +15,6 @@ extension LedgerReader {
     }
   }
 
-  /// Every card link (`mine` and `not_mine`; a forgotten card has no row).
   public func cards() throws -> [CardLink] {
     try db.read { db in
       try Row.fetchAll(db, sql: "SELECT * FROM card ORDER BY bank, last4").map { r in
@@ -32,7 +23,6 @@ extension LedgerReader {
     }
   }
 
-  /// Balance check-ins, newest first per account; voided ones included (`void`).
   public func checkins(account: String? = nil) throws -> [Checkin] {
     try fetch("checkin", where: "account", is: account, orderBy: "account, as_of_ms DESC, at_seq DESC") { r in
       Checkin(
@@ -55,9 +45,6 @@ extension LedgerReader {
     return try db.read { db in try Row.fetchAll(db, sql: sql, arguments: StatementArguments(a)).map(make) }
   }
 
-  // MARK: Bills (03b §3)
-
-  /// Every bill record (active, cancelled or dismissed), in fold order.
   public func bills() throws -> [(id: String, bill: Bill)] {
     try db.read { db in
       try Row.fetchAll(db, sql: "SELECT * FROM bill ORDER BY first_seq, rowid").map { r in
@@ -96,7 +83,6 @@ extension LedgerReader {
     }
   }
 
-  /// The resolved occurrences (`paid`, `skipped`, `snoozed`), per bill by due date.
   public func billResolutions(bill: String? = nil) throws -> [BillResolution] {
     try fetch("bill_resolution", where: "bill", is: bill, orderBy: "bill, due") { r in
       BillResolution(bill: r["bill"], due: r["due"], resolution: r["resolution"], txn: r["txn"], until: r["until"], atSeq: r["at_seq"])
@@ -109,9 +95,6 @@ extension LedgerReader {
     }
   }
 
-  // MARK: Projects, income, trust
-
-  /// Projects that are not removed, soonest start first (undated last).
   public func projects() throws -> [(id: String, project: Project)] {
     try db.read { db in
       try Row.fetchAll(
@@ -128,13 +111,10 @@ extension LedgerReader {
     }
   }
 
-  /// The plan's income sources (03a §3.4), active or not. `write` is not projected.
   public func incomeSources() throws -> [IncomeSource] {
     Array(try planState().incomeSources.values)
   }
 
-  /// The `sender_trust_set` fold: domain → trusted (forwarder and shared-suffix
-  /// domains included, as the fold keeps them; `queryDomains` filters those).
   public func senderTrust() throws -> [String: Bool] {
     try db.read { db in
       var out: [String: Bool] = [:]
@@ -143,7 +123,6 @@ extension LedgerReader {
     }
   }
 
-  /// Whether any projected row (live or superseded, pending included) carries `ingestID`.
   public func hasIngest(_ ingestID: String) throws -> Bool {
     try db.read { db in
       try Int.fetchOne(

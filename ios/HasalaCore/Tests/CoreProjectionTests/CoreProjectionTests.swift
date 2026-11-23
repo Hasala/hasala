@@ -1,7 +1,3 @@
-// CoreProjection: the Maya scenario of spec 03a §7 end to end — authored by
-// OpAuthor, folded by CoreReplay, projected into SQLite, read back through
-// LedgerReader and computed by PlanEngine — against the worked example's
-// figures (03a §7.2), plus the projection's own contracts.
 import CoreCategorize
 import CoreDomain
 import CoreInvariants
@@ -103,7 +99,6 @@ struct MayaScenarioTests {
     #expect(alloc.map(\.category) == ["utilities", "savings", "groceries", "transport", "healthcare", "dining", "entertainment", "shopping", "travel"])
     #expect(alloc.map(\.amount) == [1_705, 62_500, 3_132, 1_281, 428, 7_861, 2_948, 7_861, 12_284])
     #expect(alloc.reduce(0) { $0 + $1.amount } == 100_000)
-    // Applied as one blob of moves, Ready to assign reaches 0.
     var s = Self.maya.state
     var a = OpAuthor(Self.maya.context())
     a.autoAssign(month: Maya.october, alloc, batchID: "b1")
@@ -207,13 +202,12 @@ struct ProjectionContractTests {
     try Projector.project(s, dictionary: Self.dictionary, projectedAtMs: 1, into: db)
     let reader = LedgerReader(db)
     let careem = try #require(try reader.txn(maya.ids["careem"]!))
-    #expect(careem.displayName == "Careem")  // dictionary `d`
+    #expect(careem.displayName == "Careem")
     #expect(careem.localDate == "2026-10-09" && careem.postedAt == "2026-10-09T19:40:00.000Z")
     let ikea = try #require(try reader.txn(maya.ids["ikea"]!))
     #expect(ikea.displayName == "IKEA")
     let rent = try #require(try reader.txn(maya.ids["rent"]!))
-    #expect(rent.displayName == "Al Habtoor Properties")  // prettify
-    // Rename the merchant: every row with its key follows.
+    #expect(rent.displayName == "Al Habtoor Properties")
     var a = OpAuthor(maya.context())
     a.renameMerchant(raw: "TALABAT", to: "Talabat (food)")
     let blob = try a.build()
@@ -286,8 +280,6 @@ struct ProjectionContractTests {
     let taxonomy = try reader.taxonomy()
     let c = Categorizer(rules: [], dictionary: Self.dictionary, categories: taxonomy)
     let (actions, queue) = Sweep.plan(try reader.sweepRows(), c)
-    // Only uncategorized review rows are candidates for re-filing: the dictionary files Lulu,
-    // Dubai Taxi and Apple; Steam and the ATM join the model queue.
     #expect(Set(actions.map(\.txnID)) == Set(["lulu", "dubaitaxi", "apple"].map { maya.ids[$0]! }))
     #expect(actions.allSatisfy { $0.needsReview })
     #expect(Set(queue.map(\.id)) == Set(["steam", "atm"].map { maya.ids[$0]! }))
@@ -297,7 +289,6 @@ struct ProjectionContractTests {
   @Test("AT-SYNC-6: a warm start (snapshot + the rest) projects exactly what a cold fold does")
   func warmEqualsCold() throws {
     let maya = try Maya()
-    // Re-fold Maya's state from its own canonical history: split the ops at a midpoint.
     var a = OpAuthor(maya.context())
     a.defineCategory(id: "zz_pets", name: "Pets", kind: .spending, bucket: .want, icon: "paw", active: true)
     a.defineCategory(id: "aa_gifts", name: "Gifts", kind: .spending, bucket: .want, icon: "gift", active: true)

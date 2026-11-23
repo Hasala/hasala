@@ -1,18 +1,3 @@
-// Package config loads hasalad's configuration (spec 02 §18): defaults, then an
-// optional TOML file (--config or HASALA_CONFIG; unknown keys refused), then
-// HASALA_* environment overrides, then validation. Every key has an environment
-// name, so a deployment can be environment-only, and the QA host is.
-//
-// Secrets never have a TOML key. They arrive as a path in a *_FILE variable
-// (systemd LoadCredential=), and a secret file whose mode grants any group or
-// other permission is refused. With server.trusted_proxy = cloudflare (the
-// production posture) a secret supplied as a raw environment value is refused
-// too.
-//
-// The [apns], [gmail], [outlook] and [email] groups and the console's environment are
-// loaded and validated here so that later workstreams (WS-4 push and Gmail, the
-// mail sender, spec 07's console) only wire them in; nothing in this tree uses
-// them yet.
 package config
 
 import (
@@ -37,10 +22,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/mail"
 )
 
-// Config is the full configuration surface.
 type Config struct {
-	// Mode is the dispatch mode cmd/hasalad is running as (see Modes). Never
-	// read from TOML or the environment: main() sets it from the command line.
 	Mode string `toml:"-"`
 
 	Server   ServerConfig   `toml:"server"`
@@ -50,64 +32,30 @@ type Config struct {
 	Gmail    GmailConfig    `toml:"gmail"`
 	Outlook  OutlookConfig  `toml:"outlook"`
 	Email    EmailConfig    `toml:"email"`
-	// Web is spec 07's website routes and mail limits (environment only).
-	Web WebConfig `toml:"-"`
-	// Ops is the operator's notices (environment only).
-	Ops OpsConfig `toml:"-"`
+	Web      WebConfig      `toml:"-"`
+	Ops      OpsConfig      `toml:"-"`
 
-	// Console is the operator console's configuration (spec 07 §8, §14.1). It
-	// is environment-only and read only by the console mode; serve refuses to
-	// start while any of it is set (fence F7-4, CheckServeEnvironment).
 	Console ConsoleConfig `toml:"-"`
 
-	// PGDSN is the runtime DSN (HASALA_PG_DSN), connected as hasala_runtime.
-	// Environment-only: it may carry a password off the QA host.
-	PGDSN string `toml:"-"`
-	// MigrateDSN is the schema owner's DSN (HASALA_MIGRATE_DSN), used only by
-	// `hasalad migrate` (spec 02 §5.5), which never falls back to PGDSN.
+	PGDSN      string `toml:"-"`
 	MigrateDSN string `toml:"-"`
 
-	// The command lines of the operator modes. Command-line only: which
-	// account an operator is about to delete, or which invite to mint, must be
-	// answerable from the command that ran and from nowhere else.
 	Purge   PurgeArgs   `toml:"-"`
 	Verify  VerifyArgs  `toml:"-"`
 	Migrate MigrateArgs `toml:"-"`
 }
 
-// ServerConfig controls the listeners.
 type ServerConfig struct {
-	// HTTPListen is the API listener. Plain HTTP, always loopback: there is no
-	// TLS code in hasalad (spec 02 §21 F3); Cloudflare Tunnel terminates TLS.
-	HTTPListen string `toml:"http_listen"`
-	// MetricsListen is the optional Prometheus listener (spec 02 §20.1). Off
-	// when empty; loopback and distinct from HTTPListen when set.
-	MetricsListen string `toml:"metrics_listen"`
-	// TrustedProxy is "none" (local runs, tests) or "cloudflare" (the QA host:
-	// Cf-Connecting-Ip is trusted from loopback only, spec 02 §16.1, and the
-	// production rails below apply).
-	TrustedProxy string `toml:"trusted_proxy"`
-	// MinIOSBuild, when positive, answers 426 upgrade_required to an app whose
-	// CFBundleVersion is lower (spec 02 §6.1; WS-3 wires the gate).
-	MinIOSBuild int `toml:"min_ios_build"`
-	// LogLevel is debug, info, warn or error; debug is refused behind
-	// Cloudflare.
-	LogLevel string `toml:"log_level"`
-	// LogGenerationFile (HASALA_LOG_GENERATION_FILE, env only) holds spec 02
-	// §15.5's log generation: one decimal integer ≥ 1, written by the
-	// operator's restore and wipe runbooks, and by serve when it finds the
-	// database replaced without a raise. Absent means 1.
+	HTTPListen        string `toml:"http_listen"`
+	MetricsListen     string `toml:"metrics_listen"`
+	TrustedProxy      string `toml:"trusted_proxy"`
+	MinIOSBuild       int    `toml:"min_ios_build"`
+	LogLevel          string `toml:"log_level"`
 	LogGenerationFile string `toml:"-"`
-	// LogGeneration is the file's value, read once by serve at start
-	// (ReadLogGeneration) and reported by GET /api/v1/meta.
-	LogGeneration   int    `toml:"-"`
-	PurgeLedgerPath string `toml:"-"`
+	LogGeneration     int    `toml:"-"`
+	PurgeLedgerPath   string `toml:"-"`
 }
 
-// ReadLogGeneration reads spec 02 §15.5's log generation file. An empty path
-// or a missing file is generation 1; anything but one decimal integer ≥ 1
-// (surrounding whitespace allowed) is an error, because a device compares it
-// to decide whether the server was restored under it.
 func ReadLogGeneration(path string) (int, error) {
 	if path == "" {
 		return 1, nil
@@ -217,188 +165,113 @@ func writeGenerationFile(path, body string) error {
 	return nil
 }
 
-// TrustedProxy values.
 const (
 	ProxyNone       = "none"
 	ProxyCloudflare = "cloudflare"
 )
 
-// AuthConfig is the WebAuthn relying party, session lifetimes and the server's
-// auth key.
 type AuthConfig struct {
-	// RPID is the bare effective domain ("hasala.app"); RPOrigins are the full
-	// origins a ceremony may come from ("https://hasala.app"). Required by
-	// serve; localhost is allowed only with trusted_proxy = none.
-	RPID          string   `toml:"rp_id"`
-	RPDisplayName string   `toml:"rp_display_name"`
-	RPOrigins     []string `toml:"rp_origins"`
-	// SessionIdle and SessionMax are spec 02 §9.2's sliding idle limit and
-	// absolute cap (PO-15: 30 and 90 days).
-	SessionIdle time.Duration `toml:"session_idle"`
-	SessionMax  time.Duration `toml:"session_max"`
-	InviteTTL   time.Duration `toml:"invite_ttl"`
-	// PasswordHashConcurrency gates PBKDF2 (spec 02 §16.2), 1–8.
-	PasswordHashConcurrency int `toml:"password_hash_concurrency"`
-	// AuthKeyFile (HASALA_AUTH_KEY_FILE) holds the 32-byte auth_key, 64 hex
-	// (spec 01 §4.11): the pepper, code and tag keys. Never TOML.
-	AuthKeyFile string `toml:"-"`
-	// SaltKeyFile (HASALA_SALT_KEY_FILE) holds the never-rotated salt_key, 64
-	// hex, which keys only the public password salt (review 2 F-04). Never TOML.
-	SaltKeyFile string `toml:"-"`
+	RPID                    string        `toml:"rp_id"`
+	RPDisplayName           string        `toml:"rp_display_name"`
+	RPOrigins               []string      `toml:"rp_origins"`
+	SessionIdle             time.Duration `toml:"session_idle"`
+	SessionMax              time.Duration `toml:"session_max"`
+	InviteTTL               time.Duration `toml:"invite_ttl"`
+	PasswordHashConcurrency int           `toml:"password_hash_concurrency"`
+	AuthKeyFile             string        `toml:"-"`
+	SaltKeyFile             string        `toml:"-"`
 }
 
-// HeadroomConfig is the disk fuse (internal/headroom).
 type HeadroomConfig struct {
-	// Path is any path on the Postgres data directory's filesystem. Required.
 	Path       string        `toml:"path"`
 	FloorBytes int64         `toml:"floor_bytes"`
 	Interval   time.Duration `toml:"interval"`
 }
 
-// APNsConfig is the APNs sender (spec 02 §12; WS-4). When Enabled is false the
-// waker is a no-op and the token routes stay mounted.
 type APNsConfig struct {
 	Enabled             bool     `toml:"enabled"`
 	TeamID              string   `toml:"team_id"`
 	KeyID               string   `toml:"key_id"`
 	Topic               string   `toml:"topic"`
 	AllowedEnvironments []string `toml:"allowed_environments"`
-	// KeyFile (HASALA_APNS_KEY_FILE) is the .p8 signing key. Never TOML.
-	KeyFile string `toml:"-"`
+	KeyFile             string   `toml:"-"`
 }
 
-// GmailConfig is the Gmail mailbox link and its Pub/Sub push (spec 02 §13;
-// WS-4). It is two parts, each all or nothing:
-//
-//   - the link: ios_client_id (the audience of the app's Google ID token) and
-//     the route key. It mounts the mailbox-link routes (#34–#38).
-//   - the push: the four pubsub_* values, only together with the link. It
-//     mounts the Pub/Sub hook (#39), reports pubsub_topic as /meta's
-//     gmail_watch_topic, lets #36 record watches and runs the renewal nudge.
-//
-// The link alone is a working mailbox link with no wakes: /meta's
-// gmail_watch_topic stays null, so the app never calls users.watch and fetches
-// mail when it is opened or refreshed in the background. Neither part leaves
-// #34–#39 unmounted.
 type GmailConfig struct {
 	IOSClientID          string `toml:"ios_client_id"`
 	PubSubTopic          string `toml:"pubsub_topic"`
 	PubSubSubscription   string `toml:"pubsub_subscription"`
 	PubSubAudience       string `toml:"pubsub_audience"`
 	PubSubServiceAccount string `toml:"pubsub_service_account"`
-	// RouteKeyFile (HASALA_MAILBOX_ROUTE_KEY_FILE): 64 hex. Never TOML. It is
-	// the route key of every mailbox link, Outlook's included.
-	RouteKeyFile string `toml:"-"`
+	RouteKeyFile         string `toml:"-"`
 }
 
-// LinkEnabled reports whether the link part is configured; a loaded Config
-// that has ios_client_id has the route key too.
 func (g GmailConfig) LinkEnabled() bool { return g.IOSClientID != "" }
 
-// PushEnabled reports whether any of the push part is configured; a loaded
-// Config has either all four of its values, and the link, or none of them.
 func (g GmailConfig) PushEnabled() bool {
 	return g.PubSubTopic != "" || g.PubSubSubscription != "" || g.PubSubAudience != "" || g.PubSubServiceAccount != ""
 }
 
-// OutlookConfig is the Outlook mailbox link (personal Microsoft accounts) and
-// its Microsoft Graph push. It is two parts:
-//
-//   - the link: client_id (the Outlook application id, the audience of the
-//     app's Microsoft ID token) and the route key ([gmail]'s
-//     HASALA_MAILBOX_ROUTE_KEY_FILE). It mounts the mailbox-link routes for
-//     provider "outlook".
-//   - the push: notification_url and lifecycle_url, both or neither, only
-//     with the link. They are the public https URLs of the Graph hooks that
-//     the device names when it subscribes, and they let the watch route
-//     record a subscription's expiry.
 type OutlookConfig struct {
 	ClientID        string `toml:"client_id"`
 	NotificationURL string `toml:"notification_url"`
 	LifecycleURL    string `toml:"lifecycle_url"`
 }
 
-// The Graph hook paths the push URLs must name.
 const (
 	OutlookNotificationPath = "/hooks/outlook/graph"
 	OutlookLifecyclePath    = "/hooks/outlook/graph/lifecycle"
 )
 
-// LinkEnabled reports whether the link part is configured.
 func (o OutlookConfig) LinkEnabled() bool { return o.ClientID != "" }
 
-// PushEnabled reports whether any of the push part is configured; a loaded
-// Config has both URLs, and the link, or neither.
 func (o OutlookConfig) PushEnabled() bool { return o.NotificationURL != "" || o.LifecycleURL != "" }
 
-// EmailConfig is outbound mail through Cloudflare Email Service (spec 02
-// §14.4). The account id and the API token are all or nothing; none means
-// every email fails (mail.Unconfigured) and the waitlist routes stay off.
-// Required behind Cloudflare.
 type EmailConfig struct {
 	CloudflareAccountID string `toml:"cloudflare_account_id"`
 	FromName            string `toml:"from_name"`
 	From                string `toml:"from"`
 	ReplyTo             string `toml:"reply_to"`
 	FreezeURL           string `toml:"freeze_url"`
-	// APITokenFile (HASALA_EMAIL_API_TOKEN_FILE). Never TOML.
-	APITokenFile string `toml:"-"`
-	// WebBaseURL (HASALA_WEB_BASE_URL) is the base of every link in spec 07's
-	// emails. Environment-only.
-	WebBaseURL string `toml:"-"`
-	// APIBaseURL (HASALA_EMAIL_API_BASE_URL) is the Email Service API root,
-	// DefaultEmailAPIBaseURL when empty. A local end-to-end run points it at
-	// a capture server; with trusted_proxy = cloudflare anything but the
-	// default is refused. Environment-only.
-	APIBaseURL string `toml:"-"`
+	APITokenFile        string `toml:"-"`
+	WebBaseURL          string `toml:"-"`
+	APIBaseURL          string `toml:"-"`
 }
 
-// DefaultEmailAPIBaseURL is the Email Service API root the sender uses.
 const DefaultEmailAPIBaseURL = mail.DefaultBaseURL
 
-// Enabled reports whether either half of the sender is configured.
 func (e EmailConfig) Enabled() bool { return e.CloudflareAccountID != "" || e.APITokenFile != "" }
 
-// WebConfig is spec 07 §14.1's serve-side environment: the website routes,
-// CORS origins and form redirect, the waitlist ceilings and retention, and the
-// mail lanes' rates and the email log's retention.
 type WebConfig struct {
-	Origins             []string      // HASALA_WEB_ORIGINS; empty = CORS off
-	DoneURL             string        // HASALA_WEB_WAITLIST_DONE_URL
-	WaitlistMax         int64         // HASALA_WAITLIST_MAX
-	WaitlistPendingMax  int64         // HASALA_WAITLIST_PENDING_MAX
-	WaitlistRetention   time.Duration // HASALA_WAITLIST_RETENTION
-	RateWaitlist        int64         // HASALA_EMAIL_RATE_WAITLIST, per hour
-	RateBulk            int64         // HASALA_EMAIL_RATE_BULK, per hour
-	LogRetention        time.Duration // HASALA_EMAIL_LOG_RETENTION
-	TurnstileSecretFile string        `toml:"-"`
-	TurnstileRequired   bool          `toml:"-"`
-	TurnstileHostnames  []string      `toml:"-"`
+	Origins             []string
+	DoneURL             string
+	WaitlistMax         int64
+	WaitlistPendingMax  int64
+	WaitlistRetention   time.Duration
+	RateWaitlist        int64
+	RateBulk            int64
+	LogRetention        time.Duration
+	TurnstileSecretFile string   `toml:"-"`
+	TurnstileRequired   bool     `toml:"-"`
+	TurnstileHostnames  []string `toml:"-"`
 }
 
-// OpsConfig is the operator's ntfy notice for each new early-access request
-// (a waitlist entry that confirmed its address). Off when NtfyURL is empty.
 type OpsConfig struct {
-	NtfyURL   string // HASALA_OPS_NTFY_URL: the ntfy topic URL, no credentials in it
-	NtfyClick string // HASALA_OPS_NTFY_CLICK: optional https URL the notice opens
+	NtfyURL   string
+	NtfyClick string
 }
 
-// Enabled reports whether the notice is configured.
 func (o OpsConfig) Enabled() bool { return o.NtfyURL != "" }
 
-// ConsoleConfig is the operator console's environment (spec 07 §8.1, §14.1).
-// Only `hasalad console` reads it.
 type ConsoleConfig struct {
-	Listen        string   // HASALA_CONSOLE_LISTEN: a literal loopback IP:port
-	MetricsListen string   // HASALA_CONSOLE_METRICS_LISTEN
-	Host          string   // HASALA_CONSOLE_HOST: never a name under the RP ID
-	Logins        []string // HASALA_CONSOLE_LOGINS: comma-separated, non-empty
-	Tailnet       string   // HASALA_CONSOLE_TAILNET
-	// TestFlightMode (HASALA_TESTFLIGHT_MODE) is "external" or "manual".
+	Listen         string
+	MetricsListen  string
+	Host           string
+	Logins         []string
+	Tailnet        string
 	TestFlightMode string
 }
 
-// PurgeArgs is `hasalad purge-user <uuid> --confirm <uuid> [--dry-run]`.
 type PurgeArgs struct {
 	User         string
 	Confirm      string
@@ -406,28 +279,22 @@ type PurgeArgs struct {
 	ReplayLedger bool
 }
 
-// VerifyArgs is `hasalad verify structural|usage [--user <uuid>] [--repair]`.
 type VerifyArgs struct {
-	Check  string // "structural" or "usage"
+	Check  string
 	User   string
 	Repair bool
 	JSON   bool
 }
 
-// MigrateArgs is `hasalad migrate [--status | --pending] [--to VERSION]`.
 type MigrateArgs struct {
 	Status  bool
 	Pending bool
 	To      int64
 }
 
-// modeOrder is every mode cmd/hasalad dispatches (spec 02 §18.3, the subset
-// built so far). cmd/hasalad cross-checks its dispatch table against it on
-// every start (checkModeHandlers).
 var modeOrder = []string{"serve", "migrate", "verify", "purge-user", "invite", "account", "mailbox", "waitlist", "email",
 	"console", "version"}
 
-// Modes returns every mode cmd/hasalad dispatches.
 func Modes() []string {
 	return slices.Clone(modeOrder)
 }
@@ -447,8 +314,6 @@ func defaults() Config {
 			PasswordHashConcurrency: 1,
 		},
 		Headroom: HeadroomConfig{
-			// Spec 02 §18.2's decimal 8 GB, not headroom.DefaultFloor's
-			// 8 GiB (ledgerd's, the fuse's own fallback).
 			FloorBytes: 8_000_000_000,
 			Interval:   headroom.DefaultInterval,
 		},
@@ -475,10 +340,6 @@ func defaults() Config {
 	}
 }
 
-// LoadEnv reads path (or HASALA_CONFIG when path is empty), applies the
-// environment and validates what every mode shares. Mode-specific
-// requirements are ValidateFor's. lookup answers one variable, environ lists
-// them all (the raw-secret rail scans every name).
 func LoadEnv(path string, lookup func(string) (string, bool), environ []string) (Config, error) {
 	cfg := defaults()
 	if path == "" {
@@ -629,7 +490,6 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	return errors.Join(errs...)
 }
 
-// validate checks what every mode shares.
 func (c Config) validate(lookup func(string) (string, bool), environ []string) error {
 	switch c.Server.TrustedProxy {
 	case ProxyNone, ProxyCloudflare:
@@ -793,8 +653,6 @@ func (c Config) validateAPNs() error {
 	return nil
 }
 
-// validateGmail is GmailConfig's rule set: the link part both or neither, the
-// push part all or none and only with the link, then each value's shape.
 func (c Config) validateGmail() error {
 	g := c.Gmail
 	missing := func(group map[string]string) string {
@@ -807,8 +665,6 @@ func (c Config) validateGmail() error {
 		sort.Strings(out)
 		return strings.Join(out, ", ")
 	}
-	// The route key is shared with [outlook]: with neither link it would key
-	// nothing, which is a half-configured link.
 	if g.LinkEnabled() || (g.RouteKeyFile != "" && !c.Outlook.LinkEnabled()) {
 		if m := missing(map[string]string{
 			"gmail.ios_client_id (HASALA_GOOGLE_IOS_CLIENT_ID)": g.IOSClientID,
@@ -849,20 +705,14 @@ func (c Config) validateGmail() error {
 	if u, err := url.Parse(g.PubSubAudience); err != nil || u.Scheme != "https" || u.Host == "" {
 		return fmt.Errorf("gmail.pubsub_audience %q: want the https URL of the hook", g.PubSubAudience)
 	}
-	// The hook compares the push token's email with this value exactly, so a
-	// typo would quietly refuse every push with 403.
 	if !isServiceAccountEmail(g.PubSubServiceAccount) {
 		return fmt.Errorf("gmail.pubsub_service_account %q: want <name>@<P>.iam.gserviceaccount.com", g.PubSubServiceAccount)
 	}
 	return nil
 }
 
-// uuidShape is an application (client) id as Microsoft writes it in aud:
-// lower case, so the audience check, which is exact, cannot miss on case.
 var uuidShape = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-// validateOutlook is OutlookConfig's rule set: the link needs the route key,
-// the push needs both URLs and the link, then each value's shape.
 func (c Config) validateOutlook() error {
 	o := c.Outlook
 	if o.PushEnabled() {
@@ -929,9 +779,6 @@ func hostOf(raw string) string {
 	return u.Host
 }
 
-// isServiceAccountEmail reports whether s has the shape of a Google Cloud
-// service account's email: one '@', a non-empty name, and a domain that is a
-// project under iam.gserviceaccount.com.
 func isServiceAccountEmail(s string) bool {
 	const suffix = ".iam.gserviceaccount.com"
 	name, domain, ok := strings.Cut(s, "@")
@@ -1042,10 +889,6 @@ func (c Config) validateEmail(prod bool) error {
 
 var rawSecretName = regexp.MustCompile(`^HASALA_[A-Z0-9_]*_(KEY|TOKEN|SECRET)$`)
 
-// refuseRawSecrets is the production rail of spec 02 §18.1: behind Cloudflare,
-// no secret may arrive as a raw environment value (it would be visible in
-// /proc and in `systemctl show`), and a DSN may not carry a password (the QA
-// host uses peer authentication).
 func refuseRawSecrets(c Config, lookup func(string) (string, bool), environ []string) error {
 	for _, dsn := range []struct{ name, v string }{{"HASALA_PG_DSN", c.PGDSN}, {"HASALA_MIGRATE_DSN", c.MigrateDSN}} {
 		if strings.Contains(strings.ToLower(dsn.v), "password") || dsnURLHasPassword(dsn.v) {
@@ -1082,13 +925,11 @@ func dsnURLHasPassword(dsn string) bool {
 	return at >= 0 && strings.Contains(authority[:at], ":")
 }
 
-// ValidateFor adds the requirements of one mode to what Load checked.
 func (c Config) ValidateFor(mode string) error {
 	switch mode {
 	case "version":
 		return nil
 	case "migrate":
-		// --pending alone accepts the runtime DSN (spec 02 §5.5).
 		if c.MigrateDSN == "" && !(c.Migrate.Pending && c.PGDSN != "") {
 			return errors.New("migrate needs HASALA_MIGRATE_DSN (it never falls back to HASALA_PG_DSN)")
 		}
@@ -1124,10 +965,6 @@ func (c Config) ValidateFor(mode string) error {
 	return nil
 }
 
-// CheckServeEnvironment is fence F7-4's serve half (spec 07 §8.1): serve
-// refuses to start while any console or App Store Connect variable is set, so
-// a mis-wired unit cannot turn the public process into a console or hand it
-// the App Store Connect key.
 func CheckServeEnvironment(env []string) error {
 	for _, kv := range env {
 		name, _, _ := strings.Cut(kv, "=")
@@ -1139,8 +976,6 @@ func CheckServeEnvironment(env []string) error {
 	return nil
 }
 
-// CheckConsoleEnvironment is fence F7-4's console half: the console refuses
-// serve's secrets.
 func CheckConsoleEnvironment(env []string) error {
 	refused := map[string]bool{
 		"HASALA_TURNSTILE_SECRET_FILE": true, "HASALA_AUTH_KEY_FILE": true, "HASALA_APNS_KEY_FILE": true,
@@ -1183,8 +1018,6 @@ func (c Config) validateConsole() error {
 	return nil
 }
 
-// CheckSecretFile refuses a secret file that is missing, not a regular file, or
-// readable by group or other (spec 02 §18.1).
 func CheckSecretFile(path string) error {
 	perm, err := regularFilePerm(path)
 	if err != nil {
@@ -1207,9 +1040,6 @@ func regularFilePerm(path string) (fs.FileMode, error) {
 	return fi.Mode().Perm(), nil
 }
 
-// InCredentialsDirectory reports whether path names a file directly inside
-// credDir, the $CREDENTIALS_DIRECTORY systemd gives a unit with
-// LoadCredential= (spec 05 §5.5). An empty credDir matches nothing.
 func InCredentialsDirectory(path, credDir string) bool {
 	if credDir == "" || !filepath.IsAbs(credDir) {
 		return false
@@ -1217,12 +1047,6 @@ func InCredentialsDirectory(path, credDir string) bool {
 	return filepath.Dir(filepath.Clean(path)) == filepath.Clean(credDir)
 }
 
-// CheckCredentialFile is CheckSecretFile for a file systemd placed in the
-// unit's credentials directory (LoadCredential=, spec 05 §5.5). systemd
-// writes it root-owned 0400 and grants the unit's user read access through an
-// ACL, so stat shows the ACL mask in the group bits (0440) although no group
-// can read it; the directory itself is reachable by the unit alone. Any
-// permission for other is still refused.
 func CheckCredentialFile(path string) error {
 	perm, err := regularFilePerm(path)
 	if err != nil {
@@ -1234,8 +1058,6 @@ func CheckCredentialFile(path string) error {
 	return nil
 }
 
-// IsLoopbackListen reports whether a listen address binds only loopback. An
-// address with no host (":8443") binds every interface and is not loopback.
 func IsLoopbackListen(addr string) bool {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil || host == "" {
@@ -1248,8 +1070,6 @@ func IsLoopbackListen(addr string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// isLiteralLoopback is the console's stricter rule: 127.0.0.1 or ::1 exactly,
-// never a name.
 func isLiteralLoopback(addr string) bool {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil || port == "" {

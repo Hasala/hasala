@@ -1,8 +1,4 @@
 ---
-/**
- * 06 Bills found (Paper AWS-0 desktop, BP7-0 phone). The three bill cards are
- * built in HTML/CSS; they are decorative, the figcaption says what they show.
- */
 import Icon from '../Icon.astro';
 ---
 
@@ -124,11 +120,9 @@ import Icon from '../Icon.astro';
     background: var(--red-700);
   }
 
-  /* Stage: phone size by default (350 x 500). Below 350 wide the cards
-     narrow with it (cqi of the stage) so nothing hangs off the screen. */
   .stage {
-    --w1: 87.43cqi; /* 306 of 350 */
-    --w3: 96.57cqi; /* 338 of 350 */
+    --w1: 87.43cqi;
+    --w3: 96.57cqi;
     container-type: inline-size;
     position: relative;
     flex: none;
@@ -146,21 +140,21 @@ import Icon from '../Icon.astro';
   }
   .bill--axa {
     top: 0;
-    left: 9.71cqi; /* 34 */
+    left: 9.71cqi;
     width: var(--w1);
     rotate: 4deg;
     box-shadow: rgb(20 38 89 / 10%) 0 20px 40px, rgb(0 0 0 / 5%) 0 0 0 0.5px;
   }
   .bill--du {
     top: 128px;
-    left: 1.14cqi; /* 4 */
+    left: 1.14cqi;
     width: var(--w1);
     rotate: -3deg;
     box-shadow: rgb(20 38 89 / 12%) 0 20px 40px, rgb(0 0 0 / 5%) 0 0 0 0.5px;
   }
   .bill--apple {
     top: 262px;
-    left: 1.71cqi; /* 6 */
+    left: 1.71cqi;
     width: var(--w3);
     box-shadow: rgb(20 38 89 / 16%) 0 28px 56px, rgb(0 0 0 / 5%) 0 0 0 0.5px;
   }
@@ -245,10 +239,6 @@ import Icon from '../Icon.astro';
     max-width: none;
     color: var(--accent);
   }
-  /* One line, shrinks with the card (global .fig-fit). Unit, gap and
-     "every month" are in em so the whole line scales: 40px number, 18px unit,
-     6px gap, 17px "every month". k = line width in em + slack; fixed = the
-     head's side padding (the card itself is the container). */
   .bill__amount {
     --fig-max: 40px;
     --fig-k: 4.65;
@@ -327,8 +317,6 @@ import Icon from '../Icon.astro';
     color: var(--accent);
   }
 
-  /* Small phones (stage under 350): the cards narrow, so the tag moves under
-     the name instead of squeezing it until words break. */
   .bill__name {
     overflow-wrap: normal;
   }
@@ -348,7 +336,6 @@ import Icon from '../Icon.astro';
     }
   }
 
-  /* Two columns from 1024: copy left, small stage right */
   @media (min-width: 1024px) {
     .bills {
       --section-pt: 160px;
@@ -379,7 +366,6 @@ import Icon from '../Icon.astro';
     }
   }
 
-  /* Full size from 1280: stage 680 x 640 */
   @media (min-width: 1280px) {
     .bills__inner {
       gap: 80px;

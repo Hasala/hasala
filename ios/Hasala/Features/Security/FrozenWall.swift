@@ -2,9 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// "Your account is frozen" (Paper P2.8 MTO, shown on every iPhone; spec 04 §6.11; copy
-/// S-37), with "Unfreeze" pushing "Sign in fully" (MUT). An operator freeze offers no
-/// Unfreeze anywhere: only the operator lifts it, and the app never sends #66 for it.
 struct FrozenWall: View {
   let session: AccountSession
   let info: FreezeInfo
@@ -96,9 +93,6 @@ struct FrozenWall: View {
     "Didn't use your phrase? Someone may be reading your email. Change your email password first."
 }
 
-/// "Unfreeze your account · Sign in fully" (Paper MUT): the passkey on its own, or the
-/// password on an iPhone whose key signs too. "Forgot password?" is hidden while frozen. A
-/// password on an iPhone that has no key yet can't do it: the confirmation says so (IYT).
 struct UnfreezeView: View {
   @Environment(\.hBiometry) private var biometry
   let session: AccountSession
@@ -191,12 +185,10 @@ struct UnfreezeView: View {
     } catch .cancelled {
       failure = nil
     } catch .noDeviceKey {
-      // This iPhone's data is still sealed: no key to sign with (P2.6 IYT).
       self.password = ""
       failure = nil
       noKey = true
     } catch .frozenByOperator, .sessionEnded {
-      // The session now shows the operator's wall, which says so itself, or Welcome.
       failure = nil
     } catch {
       self.password = ""
@@ -206,8 +198,6 @@ struct UnfreezeView: View {
   }
 }
 
-/// The account's address on the Unfreeze screen (Paper MUT "Field · Email", prefilled):
-/// the account is known, so it isn't typed.
 private struct ReadOnlyEmail: View {
   let email: String
 
@@ -228,9 +218,6 @@ private struct ReadOnlyEmail: View {
   }
 }
 
-/// The banner shown while the account stays frozen ("Leave it frozen"). An operator
-/// freeze offers no Unfreeze anywhere (spec 04 §6.11: the app never attempts #66 for it);
-/// the banner then opens the wall's "Talk to a person".
 struct FrozenBanner: View {
   var by: FreezeInfo.By
   var onShowWall: () -> Void

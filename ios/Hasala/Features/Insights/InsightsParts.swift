@@ -98,8 +98,6 @@ struct InsightsBadgeSlot: View {
   }
 }
 
-// MARK: - Summary
-
 struct InsightsSummaryCard: View {
   let summary: InsightsSummary
   let comparison: InsightsComparison?
@@ -235,8 +233,6 @@ struct InsightsSplitBar: View {
   }
 }
 
-// MARK: - Rows
-
 struct InsightsLensRow: View {
   let row: InsightsRow
   let comparison: InsightsComparison?
@@ -343,8 +339,6 @@ struct InsightsChangeRow: View {
               sign: change.change.minor < 0 ? .debt : .income)
   }
 }
-
-// MARK: - Money in vs out
 
 struct InsightsFlowCard: View {
   let flow: InsightsFlow
@@ -543,8 +537,6 @@ struct InsightsFlowCard: View {
     .accessibilityHidden(true)
   }
 }
-
-// MARK: - Reports
 
 struct InsightsReportTile: View {
   let report: InsightsReport

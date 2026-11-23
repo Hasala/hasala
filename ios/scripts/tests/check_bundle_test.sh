@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# check-bundle.sh (spec 04 §1's bundle content check, spec 06 I6b) against synthetic
-# apps: a minimal Hasala.app carrying the committed sample seed passes, as an .app, an
-# .xcarchive and an .ipa; each case below breaks one rule and must fail. Code, fonts and
-# the merchant dictionary may be larger than 5 MB; nothing else may.
-#
-# Offline: the apps are directories and zip files made here. The golden-against-manifest
-# case copies the scripts into a temporary ios/ tree whose SampleManifest.swift differs.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ios="$(cd "$here/.." && pwd)"
@@ -14,7 +7,6 @@ trap 'rm -rf "$work"' EXIT
 fail=0
 seed="HasalaCore_CoreResources.bundle/sample/maya-v1.json"
 
-# app NAME: a fresh minimal Hasala.app that passes; prints its path.
 app() {
 	local a="$work/$1/Hasala.app"
 	rm -rf "${work:?}/$1"
@@ -24,7 +16,6 @@ app() {
 	cp "$ios/HasalaCore/Sources/HasalaCore/Resources/sample/maya-v1.json" "$a/$seed"
 	echo "$a"
 }
-# check NAME WANT TARGET [SCRIPT]: check-bundle.sh (or SCRIPT) on TARGET exits WANT.
 check() {
 	local rc=0
 	"${4:-$here/check-bundle.sh}" "$3" >"$work/out" 2>&1 || rc=$?
@@ -34,7 +25,6 @@ check() {
 		fail=1
 	fi
 }
-# said TEXT: the last run's output says TEXT.
 said() {
 	if grep -qF -- "$1" "$work/out"; then echo "ok   ...says: $1"; else
 		echo "FAIL ...the output does not say '$1'"
@@ -55,7 +45,6 @@ cp -R "$a" "$work/ipa/Payload/"
 (cd "$work/ipa" && zip -qry "$work/good.ipa" Payload)
 check "...inside an .ipa" 0 "$work/good.ipa"
 
-# Large files: code, fonts and the merchant dictionary may be; a resource may not.
 a="$(app large-allowed)"
 {
 	printf '\317\372\355\376'
@@ -71,7 +60,6 @@ a="$(app at-limit)"
 head -c 5000000 /dev/zero >"$a/exactly.bin"
 check "a resource of exactly 5,000,000 bytes" 0 "$a"
 
-# Test and private data.
 for f in "conformance/ops.json" "Resources/conformance" "a.EML" "corpus-2026.jsonl" "manifest.synthetic.json"; do
 	a="$(app "data-${f//\//-}")"
 	mkdir -p "$(dirname "$a/$f")"
@@ -79,8 +67,6 @@ for f in "conformance/ops.json" "Resources/conformance" "a.EML" "corpus-2026.jso
 	check "test data: $f" 1 "$a"
 done
 
-# Outlook message ids, default and immutable, anywhere in the bundle. Built here (44
-# synthetic characters) so the shapes are never written out whole in this repository.
 tail44="$(printf 'x%.0s' {1..44})"
 for prefix in AAMkAD AQMkAD AAkALgAA; do
 	a="$(app "outlook-$prefix")"
@@ -96,7 +82,6 @@ printf '{"format":"hasala.sample","ops":[{"payload":{"message_id":"sample-1","re
 check "a seed holding an Outlook message id" 1 "$a"
 said "ref looks like an Outlook message id"
 
-# The seed.
 a="$(app seed-missing)"
 rm "$a/$seed"
 check "no sample seed" 1 "$a"
@@ -124,7 +109,6 @@ echo 'not json' >"$a/$seed"
 check "a seed that isn't JSON" 1 "$a"
 said "not JSON"
 
-# The golden hash must be the generator's (SampleManifest.sha256).
 t="$work/tree"
 mkdir -p "$t/scripts/golden" "$t/HasalaCore/Sources/HasalaCore/Resources"
 cp "$here/check-bundle.sh" "$here/release-common.sh" "$t/scripts/"
@@ -137,7 +121,6 @@ rm "$t/HasalaCore/Sources/HasalaCore/Resources/SampleManifest.swift"
 check "no SampleManifest.swift" 1 "$(app tree-app2)" "$t/scripts/check-bundle.sh"
 said "cannot read SampleManifest.sha256"
 
-# Arguments.
 rc=0
 "$here/check-bundle.sh" >/dev/null 2>&1 || rc=$?
 if [[ "$rc" == 2 ]]; then echo "ok   no argument (exit 2)"; else

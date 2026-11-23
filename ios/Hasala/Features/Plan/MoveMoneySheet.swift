@@ -2,14 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Move money (Paper "Plan · Move money (sheet)", 54Y-0), and Assign from Plan when no
-/// category is chosen yet: a grey large sheet with several steps on it. To, how much ("Covers
-/// the projected gap"), where it comes from, the budgets before and after, "Move AED 318.00"
-/// and "You can undo this right after." The money moves at once and the toast offers Undo.
-///
-/// The sources keep 03a §6.13's order and rules (`BudgetSheetViewModel.sources`): the first
-/// four, then "Show all". An amount a source doesn't have is refused on the sheet, before
-/// anything is sent.
 struct MoveMoneySheet: View {
   let model: any BudgetSheetModel
   @State private var destination: CategoryID?
@@ -25,9 +17,6 @@ struct MoveMoneySheet: View {
 
   init(model: any BudgetSheetModel) {
     self.model = model
-    // To and the amount are there from the first frame: the shortfall when the pace runs
-    // past the budget, capped at what the first source has, all of Ready to assign for
-    // Assign, else 100.00.
     _destination = State(initialValue: model.row?.id)
     let start: Int64
     if let gap = model.shortfall?.minor {
@@ -73,10 +62,8 @@ struct MoveMoneySheet: View {
   private var assignsHere: Bool { Self.assigns(row: model.row, readyToAssign: model.plan.readyToAssign) }
 
   private var amount: Int64? { MoneyFormat.parseMinor(draft) }
-  /// Never the destination: choosing Shopping as "To" takes it off "Take from".
   private var sources: [MoveSource] { model.sources(to: destination) }
   private var chosenSource: MoveSource? { PlanEngine.moveSource(picked: source, offered: sources) }
-  /// Assign (from Plan, no category yet) lets the person choose where the money goes.
   private var assigning: Bool { model.row == nil }
 
   var body: some View {
@@ -96,7 +83,6 @@ struct MoveMoneySheet: View {
             commit
           }
         }
-        // The grabber sits 8 from the top; the header 18 under it (page 14 §06).
         .padding(.top, 31)
         .padding(.horizontal, HSpacing.sheetPadding)
         .padding(.bottom, 40)
@@ -121,10 +107,6 @@ struct MoveMoneySheet: View {
     .planLargeSheet()
   }
 
-  // MARK: To
-
-  /// "TO" over the white card: the category's disc and name, and how it is going ("● On
-  /// course for 2,518 of 2,200"). Assigning, the card chooses the category.
   private var toBlock: some View {
     VStack(alignment: .leading, spacing: 8) {
       PlanOverline("To")
@@ -166,7 +148,6 @@ struct MoveMoneySheet: View {
     .accessibilityLabel(toSpoken(option: option, row: row))
   }
 
-  /// "To, Groceries, On course for AED 2,518 of 2,200", with "Amount hidden" for hidden figures.
   private func toSpoken(option: CategoryOption?, row: PlanRowModel?) -> String {
     guard let option else { return "To, choose a category" }
     guard let row else { return "To, \(option.name)" }
@@ -174,8 +155,6 @@ struct MoveMoneySheet: View {
     return "To, \(option.name), \(facts)"
   }
 
-  /// One fact about the destination: where its pace ends when that is past the budget,
-  /// over budget, or spent of plan.
   private func toFacts(_ row: PlanRowModel, spoken: Bool = false) -> [PlanDetailPart] {
     let budget = row.budget
     if row.verdict == .overBudget {
@@ -190,9 +169,6 @@ struct MoveMoneySheet: View {
     return [.text(MoneyPhrase([.amount(row.spent, hidden: 3), .text(" of "), .amount(budget, .compact, hidden: 3)]))]
   }
 
-  // MARK: How much
-
-  /// The amount, centred, and what it does: "Covers the projected gap".
   private var amountBlock: some View {
     VStack(spacing: 2) {
       PlanAmountField(text: $draft, identifier: "move.amount", label: "Amount", focus: $typing)
@@ -218,11 +194,6 @@ struct MoveMoneySheet: View {
     return model.refusal(moving: .aed(amount), from: from.id)
   }
 
-  // MARK: From where
-
-  /// "TAKE FROM" over the white card of choices: the first four, and "Show all 6" on the
-  /// overline's line while more wait (it takes no room of its own, so the commit stays in
-  /// view as Paper draws it).
   private var fromBlock: some View {
     let sources = self.sources
     let chosen = chosenSource
@@ -231,8 +202,6 @@ struct MoveMoneySheet: View {
         PlanOverline("Take from")
       } trailing: {
         if sources.count > 4, !showAllSources {
-          // A 44 target that lays out as tall as the overline: the padding is inside the
-          // button (its own frame is the target) and taken back outside it.
           Button { showAllSources = true } label: {
             Text("Show all \(sources.count)")
               .hType(.footnote.weight(.semibold))
@@ -265,10 +234,6 @@ struct MoveMoneySheet: View {
     }
   }
 
-  // MARK: Before and after
-
-  /// "Groceries 2,200 → 2,518" and "Ready to assign 1,000 → 682": the two budgets the move
-  /// changes, whole where they are whole.
   private func preview(amount: Int64, to: CategoryID, from: MoveSource) -> some View {
     let toRow = model.plan.row(to)
     var lines: [(String, Int64, Int64)] = []
@@ -288,8 +253,6 @@ struct MoveMoneySheet: View {
     .accessibilityIdentifier("move.preview")
   }
 
-  // MARK: Commit
-
   private var commit: some View {
     VStack(spacing: 10) {
       Button(Self.commitLabel(amount: amount, assigns: assignsHere)) {
@@ -307,8 +270,6 @@ struct MoveMoneySheet: View {
   }
 }
 
-/// "Groceries ……… 2,200 → 2,518": the name 16/22 500, the old figure 500 secondary, the arrow,
-/// the new figure 700. At least 50 tall. Reads "Groceries, from AED 2,200 to AED 2,518".
 private struct BeforeAfterRow: View {
   let name: String
   let before: Int64

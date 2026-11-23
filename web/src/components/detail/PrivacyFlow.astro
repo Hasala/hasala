@@ -1,17 +1,4 @@
 ---
-/**
- * /how-privacy-works flow (Paper NFK-0): Your email, Your iPhone, Our server,
- * A new iPhone, joined by labelled connectors. A numbered list: the cards carry
- * the whole story in text; the connectors are decoration. From 1024 it runs
- * left to right; on phones it stacks and the connectors point down.
- *
- * Motion (Paper C83-0, B): when a fifth of it is in view (data-play, set by
- * the script below), the cards and arrows draw in order, 120 ms per hop; the
- * iPhone lifts in on the spring, its key turns and its checks tick in; the
- * server's coins drop into the slot. Then one token flows down each arrow
- * in turn: an email, then a locked coin, then another. With reduced
- * motion all of it is shown still and nothing moves.
- */
 import Icon from '../Icon.astro';
 ---
 
@@ -302,7 +289,6 @@ import Icon from '../Icon.astro';
       transform: none;
     }
   }
-  /* The token that flows down each arrow: an email (blue), a locked coin (gold). */
   .flow__token {
     position: absolute;
     top: 50%;
@@ -326,14 +312,6 @@ import Icon from '../Icon.astro';
       0 0 10px rgb(241 202 120 / 60%);
   }
 
-  /*
-   * Motion. Hidden only while JS runs and motion is allowed, until the script
-   * sets data-play on each item as it comes into view; with reduced motion (or
-   * no JS) the diagram is simply there. Reveals: 480 ms ease-out-soft, rise
-   * 24 px; the iPhone lifts on the spring. From 1024 the whole row is in view
-   * at once, so the items draw left to right, 120 ms per hop (--k); stacked on
-   * a phone, each draws as it scrolls in.
-   */
   @media (prefers-reduced-motion: no-preference) {
     .flow > li {
       --k: 0;
@@ -369,7 +347,6 @@ import Icon from '../Icon.astro';
       animation: flow-draw 360ms var(--ease-out-soft) calc(var(--k) * 120ms) both;
     }
 
-    /* The iPhone: the key turns, "Holds the key" pops, the checks tick in. */
     .flow__card--phone[data-play] .flow__icon--gold {
       animation: flow-turn 640ms var(--ease-spring) calc(var(--k) * 120ms + 280ms) both;
     }
@@ -386,7 +363,6 @@ import Icon from '../Icon.astro';
       --c: 2;
     }
 
-    /* The server: the coins drop into the slot, one after another. */
     .flow__card--server[data-play] .flow__coin {
       animation: flow-drop 620ms var(--ease-spring) calc(var(--k) * 120ms + 300ms + var(--c, 0) * 110ms) both;
     }
@@ -397,8 +373,6 @@ import Icon from '../Icon.astro';
       --c: 2;
     }
 
-    /* Then the data flows: each arrow carries one token, in turn, and the
-       diagram is still again within 5 s (WCAG 2.2.2). */
     .flow__hop[data-play] .flow__token {
       animation: flow-token 3600ms var(--ease-in-out) calc(1200ms + var(--h, 0) * 600ms) 1;
     }
@@ -533,10 +507,6 @@ import Icon from '../Icon.astro';
 </style>
 
 <script>
-  /* Sets data-play on each [data-play-in] once a fifth of it is in view (the
-     diagram's cards and arrows, the who-can-see rows). Without
-     IntersectionObserver it plays at once; with reduced motion the CSS keeps
-     everything still whatever this sets. */
   import { observe, onPage } from '../../scripts/page';
 
   onPage((signal) => {

@@ -1,15 +1,3 @@
-// Signup and account creation (spec 04 §6.2 signup steps 1–6, C1, C1-P;
-// spec 01 §10.3; `02` §10.7).
-//
-//   signup:  #43 signup/begin → (not proven) #44 signup/verify
-//   C1-P:    S ← stretch; secrets, DAK, writer id; the phrase confirmed by the UI;
-//            ONE #45 password/register with the bootstrap; Keychain; E-04 compare
-//   C1:      #3 register/begin (C_reg recomputed, a mismatch refused before the sheet);
-//            the passkey sheet (UV, PRF); #4 register/finish; the session written AT ONCE (R-04);
-//            the phrase confirmed by the UI; #23 + #18 bootstrap; Keychain; E-04 compare
-//
-// Nothing is published before the UI confirms the phrase: the caller runs the
-// confirmation between `NewAccountKeys.generate` and the bootstrap step.
 import CoreAuth
 import CoreCrypto
 import CorePrimitives
@@ -17,20 +5,16 @@ import CoreStore
 import CoreWire
 import Foundation
 
-/// A signup ceremony in progress (`02` #43's answer, normalized).
 public struct Signup: Sendable, Hashable {
   public let id: String
   public let userID: UserID
   public let emailNorm: String
   public let displayName: String
   public let emailProven: Bool
-  /// `s_srv` for this address.
   public let serverSalt: Data
-  /// The signup nonce (C1-P's bootstrap signs over it).
   public let nonce: Data
 }
 
-/// The secrets of a new account, in memory for the ceremony only (01 §11.5).
 public final class NewAccountKeys: @unchecked Sendable {
   public let entropy: SecureBytes
   public let body: KeyBody
@@ -40,7 +24,6 @@ public final class NewAccountKeys: @unchecked Sendable {
     self.body = body
   }
 
-  /// A fresh phrase entropy `E` and body (AMK, AAK seed).
   public static func generate(random: some RandomSource) throws(CeremonyError) -> NewAccountKeys {
     do {
       return NewAccountKeys(entropy: try Phrase.generate(random: random), body: try KeyBody.generate(random: random))
@@ -49,7 +32,6 @@ public final class NewAccountKeys: @unchecked Sendable {
     }
   }
 
-  /// The twelve words to show (§6.7), never stored.
   public func words() throws(CeremonyError) -> [String] {
     do { return try Phrase.words(entropy: entropy) } catch { throw .crypto("words") }
   }
@@ -58,15 +40,12 @@ public final class NewAccountKeys: @unchecked Sendable {
     do { return try body.authorityPublicKey() } catch { throw .crypto("aak") }
   }
 
-  /// Zeroes `E`, AMK and the AAK seed (step 15).
   public func wipe() {
     entropy.wipe()
     body.wipe()
   }
 }
 
-/// A device that has a bound session, its writer, its keys in the Keychain and
-/// its store: what `SyncContext` is built from.
 public struct EnrolledAccount: Sendable {
   public let userID: UserID
   public let writerID: WriterID
@@ -74,21 +53,16 @@ public struct EnrolledAccount: Sendable {
   public let binding: AccountBinding
 }
 
-/// The state between C1's `register/finish` and its bootstrap.
-public struct RegisteredPasskey: @unchecked Sendable {  // `prf` is wiped by the bootstrap's caller
+public struct RegisteredPasskey: @unchecked Sendable {
   public let signup: Signup
   public let userID: UserID
   public let credentialID: Data
-  /// `SHA256(rawAttestationObject)` = `auth_hash` (R-01).
   public let attestationHash: Data
-  /// The creation's PRF output, when the authenticator gave one.
   public let prf: SecureBytes?
   public let backup: BackupFlags?
 }
 
 public enum AccountCreation {
-  // MARK: Signup (#43, #44)
-
   public static func beginSignup(
     _ env: AccountEnvironment, inviteCode: String, email: String, displayName: String, inviteLinkKey: String?
   ) async throws(CeremonyError) -> Signup {
@@ -113,9 +87,6 @@ public enum AccountCreation {
     try await apiStep { () async throws(APIError) in try await env.client.signupVerify(signupID: s.id, code: code) }
   }
 
-  // MARK: C1-P
-
-  /// C1-P steps 4–10, after the UI has shown and confirmed the phrase.
   public static func createWithPassword(
     _ env: AccountEnvironment, signup: Signup, password: String, keys: NewAccountKeys
   ) async throws(CeremonyError) -> EnrolledAccount {
@@ -142,10 +113,6 @@ public enum AccountCreation {
       recoveryPublicKey: body.recovery_pubkey)
   }
 
-  // MARK: C1
-
-  /// C1 steps 5–9: the passkey is created and the session is written at once
-  /// (R-04). The bootstrap follows the phrase confirmation.
   public static func registerPasskey(_ env: AccountEnvironment, signup: Signup, keys: NewAccountKeys)
     async throws(CeremonyError) -> RegisteredPasskey
   {
@@ -158,7 +125,6 @@ public enum AccountCreation {
     let nonce = try b64(begin.nonce, "register nonce")
     let options: CreationOptions
     do { options = try begin.options.decoded() } catch { throw .badResponse("register options") }
-    // Step 6: recompute C_reg and refuse a different challenge before any sheet.
     guard let mine = try? SigningMessage.registerChallenge(nonce: nonce, authorityPublicKey: aak),
       constantTimeEquals(mine, options.challenge)
     else { throw .challengeMismatch }
@@ -174,7 +140,6 @@ public enum AccountCreation {
       attestationHash: sha256(reg.rawAttestationObject), prf: reg.prfFirst, backup: reg.backupFlags)
   }
 
-  /// C1 steps 11–15 (16: TODO below).
   public static func bootstrapPasskey(
     _ env: AccountEnvironment, registered: RegisteredPasskey, keys: NewAccountKeys, phraseUnseen: Bool = false
   ) async throws(CeremonyError) -> EnrolledAccount {
@@ -200,19 +165,12 @@ public enum AccountCreation {
     let grant = SessionGrant(
       session_token: bearer, user_id: user.string, expires_at: nil, writer_id: r.writer_id, has_keys: true,
       restricted: false)
-    // TODO(WS-14, C1 step 16): with no PRF output at creation, run step-up
-    // `keys.wrap.put` with PRF (a second prompt) and POST /keys/wraps with
-    // `dwk_sig`; until then such an account unlocks a new iPhone with the phrase.
     return try await persistAndCompare(
       env, grant: grant, userID: user, device: device, keys: keys, emailNorm: registered.signup.emailNorm,
       serverSalt: registered.signup.serverSalt, displayName: registered.signup.displayName,
       recoveryWrap: body.recovery_wrap, recoveryPublicKey: body.recovery_pubkey, sessionAlreadyWritten: true)
   }
 
-  // MARK: Shared
-
-  /// `02` §10.1's body, signed by the AAK (BootstrapMessage over the
-  /// BootstrapPayload of 01 §10.3.1, and RegistrationMessage, over `nonce`).
   static func buildBootstrap(
     _ env: AccountEnvironment, userID: UserID, emailNorm: String, keys: NewAccountKeys, device: NewDevice,
     authKind: AuthKind, authHash: Data, prfWrap: (Data, Data)?, nonce: Data
@@ -271,11 +229,6 @@ public enum AccountCreation {
     return s.token
   }
 
-  /// Step 10/15 of C1-P/C1: the Keychain (session, `K_1`; the DWK went in at
-  /// mint), the store, the pinned roster; then E-04's comparison; then the
-  /// binding item. A difference raises the integrity alarm and stops
-  /// onboarding: the binding is never written, so boot never opens the
-  /// account (it stays at `onboardingKeys`, C1's interrupted path).
   static func persistAndCompare(
     _ env: AccountEnvironment, grant: SessionGrant, userID: UserID, device: NewDevice, keys: NewAccountKeys,
     emailNorm: String, serverSalt: Data, displayName: String?, recoveryWrap: String, recoveryPublicKey: String,
@@ -298,9 +251,6 @@ public enum AccountCreation {
     return account
   }
 
-  /// E-04: `GET /keys` and `GET /account` must equal this device's values. An
-  /// address that is missing from the answer is a difference (`02` #40 always
-  /// returns it to the account's own session).
   static func compareAfterBootstrap(
     _ env: AccountEnvironment, commit: Data, authorityPublicKey: Data, recoveryPublicKey: String,
     recoveryWrap: String, emailNorm: String

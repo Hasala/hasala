@@ -2,15 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-// The drawings the welcome stories and the join screens share (spec 04 §2.1, §2.4, §2.5,
-// §6.1; spec 07 S1, S3): the morning background, the orbit stage, the Hasala slot mark
-// and the app icon tile. All decorative: hidden from VoiceOver, never scaled by Dynamic
-// Type (the copy next to them carries the words).
-
-// MARK: - Background
-
-/// The stories' background (Paper "StoryBackground"): the sky start, under a 180° wash
-/// from the morning blue through the sky start to blue 50, interpolated perceptually.
 struct StoryBackground: View {
   var body: some View {
     Rectangle()
@@ -26,19 +17,10 @@ struct StoryBackground: View {
   }
 }
 
-// MARK: - Orbit stage
-
-/// The orbit behind every story (Paper "Orbits" and "Glow", 402 × 337 at (0, 16) in the
-/// stage; the glow 320 at (41, 22)): an outer ring, a dotted inner ring, two white dots and
-/// the sky-ink dot that travels the outer ring once per story. The rings turn 20° per page
-/// as the pager moves (spec 04 §3.1); with Reduce Motion they hold still.
 struct OrbitRings: View {
-  /// The rings' turn, in degrees.
   var turn: Double
-  /// The travelling dot's angle from the top, in degrees, clockwise.
   var dot: Double
 
-  /// The orbit's centre in its own 402 × 337 box.
   static let centre = CGPoint(x: 201, y: 164)
   static let size = CGSize(width: 402, height: 337)
 
@@ -49,14 +31,12 @@ struct OrbitRings: View {
       let ring = Color.white.opacity(0.9)
       context.stroke(Path(ellipseIn: CGRect(x: c.x - 156 * s, y: c.y - 156 * s, width: 312 * s, height: 312 * s)),
                      with: .color(ring), lineWidth: 1.5 * s)
-      // The dotted ring turns with the pager (its dashes show the turn).
       var inner = context
       inner.translateBy(x: c.x, y: c.y)
       inner.rotate(by: .degrees(turn))
       inner.stroke(Path(ellipseIn: CGRect(x: -104 * s, y: -104 * s, width: 208 * s, height: 208 * s)),
                    with: .color(ring),
                    style: StrokeStyle(lineWidth: 1.5 * s, lineCap: .round, dash: [2 * s, 6 * s]))
-      // The two white dots ride the rings: one on the inner (left), one on the outer (right).
       func spot(_ radius: CGFloat, _ angle: Double, _ r: CGFloat, _ color: Color) {
         let a = (angle - 90) * .pi / 180
         let p = CGPoint(x: c.x + radius * s * cos(a), y: c.y + radius * s * sin(a))
@@ -71,8 +51,6 @@ struct OrbitRings: View {
   }
 }
 
-/// The soft white glow inside the rings (Paper "Glow": 320, radial white 85% to clear at 70%
-/// of the farthest corner).
 struct OrbitGlow: View {
   var body: some View {
     Circle()
@@ -83,20 +61,11 @@ struct OrbitGlow: View {
   }
 }
 
-// MARK: - The Hasala slot mark
-
-/// The Hasala mark drawn from its artwork (viewBox 204 328 616 368): the plate, the slot and
-/// its lit lip, and the coin cut at the slot's centre line, so it reads as dropping in.
-/// `drop` lifts the coin out of the slot, in the artwork's units (the story 3 coin falls in
-/// from above); it animates. The drawing fits the frame's width and sits on its bottom
-/// edge, so a taller frame leaves room above for the coin to fall from.
 struct SlotMark: View, Animatable {
   enum Plate { case onTile, onWash }
 
   var plate: Plate = .onWash
-  /// The thin inner ring and the slot's lit lip (Paper leaves both off the 56 app icon).
   var detailed = true
-  /// The coin's drop shadow (story 3: dy 14, blur 18, blue 950 at 22%).
   var coinShadow = false
   var drop: CGFloat = 0
   var spin: CGFloat = 0
@@ -147,7 +116,6 @@ struct SlotMark: View, Animatable {
       if detailed {
         context.fill(capsule(r(268, 648, 488, 10)), with: .color(Color.white.opacity(0.22)))
       }
-      // The coin, halfway in: everything below the slot's centre line is cut away.
       var coin = context
       coin.clip(to: Path(CGRect(x: 0, y: 0, width: size.width, height: slot.y)))
       if coinShadow {
@@ -178,7 +146,6 @@ struct SlotMark: View, Animatable {
           layer.stroke(Path(ellipseIn: r(512 - 139.8, 519.8 - 139.8, 279.6, 279.6)),
                        with: .color(rim.opacity(0.5)), lineWidth: 10.1 * s)
         }
-        // The double rule: the dirham sign's two strokes.
         let ink = Color(HRGBA(0x8A, 0x5A, 0x05, 1))
         for y in [486.7, 552.9] as [CGFloat] {
           var bar = Path()
@@ -192,9 +159,6 @@ struct SlotMark: View, Animatable {
   }
 }
 
-/// The Hasala app icon (Paper "Slot mark · tile"): the blue tile and the mark scaled 1.1
-/// about the icon's centre. 24 on the "Read on this iPhone" chip, 32 in the story header,
-/// 36 in "Who can see what", 56 on "Your invite is ready" (no ring, no lit lip).
 struct AppIconTile: View {
   var size: CGFloat
   var radius: CGFloat
@@ -206,7 +170,6 @@ struct AppIconTile: View {
         colors: [Color(HRGBA(0x54, 0x79, 0xFF, 1)), Color(HRGBA(0x2B, 0x4A, 0xD2, 1))],
         startPoint: .topLeading, endPoint: UnitPoint(x: 0.4, y: 1)))
       .overlay(alignment: .topLeading) {
-        // The 616 × 368 artwork at 1.1 inside the 1024 icon: x 16.9%…83.1%, y 30.2%…69.8%.
         SlotMark(plate: .onTile, detailed: detailed)
           .frame(width: size * 0.6617, height: size * 0.3953)
           .offset(x: size * 0.1691, y: size * 0.3023)
@@ -217,10 +180,6 @@ struct AppIconTile: View {
   }
 }
 
-// MARK: - Small art parts
-
-/// A hue disc in the art (Paper "HueDisc", "OrbitDisc"): the hue's 160° gradient and a line
-/// icon in its ink, at the drawing's own size.
 struct ArtDisc: View {
   var hue: Hue
   var icon: HIcon
@@ -235,15 +194,10 @@ struct ArtDisc: View {
   }
 }
 
-/// The art's shadows (spec 04 §0), drawn behind a shape so they never stack on each other.
 enum ArtShadow {
-  /// `0 1 2 sky-ink 8%, 0 18 40 sky-ink 16%`: the hero cards.
   case hero
-  /// `0 1 2 black 4%, 0 10 24 sky-ink 12%`: cards and discs that float.
   case float
-  /// `0 1 2 black 4%, 0 6 16 sky-ink 8%`: chips.
   case chip
-  /// `0 1 2 sky-ink 8%, 0 6 14 sky-ink 14%`: the "Read on this iPhone" chip.
   case chipLift
 
   var near: (color: Color, radius: CGFloat, y: CGFloat) {
@@ -264,7 +218,6 @@ enum ArtShadow {
 }
 
 extension View {
-  /// A filled shape with one of the art's two-part shadows behind the content.
   func artCard<S: Shape>(_ shape: S, fill: Color = HColor.surfacePrimary, shadow: ArtShadow) -> some View {
     background {
       ZStack {
@@ -276,7 +229,6 @@ extension View {
 }
 
 extension Font {
-  /// A face at a fixed size: the art is a drawing, not text that grows with Dynamic Type.
   static func artInter(_ size: CGFloat, _ weight: HWeight) -> Font {
     .custom(weight.interFace, fixedSize: size)
   }

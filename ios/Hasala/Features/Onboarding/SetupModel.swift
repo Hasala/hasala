@@ -3,30 +3,18 @@ import HasalaDesign
 import HasalaModels
 import Observation
 
-/// What setup last sent, so an unchanged value isn't sent again (plan B3.2 rule 3).
 struct AuthoredSetup: Equatable, Sendable {
-  /// The banks `chooseBanks` last sent; nil until it ran.
   var banks: [SupportedBank]?
 }
 
-/// Everything chosen in setup (plan B3.2), kept for the life of the process with the model
-/// (`OnboardingStore`): Back never reverts it and Forward shows it again. A value left nil
-/// was never chosen, so a relaunch can fill it from what the account holds
-/// (`SetupModel.reconcile`).
 struct SetupDraft: Equatable, Sendable {
-  /// The banks picked; nil shows both picked.
   var chosenBanks: Set<SupportedBank>?
   var bankRequestSent = false
-  /// The provider the person connected or picked in "Choose your email"; it skips the
-  /// chooser next time (plan B3.2 rule 5).
   var provider: MailProviderKind?
   var source: PaymentSource?
   var authored = AuthoredSetup()
 }
 
-/// Setup state. The steps' facts are what `OnboardingStep.derive` reads; this model keeps
-/// them and the draft for the process (`OnboardingStore` owns it), and a relaunch reads
-/// them back from the projection, the lane and prefs (`reconcile`).
 @MainActor
 @Observable
 final class SetupModel {
@@ -34,8 +22,6 @@ final class SetupModel {
   private let onFinished: () -> Void
   @ObservationIgnored private let firstScan: FirstScanRun
   var path: [SetupRoute] = []
-  /// The path as the navigation stack changes it: the system back button or its swipe
-  /// (plan decision 7) leaves the failure of the step it left behind, as `back()` does.
   var navigationPath: [SetupRoute] {
     get { path }
     set {
@@ -46,16 +32,10 @@ final class SetupModel {
   private(set) var facts: OnboardingStep.Facts
   private(set) var draft = SetupDraft()
 
-  // Your email
-  /// "Choose your email" is up: a sheet over the step it was asked from (plan decision 5).
   var choosingEmail = false
-  /// The lane as the email step's coordinators see it (plan B3.2 rule 2).
   @ObservationIgnored private let mailLink: SetupMailLink
-  /// One connect attempt per provider, kept for the process, so the connect screen shows
-  /// what happened there when the person comes back to it.
   @ObservationIgnored private var coordinators: [MailProviderKind: MailConnectCoordinator] = [:]
 
-  /// One per account: the first scan starts once (plan B3.2 rule 4).
   private var importStarted = false
   private var didResume = false
   private var left = false
@@ -80,37 +60,25 @@ final class SetupModel {
 
   var step: OnboardingStep { OnboardingStep.derive(facts) }
 
-  // MARK: The draft, as the steps bind it
-
   var chosenBanks: Set<SupportedBank> {
     get { draft.chosenBanks ?? Set(SupportedBank.allCases) }
     set { draft.chosenBanks = newValue }
   }
   var bankRequestSent: Bool { draft.bankRequestSent }
 
-  /// The provider setup connects: the one remembered or connected, else the one the
-  /// account's link is to (a relaunch before the lane's status is read), else the first
-  /// this build can.
   var provider: MailProviderKind {
     draft.provider ?? readingMailbox?.provider ?? services.mailbox.linkedProvider ?? services.mailbox.connectable.first
       ?? .gmail
   }
 
-  /// The providers this build connects (live: those it has a client id for).
   var connectable: [MailProviderKind] { services.mailbox.connectable }
 
-  /// The mailbox the account reads, the one setup connected first.
   private var readingMailbox: MailboxSnapshot? {
     let reading = services.mailbox.mailboxes.filter { $0.state != .disconnected }
     if let provider = draft.provider, let m = reading.first(where: { $0.provider == provider }) { return m }
     return reading.first
   }
 
-  // MARK: Reconciling (plan B3.3)
-
-  /// Brings the model in line with what the account holds after a relaunch or a runtime
-  /// open: done flags are OR-ed (a step done here stays done), the mailbox comes from the
-  /// lane, and a value never chosen in this process is read back.
   func reconcile(facts new: OnboardingStep.Facts, banks: [SupportedBank]) {
     facts.hasPasscode = new.hasPasscode
     facts.hasSession = facts.hasSession || new.hasSession
@@ -140,11 +108,8 @@ final class SetupModel {
     path.append(r)
   }
 
-  // MARK: Bank (step 1)
-
   var orderedBanks: [SupportedBank] { SupportedBank.allCases.filter { chosenBanks.contains($0) } }
 
-  /// "Emirates NBD and DIB".
   var bankList: String { orderedBanks.map(\.shortName).formatted(.list(type: .and)) }
 
   static func banksSummary(_ count: Int) -> String {
@@ -180,8 +145,6 @@ final class SetupModel {
     return true
   }
 
-  /// The bank step's button: the banks, then the provider's sign-in, or, once connected,
-  /// on without a second sign-in.
   func continueWithBanks() async {
     guard await saveBanks() else { return }
     if mailConnected {
@@ -191,7 +154,6 @@ final class SetupModel {
     }
   }
 
-  /// "Skip": manual-entry mode; your email and the scan are skipped too.
   func skipBanks() {
     guard !busy, !connectBusy else { return }
     facts.bankSkipped = true
@@ -279,32 +241,21 @@ final class SetupModel {
     finish()
   }
 
-  // MARK: Your email (step 2)
-
   var offersSampleData: Bool { services.mailbox.offersSampleData }
 
-  /// The email step already ran here: its screen shows the connected state and Continue,
-  /// never a second sign-in (plan B3.2 rule 2).
   var mailConnected: Bool { facts.mailbox != .unlinked }
 
-  /// The mailbox the email step connected, as the first scan shows it.
   var connectedMailbox: MailboxSnapshot? { mailConnected ? readingMailbox : nil }
 
-  /// The lane as the connect screens see it.
   var mailbox: MailboxConnecting { services.mailbox }
 
-  /// Whether "Choose a different one" can open the chooser (more than one provider).
   var canChooseEmail: Bool { connectable.count > 1 }
 
-  /// "Not your email? Choose a different one.": the chooser over the screen it was asked
-  /// from.
   func chooseEmail() {
     guard canChooseEmail else { return }
     choosingEmail = true
   }
 
-  /// A row in "Choose your email": the sheet goes, and the bank step connects that
-  /// provider (an error screen on the stack goes with it).
   func pickProvider(_ provider: MailProviderKind) {
     draft.provider = provider
     choosingEmail = false
@@ -336,7 +287,6 @@ final class SetupModel {
     connectRequest = provider
   }
 
-  /// The connect attempt for `provider`'s screen, made once and kept.
   func coordinator(_ provider: MailProviderKind) -> MailConnectCoordinator {
     if let c = coordinators[provider] { return c }
     let c = MailConnectCoordinator(mailbox: mailLink, context: .setup(stepOf: nil))
@@ -344,14 +294,11 @@ final class SetupModel {
     return c
   }
 
-  /// How the last connect of `provider` failed, for its error screen.
   func connectFailure(_ provider: MailProviderKind) -> MailConnectFailure? {
     if case .failed(let f)? = coordinators[provider]?.outcome { return f }
     return nil
   }
 
-  /// The provider's sign-in, then the first scan; once connected, on to the scan without
-  /// a second sign-in. (The connect screen's button runs the same coordinator.)
   func connectMail(_ provider: MailProviderKind, replacing: Bool = false, removingOld: Bool = false) async {
     await runConnect(provider, again: false, replacing: replacing, removingOld: removingOld)
   }
@@ -378,8 +325,6 @@ final class SetupModel {
     }
   }
 
-  /// "Continue with Google" on the error screen: on success the error screen gives way to
-  /// the first scan.
   func retryConnect(_ provider: MailProviderKind) async {
     await runConnect(provider, again: true)
   }
@@ -408,22 +353,14 @@ final class SetupModel {
     finish()
   }
 
-  /// A connect that didn't happen: the ones the design draws a screen for (a sign-in that
-  /// didn't finish, no mailbox, a permission not given) push it; the rest stay on the
-  /// connect screen as a line beside its button ("Errors sit next to the thing that
-  /// failed", page 17). A closed Google sign-in is not a failure.
   func connectFailed(_ provider: MailProviderKind) {
     guard let f = connectFailure(provider) else { return }
     if Self.showsErrorScreen(f), path.last != .connectError(provider) { go(.connectError(provider)) }
     failure = Self.setupFailure(f, provider)
   }
 
-  /// The failures with a screen of their own (Paper P2.9 row 2).
   static func showsErrorScreen(_ f: MailConnectFailure) -> Bool { f.hasScreen }
 
-  /// A connect failure as the setup banner shows it (a closed sign-in shows nothing), in
-  /// the provider's words: offline, "Connect Gmail when you're back online", not setup's
-  /// generic offline line.
   static func setupFailure(_ f: MailConnectFailure, _ provider: MailProviderKind) -> SetupFailure {
     switch f {
     case .cancelled: .cancelled
@@ -450,8 +387,6 @@ final class SetupModel {
     }
   }
 
-  // MARK: The import
-
   private func startImport(again: Bool = false) {
     guard !importStarted else { return }
     importStarted = true
@@ -467,7 +402,6 @@ final class SetupModel {
 }
 
 extension SetupRoute {
-  /// The email step's error screen, which a pick in "Choose your email" takes away.
   var isEmailStep: Bool {
     if case .connectError = self { return true }
     return false

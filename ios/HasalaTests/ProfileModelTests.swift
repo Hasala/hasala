@@ -5,12 +5,9 @@ import Testing
 
 @testable import Hasala
 
-/// The profile sheet's view model and cards over the Maya ledger.
 @MainActor
 @Suite("Profile model")
 struct ProfileModelTests {
-  /// The Bank alerts card says what `MailboxesSummary` says (the hero and the bell draw the
-  /// same words): working in mint, a new sign-in or nothing connected otherwise.
   @Test func theStatusCardSaysWhatIsTrue() {
     let health = MayaLedger.state.mailbox
     let working = MailboxesSummary([MockMailbox.gmail], health: health, offer: nil)
@@ -25,7 +22,6 @@ struct ProfileModelTests {
     #expect(signIn.hue == .sand)
     #expect(signIn.needsYou)
 
-    // Main's `theProfileCardsSayWhatIsTrue`: Outlook's sign-in again names Microsoft.
     let outlook = MailboxesSummary([MockMailbox.needingSignIn(MockMailbox.outlook)], health: health,
                                    offer: .signInAgain(mailboxID: MockMailbox.outlook.id, provider: .outlook))
     #expect(outlook.title == "Sign in again")
@@ -37,7 +33,6 @@ struct ProfileModelTests {
     #expect(none.needsYou)
   }
 
-  /// Sign-in & security's row shows that page's own status.
   @Test func theSecurityRowShowsItsStatus() {
     let passkey = MockAccountService.securityState(for: .passkey)
     #expect(ProfileSheet.securityStatus(passkey).text == "Protected")
@@ -50,8 +45,6 @@ struct ProfileModelTests {
     #expect(ProfileSheet.securityStatus(passwordOnly).text == "Frozen")
   }
 
-  /// The footer starts with the build (the tests read "Hasala QA · 0.2.0 (") and ends with
-  /// Paper's promise, its hyphens unbreakable.
   @Test func theFooterLeadsWithTheBuild() throws {
     let build = try BuildInfo(infoDictionary: [
       "CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "1", "HasalaGitCommit": "unset",
@@ -69,17 +62,13 @@ struct ProfileModelTests {
     let profile = ProfileViewModel(app: app)
     profile.setNotifications(.everything)
     #expect(profile.snapshot.prefs.notifications == .everything)
-    // Most used first; pausing one keeps its place and turns its switch off.
     #expect(profile.rules.first?.pattern == "\u{201C}carrefour\u{201D}")
     profile.setRule("r-zuma", enabled: false)
     #expect(profile.rules.first { $0.id == "r-zuma" }?.enabled == false)
     #expect(profile.rules.map(\.matches) == profile.rules.map(\.matches).sorted(by: >))
-    // Export your data: every transaction, archived ones too, newest first.
     #expect(profile.exportRows.count == app.store.state.txns.count)
   }
 
-  /// Sorting a new merchant with "Always use" writes a rule the list marks as learned today,
-  /// with its match line in Paper's words.
   @Test func aRuleLearnedTodaySaysSo() throws {
     let app = AppModel(store: InMemoryLedger())
     let profile = ProfileViewModel(app: app)
@@ -91,8 +80,6 @@ struct ProfileModelTests {
     #expect(profile.snapshot.categoriesAndRules == "18 categories · 7 rules")
   }
 
-  /// The money rows read the ledger: Bills counts what's tracked after a found bill is
-  /// tracked; Hide amounts reaches the figures in the rows.
   @Test func theMoneyRowsFollowTheLedger() {
     let app = AppModel(store: InMemoryLedger())
     let profile = ProfileViewModel(app: app)
@@ -119,7 +106,6 @@ struct ProfileModelTests {
     #expect(profile.planLine.rendered(hidden: false) != over)
   }
 
-  /// Bills' view model: one bill's page, and what stopping it does.
   @Test func aBillCanBeStoppedFromItsPage() throws {
     let app = AppModel(store: InMemoryLedger())
     let bills = BillsViewModel(app: app)
@@ -142,14 +128,11 @@ struct ProfileModelTests {
     #expect(BillsView.posterGlyph(du) == .icon(du.glyph.icon))
   }
 
-  /// Signing out keeps this iPhone's data (S-26), so the alert never says "erased"; the
-  /// profile and Sign-in & security say the same words.
   @Test func signingOutSaysTheDataStays() {
     #expect(AccountCopy.signOutMessage.contains("Your data stays here"))
     #expect(!AccountCopy.signOutMessage.contains("erased"))
   }
 
-  /// Accounts' view model: net worth and its parts, hidden with Hide amounts.
   @Test func accountsAddUp() {
     let app = AppModel(store: InMemoryLedger())
     let accounts = AccountsViewModel(app: app)

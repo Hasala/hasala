@@ -2,8 +2,6 @@ import HasalaMocks
 @testable import HasalaModels
 import Testing
 
-/// Bills, one bill, Accounts and Profile over MayaLedger reproduce their boards. Owned by P8
-/// from Stage P.
 @Suite("Maya ledger · Bills and profile parity")
 struct BillsProfileEngineParityTests {
   let s = MayaLedger.state
@@ -51,7 +49,6 @@ struct BillsProfileEngineParityTests {
     #expect(b.tracked == 9)
   }
 
-  /// Bills · AXA Insurance (late): the hero, what we noticed, the history and the note.
   @Test func aLateBillSaysWhatWeNoticed() throws {
     let d = try #require(BillsEngine.detail(s, now: now, bill: "axa"))
     #expect(d.isLate)
@@ -91,8 +88,6 @@ struct BillsProfileEngineParityTests {
       == "Your last 3 payments arrived between the 30th and 8th. No bank email yet this month.")
   }
 
-  /// The other bills open the same page: a price change leads with its news, an upcoming bill
-  /// with when it's due, income with when it's expected; a bill no longer tracked is gone.
   @Test func everyTrackedBillHasADetail() throws {
     let du = try #require(BillsEngine.detail(s, now: now, bill: "du"))
     #expect(du.isPriceChange)
@@ -119,8 +114,6 @@ struct BillsProfileEngineParityTests {
     #expect(BillsEngine.detail(s, now: now, bill: "nope") == nil)
   }
 
-  /// Accounts · Net worth: 41,823.50 − 4,210.50 + 550.00 = 38,163.00 everyday; + 189,405.00
-  /// tracking = 227,568.00.
   @Test func accountsAddUpToNetWorth() throws {
     let a = AccountsEngine.snapshot(s, now: now)
     #expect(a.netWorth == .aed(227_568_00))
@@ -153,7 +146,6 @@ struct BillsProfileEngineParityTests {
     #expect(plates == ["R", "FADB", "BAE", "FAB", "ENBD", "W", "م", "HSBC"].map { .initials($0) })
   }
 
-  /// Live has no net worth history yet: no chart, no change line; no check-in, no balances.
   @Test func accountsWithoutHistoryDrawNoChart() {
     var live = s
     live.netWorth = NetWorthHistory()
@@ -180,8 +172,6 @@ struct BillsProfileEngineParityTests {
     #expect(p.swipeSpoken == "Swipe left for Want, right for Need")
   }
 
-  /// Categories and rules: most used first, curly quotes, the match line in two parts so a
-  /// long one can break where Paper breaks it.
   @Test func rulesAreMostUsedFirst() {
     let rules = ProfileEngine.rules(s)
     #expect(rules.first?.pattern == "\u{201C}carrefour\u{201D}")

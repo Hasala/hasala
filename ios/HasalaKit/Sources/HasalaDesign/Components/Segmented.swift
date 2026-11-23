@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// Two or three views of one thing (page 12 §05): a 36 track in `apple-fills-tertiary` with a
-/// white thumb that slides to the selected segment (`.thumbSlide`; with Reduce Motion it
-/// jumps). Segments share the width; labels are one word, 14/18, 600 selected and 500 not. At
-/// the accessibility text sizes the control becomes a list with ticks.
 public struct HSegmentedControl<Value: Hashable>: View {
   let items: [Value]
   @Binding var selection: Value
@@ -44,7 +40,6 @@ public struct HSegmentedControl<Value: Hashable>: View {
                   .matchedGeometryEffect(id: "thumb", in: thumb)
               }
             }
-            // Drawn 36 tall; the hit area reaches 44.
             .contentShape(Rectangle().inset(by: -6))
         }
         .buttonStyle(.plain)
@@ -86,7 +81,6 @@ public struct HSegmentedControl<Value: Hashable>: View {
 }
 
 public extension HSegmentedControl where Value == String {
-  /// Segments whose values are their labels.
   init(_ items: [String], selection: Binding<String>) {
     self.init(items, selection: selection) { $0 }
   }

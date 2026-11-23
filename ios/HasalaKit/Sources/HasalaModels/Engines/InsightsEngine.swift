@@ -5,8 +5,6 @@ public enum InsightsEngine {
   public static let latestLimit = 10
   public static let collapsedCategories = 6
 
-  // MARK: - Periods
-
   public static func title(of months: ClosedRange<YearMonth>) -> String { Period(months).title }
 
   public static func window(_ month: YearMonth, now: LocalDateTime) -> InsightsWindow {
@@ -24,8 +22,6 @@ public enum InsightsEngine {
     let through = LocalDate(prev.year, prev.month, min(now.date.day, prev.days))
     return (InsightsWindow(from: LocalDate(prev.year, prev.month, 1), through: through), now.date.day)
   }
-
-  // MARK: - What counts
 
   public static let unsortedID: CategoryID = ""
 
@@ -117,8 +113,6 @@ public enum InsightsEngine {
     }
   }
 
-  // MARK: - Arithmetic (integers; only ratios divide, rounded at the end)
-
   public static func percent(_ part: Int64, of whole: Int64) -> Int {
     Int(Fils.percentRounded(part, of: whole))
   }
@@ -146,8 +140,6 @@ public enum InsightsEngine {
     }
     return Array(changes.prefix(limit))
   }
-
-  // MARK: - The screen
 
   struct Context {
     let focus: YearMonth
@@ -491,8 +483,6 @@ public enum InsightsEngine {
     }
     return MoneyPhrase(parts)
   }
-
-  // MARK: - Drill-down
 
   public static func matches(_ l: InsightsLine, _ target: InsightsTarget) -> Bool {
     switch target {

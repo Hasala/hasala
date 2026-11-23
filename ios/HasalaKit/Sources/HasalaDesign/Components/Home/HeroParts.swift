@@ -1,13 +1,6 @@
 import HasalaModels
 import SwiftUI
 
-// The Home hero's own parts (Paper "Hero · Spent on needs + wants" 14SX-0, page 16 §01–02):
-// the period pill and the verdict line with its words in the verdict's colour. The bar is
-// `MonthPaceBar`; the tiles are `StatTile`.
-
-/// The period pill over the hero (Paper "Period pill · hit area 44"): white, 36 tall, the near
-/// shadow, "October 2026" 15/20 600 and a 14 pt chevron (2.6) when it opens the period picker.
-/// Without an action it is not a control: it names the month the figures are for.
 public struct PeriodPill: View {
   let title: String
   let tinted: Bool
@@ -26,7 +19,6 @@ public struct PeriodPill: View {
         .accessibilityLabel("Period, \(title)")
         .accessibilityHint("Double-tap to change.")
     } else {
-      // The pill sits in a 44 row, so the hero's rhythm is the same with or without a control.
       pill
         .frame(minHeight: HSpacing.targetMinimum, alignment: .leading)
         .accessibilityElement(children: .ignore)
@@ -52,8 +44,6 @@ public struct PeriodPill: View {
   private var ink: Color { tinted ? HColor.actionAccent : HColor.textPrimary }
 }
 
-/// The pill's press (darken and 0.97, `HPressStyle`) on the pill alone, with the 44 row
-/// around it as the button's target (Paper "Period pill · hit area 44").
 private struct RowTargetPressStyle: ButtonStyle {
   func makeBody(configuration: Configuration) -> some View {
     HPressStyle().makeBody(configuration: configuration)
@@ -62,12 +52,6 @@ private struct RowTargetPressStyle: ButtonStyle {
   }
 }
 
-/// The hero's verdict line (page 06 §6.4, page 16 §01): an 8 dot and the verdict word 15/20 600
-/// in the verdict's colour, then "· AED 8,711.66 left" in the wash's secondary ink, and a link
-/// on the right ("See month", "Set your plan"). The word may carry an amount ("Over by AED
-/// 1,240.00"), so both parts are phrases that Hide amounts reaches; VoiceOver reads "Amount
-/// hidden", never the dots. With no plan the dot is grey and the word ink. At the accessibility
-/// sizes, or when it doesn't fit, the link moves under the line.
 public struct HeroVerdictLine: View {
   let verdict: Verdict?
   let word: MoneyPhrase
@@ -75,7 +59,6 @@ public struct HeroVerdictLine: View {
   let hidden: Bool
   let link: Link?
 
-  /// A link at the end of the line.
   public struct Link {
     public var title: String
     public var identifier: String
@@ -100,10 +83,6 @@ public struct HeroVerdictLine: View {
 
   public var body: some View {
     ReflowingRow(spacing: 12) {
-      // The dot sits centred in a lane one line tall, so it stays on the first line when the
-      // words wrap.
-      // The words are the element (static text, read as "On track, AED 8,711.66 left"); the
-      // dot only repeats them in colour.
       HStack(alignment: .top, spacing: 6) {
         Circle().fill(dotColor).frame(width: 8, height: 8).frame(height: lane)
           .accessibilityHidden(true)
@@ -115,8 +94,6 @@ public struct HeroVerdictLine: View {
       }
     } trailing: {
       if let link {
-        // A 20 pt line with a 44 pt target: the padding is inside the button and taken back
-        // outside it, so the hero's rhythm doesn't move.
         Button(action: link.action) {
           Text(link.title)
             .hType(.subheadline.weight(.medium))
@@ -137,7 +114,6 @@ public struct HeroVerdictLine: View {
     Text(verbatim: fact.map { " · " + $0.rendered(hidden: hidden) } ?? "")
   }
 
-  /// "On track, AED 8,711.66 left"; hidden: "On track, AED Amount hidden left".
   private var spoken: String {
     [word.spoken(hidden: hidden), fact?.spoken(hidden: hidden)].compactMap { $0 }.joined(separator: ", ")
   }

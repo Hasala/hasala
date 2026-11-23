@@ -1,46 +1,11 @@
 // lint-allow: JSONEncoder the snapshot is a cache of the fold, never compared byte for byte; a property list read the string "$null" back as nil.
 // lint-allow: JSONDecoder the snapshot is a cache of the fold, never compared byte for byte; a property list read the string "$null" back as nil.
-// The fold fingerprint canary (replay/snapshot.ts `CANARY`, extended for v4 as
-// spec 03c §11 asks) and the Codable fold snapshot (spec 04 §5.3).
-//
-// `foldPrint` is the first 32 lower-case hex digits of SHA-256 of
-// "schema <SchemaVersion.current>\n" and serializeState(fold(canary)). Any
-// change to fold semantics or to the schema changes it, which invalidates
-// every saved snapshot (a cold fold rebuilds and reads set-aside rows again). The v3
-// half of the canary is conformance/replay's `canary-canary-v3` log, byte for
-// byte (a conformance test pins the copy); the v4 half has one op of every v4
-// type, a keyed overwrite whose later position carries an older
-// `authored_at`, an annotation forward through a supersede, an un-split, a
-// held bulk, goals with a category and an `ac_cash` source, and a mailbox
-// retirement that takes a new-format row and a legacy row's successor, a
-// certain copy whose verified sender wins and takes the earlier copy's sort, a
-// probable copy kept as its own row, a bank's transfer notice whose debit
-// alert is merged into it, a transfer notice whose same-amount alert
-// comes forty minutes later and stays its own row, a bill edit with no lists
-// that keeps the head's price change, and a second create of a detected bill
-// that is absorbed when it is the same and forks when it is not, and ops below
-// v4 on current rows (a category edit, a supersede of a row in a chain, and a
-// split of more than 16 parts), the undo of a budget move after another
-// writer set that category's budget again, a category edit of a row its
-// mailbox's removal retired, and possible-duplicate notices whose named row
-// leaves: one clears when that row leaves with its mailbox and nothing of it
-// survives, one answered different stays, one moves to the held copy that the
-// removal releases, one moves to the row that row merged into, one comes back
-// when that merge is undone, and one that the row that stays had on the row
-// merged into it is set aside until that row comes back.
-//
-// The snapshot is the LZFSE-compressed JSON of `StateSnapshot`. Ordered maps
-// encode their insertion order, so a warm start projects the same `ord`
-// columns as a cold fold (client-core-b §5.4's TypeScript bug is not
-// ported). The validation table (`bound_tip`, digest, cursor) belongs to the
-// store that keeps the row (CoreStore, spec 04 §5.3).
 import CoreJSON
 import CorePrimitives
 import CoreWire
 import Foundation
 
 public enum FoldCanary {
-  /// One JSON object per line: `{"seq", "writer_id", "ops": [...]}`.
   static let text = """
 {"seq":"1","writer_id":"dev-a","ops":[{"v":1,"type":"home_currency_set","op_id":"canary-01","authored_at":"2020-01-02T01:00:00.000Z","parent_version":null,"payload":{"currency":"AED"}}]}
 {"seq":"2","writer_id":"dev-a","ops":[{"v":1,"type":"rate_set","op_id":"canary-02","authored_at":"2020-01-03T02:00:00.000Z","parent_version":null,"payload":{"currency":"USD","rate_micro":"3672500"}}]}
@@ -118,7 +83,6 @@ public enum FoldCanary {
 {"seq":"74","writer_id":"ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e","ops":[{"v":4,"type":"txn_copy_resolved","op_id":"canary-v4-83","authored_at":"2020-02-09T00:00:00.000Z","entity":{"kind":"txn","id":"01JC0000000000000000000080"},"parent_version":1,"payload":{"other_txn_id":"01JC0000000000000000000085","decision":"merge"}}]}
 """
 
-  /// The canary as blobs of ops, in seq order.
   public static func log() -> [(seq: Int64, writerID: String, ops: [Op])] {
     var out: [(Int64, String, [Op])] = []
     for line in text.split(separator: "\n") {
@@ -133,14 +97,12 @@ public enum FoldCanary {
     return out
   }
 
-  /// The canary folded.
   public static func state() -> State {
     var s = State()
     for (seq, writer, ops) in log() { try? Replay.foldOps(ops, seq: seq, writerID: writer, into: &s) }
     return s
   }
 
-  /// First 32 hex digits of SHA-256(schema line + serializeState(fold(canary))), computed once per process.
   public static let foldPrint: String = fingerprint(schema: SchemaVersion.current)
 
   static func fingerprint(schema: Int, state folded: State = state()) -> String {
@@ -148,8 +110,6 @@ public enum FoldCanary {
   }
 }
 
-/// The fold snapshot (spec 04 §5.3): the whole state, delivery bookkeeping and
-/// `maxAuthored` included, with every map's insertion order.
 public struct StateSnapshot: Sendable, Codable, Equatable {
   public static let currentFormat = 4
   public var formatVersion: Int
@@ -170,12 +130,10 @@ public enum SnapshotError: Error, Sendable, Equatable {
 }
 
 public enum SnapshotCodec {
-  /// The LZFSE-compressed JSON of `snapshot`.
   public static func encode(_ snapshot: StateSnapshot) throws -> Data {
     try (JSONEncoder().encode(snapshot) as NSData).compressed(using: .lzfse) as Data
   }
 
-  /// Decodes a payload, refusing another format or other fold semantics.
   public static func decode(_ data: Data) throws(SnapshotError) -> StateSnapshot {
     let s: StateSnapshot
     do {
@@ -189,6 +147,5 @@ public enum SnapshotCodec {
     return s
   }
 
-  /// `digest` = SHA-256(payload), lower-case hex.
   public static func digest(_ data: Data) -> String { Hex.encode(sha256(data)) }
 }

@@ -1,5 +1,3 @@
-// Unit tests for CoreSync (owner: WS-11). The protocol scenarios run in
-// HasalaCoreE2ETests against FakeServer; these cover the pieces alone.
 import CoreTestSupport
 import Foundation
 import Testing
@@ -43,7 +41,7 @@ struct SyncPieceTests {
   @Test("§6.1.4 invite codes: upper-cased, spaces and hyphens dropped, 24 of A-Z2-7")
   func inviteCode() {
     #expect(AuthInput.inviteCode("abcd-efgh ijkl-mnop-qrst-uvwx") == "ABCDEFGHIJKLMNOPQRSTUVWX")
-    #expect(AuthInput.inviteCode("ABCDEFGHIJKLMNOPQRSTUVW1") == nil)  // 1 is not base32
+    #expect(AuthInput.inviteCode("ABCDEFGHIJKLMNOPQRSTUVW1") == nil)
     #expect(AuthInput.inviteCode("HSL-ABCD") == nil)
   }
 

@@ -13,11 +13,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
 )
 
-// Security finding F4: a sign-out that leaves the session valid on the server
-// is not a sign-out (spec 02 §9.3).
-
-// apnsToken registers an APNs token for the writer under the session, as
-// WS-4's PUT /api/v1/push/apns will.
 func (h *harness) apnsToken(u uuid.UUID, writerID, session string) {
 	h.t.Helper()
 	sum := sha256.Sum256([]byte(session + writerID))
@@ -50,15 +45,11 @@ func TestLogoutRevokesThePresentedSessionOnTheServer(t *testing.T) {
 
 	wantStatus(t, h.req("POST", "/api/v1/auth/logout", phone, nil), http.StatusNoContent)
 
-	// The token is dead everywhere, not just forgotten by the client.
 	wantStatus(t, h.req("GET", "/api/v1/writers", phone, nil), http.StatusUnauthorized)
-	// The other session, and its device's notifications, are untouched.
 	wantStatus(t, h.req("GET", "/api/v1/writers", laptop, nil), http.StatusOK)
 	if n := h.countAPNs(u); n != 1 {
 		t.Fatalf("%d APNs tokens after one device signed out, want the other device's 1", n)
 	}
-	// Idempotent from the client's side: a second call is a 401, which the
-	// client treats exactly like the 204.
 	wantStatus(t, h.req("POST", "/api/v1/auth/logout", phone, nil), http.StatusUnauthorized)
 }
 
@@ -97,7 +88,6 @@ func TestLogoutAllRevokesEverySessionAndEveryPushTokenButNoWriter(t *testing.T) 
 	h.apnsToken(u, "ios-00000000-0000-4000-8000-000000000302", b)
 	h.apnsToken(other, "ios-00000000-0000-4000-8000-000000000303", otherTok)
 
-	// Spec 02 #16: a step-up, session.logout_all; without one nothing happens.
 	wantStatus(t, h.req("POST", "/api/v1/auth/logout-all", c, StepUpOnlyRequest{}), http.StatusForbidden)
 	wantStatus(t, h.req("GET", "/api/v1/writers", a, nil), http.StatusOK)
 	wantStatus(t, h.req("POST", "/api/v1/auth/logout-all", c,
@@ -115,7 +105,6 @@ func TestLogoutAllRevokesEverySessionAndEveryPushTokenButNoWriter(t *testing.T) 
 	if n := h.countAPNs(u); n != 0 {
 		t.Fatalf("%d APNs tokens survived sign-out-everywhere", n)
 	}
-	// The devices keep their keys: they sign in again and keep writing.
 	roster, err := h.srv.Writers.Roster(bg, u)
 	if err != nil {
 		t.Fatal(err)
@@ -125,7 +114,6 @@ func TestLogoutAllRevokesEverySessionAndEveryPushTokenButNoWriter(t *testing.T) 
 			t.Fatalf("writer %s was revoked by a sign-out", w.WriterID)
 		}
 	}
-	// Another account is untouched.
 	wantStatus(t, h.req("GET", "/api/v1/writers", otherTok, nil), http.StatusOK)
 	if n := h.countAPNs(other); n != 1 {
 		t.Fatalf("another account lost its push token: %d", n)

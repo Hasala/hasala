@@ -1,33 +1,3 @@
-/**
- * Checks the built site in dist/ (run after `astro build`; `bun run build`
- * runs it). Exits non-zero on any problem.
- *
- * CSP. <ClientRouter /> keeps the first page's policy for the whole visit, so
- * src/lib/csp-union.mjs writes one policy into every page. This verifies it
- * independently:
- *   - every page has exactly one CSP <meta>, marked transition:persist;
- *   - every page carries the same policy;
- *   - every inline <script> the browser runs (not JSON-LD) and every inline
- *     <style>, on any page, is allowed by that policy's hash list;
- *   - no element has a style="" attribute (blocked without 'unsafe-inline');
- *   - every <script src> is same-origin, or Cloudflare Turnstile.
- *
- * No Web Analytics where the address carries a code or a token. Those are
- * the pages that send no referrer (<meta name="referrer" content="no-referrer">)
- * and every address _redirects serves from one (/i/* is i.html). Each must
- * get exactly one Content-Security-Policy header from _headers, with
- * frame-ancestors 'none', whose script-src and connect-src are the <meta>'s
- * minus Cloudflare Web Analytics, and which names cloudflareinsights.com
- * nowhere. Cloudflare's edge injects the Web Analytics beacon into every
- * HTML page, and Web Analytics records paths.
- *
- * JS budget. The JavaScript a page loads up front: its module scripts, their
- * static imports (recursively; dynamic import() is not followed) and its
- * executable inline scripts, gzipped (level 9) file by file. / must stay at
- * or under JS_BUDGET; every page's figure is printed.
- *
- *   bun scripts/check-dist.ts [dist]      (V=1 lists each page's files)
- */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -47,13 +17,11 @@ const STYLE_ATTR = /<[a-z][^>]*\sstyle=["']/giu;
 const SCRIPT_SRC = /<script[^>]*\ssrc="([^"]*)"/giu;
 const MODULE_SRC = /<script type="module" src="([^"]+)"/gu;
 const STATIC_IMPORT = /(?:from|import)\s*["'](\.\/[^"']+|\/_astro\/[^"']+)["']/gu;
-/** Script types the browser runs, so CSP checks them; data blocks (JSON-LD) are not. */
 const RUNS = /^(|text\/javascript|module|application\/javascript)$/iu;
 
 const ANALYTICS = /cloudflareinsights\.com/iu;
 const NO_REFERRER = /<meta name="referrer" content="no-referrer"\s*\/?>/iu;
 
-/** "a b; c d" → Map { a → {b}, c → {d} }. */
 const directivesOf = (csp: string): Map<string, Set<string>> =>
   new Map(
     csp
@@ -148,7 +116,6 @@ console.log(
   `CSP: ${policies.size} pages, ${inline.length} inline scripts/styles checked against every page's policy`,
 );
 
-// No Web Analytics on the pages whose address carries a code or a token.
 const glob = (pattern: string): RegExp =>
   new RegExp(
     `^${pattern.replaceAll(/[.+?^${}()|[\]\\]/gu, String.raw`\$&`).replaceAll('*', '.*')}$`,
@@ -162,7 +129,6 @@ const textOf = (name: string): string => {
     return '';
   }
 };
-/** _headers as Workers Static Assets reads it: rules in order, "! Name" detaches, repeated names are joined. */
 const rules: { match: RegExp; detach: string[]; set: [string, string][] }[] = [];
 for (const line of textOf('_headers').split('\n')) {
   if (!line.trim() || line.trim().startsWith('#')) {
@@ -208,7 +174,6 @@ for (const [from, to] of textOf('_redirects')
     privatePaths.push(from.replaceAll('*', 'test'));
   }
 }
-// The pages known to carry one, so the check cannot pass by finding none.
 for (const path of ['/i', '/i/test', '/freeze', '/waitlist/confirm', '/waitlist/leave']) {
   if (!privatePaths.includes(path)) {
     problems.push(
@@ -259,7 +224,6 @@ if ([...pages.values()].some((html) => html.includes('data-sitekey='))) {
   }
 }
 
-// JS budget.
 const moduleBytes = (src: string): Uint8Array | null => {
   try {
     return readFileSync(join(dist, src.replace(/^\//u, '')));

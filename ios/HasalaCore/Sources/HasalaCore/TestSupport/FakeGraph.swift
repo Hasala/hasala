@@ -1,22 +1,3 @@
-// FakeGraph: an in-process fake of Microsoft's consumers token endpoint and the Graph mail
-// surface the Outlook lane uses (docs/decisions/outlook-mailbox.md), answering `HTTPExchange`
-// so the request building and response parsing under test are the production
-// `MicrosoftOAuthClient` / `GraphClient` code. `FakeGmailURLProtocol.exchange(for:)` serves it
-// through a real URLSession too.
-//
-//   - the token endpoint issues a refresh token on the code grant and a NEW one on every refresh
-//     (Microsoft rotates them); an id_token that is a real three-part JWT (alg "none") with
-//     `email`, `tid` (consumers) and the nonce of the last authorize URL;
-//   - `/me/messages` evaluates the lane's `$filter` shape (`receivedDateTime ge` and `eq`
-//     clauses on the From address); a listing without it is answered 400, so a test fails loudly
-//     if the client ever sends one, and `endswith` is answered 400 `ErrorInvalidUrlQueryFilter`
-//     as Outlook.com does. `ignoreFilter` plays Graph silently ignoring a filter;
-//   - `$value` serves the MIME bytes; subscriptions are kept, with Graph's 409 on a second
-//     `created` subscription to `me/messages`;
-//   - `noMailbox` answers every `/me/` request with `MailboxNotEnabledForRESTAPI`;
-//   - every request is recorded, with its `Prefer` header.
-//
-// SYNTHETIC mail only (`SyntheticOutlookMail`). Real mail is never in this repository.
 import CoreJSON
 import CoreMailbox
 import CorePrimitives
@@ -28,9 +9,7 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
     public var id: String
     public var raw: [UInt8]
     public var receivedMs: Int64
-    /// The From address Graph reports (`from.emailAddress.address`).
     public var fromAddress: String
-    /// The well-known name of the folder that holds it (`inbox`, `junkemail`, `deleteditems`).
     public var folder: String
 
     public init(id: String, raw: [UInt8], receivedMs: Int64, fromAddress: String, folder: String = "inbox") {
@@ -89,22 +68,16 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
   public var email: String? = "synthetic.user@outlook.example"
   public var tid = MicrosoftOAuthConfig.consumersTenantID
   public var accessToken = "fake-ms-access-token"
-  /// The refresh token now valid; every refresh replaces it.
   public private(set) var refreshToken = "fake-ms-refresh-0"
   public var expiresIn: Int64 = 3600
   public var invalidGrant = false
   public var omitMailScope = false
   public var omitRefreshToken = false
-  /// The account has no Outlook mailbox (a Microsoft account on another provider's address).
   public var noMailbox = false
-  /// Graph ignores the `$filter` and lists every message.
   public var ignoreFilter = false
   public var pageSize = 100
-  /// When true every transport call fails (`HTTPExchangeError.offline`).
   public var offline = false
-  /// Each `$value` answer waits this long (ms of real time), so concurrent downloads overlap.
   public var rawDelayMs: UInt64 = 0
-  /// The fake's "now", for the subscription lifetime cap; no cap check when nil.
   public var nowMs: (@Sendable () -> Int64)?
 
   public static let tokenURL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
@@ -113,8 +86,6 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
   static let graphPrefix = "/v1.0"
 
   public init() {}
-
-  // MARK: Scripting
 
   public func add(_ m: Message) {
     lock.withLock {
@@ -130,14 +101,10 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
     }
   }
 
-  /// The next answers for any request whose path contains `pathContains`: each status is used
-  /// once, then the request is served normally. `retryAfter` adds a `Retry-After` header and
-  /// `code` Graph's `error.code`.
   public func fail(_ pathContains: String, with statuses: [Int], retryAfter: Int? = nil, code: String? = nil) {
     lock.withLock { failures += statuses.map { (pathContains, $0, retryAfter, code) } }
   }
 
-  /// A subscription another iPhone of the app left on this mailbox.
   public func addSubscription(_ s: Subscription) { lock.withLock { _subscriptions.append(s) } }
 
   public var subscriptions: [Subscription] { lock.withLock { _subscriptions } }
@@ -145,10 +112,8 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
   public var graphRequests: [Recorded] { requests.filter { $0.path.hasPrefix(Self.graphPrefix) } }
   public func clearRequests() { lock.withLock { _requests = [] } }
   public var nonce: String { lock.withLock { lastNonce } }
-  /// The most `$value` downloads that were ever in flight at once.
   public var maxInFlight: Int { lock.withLock { _maxInFlight } }
 
-  /// The fake consent page: records the nonce and answers the redirect with a code.
   public func consent(authorizeURL: URL) -> URL {
     let c = URLComponents(url: authorizeURL, resolvingAgainstBaseURL: false)
     func q(_ n: String) -> String { c?.queryItems?.first { $0.name == n }?.value ?? "" }
@@ -157,8 +122,6 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
     back.queryItems = [URLQueryItem(name: "code", value: "fake-ms-code"), URLQueryItem(name: "state", value: q("state"))]
     return back.url!
   }
-
-  // MARK: HTTPExchange
 
   public func send(_ request: HTTPRequest) async throws(HTTPExchangeError) -> HTTPResponse {
     if lock.withLock({ offline }) { throw .offline }
@@ -237,8 +200,6 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
     return json(200, Self.listed(m))
   }
 
-  // MARK: Internals
-
   func token(_ form: [(String, String)]) -> HTTPResponse {
     func f(_ n: String) -> String { form.first { $0.0 == n }?.1 ?? "" }
     return lock.withLock {
@@ -279,8 +240,6 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
     return "\(header).\(b64(JSONObject(claims)))."
   }
 
-  /// `receivedDateTime ge <iso> and (from/emailAddress/address eq '<a>' or …)`: the lower time
-  /// bound and the addresses; nil for anything else.
   static func parseFilter(_ f: String) -> (sinceMs: Int64, addresses: [String])? {
     let head = "receivedDateTime ge "
     guard f.hasPrefix(head), let and = f.range(of: " and (") , f.hasSuffix(")") else { return nil }
@@ -361,9 +320,7 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
     [
       ("id", .string(s.id)), ("resource", .string(s.resource)), ("changeType", .string(s.changeType)),
       ("notificationUrl", .string(s.notificationURL)), ("lifecycleNotificationUrl", .string(s.lifecycleURL)),
-      // Graph does not echo clientState.
       ("clientState", .null),
-      // Graph's own format: seven fractional digits.
       ("expirationDateTime", .string((Instant.iso(s.expiresAtMs) ?? "").replacingOccurrences(of: "Z", with: "0000Z"))),
     ]
   }
@@ -379,15 +336,9 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
   }
 }
 
-/// Hand-written alerts as Outlook.com delivers them: EOP's Microsoft-form Authentication-Results
-/// on top and the EOP-only `X-MS-Exchange-Organization-*` fields (docs/decisions/
-/// outlook-mailbox.md §3). Every value is fictional; message ids are short immutable-id-shaped
-/// strings.
 public enum SyntheticOutlookMail {
   public static let defaultTo = "synthetic.user@outlook.example"
 
-  /// A text/plain message. `authDomain` nil omits the A-R; `eop` false omits the EOP fields
-  /// (verdict `no_eop`); `spoofedAbove` adds a sender-written A-R above EOP's (`multiple_ar`).
   public static func rfc822(
     from: String, subject: String, body: String, dateMs: Int64, authDomain: String?, eop: Bool = true,
     spoofedAbove: Bool = false
@@ -416,7 +367,6 @@ public enum SyntheticOutlookMail {
     return Array((h.joined(separator: "\r\n") + "\r\n\r\n" + body.replacingOccurrences(of: "\n", with: "\r\n") + "\r\n").utf8)
   }
 
-  /// A DIB card purchase alert (dib.card.v1's shape), from `DIB.notification@<fromDomain>`.
   public static func dibCard(
     id: String, amount: String = "250.00", day: String = "05-06-2026", merchant: String = "SYNTHETIC GROCER DUBAI",
     last4: String = "1234", dateMs: Int64, fromDomain: String = "dib.ae", eop: Bool = true, spoofedAbove: Bool = false,
@@ -432,7 +382,6 @@ public enum SyntheticOutlookMail {
       receivedMs: dateMs, fromAddress: address, folder: folder)
   }
 
-  /// An ENBD account debit alert (enbd.alert.v1's shape; dated from the email).
   public static func enbdAlert(id: String, amount: String = "12.34", last4: String = "8642", dateMs: Int64)
     -> FakeGraph.Message
   {
@@ -446,7 +395,6 @@ public enum SyntheticOutlookMail {
       receivedMs: dateMs, fromAddress: address)
   }
 
-  /// A bank-domain message no template reads (the empty review shape).
   public static func bankNotice(id: String, dateMs: Int64) -> FakeGraph.Message {
     let address = "OnlineBanking@emiratesnbd.com"
     return FakeGraph.Message(
@@ -457,7 +405,6 @@ public enum SyntheticOutlookMail {
       receivedMs: dateMs, fromAddress: address)
   }
 
-  /// Mail from a look-alike domain (`notdib.ae`, `dib.ae.evil.example`): never a bank sender.
   public static func lookAlike(id: String, dateMs: Int64, address: String) -> FakeGraph.Message {
     let d = BankDomains.domainOf(address)
     return FakeGraph.Message(

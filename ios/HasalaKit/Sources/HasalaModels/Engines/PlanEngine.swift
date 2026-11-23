@@ -1,14 +1,5 @@
-// Plan · October (Paper board): Ready to assign, the split, buckets with budget rows,
-// goals and projects. Built from `LedgerState` for one month. Plan · Dining (category
-// detail) and Plan · Japan trip (project detail) come from the same state.
-//
-// TODO(03a §6): Ready to assign here is income − budgets for the month; the full
-// carry-forward, auto-assign and orphan rules come with CoreDomain's Plan engine.
-
-/// One piece of a budget row's second line, joined with " · ".
 public enum PlanDetailPart: Sendable, Hashable {
   case text(MoneyPhrase)
-  /// A coloured dot and words ("● Over pace").
   case status(String, StatusTone)
 }
 
@@ -27,7 +18,6 @@ public struct PlanRowModel: Sendable, Hashable, Identifiable {
   public var detail: [PlanDetailPart]
   public var progress: Permille
   public var verdict: Verdict
-  /// Bills and goals get no tick and no pace.
   public var paced: Bool
   public var budget: Money
   public var spent: Money
@@ -46,9 +36,7 @@ public struct PlanSection: Sendable, Hashable, Identifiable {
 public struct SplitShare: Sendable, Hashable, Identifiable {
   public var id: Bucket { bucket }
   public var bucket: Bucket
-  /// Of everything planned, for the bar's geometry.
   public var share: Permille
-  /// "51%".
   public var label: String
 }
 
@@ -56,11 +44,8 @@ public struct PlanProjectModel: Sendable, Hashable, Identifiable {
   public var id: ProjectID
   public var name: String
   public var glyph: Glyph
-  /// "14–28 Dec · 65 days to go".
   public var dates: String
-  /// "14–28 Dec".
   public var range: String?
-  /// "65 days to go", "under way", "finished".
   public var when: String?
   public var left: Money?
   public var budget: Money?
@@ -76,11 +61,8 @@ public struct PlanProjectModel: Sendable, Hashable, Identifiable {
 public struct PlanSnapshot: Sendable, Hashable {
   public var month: YearMonth
   public var readyToAssign: Money
-  /// "Income 25,000 · planned 24,000".
   public var incomeLine: MoneyPhrase
-  /// "Started from 50 / 30 / 20".
   public var startedFrom: String
-  /// "50/30/20".
   public var splitName: String
   public var split: [SplitShare]
   public var sections: [PlanSection]
@@ -288,7 +270,6 @@ public enum PlanEngine {
     return floors.map { Int64($0) }
   }
 
-  /// Whole percent, rounded half up (Needs 12,350 of 24,000 → 51%).
   static func percentRounded(_ part: Int64, of whole: Int64) -> Int64 {
     Fils.percentRounded(part, of: whole)
   }
@@ -300,7 +281,6 @@ public enum PlanEngine {
     let paced = c.role == .everyday
     let verdict = Pace.verdict(
       spent: spent, budget: budget, day: day, days: days, paced: paced, largest: largest(c.id, s, month: month))
-    // Row figures hide as three dots (spec 03 §16.16).
     let ofBudget = budget <= 0 && spent > 0
       ? MoneyPhrase([.text("No budget · "), .amount(.aed(spent), hidden: 3), .text(" spent")])
       : spent < 0
@@ -321,7 +301,6 @@ public enum PlanEngine {
       let late = bills.first { $0.nextDue < now.date }
       let due = bills.first { $0.nextDue >= now.date && $0.nextDue.yearMonth == month }
       if let late {
-        // "AXA · 3 days past usual · usually the 7th" (Paper Plan · October, Insurance).
         let n = late.nextDue.days(until: now.date)
         detail = [.status("\(shortName(late.name)) · \(BillsEngine.pastUsual(n))", .error),
                   .text(MoneyPhrase(stringLiteral: "usually the \(ordinal(late.usualDay))"))]
@@ -449,14 +428,12 @@ public enum PlanEngine {
     monthPayments(c, s, month: month).map(\.postedAt.date).max()
   }
 
-  /// "Standing order 2 Oct".
   static func paymentMerchant(_ c: CategoryID, _ s: LedgerState, month: YearMonth) -> String? {
     monthPayments(c, s, month: month)
       .max { $0.postedAt < $1.postedAt }
       .map { "\($0.merchant) \($0.postedAt.date.dayMonth)" }
   }
 
-  /// "Netflix and Spotify", "A, B and C".
   public static func listed(_ names: [String]) -> String {
     switch names.count {
     case 0: ""
@@ -465,7 +442,6 @@ public enum PlanEngine {
     }
   }
 
-  /// "7th", "1st", "22nd".
   public static func ordinal(_ n: Int) -> String {
     let suffix: String
     switch (n % 10, n % 100) {
@@ -478,38 +454,25 @@ public enum PlanEngine {
   }
 }
 
-// MARK: - Category detail (Plan · Dining)
-
-/// One day of a category's month on the Day by day chart.
 public struct DaySpend: Sendable, Hashable, Identifiable {
   public var id: Int { day }
   public var day: Int
   public var date: LocalDate
-  /// What the day added to the category; a refund-only day counts as nothing.
   public var spent: Money
 }
 
-/// Day by day (Paper Plan · Dining): what each day of the month so far added to the category,
-/// against the daily budget, with the tallest day named over its bar.
 public struct DayByDay: Sendable, Hashable {
-  /// The tallest day, named over its bar ("Zuma · 412.00").
   public struct Peak: Sendable, Hashable {
     public var day: Int
-    /// The merchant when one payment made the day, else "3 payments".
     public var label: String
     public var total: Money
   }
 
-  /// The first of the month to today.
   public var days: [DaySpend]
   public var today: Int
-  /// The budget spread over the month's days (1,600 over 31 days is 51.61), rounded down;
-  /// zero for a category without a pace (a bill, savings, a goal), which draws no line.
   public var dailyBudget: Money
-  /// "1–10 Oct".
   public var range: String
   public var peak: Peak?
-  /// "Zuma on Wed 7 Oct was 64% of this month's dining."; none when one payment is all of it.
   public var caption: String?
   public var captionHidden: String? = nil
   public var monthDays: Int = 0
@@ -521,23 +484,16 @@ public struct DayByDay: Sendable, Hashable {
     .aed(max(budget.minor, projection?.minor ?? 0, running.last?.minor ?? 0))
   }
 
-  /// The day the chart's height is drawn against: the tallest day or the daily budget.
   public var scaleTop: Money { .aed(max(days.map(\.spent.minor).max() ?? 0, dailyBudget.minor)) }
 }
 
-/// A rule that sorts into a category ("talabat", "Merchant contains · 28 matches").
 public struct CategoryRule: Sendable, Hashable, Identifiable {
   public var id: RuleID
-  /// The patterns, "CAREEM or UBER".
   public var title: String
-  /// "Merchant contains · 28 matches"; a paused rule says so first.
   public var detail: String
   public var enabled: Bool
 }
 
-/// Plan · Dining: one category's month in depth (spec 12 §7). Every figure is the plan row's:
-/// the hero is what is left, the bar is spent against the budget with today's tick, the verdict
-/// says it in words.
 public struct CategoryDetail: Sendable, Hashable {
   public var id: CategoryID
   public var name: String
@@ -547,22 +503,14 @@ public struct CategoryDetail: Sendable, Hashable {
   public var month: YearMonth
   public var budget: Money
   public var spent: Money
-  /// Budget − spent; below zero when the category is over.
   public var left: Money
-  /// Spent of the budget, for the bar (it never runs past its track).
   public var progress: Permille
-  /// The month gone, where today's tick sits; nil for a category without a pace (bills,
-  /// savings, goals), which draws no tick.
   public var tick: Permille?
   public var verdict: Verdict
-  /// The verdict's word: "Over pace", "On track", "Paid", "Done", "Over budget".
   public var verdictWord: String
-  /// One fact after the word: "on course for 1,992" (whole dirhams, page 06).
   public var verdictFact: MoneyPhrase?
-  /// The line under the verdict: "Spend about AED 43 a day to finish on budget".
   public var advice: MoneyPhrase?
   public var chart: DayByDay
-  /// This month's payments in the category, newest first.
   public var transactions: [MiniTxnRow]
   public var rules: [CategoryRule]
   public var paidBill: PaidBill? = nil
@@ -576,20 +524,15 @@ public struct CategoryDetail: Sendable, Hashable {
   }
 }
 
-// MARK: - Project detail (Plan · Japan trip)
-
-/// One category a project's money went to ("Travel", "Emirates flights", 4,120.00).
 public struct ProjectCategoryRow: Sendable, Hashable, Identifiable {
   public var id: CategoryID
   public var name: String
   public var glyph: Glyph
   public var hue: Hue
-  /// What the money paid for: the notes or merchants, "Emirates flights".
   public var detail: String
   public var spent: Money
 }
 
-/// Plan · Japan trip: a budget for one thing, outside the monthly plan (spec 12 §10).
 public struct ProjectDetail: Sendable, Hashable {
   public var id: ProjectID
   public var name: String
@@ -599,18 +542,13 @@ public struct ProjectDetail: Sendable, Hashable {
   public var left: Money?
   public var pending: Money
   public var progress: Permille
-  /// "14–28 Dec".
   public var range: String?
-  /// "65 days to go".
   public var when: String?
   public var countInPlan: Bool
   public var complete: Bool
-  /// "Trip spending stays out of October's budgets. It comes from the 12,000 you set aside."
   public var explainer: MoneyPhrase
   public var categories: [ProjectCategoryRow]
   public var mark: TotalMark?
-  /// The project's payments in the order they were made, as Paper lists them ("Mon 14 Sep ·
-  /// Travel", then "Sat 19 Sep · Transport"): a project is one story, told from its start.
   public var transactions: [MiniTxnRow]
   public var draft: ProjectDraft
 }
@@ -660,7 +598,6 @@ public extension PlanEngine {
 }
 
 public extension PlanEngine {
-  /// Plan · Dining for `id` in the month of `now`; nil when the category is gone.
   static func category(_ id: CategoryID, _ s: LedgerState, now: LocalDateTime) -> CategoryDetail? {
     guard let c = s.category(id) else { return nil }
     let month = now.date.yearMonth
@@ -679,7 +616,6 @@ public extension PlanEngine {
     switch verdict {
     case .onTrack, .overPace:
       if paced, budget > 0 {
-        // Projections are whole dirhams, rounded down (page 06): "on course for 1,992".
         let projected = Pace.projected(spent, day: day, days: days, largest: biggest) / 100 * 100
         if Pace.showsProjection(day: day) {
           fact = MoneyPhrase([.text("on course for "), .amount(.aed(projected), .compact, hidden: 3)])
@@ -723,13 +659,11 @@ public extension PlanEngine {
     return CategoryDetail.PaidBill(total: .aed(spent), paidOn: paid, nextDue: next, line: line)
   }
 
-  /// Day by day from the first of the month to today.
   static func dayByDay(
     _ c: Category, _ s: LedgerState, now: LocalDateTime, budget: Int64, spent: Int64, paced: Bool
   ) -> DayByDay {
     let month = now.date.yearMonth
     let today = now.date.day
-    // Each day's payments in the category, as the plan counts them.
     var byDay: [Int: [(txn: Txn, minor: Int64)]] = [:]
     for (t, minor) in lines(c.id, s, month: month) where t.postedAt.date.day <= today {
       byDay[t.postedAt.date.day, default: []].append((t, minor))
@@ -745,7 +679,6 @@ public extension PlanEngine {
         day: top.day, label: payments.count == 1 ? payments[0].txn.merchant : "\(payments.count) payments",
         total: top.spent)
     }
-    // The month's largest payment and its share of what the category spent.
     var caption: String?
     var captionHidden: String?
     let payments = byDay.values.joined()
@@ -780,8 +713,6 @@ public extension PlanEngine {
     return out
   }
 
-  /// This month's payments in the category, newest first, each for its share of the
-  /// category ("Talabat", "Sat 10 Oct · 13:20", 64.50). A refund reads as money in.
   static func monthRows(_ c: Category, _ s: LedgerState, month: YearMonth) -> [MiniTxnRow] {
     lines(c.id, s, month: month)
       .sorted { $0.txn.postedAt > $1.txn.postedAt }
@@ -795,8 +726,6 @@ public extension PlanEngine {
       }
   }
 
-  /// The transactions that count in the category this month, each with its line's amount
-  /// (the same set `LedgerState.spent(_:in:)` sums).
   public static func largest(_ c: CategoryID, _ s: LedgerState, month: YearMonth) -> Int64 {
     lines(c, s, month: month).map(\.minor).max().map { max(0, $0) } ?? 0
   }
@@ -810,7 +739,6 @@ public extension PlanEngine {
     return out
   }
 
-  /// The rules that sort into the category, the busiest first.
   static func rules(_ c: Category, _ s: LedgerState) -> [CategoryRule] {
     s.rules.filter { $0.categoryID == c.id }
       .map { r -> (CategoryRule, Int) in
@@ -828,7 +756,6 @@ public extension PlanEngine {
       .map(\.0)
   }
 
-  /// Plan · Japan trip for `id`; nil when the project is gone.
   static func project(_ id: ProjectID, _ s: LedgerState, now: LocalDateTime) -> ProjectDetail? {
     guard let p = s.project(id) else { return nil }
     let card = projectModel(p, s, today: now.date)
@@ -918,21 +845,14 @@ public extension PlanEngine {
     return projectCandidates(project, s, filter: ProjectCandidateFilter()).filter { selected.contains($0.id) }
   }
 
-  /// What a project's spending is called in its explainer: "Trip" for a trip (Paper's words on
-  /// Japan trip, 5JD-0), "Project" for any other. Never the name itself, which already heads
-  /// the screen and may not read as a noun ("Dad's 60th spending").
   static func spendingKind(_ p: Project) -> String {
     p.glyph == .travel ? "Trip" : "Project"
   }
 
-  /// What a project spent: its payments, not archived and not transfers.
   static func projectTxns(_ p: Project, _ s: LedgerState) -> [Txn] {
     s.txns.filter { $0.projectID == p.id && !$0.archived && !$0.isTransfer && !$0.isHeldCopy }
   }
 
-  /// A bill's short name for a row's one fact: "AXA" for "AXA Insurance", "Rent" for
-  /// "Rent · Al Habtoor". A name led by a brand in capitals keeps the brand; any other name
-  /// keeps what comes before " · ".
   static func shortName(_ name: String) -> String {
     let head = name.firstRange(of: " · ").map { String(name[..<$0.lowerBound]) } ?? name
     let words = head.split(separator: " ")

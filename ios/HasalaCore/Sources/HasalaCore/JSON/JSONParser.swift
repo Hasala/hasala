@@ -1,54 +1,20 @@
-// A strict RFC 8259 parser producing `JSONValue`, with the observable behaviour
-// of `JSON.parse` on the text `TextDecoder` produces (wire/op.ts `parseBody`):
-//
-//   - bytes are decoded WHATWG-style first: one leading BOM stripped, invalid
-//     UTF-8 replaced by U+FFFD (inside a string that is data; outside one it is
-//     a syntax error, as in JavaScript);
-//   - whitespace is exactly space, tab, LF and CR;
-//   - escapes are `\" \\ \/ \b \f \n \r \t \uXXXX` (hex in either case); a
-//     `\uXXXX` pair forming a surrogate pair is combined, and a LONE surrogate
-//     becomes U+FFFD, or is refused with `refuseLoneSurrogates`. JavaScript
-//     keeps a lone surrogate in the string, keeps such keys distinct and writes
-//     the escape back out, so this is a divergence; op and raw bodies refuse
-//     them (wire/op.ts `parseBody`) and the witness never carries one;
-//   - raw control characters U+0000-U+001F inside a string are refused;
-//   - numbers keep their literal; duplicate keys are last-wins.
-//
-// Errors carry a coarse reason and a byte offset only, never parser prose or
-// input content: callers report `"<what>: body is not valid JSON (<n> bytes)"`
-// and nothing more, because the text can reach materialized state.
-
 public enum JSONParseError: Error, Equatable, Sendable {
   case syntax(offset: Int)
-  /// Nesting deeper than the parser's limit.
   case tooDeep(limit: Int)
 }
 
 public enum JSONParser {
-  /// The nesting limit. JavaScript engines allow far deeper documents; nothing
-  /// on the wire nests beyond a handful of levels. The bound exists because
-  /// releasing a `JSONValue` is recursive (Swift tears an indirect value down
-  /// level by level), and a hostile document a few hundred levels deep
-  /// overflows the 512 KiB stack of a secondary thread when it is freed.
-  /// Measured on macOS 26: 2000 levels crash a Swift Testing worker when freed,
-  /// 512 do not; 128 leaves a wide margin.
-  /// Documented divergence from JSON.parse, which would accept it.
   public static let defaultMaxDepth = 128
 
-  /// Parses UTF-8 `bytes` (WHATWG-decoded first: BOM stripped, invalid
-  /// sequences replaced).
   public static func parse(
     _ bytes: some Collection<UInt8>, maxDepth: Int = defaultMaxDepth, refuseLoneSurrogates: Bool = false
   ) throws(JSONParseError) -> JSONValue {
     var start = bytes.startIndex
     if bytes.starts(with: [0xef, 0xbb, 0xbf]) { start = bytes.index(start, offsetBy: 3) }
-    // Re-encoding through String repairs invalid UTF-8 exactly as WHATWG does.
     let text = String(decoding: bytes[start...], as: UTF8.self)
     return try parse(text: text, maxDepth: maxDepth, refuseLoneSurrogates: refuseLoneSurrogates)
   }
 
-  /// Parses `text` as `JSON.parse` would (no BOM handling: a leading U+FEFF is
-  /// not JSON whitespace).
   public static func parse(
     text: String, maxDepth: Int = defaultMaxDepth, refuseLoneSurrogates: Bool = false
   ) throws(JSONParseError) -> JSONValue {
@@ -79,9 +45,6 @@ private struct Parser {
 
   func fail() -> JSONParseError { .syntax(offset: i) }
 
-  /// One open container on the explicit stack. The parser is iterative so a
-  /// deeply nested document costs heap, not stack: test runners and
-  /// background work run on threads with small stacks.
   struct Frame {
     var isObject: Bool
     var items: [JSONValue] = []
@@ -92,8 +55,6 @@ private struct Parser {
   mutating func document() throws(JSONParseError) -> JSONValue {
     var stack: [Frame] = []
     while true {
-      // Parse the start of one value: a scalar, an empty container, or the
-      // opening of a non-empty one (pushed, then its first value is parsed).
       skipWhitespace()
       guard i < u.count else { throw fail() }
       var produced: JSONValue
@@ -126,8 +87,6 @@ private struct Parser {
       default: throw fail()
       }
 
-      // Attach the finished value to its container, closing every container
-      // that ends here, until one expects another value (or the root is done).
       while true {
         guard !stack.isEmpty else { return produced }
         let top = stack.count - 1
@@ -154,7 +113,6 @@ private struct Parser {
     }
   }
 
-  /// `"key"` then `:` (whitespace allowed around the colon).
   mutating func memberKey() throws(JSONParseError) -> String {
     guard i < u.count, u[i] == 0x22 else { throw fail() }
     let key = try string()
@@ -177,7 +135,7 @@ private struct Parser {
   }
 
   mutating func string() throws(JSONParseError) -> String {
-    i += 1  // opening quote
+    i += 1
     var out = [UInt8]()
     while true {
       guard i < u.count else { throw fail() }
@@ -214,9 +172,6 @@ private struct Parser {
     }
   }
 
-  /// After `\u`: one escape, or a surrogate pair written as two. A lone
-  /// surrogate (either half) becomes U+FFFD; a high surrogate followed by
-  /// anything but a low-surrogate escape leaves that next escape unconsumed.
   mutating func unicodeEscape() throws(JSONParseError) -> UInt32 {
     let first = try hex4()
     switch first {

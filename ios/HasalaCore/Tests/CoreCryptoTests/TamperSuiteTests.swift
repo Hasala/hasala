@@ -1,8 +1,3 @@
-// Spec 01 §15.3's tamper suite, the reader side (T01-T36), plus the seal
-// contract (§6.5). Reader state: the device knows K_1 only, `epoch_hwm` = 1,
-// the pinned head is frame 1's hash, and the case serves frame 2 unless noted.
-// The `predicate` column is what the Swift twin of the server's LooksSealed
-// says for the upload (the server's other refusals are Go's to test).
 import CorePrimitives
 import CoreWire
 import Foundation
@@ -46,7 +41,6 @@ struct TamperBase {
     return Data(b)
   }
 
-  /// A frame at counter 2 whose authenticated region `R` is supplied.
   func withRegion(_ r: Data, bucket: Int = 1024) throws -> Data {
     let header = FrameV3.header(epoch: 1, aad: env2.aad)
     var region = r
@@ -207,7 +201,6 @@ struct TamperSuiteTests {
     if case .opened(let p) = opened { #expect(OpCodec.decodeR10(p) == .ops([])) }
     let over = try Gzip.compress(padded(FrameV3.maxPlaintext + 1))
     #expect(base.open(try base.withRegion(TamperBase.region(over), bucket: 16384)) == .setAside(.payloadInvalid, alarm: false))
-    // The sealer refuses more than 2 MiB outright.
     #expect(throws: SealError.tooLarge) {
       try Sealer(epoch: 1, key: base.k1).seal(
         plaintextOps: padded(FrameV3.maxPlaintext + 1), envelope: base.env2, prevHash: base.frame1.blobHash,
@@ -282,7 +275,6 @@ struct TamperSuiteTests {
     #expect(throws: ReaderHardStop.tampered(.unknownWriter)) {
       try HeadCheck.verify(userID: testUser, rows: [try row(2, h2, signedBy: dwk.seed, writer: w2)], roster: roster)
     }
-    // T33: a forged row on live writer W signed by a revoked writer's DWK.
     let revokedRoster = [
       testWriter: HeadCheck.RosterWriter(dwkPublicKey: dwk.publicKey, revokedAt: nil),
       w2: HeadCheck.RosterWriter(dwkPublicKey: other.publicKey, revokedAt: Chain.Head(counter: 1, hash: h1)),
@@ -290,7 +282,6 @@ struct TamperSuiteTests {
     #expect(throws: ReaderHardStop.tampered(.headInvalid)) {
       try HeadCheck.verify(userID: testUser, rows: [try row(3, h2, signedBy: other.seed)], roster: revokedRoster)
     }
-    // T34: a validly signed row past the pinned head; T35: the pinned counter with another hash.
     #expect(throws: ReaderHardStop.tampered(.afterRevocation)) {
       try HeadCheck.verify(userID: testUser, rows: [try row(2, h2, signedBy: other.seed, writer: w2)], roster: revokedRoster)
     }
@@ -331,12 +322,10 @@ struct TamperSuiteTests {
     let ok = PageReader.read(page, state: state(roster: roster))
     #expect(ok.stop == nil && ok.rows.count == 2)
     if case .opened(_, let ops)? = ok.rows.last { #expect(ops.first?.type == .rateSet) } else { Issue.record("row 2") }
-    // R1: an unknown writer first asks for the one roster re-fetch, then is tampering.
     let unknown = PageReader.read(page, state: state(roster: [:]))
     #expect(unknown.stop == .refreshRoster && unknown.stopRow == 0 && unknown.rows.isEmpty)
     #expect(PageReader.read(page, state: state(roster: [:], refreshed: true)).stop == .hardStop(.tampered(.unknownWriter)))
     #expect(PageReader.read(page, state: state(roster: roster, refreshed: true)).stop == nil)
-    // R0 reads the wire's decimal string: a sign, a space or a leading "+" is shape.
     for bad in ["+1", " 1", "1 ", "0", "-1", "01x", ""] {
       var p = page
       p[0] = PageReader.Row(
@@ -418,7 +407,6 @@ struct TamperSuiteTests {
     let a = try sealer.seal(plaintextOps: base.plaintext2, envelope: base.env2, prevHash: base.frame1.blobHash, random: r)
     let b = try sealer.seal(plaintextOps: base.plaintext2, envelope: base.env2, prevHash: base.frame1.blobHash, random: r)
     #expect(a.bytes != b.bytes)
-    // Incompressible plaintext climbs the ladder.
     let big = try StreamRandom(seed: "big").bytes(5000)
     let f = try sealer.seal(plaintextOps: big, envelope: base.env2, prevHash: .zero, random: r)
     #expect(f.bytes.count == 16384)
@@ -431,8 +419,6 @@ struct TamperSuiteTests {
 
   @Test("a predicate hit re-seals once; two hits are sealerFault")
   func reseal() throws {
-    // A random source whose nonces are all zero makes LooksSealed refuse (and
-    // FrameAEAD refuse the zero nonce first): the sealer never emits it.
     struct Zero: RandomSource {
       func fill(_ buffer: UnsafeMutableRawBufferPointer) throws(PrimitivesError) {
         for i in 0..<buffer.count { buffer[i] = 0 }

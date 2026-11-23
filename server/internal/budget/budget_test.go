@@ -34,8 +34,6 @@ func newUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	return id
 }
 
-// setDefaultLimit lowers the default policy row so a test can reach a ceiling
-// with a handful of bytes instead of 256 MiB.
 func setDefaultLimit(t *testing.T, pool *pgxpool.Pool, oplogBytes int64) {
 	t.Helper()
 	if _, err := pool.Exec(bg,
@@ -44,8 +42,6 @@ func setDefaultLimit(t *testing.T, pool *pgxpool.Pool, oplogBytes int64) {
 	}
 }
 
-// admit runs one Admit in its own transaction and commits it if it succeeded,
-// which is what a real caller does.
 func admit(t *testing.T, g *Gate, userID uuid.UUID, resource string, delta int64) error {
 	t.Helper()
 	tx, err := g.Pool.Begin(bg)
@@ -97,9 +93,6 @@ func refusals(t *testing.T, pool *pgxpool.Pool, userID uuid.UUID) map[string]int
 	return out
 }
 
-// TestAdmitDeniesAtTheCeilingAndAbove is the boundary case the design names
-// explicitly: exactly at the ceiling is ADMITTED, one byte past it is refused,
-// and far past it is refused the same way rather than by some other error.
 func TestAdmitDeniesAtTheCeilingAndAbove(t *testing.T) {
 	pool := pgtest.New(t)
 	g := New(pool)
@@ -112,12 +105,10 @@ func TestAdmitDeniesAtTheCeilingAndAbove(t *testing.T) {
 	if got := usage(t, g, u, ResourceOplogHotBytes); got != 1000 {
 		t.Fatalf("usage after filling to the ceiling = %d, want 1000", got)
 	}
-	// At the ceiling: the next byte is refused.
 	if err := admit(t, g, u, ResourceOplogHotBytes, 1); !errors.Is(err, ErrRefused) {
 		t.Fatalf("one byte past a full account = %v, want ErrRefused", err)
 	}
 
-	// One byte over, from empty.
 	over := newUser(t, pool)
 	if err := admit(t, g, over, ResourceOplogHotBytes, 1001); !errors.Is(err, ErrRefused) {
 		t.Fatalf("one byte over the ceiling = %v, want ErrRefused", err)
@@ -126,7 +117,6 @@ func TestAdmitDeniesAtTheCeilingAndAbove(t *testing.T) {
 		t.Fatalf("a refused admit wrote %d bytes to the ledger, want 0", got)
 	}
 
-	// Far over.
 	far := newUser(t, pool)
 	err := admit(t, g, far, ResourceOplogHotBytes, 1<<30)
 	if !errors.Is(err, ErrRefused) {
@@ -141,9 +131,6 @@ func TestAdmitDeniesAtTheCeilingAndAbove(t *testing.T) {
 	}
 }
 
-// TestAnAccountOverrideBeatsTheDefaultRow covers the OR user_id IS NULL lookup
-// in both directions: the override applies to its own account and to nobody
-// else.
 func TestAnAccountOverrideBeatsTheDefaultRow(t *testing.T) {
 	pool := pgtest.New(t)
 	g := New(pool)
@@ -162,10 +149,6 @@ func TestAnAccountOverrideBeatsTheDefaultRow(t *testing.T) {
 	}
 }
 
-// TestARefusalIsCountedOnceAndThenIncrements is the promise that nothing is
-// silently dropped. It also pins the placement that makes the promise real: the
-// caller's transaction is rolled back (admit's defer), so a refusal counted
-// inside it would leave this table empty.
 func TestARefusalIsCountedOnceAndThenIncrements(t *testing.T) {
 	pool := pgtest.New(t)
 	g := New(pool)
@@ -184,7 +167,6 @@ func TestARefusalIsCountedOnceAndThenIncrements(t *testing.T) {
 	if got := refusals(t, pool, u); len(got) != 1 || got[ResourceOplogHotBytes] != 2 {
 		t.Fatalf("after two refusals, account_refusals = %v, want exactly {%s: 2}", got, ResourceOplogHotBytes)
 	}
-	// A different resource is a different row, not the same counter.
 	if err := CountRefusals(bg, pool, u, ResourceUploadBytes, 1); err != nil {
 		t.Fatal(err)
 	}
@@ -194,12 +176,9 @@ func TestARefusalIsCountedOnceAndThenIncrements(t *testing.T) {
 	}
 }
 
-// TestTheRefusalDayIsUTC pins the bucket 00031 specified. A local-time boundary
-// would make "today" mean different things to the app and to a sweep.
 func TestTheRefusalDayIsUTC(t *testing.T) {
 	pool := pgtest.New(t)
 	g := New(pool)
-	// 01:30 UTC on the 2nd is still the 1st in any negative-offset zone.
 	g.now = func() time.Time {
 		return time.Date(2026, 8, 2, 1, 30, 0, 0, time.UTC).In(time.FixedZone("UTC-7", -7*3600))
 	}
@@ -218,8 +197,6 @@ func TestTheRefusalDayIsUTC(t *testing.T) {
 	}
 }
 
-// TestAReleaseDecrementsAndCannotGoBelowZero covers the decrement path — any
-// future compaction — and the ledger bug an over-release represents.
 func TestAReleaseDecrementsAndCannotGoBelowZero(t *testing.T) {
 	pool := pgtest.New(t)
 	g := New(pool)
@@ -234,14 +211,12 @@ func TestAReleaseDecrementsAndCannotGoBelowZero(t *testing.T) {
 	if got := usage(t, g, u, ResourceOplogHotBytes); got != 500 {
 		t.Fatalf("usage after 900 - 400 = %d, want 500", got)
 	}
-	// Exactly to zero is legal.
 	if err := admit(t, g, u, ResourceOplogHotBytes, -500); err != nil {
 		t.Fatalf("a release to exactly zero must be admitted: %v", err)
 	}
 	if got := usage(t, g, u, ResourceOplogHotBytes); got != 0 {
 		t.Fatalf("usage = %d, want 0", got)
 	}
-	// One below zero is not, and it changes nothing.
 	err := admit(t, g, u, ResourceOplogHotBytes, -1)
 	if !errors.Is(err, ErrLedgerUnderflow) {
 		t.Fatalf("releasing below zero = %v, want ErrLedgerUnderflow", err)
@@ -257,9 +232,6 @@ func TestAReleaseDecrementsAndCannotGoBelowZero(t *testing.T) {
 	}
 }
 
-// TestAReleaseIsNeverRefusedByALoweredCeiling: an account already over its
-// limit must still be able to shrink, or lowering a ceiling would strand it
-// forever.
 func TestAReleaseIsNeverRefusedByALoweredCeiling(t *testing.T) {
 	pool := pgtest.New(t)
 	g := New(pool)
@@ -276,9 +248,6 @@ func TestAReleaseIsNeverRefusedByALoweredCeiling(t *testing.T) {
 	}
 }
 
-// TestTheLedgerIsUnchangedWhenTheCallerRollsBack is the property that makes
-// taking a pgx.Tx worth the trouble, at the level of this package. The
-// equivalent through the real append path is in internal/oplog.
 func TestTheLedgerIsUnchangedWhenTheCallerRollsBack(t *testing.T) {
 	pool := pgtest.New(t)
 	g := New(pool)
@@ -302,8 +271,6 @@ func TestTheLedgerIsUnchangedWhenTheCallerRollsBack(t *testing.T) {
 	}
 }
 
-// TestAdmitRefusesWhatItCannotAccount is the fail-closed half. Each of these
-// would otherwise be a write admitted without being counted.
 func TestAdmitRefusesWhatItCannotAccount(t *testing.T) {
 	pool := pgtest.New(t)
 	g := New(pool)
@@ -329,9 +296,6 @@ func TestAdmitRefusesWhatItCannotAccount(t *testing.T) {
 	}
 }
 
-// TestConcurrentAdmitsForOneAccountAreSerialized: twenty concurrent increments
-// must sum, not race. A read-then-write without the FOR UPDATE lock loses
-// updates here.
 func TestConcurrentAdmitsForOneAccountAreSerialized(t *testing.T) {
 	pool := pgtest.New(t)
 	g := New(pool)

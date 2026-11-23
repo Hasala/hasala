@@ -9,12 +9,9 @@ import { draftLegalPaths } from './src/lib/legal-status.mjs';
 import { INLINE_SCRIPTS } from './src/lib/inline-scripts.mjs';
 import { cspUnion } from './src/lib/csp-union.mjs';
 
-// PUBLIC_* values are baked into the static build. .env files are read the
-// same way Astro reads them, so the CSP below always matches the page code.
 const env = loadEnv(process.env.NODE_ENV ?? 'production', process.cwd(), 'PUBLIC_');
 const API_BASE = (env.PUBLIC_API_BASE || 'https://api.hasala.app/api').replace(/\/+$/u, '');
 const API_ORIGIN = new URL(API_BASE).origin;
-// "api" (default) or "email"; see src/lib/env.ts. Turnstile loads only in "api" mode.
 const WAITLIST_MODE = env.PUBLIC_WAITLIST_MODE || 'api';
 if (WAITLIST_MODE !== 'email' && WAITLIST_MODE !== 'api') {
   throw new Error(
@@ -23,18 +20,9 @@ if (WAITLIST_MODE !== 'email' && WAITLIST_MODE !== 'api') {
 }
 const TURNSTILE = WAITLIST_MODE === 'api' && Boolean(env.PUBLIC_TURNSTILE_SITEKEY);
 const TURNSTILE_ORIGIN = 'https://challenges.cloudflare.com';
-// Cloudflare Web Analytics: Cloudflare's edge injects its beacon script into
-// every HTML page (it is not in dist/), and the beacon reports to
-// cloudflareinsights.com. Cookieless, aggregate only; see the privacy policy.
-// Never on /i, /i/*, /freeze or /waitlist/*: their addresses carry codes and
-// tokens, and Web Analytics records paths. public/_headers gives those pages
-// a CSP header without these two origins (cspUnion below fills it in).
 const CF_ANALYTICS_SCRIPT = 'https://static.cloudflareinsights.com';
 const CF_ANALYTICS_REPORT = 'https://cloudflareinsights.com';
 
-// Pages that are not for search engines (they only make sense from an email
-// or a form post) stay out of the sitemap; they also carry noindex.
-// Legal pages stay out of the sitemap (and carry noindex) while they are drafts.
 const NOT_IN_SITEMAP = [
   '/i',
   '/freeze',
@@ -50,16 +38,11 @@ export default defineConfig({
   output: 'static',
   trailingSlash: 'never',
   build: {
-    // /privacy -> privacy.html; Workers Static Assets serves it at /privacy.
     format: 'file',
-    // One request less on first paint; every page is small enough.
     inlineStylesheets: 'always',
   },
   compressHTML: true,
-  // Shorter selectors than the default attribute strategy; the CSS is inlined.
   scopedStyleStrategy: 'class',
-  // The legal Markdown has no code blocks; Shiki's inline styles would also
-  // need 'unsafe-inline' under the CSP.
   markdown: { syntaxHighlight: false, processor: unified({ remarkPlugins: [remarkOwnerNotes] }) },
   prefetch: false,
   devToolbar: { enabled: false },
@@ -68,9 +51,6 @@ export default defineConfig({
       filter: (page) =>
         !NOT_IN_SITEMAP.some((path) => new URL(page).pathname.replace(/\/$/u, '') === path),
     }),
-    // After the build: every page gets the same CSP, which <ClientRouter /> needs.
-    // The pages whose address carries a code or a token also get a CSP header
-    // without Web Analytics (public/_headers): it would record their paths.
     cspUnion({
       withoutAnalytics: {
         token: '%CSP_WITHOUT_ANALYTICS%',
@@ -88,8 +68,6 @@ export default defineConfig({
       options: {
         variants: [
           {
-            // Latin subset of the Inter variable font (opsz 14–32, wght 100–900), vendored
-            // from @fontsource-variable/inter 5.3.0. OFL: Inter-OFL.txt.
             src: ['./src/assets/fonts/inter-latin-opsz-wght.woff2'],
             weight: '100 900',
             style: 'normal',
@@ -106,7 +84,6 @@ export default defineConfig({
         "img-src 'self' data:",
         "font-src 'self'",
         `connect-src 'self' ${API_ORIGIN} ${CF_ANALYTICS_REPORT}${TURNSTILE ? ` ${TURNSTILE_ORIGIN}` : ''}`,
-        // Only the "api" mode invite form posts to the API without JavaScript.
         `form-action 'self'${WAITLIST_MODE === 'api' ? ` ${API_ORIGIN}` : ''}`,
         `frame-src ${TURNSTILE ? TURNSTILE_ORIGIN : "'none'"}`,
         "manifest-src 'self'",
@@ -117,7 +94,6 @@ export default defineConfig({
       ],
       scriptDirective: {
         resources: ["'self'", CF_ANALYTICS_SCRIPT, ...(TURNSTILE ? [TURNSTILE_ORIGIN] : [])],
-        // The two <head> scripts in src/lib/inline-scripts.mjs; Astro hashes only bundled ones.
         hashes: INLINE_SCRIPTS.map(
           (script) =>
             /** @type {`sha256-${string}`} */ (

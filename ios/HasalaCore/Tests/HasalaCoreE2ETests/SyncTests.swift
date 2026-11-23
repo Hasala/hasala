@@ -1,4 +1,3 @@
-// Sync scenarios (spec 04 §5; spec 01 §6.6, §7.1, §8.4) against FakeServer.
 import CoreAuth
 import CoreCrypto
 import CoreSoftAuth
@@ -9,7 +8,6 @@ import Testing
 
 @Suite("Sync: push, pull, resend, tamper")
 struct SyncTests {
-  /// Two enrolled iPhones of one account.
   func twoPhones() async throws -> (World, SyncContext, SyncContext) {
     let w = World()
     let a = w.phone("a")
@@ -19,7 +17,6 @@ struct SyncTests {
     let body = try await Enrolment.unlockWithPhrase(b.env, userID: account.userID, typed: words.joined(separator: " "))
     let enrolled = try await Enrolment.enrolWriter(
       b.env, userID: account.userID, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
-    // A refreshes its roster on its next pull (R1 re-fetch).
     return (w, ctxA, Enrolment.context(b.env, account: enrolled))
   }
 
@@ -35,7 +32,6 @@ struct SyncTests {
     #expect(try a.store.inflight().isEmpty)
     let state = try a.store.syncState()
     #expect(state.authoredHead.counter == 1)
-    // A's self-pull stored its own row.
     #expect(try a.store.wireRowCount() == 1)
     #expect(w.server.storedRowCount(user: a.userID) == 1)
 
@@ -59,7 +55,6 @@ struct SyncTests {
   @Test("many ops pack into several blobs of one batch; the pull pages never split a batch")
   func packing() async throws {
     let (w, a, b) = try await twoPhones()
-    // ~70 KiB of ops → at least two blobs.
     let big = (0..<40).map { i in
       Op(
         v: 4, type: .homeCurrencySet, opID: "01J1000000000000000000\(String(format: "%04d", i))",
@@ -89,7 +84,7 @@ struct SyncTests {
     let second = await SyncEngine(context: a).run(.foreground)
     #expect(second.stop == nil)
     #expect(try a.store.inflight().isEmpty && a.store.pendingCount() == 0)
-    #expect(w.server.storedRowCount(user: a.userID) == 1)  // replayed, not appended twice
+    #expect(w.server.storedRowCount(user: a.userID) == 1)
     #expect(try a.store.syncState().authoredHead.hash == inflight[0].blobHash)
   }
 
@@ -160,8 +155,6 @@ struct SyncTests {
   @Test("an AEAD failure on a chain-valid, signed row is set aside with the integrity alarm; the cursor advances")
   func aeadAlarm() async throws {
     let (w, a, b) = try await twoPhones()
-    // A frame sealed under a key that is not K_1, at A's next position, signed
-    // by A's DWK: chain-valid and head-valid, but it does not open.
     let wrong = try EpochKey(epoch: 1, key: Data(repeating: 9, count: 32))
     let frame = try Sealer(epoch: 1, key: wrong).seal(
       plaintextOps: Data(try OpCodec.encodeBlobOps([op(1)])),
@@ -327,14 +320,13 @@ struct SyncTests {
     _ = await engine.run(.launch)
     #expect(await engine.status.retryAfterSeconds == 7)
 
-    // account_full latches; reads continue; the ops stay queued.
     try enqueue(a, [op(1)])
     w.server.refuseNext("POST /api/v1/sync", status: 413, code: "account_full")
     let full = await engine.run(.authored)
     #expect(full.stop == nil)
     #expect(await engine.status.latch == .accountFull)
     #expect(try a.store.pendingCount() == 1)
-    #expect(try a.store.inflight().count == 1)  // kept
+    #expect(try a.store.inflight().count == 1)
     try a.store.setLatch(nil)
 
     w.server.refuseNext("POST /api/v1/sync", status: 400, code: "plaintext_refused", detail: "blobs[0]: tail")
@@ -351,7 +343,7 @@ struct SyncTests {
 
     w.server.revoke(user: a.userID, writer: a.writerID)
     try a.store.setLatch(nil)
-    #expect(await engine.run(.launch).stop == .needsSignIn)  // the session went with the writer
+    #expect(await engine.run(.launch).stop == .needsSignIn)
   }
 
   @Test("account_full is a pause: it probes again on foreground, or after the pause, and the queue uploads")
@@ -739,7 +731,6 @@ struct SyncTests {
     try enqueue(a, [op(1)])
     _ = await SyncEngine(context: a).run(.authored)
     _ = await SyncEngine(context: b).run(.launch)
-    // A's next row, signed by B's key: headInvalid.
     let k1 = try EpochKey(epoch: 1, key: try #require(try a.secrets.epochKey(userID: a.userID, epoch: 1)))
     let head = try #require(try a.store.chainHeads()[a.writerID])
     let frame = try Sealer(epoch: 1, key: k1).seal(
@@ -838,7 +829,6 @@ struct SyncTests {
     let head = try #require(try ctxA.store.chainHeads()[ctxA.writerID])
     try await AccountManagement.removeThisIPhone(
       a.env, engine: SyncEngine(context: ctxA), factor: .device(password: password), binding: try #require(a.binding))
-    // A malicious server serves A's counter 2 anyway, correctly signed by A's DWK.
     let frame = try Sealer(epoch: 1, key: k1).seal(
       plaintextOps: Data(try OpCodec.encodeBlobOps([op(2)])),
       envelope: try Envelope(userID: ctxA.userID, writerID: ctxA.writerID, counter: 2), prevHash: head.hash,
@@ -852,7 +842,6 @@ struct SyncTests {
   }
 }
 
-/// Records upload bodies on their way to the inner transport.
 final class Recorder: Transport, @unchecked Sendable {
   let inner: any Transport
   private let lock = NSLock()

@@ -12,10 +12,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// ViewPhrase is #67 (spec 02 §10.14, spec 01 §10.19): step-up phrase.view with
-// a passkey whose credential has a PRF wrap (a password-only account cannot
-// open the box), and the box returned in the transaction that records
-// phrase_viewed and enqueues its alert. GET /keys never returns it.
 func (a *Accounts) ViewPhrase(ctx context.Context, session SessionInfo, su *StepUpObject) ([]byte, error) {
 	g, err := guardFor(session, keyproto.ActionPhraseView, su)
 	if err != nil {
@@ -70,8 +66,6 @@ func (a *Accounts) ViewPhrase(ctx context.Context, session SessionInfo, su *Step
 	return box, nil
 }
 
-// SetDisplayName is #76: DisplayName, then the column. No step-up, no event,
-// no alert: a name is not an authenticator, a key or a mailbox.
 func (a *Accounts) SetDisplayName(ctx context.Context, userID uuid.UUID, name string) error {
 	n, err := DisplayName(name)
 	if err != nil {
@@ -81,9 +75,6 @@ func (a *Accounts) SetDisplayName(ctx context.Context, userID uuid.UUID, name st
 	return err
 }
 
-// LogoutAll is #16: step-up session.logout_all, then every session of the
-// account (this one included) revoked and every APNs token deleted, with
-// sessions_revoked recorded. Writers are not revoked.
 func (a *Accounts) LogoutAll(ctx context.Context, session SessionInfo, su *StepUpObject) ([]pushv2.Target, error) {
 	g, err := guardFor(session, keyproto.ActionSessionLogoutAll, su)
 	if err != nil {

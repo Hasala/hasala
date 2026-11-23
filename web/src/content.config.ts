@@ -3,15 +3,6 @@ import { glob } from 'astro/loaders';
 import { z } from 'astro/zod';
 import { LEGAL_STATUSES } from './lib/legal-status.mjs';
 
-/**
- * Legal and help pages. The Markdown lives outside the web package, in
- * docs/legal/ at the repo root, and is written by the people who own the
- * wording. The site only renders it: privacy.md -> /privacy, terms.md ->
- * /terms, security.md -> /security, support.md -> /support.
- *
- * The schema is lenient on purpose so a new field in the Markdown never
- * breaks the build; unknown keys pass through.
- */
 const legal = defineCollection({
   loader: glob({ pattern: '*.md', base: '../docs/legal' }),
   schema: z
@@ -19,10 +10,8 @@ const legal = defineCollection({
       title: z.string(),
       description: z.string().optional(),
       standfirst: z.string().optional(),
-      /** "In plain words": a string for the document, or one per section (keyed by heading slug). */
       plainWords: z.union([z.string(), z.record(z.string(), z.string())]).optional(),
       status: z.enum(LEGAL_STATUSES).default('draft'),
-      /** Shown in the draft banner while status is "draft". */
       draftNote: z.string().optional(),
       version: z.union([z.string(), z.number()]).optional(),
       updated: z.coerce.date().optional(),

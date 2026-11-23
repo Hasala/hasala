@@ -23,13 +23,8 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// The key routes over HTTP, driven the way the app drives them (spec 01
-// §10.3 C1, §10.5, §10.6, §10.7; spec 02 #3, #4, #9, #17–#27).
-
-// prfWrap is a well-formed PRF wrap (spec 01 §5.1: 127 bytes, header 01 02).
 func prfWrap(fill byte) []byte { return append([]byte{1, 2}, bytes.Repeat([]byte{fill}, 125)...) }
 
-// credential inserts a webauthn credential row for u directly.
 func (h *harness) credential(u uuid.UUID, id []byte) []byte {
 	h.t.Helper()
 	if _, err := h.pool.Exec(bg, `INSERT INTO webauthn_credentials
@@ -50,7 +45,6 @@ func (h *harness) countWraps(u uuid.UUID) int {
 	return n
 }
 
-// keyed is one account onboarded over HTTP.
 type keyed struct {
 	h       *harness
 	user    uuid.UUID
@@ -64,8 +58,6 @@ type keyed struct {
 
 var keyedN atomic.Int64
 
-// onboard runs spec 01 §10.3's C1 over HTTP up to (bootstrap = false) or
-// including the bootstrap.
 func (h *harness) onboard(bootstrap bool) *keyed {
 	h.t.Helper()
 	k := &keyed{h: h, device: authtest.NewDevice(h.t)}
@@ -146,14 +138,11 @@ func (k *keyed) bootstrapRequest(d *authtest.Device, kind byte, authHash []byte,
 	return req
 }
 
-// stepUp begins a passkey step-up on token's session and proves it.
 func (k *keyed) stepUp(token string, action keyproto.Action, fields ...[]byte) *StepUpWire {
 	k.h.t.Helper()
 	return k.stepUpWith(token, k.authn, action, fields...)
 }
 
-// stepUpWith is stepUp proved by authenticator a. Every authenticator of the
-// account draws its signature counter from k.counter, so each one's rises.
 func (k *keyed) stepUpWith(token string, a *authtest.Authenticator, action keyproto.Action, fields ...[]byte) *StepUpWire {
 	k.h.t.Helper()
 	ph, _ := keyproto.ParamsHash(action, fields...)
@@ -163,7 +152,6 @@ func (k *keyed) stepUpWith(token string, a *authtest.Authenticator, action keypr
 	wantStatus(k.h.t, w, http.StatusOK)
 	b := decodeJSON[StepUpBeginResponse](k.h.t, w)
 	nonce, _ := base64.RawURLEncoding.DecodeString(b.Nonce)
-	// The client computes C itself and refuses a challenge that differs (AT-C9).
 	c, _ := keyproto.StepUpChallenge(nonce, action, ph)
 	if b.Challenge != b64url(c[:]) {
 		k.h.t.Fatalf("step-up challenge %s, want %s", b.Challenge, b64url(c[:]))
@@ -172,7 +160,6 @@ func (k *keyed) stepUpWith(token string, a *authtest.Authenticator, action keypr
 		Assertion: a.AssertChallenge(k.h.t, authtest.RPID, c[:], k.counter.Add(1))}}
 }
 
-// enrol registers d over HTTP on a fresh session and returns that session.
 func (k *keyed) enrol(d *authtest.Device) string {
 	k.h.t.Helper()
 	tok := k.h.session(k.user)
@@ -184,9 +171,6 @@ func (k *keyed) enrol(d *authtest.Device) string {
 	return tok
 }
 
-// verifyHistory is spec 01 §10.13 over the wire form: every registration
-// verifies under the AAK the device holds, every revocation under a writer
-// live at that point.
 func (k *keyed) verifyHistory(token string) map[string]bool {
 	k.h.t.Helper()
 	w := k.h.req("GET", "/api/v1/key-history", token, nil)
@@ -240,8 +224,6 @@ func TestOnboardingOverHTTPPublishesKeysAndBindsTheFirstWriter(t *testing.T) {
 		t.Fatal("the first writer is not live in the verified history")
 	}
 
-	// The bound session uploads under its writer with a signed head, and the
-	// pull hands the head back on the batch's last row.
 	h.rawHeads = true
 	blobs, last := uploadChain(t, k.user, k.device.WriterID, 1, blob.ZeroHash, 2)
 	m, _ := keyproto.HeadMessage(k.user, 2, last[:], k.device.WriterID)
@@ -286,7 +268,6 @@ func TestBootstrapAnswersWithSpec02Codes(t *testing.T) {
 	w := h.req("POST", "/api/v1/account/bootstrap", k.token, k.bootstrapRequest(k.device, keyproto.AuthKindPasskey, k.attestation(), true))
 	wantStatus(t, w, http.StatusConflict)
 	wantError(t, w, "keys_exist")
-	// No keys yet is a 404 no_keys, and writer routes are keys_required.
 	other := h.onboard(false)
 	wantError(t, h.req("GET", "/api/v1/keys", other.token, nil), "no_keys")
 	d := authtest.NewDevice(t)
@@ -304,7 +285,6 @@ func TestWritersRegisterAndRevokeOverHTTP(t *testing.T) {
 	d2 := authtest.NewDevice(t)
 	tok2 := k.enrol(d2)
 
-	// A registration signed by a device key (ledgerd's TOFU) is refused.
 	d3 := authtest.NewDevice(t)
 	tok3 := h.session(k.user)
 	n := k.nonce(tok3)
@@ -315,7 +295,6 @@ func TestWritersRegisterAndRevokeOverHTTP(t *testing.T) {
 	})
 	wantStatus(t, w, http.StatusBadRequest)
 	wantError(t, w, "bad_signature")
-	// A bound session is never re-bound.
 	n = k.nonce(tok2)
 	w = h.req("POST", "/api/v1/writers/register", tok2, RegisterRequest{
 		WriterID: d3.WriterID, Alg: "ed25519", PubKey: b64(d3.DWKPub()), DAKPubkey: b64(d3.DAKPub()),
@@ -324,7 +303,6 @@ func TestWritersRegisterAndRevokeOverHTTP(t *testing.T) {
 	wantStatus(t, w, http.StatusConflict)
 	wantError(t, w, "session_bound")
 
-	// Revoke d2 from the first device: step-up writer.revoke, the empty head.
 	su := k.stepUp(k.token, keyproto.ActionWriterRevoke, []byte(d2.WriterID))
 	n = k.nonce(k.token)
 	rm, _ := keyproto.RevocationMessage(n, d2.WriterID, 0, make([]byte, 32))
@@ -340,7 +318,6 @@ func TestWritersRegisterAndRevokeOverHTTP(t *testing.T) {
 	if live := k.verifyHistory(k.token); live[d2.WriterID] || !live[k.device.WriterID] {
 		t.Fatalf("live after revocation: %v", live)
 	}
-	// The revoked writer's session is gone.
 	wantStatus(t, h.req("GET", "/api/v1/keys", tok2, nil), http.StatusUnauthorized)
 }
 
@@ -367,26 +344,21 @@ func TestWrapPutNeedsItsOwnCredentialAndTheWriterSignature(t *testing.T) {
 		m, _ := keyproto.WrapPutMessage(nonce, cred, w)
 		return ed25519.Sign(k.device.DWK, m)
 	}
-	// Shape first.
 	su := k.stepUp(k.token, keyproto.ActionKeysWrapPut, cred)
 	wantError(t, h.req("POST", "/api/v1/keys/wraps", k.token, put(k.token, sign(su, wrap[:126]), su, wrap[:126])), "bad_request")
-	// An unbound session.
 	unbound := h.session(k.user)
 	su2 := k.stepUp(unbound, keyproto.ActionKeysWrapPut, cred)
 	wantError(t, h.req("POST", "/api/v1/keys/wraps", unbound, put(unbound, sign(su2, wrap), su2, wrap)), "writer_unbound")
-	// A DWK signature over another wrap.
 	su = k.stepUp(k.token, keyproto.ActionKeysWrapPut, cred)
 	w := h.req("POST", "/api/v1/keys/wraps", k.token, put(k.token, sign(su, prfWrap(8)), su, wrap))
 	wantStatus(t, w, http.StatusBadRequest)
 	wantError(t, w, "bad_signature")
-	// The good one.
 	su = k.stepUp(k.token, keyproto.ActionKeysWrapPut, cred)
 	wantStatus(t, h.req("POST", "/api/v1/keys/wraps", k.token, put(k.token, sign(su, wrap), su, wrap)), http.StatusNoContent)
 	got := decodeJSON[KeyWrapsResponse](t, h.req("GET", "/api/v1/keys/wraps", k.token, nil))
 	if len(got.Wraps) != 1 || got.Wraps[0].Wrap != b64(wrap) {
 		t.Fatalf("wraps %+v", got)
 	}
-	// Delete it under keys.wrap.delete.
 	su = k.stepUp(k.token, keyproto.ActionKeysWrapDelete, cred)
 	wantStatus(t, h.req("DELETE", "/api/v1/keys/wraps", k.token, DeleteKeyWrapRequest{CredentialID: b64url(cred), StepUp: su}),
 		http.StatusNoContent)

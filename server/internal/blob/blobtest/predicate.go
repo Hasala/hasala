@@ -10,9 +10,6 @@ import (
 
 var gzipMagic = []byte{0x1f, 0x8b, 0x08}
 
-// Honest builds a frame shaped like honest ciphertext: v3, the given epoch and
-// aad_len, and pseudo-random bytes everywhere after the header, which pass
-// checks 5–8 (the gzip window is forced off 1f8b08).
 func Honest(n, l int, epoch uint32) []byte {
 	b := make([]byte, n)
 	rand.New(rand.NewSource(int64(n*31 + l))).Read(b)
@@ -25,17 +22,12 @@ func Honest(n, l int, epoch uint32) []byte {
 	return b
 }
 
-// LooksSealedCase is one predicate case. The same table runs against the SQL
-// function hasala_frame_is_sealed in internal/pg (spec 01 AT-P1, AT-P3).
 type LooksSealedCase struct {
 	Name  string
 	Frame []byte
-	Want  string // "" means accepted
+	Want  string
 }
 
-// LooksSealedCases is spec 01 V-F's set: every bucket, the four AT-P2
-// offsets, the L + 67 = n boundary, epochs 0, 1, 7fffffff, 80000000, 80000001
-// and ffffffff, five version bytes, empty and 1-byte input, and a v1 frame.
 func LooksSealedCases() []LooksSealedCase {
 	var cs []LooksSealedCase
 	add := func(name string, f []byte, want string) { cs = append(cs, LooksSealedCase{name, f, want}) }
@@ -61,7 +53,6 @@ func LooksSealedCases() []LooksSealedCase {
 	add("aad_len L+67 = n", Honest(1024, 1024-67, 1), "")
 	add("aad_len L+67 = n+1", Honest(1024, 1024-66, 1), blob.CheckAADLen)
 	add("aad_len 0xffff", Honest(1024, 0xffff, 1), blob.CheckAADLen)
-	// AT-P2: L = 50, n = 1024.
 	at := func(name string, from, to int, fill []byte, want string) {
 		f := Honest(1024, 50, 1)
 		if fill == nil {
@@ -78,8 +69,6 @@ func LooksSealedCases() []LooksSealedCase {
 	at("AT-P2 zero tail [976,1008)", 976, 1008, nil, blob.CheckTail)
 	at("AT-P2 gzip at [73,76)", 73, 76, gzipMagic, blob.CheckGzip)
 	at("AT-P2 gzip at [72,75) is not the window", 72, 75, gzipMagic, "")
-	// A ledgerd v1 plaintext frame: version 1, aad_len at bytes 1–2, zero
-	// nonce, zero tag. Refused on its version before anything else is read.
 	v1 := make([]byte, 1024)
 	v1[0] = 1
 	binary.BigEndian.PutUint16(v1[1:3], 10)

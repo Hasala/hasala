@@ -14,9 +14,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/verify"
 )
 
-// runVerify is `hasalad verify structural [--user U] [--json]` and `hasalad
-// verify usage [--user U] [--repair] [--json]` (spec 02 §18.3). Findings exit
-// 1; a clean run exits 0.
 func runVerify(env *runEnv, args []string) error {
 	positional, rest := splitPositional(args)
 	var a config.VerifyArgs

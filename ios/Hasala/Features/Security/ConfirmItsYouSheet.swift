@@ -2,39 +2,19 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// What a "Confirm it's you" sheet asks for (Paper P2.6): the change it names, how the
-/// person confirms, and what will happen.
 struct ConfirmRequest: Equatable {
-  /// How this account proves it's the holder (spec 09 P2.6).
   enum Factor: Equatable {
-    /// A passkey account: Face ID, through the system's passkey sheet.
     case faceID
-    /// A password-only account: the password, and this iPhone's own key signs too.
     case password
-    /// A password-only account on an iPhone whose data is still sealed: it has no key yet,
-    /// so it can't sign (Paper IYT "This iPhone can't confirm yet").
     case noKey
   }
 
-  /// The change, as an imperative ("Remove the Work iPad passkey", "Show your 12 words").
   var title: String
   var factor: Factor
-  /// What will happen, one line each (the passkey board's bullet card).
   var bullets: [String] = []
-  /// Another signed-in device, named in the no-key variant's way forward (IYT "Or make the
-  /// change on Maya's iPhone 15").
   var otherDevice: String?
 }
 
-/// "Confirm it's you" (Paper P2.6 IHY, INK, IT2, IYT): the one confirmation every sensitive
-/// change goes through. A floating medium sheet (8 from the edges, radius 40, the grey sheet
-/// surface, height fitted to its content, one detent), with Close, the 64 hero disc, the
-/// change named, then Face ID's bullet card or the password with this iPhone's key.
-///
-/// It may sit over Sign-in & security's large sheet: the one stack the design allows. The
-/// system Face ID HUD and passkey sheet are iOS's; this sheet only says what is about to
-/// happen. A wrong password keeps the sheet up with the field ringed; a cancelled Face ID
-/// keeps it up quietly; a missing device key turns it into the "can't confirm yet" variant.
 struct ConfirmItsYouSheet: View {
   @Environment(\.hBiometry) private var biometry
   var request: ConfirmRequest
@@ -42,7 +22,6 @@ struct ConfirmItsYouSheet: View {
   var busy: Bool
   var failure: AuthFailure?
   var onConfirm: () -> Void
-  /// "Enter my 12 words" on the no-key variant, where the host can open the words.
   var onEnterWords: (() -> Void)?
   var onClose: () -> Void
 
@@ -93,8 +72,6 @@ struct ConfirmItsYouSheet: View {
     .padding(.bottom, 30)
   }
 
-  /// Paper's sheet header (48): Close glass, the title centred, an empty 48 slot. The
-  /// system grabber sits above it.
   private var header: some View {
     HStack {
       GlassIconButton(.close, label: "Close", action: onClose)
@@ -135,7 +112,6 @@ struct ConfirmItsYouSheet: View {
   static let noKeyDetail =
     "A password alone can't make a change. An iPhone with your data open signs it too."
 
-  /// A wrong password rings the field; anything else is said above the button.
   private var otherFailure: AuthFailure? {
     guard let failure, !(request.factor == .password && failure == .stepUpFailed) else { return nil }
     return failure
@@ -210,19 +186,11 @@ struct ConfirmItsYouSheet: View {
   }
 }
 
-/// A floating sheet with one detent fitted to its content (Paper's medium sheets: IHY, IT2,
-/// KJZ; 8 from the screen's edges, radius 40, the grey sheet surface). iOS adds the bottom
-/// safe area under a custom detent, so the content lays out over that area and the detent
-/// leaves it out: the content's own bottom padding (Paper's 30, KJZ's 22) is then the only
-/// space under its last control. At the accessibility sizes the sheet grows to large and
-/// scrolls (page 14 §10: "medium sheets grow to large, then scroll").
 struct FittedSheet<Content: View>: View {
   var busy = false
   @ViewBuilder var content: () -> Content
 
   @State private var height: CGFloat = 520
-  /// The home indicator's inset under the sheet (a keyboard's, far taller, is not kept: the
-  /// detent mustn't shrink while it is up).
   @State private var bottomInset: CGFloat = 0
   @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -246,8 +214,6 @@ struct FittedSheet<Content: View>: View {
   }
 }
 
-/// "This iPhone signs it too" (Paper IT2 "DeviceKeyRow"): the password's partner, shown so
-/// the person knows the password alone can't make the change.
 private struct DeviceKeyRow: View {
   var body: some View {
     HStack(spacing: 10) {

@@ -1,11 +1,4 @@
 ---
-/**
- * 04 Swipe to review (Paper AQJ-0 desktop / BM7-0 phone). The stage is the
- * live review deck shared with /how-it-works (detail/Review.astro,
- * scripts/review.ts): drag or flick the top card, tap a pill or a legend
- * chip below, or use the arrow keys on the focused deck. It plays its short
- * demo once and has a still crossfade under Reduce Motion.
- */
 import Review from '../detail/Review.astro';
 
 const DIRS = [
@@ -75,7 +68,6 @@ const DIRS = [
     flex-direction: column;
     gap: 28px;
   }
-  /* Phone order: heading and copy, then the stage, then the chips. */
   .review__copy {
     display: contents;
   }
@@ -88,7 +80,6 @@ const DIRS = [
   .review__deck {
     order: 1;
   }
-  /* The shared deck fills the column it is given. */
   .review__deck > :global(.review__stage) {
     width: 100%;
   }
@@ -116,8 +107,6 @@ const DIRS = [
   .dirs li {
     display: flex;
   }
-  /* The legend chips are buttons: tap one to sort the top card. They light
-     up with the swipe (scripts/review.ts sets data-active). */
   .dir {
     position: relative;
     display: flex;

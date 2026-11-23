@@ -18,11 +18,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
-// runPurgeUser is `hasalad purge-user <uuid> --confirm <uuid> [--dry-run]`
-// (spec 02 §15.4): delete one account and everything that references it. The
-// account id must be typed twice, so a pasted id that is one character off
-// deletes nothing. `hasalad purge-user --replay-ledger` (spec 02 §15.5)
-// purges again every account the purge ledger names.
 func runPurgeUser(env *runEnv, args []string) error {
 	positional, rest := splitPositional(args)
 	var a config.PurgeArgs
@@ -99,9 +94,6 @@ func runPurgeUser(env *runEnv, args []string) error {
 			"to its address. Nothing was deleted.\n", total, target)
 		return nil
 	}
-	// The CLI holds no auth key, so the tag-keyed steps are skipped; the
-	// goodbye email is queued like the API's, and serve's worker sends it
-	// (spec 02 §15.4).
 	opts := purge.Options{Goodbye: true}
 	if p := cfg.Server.PurgeLedgerPath; p != "" {
 		opts.Record = func(ids []uuid.UUID) error { return purgeledger.Append(p, ids, time.Now()) }

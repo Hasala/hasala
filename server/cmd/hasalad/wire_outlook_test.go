@@ -14,8 +14,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// The [outlook] group mounts the Outlook link on the shared route key, with
-// or without [gmail], and its push URLs only when configured.
 func TestWireExtrasMountsTheOutlookLink(t *testing.T) {
 	pool := pgtest.New(t)
 	route := filepath.Join(t.TempDir(), "route")
@@ -56,7 +54,6 @@ func TestWireExtrasMountsTheOutlookLink(t *testing.T) {
 		return srv
 	}
 
-	// Outlook alone: no Gmail link, no push.
 	srv := wire(outlook...)
 	if srv.Gmail != nil || srv.Outlook == nil || srv.Outlook.Push != nil || srv.Outlook.ClientID != clientID ||
 		!srv.Outlook.RouteKey.Valid() {
@@ -66,14 +63,12 @@ func TestWireExtrasMountsTheOutlookLink(t *testing.T) {
 		t.Fatalf("outlook verifier %T %+v", srv.Outlook.Link, srv.Outlook.Link)
 	}
 
-	// With the push.
 	srv = wire(append(outlook, push...)...)
 	if p := srv.Outlook.Push; p == nil || p.NotificationURL != "https://api.hasala.app/hooks/outlook/graph" ||
 		p.LifecycleURL != "https://api.hasala.app/hooks/outlook/graph/lifecycle" {
 		t.Fatalf("outlook push %+v", p)
 	}
 
-	// Beside Gmail: one route key for both.
 	srv = wire(append(outlook, "HASALA_GOOGLE_IOS_CLIENT_ID=1-x.apps.googleusercontent.com")...)
 	if srv.Gmail == nil || srv.Outlook == nil {
 		t.Fatalf("both links: gmail %v outlook %v", srv.Gmail != nil, srv.Outlook != nil)
@@ -85,7 +80,6 @@ func TestWireExtrasMountsTheOutlookLink(t *testing.T) {
 		t.Fatal("the two links have different route keys")
 	}
 
-	// Neither link.
 	if srv := wire("HASALA_PG_DSN=x"); srv.Outlook != nil || srv.Gmail != nil {
 		t.Fatal("bare: a mailbox link is mounted")
 	}

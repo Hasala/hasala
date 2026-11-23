@@ -1,13 +1,6 @@
 import HasalaDesign
 import SwiftUI
 
-/// "Trouble signing in? Email support@hasala.app": a mail link in place of an account
-/// action this build doesn't offer (password reset, recovery, new words, a passkey, a
-/// new email address, freezing). A person reads the mail; nothing is sent from the app.
-///
-/// A mail link does nothing on an iPhone without a mail account, so the support page
-/// (hasala.app/support, which also gives the address) follows it, unless the screen
-/// already links to that page (`web: false`).
 struct SupportLink: View {
   var lead: String
   var identifier: String

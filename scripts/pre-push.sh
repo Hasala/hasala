@@ -401,6 +401,7 @@ if [[ -n "$HOOK" ]]; then
 fi
 
 check "real-mail fence" "" 1 scripts/check.sh --fence-only
+check "comment lint" bun 1 scripts/check-comments.sh
 
 if changed '^ios/'; then
 	check "HasalaCore import lint" "" 1 ios/scripts/check-imports.sh --no-manifest
@@ -520,6 +521,12 @@ if changed '^scripts/(ci-changes\.sh|tests/ci_changes_test\.sh)$'; then
 	check "CI path selection self-test" "" 1 scripts/tests/ci_changes_test.sh
 else
 	skip "CI path selection self-test" "no selection changes"
+fi
+
+if changed '^scripts/(comment-lint\.ts|check-comments\.sh|tests/comment_lint_test\.sh)$'; then
+	check "comment lint self-test" bun 1 scripts/tests/comment_lint_test.sh
+else
+	skip "comment lint self-test" "no comment lint changes"
 fi
 
 if changed '(\.sh$|^\.githooks/)'; then

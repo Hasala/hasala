@@ -2,17 +2,9 @@ import HasalaDesign
 import HasalaWidgetData
 import SwiftUI
 
-/// The account gate in front of the app (spec 04 §13.1 BootWalls + OnboardingFlow):
-/// welcome and sign-in while signed out, setup until it is finished, the unlock and
-/// frozen walls, then `main`.
-///
-/// Every onboarding model is the store's (`OnboardingStore`, one per process), so this
-/// view can be made again, flip to the passcode wall or sit under a wall without losing
-/// what was typed or chosen (plan B3).
 struct AccountRootView<Main: View>: View {
   let session: AccountSession
   let onboarding: OnboardingStore
-  /// The facts setup resumes from (the live build reads them from the projection).
   var setupFacts: OnboardingStep.Facts = .init(hasSession: true, keysReady: true)
   @ViewBuilder var main: () -> Main
   @State private var biometry = HBiometry.device()
@@ -50,8 +42,6 @@ struct AccountRootView<Main: View>: View {
       if let url = activity.webpageURL { session.open(url) }
     }
     .overlay(alignment: .bottom) {
-      // The gate's one note ("You already have an account"): the glass toast, risen in
-      // over the screen's dock and gone after the toast's dwell.
       ZStack {
         if let notice = session.notice {
           GlassToast(.ink(.info), title: notice, actionTitle: "OK") { session.notice = nil }
@@ -72,8 +62,6 @@ struct AccountRootView<Main: View>: View {
   @State private var passcodeChecked = 0
   @State private var pendingReset: PendingReset?
   @State private var lockingDown = false
-  /// "No, that's not me" was tapped: the lockdown sheet follows once the approval sheet
-  /// has finished dismissing (two sheets at once drop the second).
   @State private var lockdownAfterApproval = false
 
   @StageMotion private var motion: MotionPolicy
@@ -141,8 +129,6 @@ struct AccountRootView<Main: View>: View {
         frozenBanner
         main()
       }
-        // A password reset another iPhone asked this one to approve (spec 04 §6.12):
-        // checked on every foreground, in builds that offer password resets.
         .task(id: scenePhase) {
           guard scenePhase == .active, pendingReset == nil, session.capabilities.contains(.resetPassword) else { return }
           pendingReset = await session.account.pendingResetRequest()
@@ -164,7 +150,6 @@ struct AccountRootView<Main: View>: View {
   }
 }
 
-/// Onboarding step 0 (spec 04 §6.6; copy S-24). Re-checked when the app comes back.
 struct PasscodeWall: View {
   var body: some View {
     NavigationStack {
@@ -182,7 +167,6 @@ struct PasscodeWall: View {
   }
 }
 
-/// "Let's lock it down" as a sheet, after "No, that's not me".
 private struct LockdownSheetContent: View {
   @State private var model: SecurityModel
   @Environment(\.dismiss) private var dismiss
@@ -196,7 +180,6 @@ private struct LockdownSheetContent: View {
       .task { await model.load() }
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
-          // In the glass ink, as Paper draws the sheet's close (not the accent).
           Button(role: .close) { dismiss() }
             .tint(HColor.iconGlass)
             .accessibilityIdentifier("lockdown.close")

@@ -1,12 +1,3 @@
-// The ledgerd v1 frame and cold record, READ ONLY (spec 01 §12.1 `FrameV1Reader`;
-// wire/blob.ts `openBlob`, wire/op.ts `decodeRawBody`). They exist to read the
-// fixtures in conformance/blob and conformance/ts; no Hasala server accepts a v1
-// frame (`LooksSealed` refuses version 1) and nothing here can write one.
-//
-//   [1 version=1][2 BE aad_len][aad][12 nonce][4 BE m ‖ gzip ‖ zero pad][16 tag]
-//
-// The v1 AAD is `user|stream|writer|counter` with any writer id and either
-// stream, so the envelope here is the oracle's, not v3's.
 import CoreJSON
 import CorePrimitives
 import CoreTime
@@ -16,7 +7,6 @@ import HasalaText
 public enum FrameV1Reader {
   public static let version: UInt8 = 1
 
-  /// The v1 envelope (wire/blob.ts `Envelope`).
   public struct Envelope: Sendable, Hashable {
     public let userID: String
     public let stream: String
@@ -29,7 +19,6 @@ public enum FrameV1Reader {
       self.counter = counter
     }
 
-    /// wire/blob.ts `aad`, after `validateEnvelope`.
     public func aad() throws(EnvelopeError) -> Data {
       let id = ASCII.lowercased(userID)
       guard UserID(id) != nil else {
@@ -48,13 +37,11 @@ public enum FrameV1Reader {
     }
   }
 
-  /// The embedded AAD and the gzip payload of a v1 frame, structurally checked.
   public struct Parsed: Sendable, Hashable {
     public let aad: Data
     public let payload: Data
   }
 
-  /// Parses a v1 frame without an envelope (fixtures that only need its parts).
   public static func parse(_ bytes: some DataProtocol) throws(WireDecodeError) -> Parsed {
     let b = [UInt8](bytes)
     guard FrameV3.isBucket(b.count) else { throw .setAside("\(b.count) bytes is not a size bucket") }
@@ -68,7 +55,6 @@ public enum FrameV1Reader {
     return Parsed(aad: Data(b[3..<(3 + aadLength)]), payload: Data(b[(start + 4)..<(start + 4 + m)]))
   }
 
-  /// wire/blob.ts `openBlob`: the plaintext of a v1 frame at `envelope`.
   public static func open(_ bytes: some DataProtocol, envelope: Envelope) throws(WireDecodeError) -> Data {
     let expected: Data
     do { expected = try envelope.aad() } catch { throw .setAside(error.message) }
@@ -85,14 +71,12 @@ public enum FrameV1Reader {
     }
   }
 
-  /// A cold-stream record (ledgerd v1; the stream is retired, A-6).
   public struct RawBody: Sendable, Hashable {
     public let ingestID: String
     public let receivedAt: String
     public let raw: Data
   }
 
-  /// wire/op.ts `decodeRawBody`.
   public static func decodeRawBody(_ bytes: some Collection<UInt8>) throws(WireDecodeError) -> RawBody {
     let doc = try OpCodec.parseBody(bytes, what: "raw body")
     try OpCodec.requireIntegerLiteral(doc, "v", what: "raw body")

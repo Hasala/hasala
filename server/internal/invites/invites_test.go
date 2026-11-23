@@ -78,7 +78,6 @@ func TestMintRedeemRevokeAndSweep(t *testing.T) {
 		t.Fatalf("a spent code redeemed twice: %v", err)
 	}
 
-	// Revoke by prefix; an expired invite's entry goes back to confirmed.
 	id, code2, _ := MintPrinted(bg, pool, "", DefaultTTL, false, now)
 	err = pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error {
 		got, err := Revoke(bg, tx, ShortID(id), time.Now())
@@ -118,9 +117,6 @@ func TestMintRedeemRevokeAndSweep(t *testing.T) {
 	}
 }
 
-// Spec 02 §14.1's binding at redemption: an unaddressed invite redeems for
-// any account; an addressed one only for the account whose address has its
-// tag, and never without a tag.
 func TestRedeemTxBindsAnAddressedInvite(t *testing.T) {
 	pool := pgtest.New(t)
 	now := time.Now()

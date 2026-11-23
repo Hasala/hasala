@@ -1,11 +1,6 @@
 import SwiftUI
 import UIKit
 
-// The signed-out screens' entry points (plan B7.3): each is `init(store: OnboardingStore)`,
-// with the store's `signup` model and the store's path for its navigation, so
-// `WelcomeFlowView` only says which screen a route shows. The initializers are frozen; the
-// bodies are the screens'.
-
 extension StoriesView {
   init(store: OnboardingStore) {
     self.init(
@@ -48,13 +43,10 @@ extension PhraseIntroView {
 }
 
 extension PhraseShowView {
-  /// Signup's phrase, in create mode.
   init(store: OnboardingStore) {
     self.init(signup: store.signup)
   }
 
-  /// A signup model's phrase in create mode (signup's, or the interrupted signup's
-  /// replacement): hidden until tapped, then "I've written them down" publishes it.
   init(signup m: SignupModel) {
     self.init(
       revealed: Bindable(m).phraseRevealed, words: m.phrase?.words ?? [], onBack: { m.back() },

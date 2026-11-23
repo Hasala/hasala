@@ -1,7 +1,3 @@
-// Unit tests for CoreTemplate: the dialect's hand-written rule lists (a port of
-// tmpl/dialect.test.ts, so a Go-side fixture edit cannot silently drop a row), the ICU
-// translation's semantics where the probe corpus does not reach, the cost net over the shipping
-// templates (tmpl/cost.test.ts) with ICU's time limit as the backstop, and the bundle.
 import CorePrimitives
 import CoreResources
 import Foundation
@@ -17,7 +13,6 @@ private func match(_ p: String, _ text: String, ci: Bool = false) throws -> Stri
   return try re.firstMatch(in: u).map { String(decoding: u[$0.range], as: UTF16.self) }
 }
 
-/// The repository root, found by walking up from this file.
 private func repoRoot() -> URL {
   var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
   while dir.path != "/" {
@@ -144,32 +139,23 @@ struct EngineTests {
     #expect(try match("\\w", "\u{17F}") == nil)
     #expect(try match("[^a-z]", "\u{212A}", ci: true) == nil)
     #expect(try match("\\W", "K", ci: true) == nil)
-    // Full folding would match these; Go and JavaScript do not.
     #expect(try match("ss", "ß", ci: true) == nil)
     #expect(try match("fi", "\u{FB01}", ci: true) == nil)
     #expect(try match("aed", "AED", ci: true) == "AED")
   }
 
-  /// Two places where the JavaScript twin's engine is the odd one out, pinned to Go's answer
-  /// (measured 2026-10-11 against Go's regexp and Bun): a capture inside a group repeated more
-  /// than once keeps its last participating value in Go and ICU, while JavaScript resets it on
-  /// every iteration; and `[a-z]` under `i` matches U+212A in Go, V8 and WebKit (and here), but
-  /// not in Bun's JavaScriptCore (tmpl/agreement.test.ts pins that as a Bun bug); and Bun
-  /// 1.3.13 finds no match for `(?:^b)?A` in "c A", where Go, V8 and ICU match "A" at 2 (also
-  /// pinned there). The dialect accepts the first and last shapes; no shipping template uses
-  /// either.
   @Test("where JavaScript and Go disagree on an accepted pattern, ICU answers as Go does")
   func goSemantics() throws {
     let re = try ICUPattern.compile("(?:(?P<v>a)|b){2}", caseInsensitive: false)
     #expect(Dialect.validatePattern("(?:(?P<v>a)|b){2}", flags: []) == [])
     let u = Array("ab".utf16)
     let m = try #require(try re.firstMatch(in: u))
-    #expect(m.groups[0] == 0..<1)  // Go: [0 2 0 1]; JavaScript: v undefined
+    #expect(m.groups[0] == 0..<1)
     #expect(try match("[a-z]", "\u{212A}", ci: true) == "\u{212A}")
     #expect(Dialect.validatePattern("(?:^b)?A", flags: []) == [])
     let anchored = try ICUPattern.compile("(?:^b)?A", caseInsensitive: false)
     let text = Array("c A".utf16)
-    #expect(try anchored.firstMatch(in: text)?.range == 2..<3)  // Go: [2 3]; Bun: no match
+    #expect(try anchored.firstMatch(in: text)?.range == 2..<3)
   }
 
   @Test("ICU set operators and nested sets have no meaning in a translated pattern")
@@ -292,7 +278,6 @@ struct ExecutorTests {
       }
     }
     #expect(await task.value == .cancelled)
-    // The same body outside a cancelled task matches.
     #expect(try t.execute(subject: "", normalizedBody: "Amt: 1.00").matched)
   }
 
@@ -327,7 +312,7 @@ struct ExecutorTests {
     #expect(CompiledTemplate.convertAmount("92233720368547758.07", nil, "AED")! == (Int64.max, "AED"))
     #expect(CompiledTemplate.convertAmount("92233720368547758.08", nil, "AED") == nil)
     #expect(CompiledTemplate.convertAmount("1.00", "ß", "AED") == nil)
-    #expect(CompiledTemplate.convertAmount("1.00\u{A0}", nil, "AED") == nil)  // NBSP is not in the cutset
+    #expect(CompiledTemplate.convertAmount("1.00\u{A0}", nil, "AED") == nil)
   }
 
   @Test("dates: the mail layouts, fixed widths, ASCII month folding, upper-case AM/PM, first-token retry")
@@ -404,8 +389,6 @@ struct BundledTemplateTests {
     #expect(r.skipped == want)
   }
 
-  /// tmpl/cost.test.ts: bodies chosen to be the WORST case for each anchor shape. Every
-  /// shipping template must finish without being stopped, well inside the budget.
   @Test("no hostile body is super-linear against a shipping template, and none trips the time limit")
   func cost() throws {
     let n = 200_000

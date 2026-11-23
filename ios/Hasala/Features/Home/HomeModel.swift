@@ -5,12 +5,8 @@ import Observation
   import HasalaMocks
 #endif
 
-/// The bell (Paper "Home · Notifications" 11Y9-0): what needs a look, then what came before.
-/// Its unread items are the bell's badge; the Review tab's badge counts only transactions to sort.
 struct Bell: Equatable {
-  /// Newest first: the ledger's items, then mail's ("Connect your email", "Sign in again").
   var needsALook: [NotificationItem]
-  /// Notifications sent before. Only a Debug feed has any (plan B7.6, decision 12).
   var earlier: [NotificationItem]
   var unread: Int = 0
 
@@ -25,22 +21,15 @@ struct Bell: Equatable {
   }
 }
 
-/// Home · Default (spec 10 §2) and its bell (§4).
 @MainActor
 protocol HomeModel: AnyObject, Observable {
   var snapshot: HomeSnapshot { get }
   var canvas: [HomeCanvasItem] { get }
   var hidden: Bool { get }
   var bell: Bell { get }
-  /// A widget tap; returns a screen to push, if any.
   func openWidget(_ id: String, setPlan: (() -> Void)?) -> HomeRoute?
-  /// Whether tapping the widget leads anywhere in this build (`BuildSurface`): a Release
-  /// build doesn't make a widget tappable when its detail screen isn't built yet.
   func widgetOpens(_ id: String) -> Bool
   func openNotCounted(_ line: SpendHero.NotCounted)
-  /// A bell row (spec 10 §4.4, "Tapping an item opens its screen"): closes the sheet and opens
-  /// the row's screen. What can open under a closing sheet opens now (a tab, a push, the next
-  /// sheet); what needs the sheet gone first (the review cover) comes back to run once it is.
   func openNotification(_ destination: NotificationDestination) -> (@MainActor () -> Void)?
   func markAllRead()
 }
@@ -58,15 +47,12 @@ final class HomeViewModel: HomeModel {
   init(app: AppModel) {
     self.app = app
     #if HASALA_MOCKS
-      // The Debug "Earlier" list belongs to the Maya mock only: a Debug build signed in to a
-      // real account shows what is real, and the Release surface shows no history.
       feed = BuildSurface.showsUnfinished && app.store is InMemoryLedger ? MockNotificationFeed() : nil
     #else
       feed = nil
     #endif
   }
 
-  /// One engine pass per ledger change (`AppModel.snapshot` is memoised by revision).
   var snapshot: HomeSnapshot { app.snapshot }
 
   var canvas: [HomeCanvasItem] {
@@ -99,9 +85,6 @@ final class HomeViewModel: HomeModel {
     id: "mail.connect", disc: .neutral(.envelope), title: "Connect your email",
     line: "Then Hasala can read your bank alerts.", when: nil, destination: .bankAlerts)
 
-  /// Mail's row (plan B4.3: the offer is the bell's mail row and the Profile card). It has no
-  /// moment of its own, so it comes after the ledger's dated items. Both open Bank alerts,
-  /// which offers the connect or the sign-in.
   static func mailItem(_ offer: MailOffer?, mailboxes: [MailboxSnapshot]) -> NotificationItem? {
     switch offer {
     case nil:
@@ -109,7 +92,6 @@ final class HomeViewModel: HomeModel {
     case .connect:
       return connectRow
     case .signInAgain(let id, let provider):
-      // Page 18 §14 "Mailbox needs sign-in": the title names the mailbox, never the account.
       let address = mailboxes.first { $0.id == id }?.address ?? provider.appName
       return NotificationItem(
         id: "mail.signIn.\(id)", disc: .neutral(.envelope), title: "Sign in again to \(address)",
@@ -121,8 +103,6 @@ final class HomeViewModel: HomeModel {
     let router = app.router
     switch destination {
     case .bankAlerts:
-      // A sheet never opens a second sheet: the bell's closes, then Profile comes up with Bank
-      // alerts pushed inside it (`AppRouter.open` queues it).
       router.open(.profile, profile: [.bankAlerts])
       return nil
     case .review(let preset):
@@ -162,7 +142,6 @@ final class HomeViewModel: HomeModel {
     }
   }
 
-  /// Closes the bell's sheet (and only it).
   private func close() {
     if app.router.sheet == .notifications { app.router.sheet = nil }
   }
@@ -209,7 +188,6 @@ final class HomeViewModel: HomeModel {
   static let projectPrefix = HomeWidgetKind.project.rawValue + "."
   static let goalPrefix = HomeWidgetKind.goal.rawValue + "."
 
-  /// The widgets with a built destination: Plan, a category, a project, Activity, Bills and the review deck.
   static let widgetsWithDestinations: Set<String> = ["budgetPace", "today", "spentSoFar", "nextBill", "comingUp", "toReview"]
 
   func widgetOpens(_ id: String) -> Bool {
@@ -228,8 +206,6 @@ extension AppModel {
   var bellCount: Int { notificationReads.unread(needsALook).count }
 }
 
-/// Notifications Hasala sent before (Paper "Earlier"). The app keeps no notification history
-/// yet, so live has no feed; Debug's Maya mock has one (`MockNotificationFeed`).
 @MainActor
 protocol NotificationFeed {
   func earlier(now: LocalDateTime) -> [NotificationItem]

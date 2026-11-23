@@ -1,15 +1,3 @@
-// The Foundation Models tier, core side (spec 03c §8.6; 04 §8). The core sees
-// only the `CategoryModel` protocol; the `HasalaModel` target implements it over
-// `SystemLanguageModel` and is linked by the app only.
-//
-// The tier SUGGESTS: its answer becomes a `txn_categorized {source: model}`
-// with `needs_review` unchanged, so it counts in no total until a person
-// confirms it. Apple's model never files a row (`MODEL_AUTO_CONFIRM = false`);
-// the cloud stage files one only with the second opt-in "Sort automatically",
-// above the auto-file threshold, for `cf-clef/` tags. It runs only on debits
-// with no category (Latin subjects on the device; card-alert rows in the
-// cloud), one call per distinct subject, within the context's budget, and
-// never in a background refresh or a push wake.
 import CorePrimitives
 import Foundation
 import HasalaText
@@ -30,7 +18,6 @@ public enum ModelAnswer: Sendable, Equatable {
   case failed(ModelFailure)
 }
 
-/// One category the model may answer with (03c §8.6.4).
 public struct AllowedCategory: Sendable, Equatable {
   public let id: String
   public let name: String
@@ -43,12 +30,9 @@ public struct AllowedCategory: Sendable, Equatable {
   }
 }
 
-/// The model, behind a protocol (spec 04 §2.4 R1). Implemented by `HasalaModel`.
 public protocol CategoryModel: Sendable {
   func availability() -> ModelAvailability
-  /// `allowed` is the whole set; the answer is one of its ids or `.unknown`.
   func suggest(subject: String, allowed: [AllowedCategory]) async -> ModelAnswer
-  /// `apple-fm/<major>.<minor>`, the `source.model` tag (03c §3.2.1).
   var modelTag: String { get }
 }
 
@@ -57,7 +41,6 @@ public protocol GradedCategoryModel: CategoryModel {
 }
 
 public enum ModelTier {
-  /// 03c §8.6.6: a model suggestion never auto-confirms. Flipping it is a spec change.
   public static let autoConfirm = false
 
   public static let autoFilePrefix = "cf-clef/"
@@ -67,7 +50,6 @@ public enum ModelTier {
   public enum Context: Sendable {
     case foreground, processing, refresh, backlog
 
-    /// (max calls, phase budget ms, per-call ms) of 03c §8.6.3.
     public var budget: (calls: Int, phaseMs: Int64, callMs: Int64) {
       switch self {
       case .foreground: (40, 20_000, 6_000)
@@ -78,7 +60,6 @@ public enum ModelTier {
     }
   }
 
-  /// The allowed set: active spending categories in need or want, in `ord` order.
   public static func allowed(_ categories: [CategoryInfo]) -> [AllowedCategory] {
     categories
       .filter { $0.active && $0.kind == .spending && ($0.bucket == .need || $0.bucket == .want) }
@@ -88,7 +69,6 @@ public enum ModelTier {
       }
   }
 
-  /// The instructions, verbatim (03c §8.6.4), then one line per allowed category.
   public static func instructions(_ allowed: [AllowedCategory]) -> String {
     var lines = [
       "You sort card payments made in the United Arab Emirates into budget categories.",
@@ -103,8 +83,6 @@ public enum ModelTier {
     return lines.joined(separator: "\n")
   }
 
-  /// `Merchant: <s>`: the subject cut to 64 scalars, every scalar outside
-  /// 0020-007E replaced by a space, runs collapsed. No other row data.
   public static func prompt(subject: String) -> String {
     var out = String.UnicodeScalarView()
     var lastSpace = false
@@ -121,7 +99,6 @@ public enum ModelTier {
     return "Merchant: " + String(out).trimming(.asciiSpace)
   }
 
-  /// `hasala/v1/category-taxonomy` hash of the allowed list (03c §1.10).
   public static func taxonomyHash(_ allowed: [AllowedCategory]) -> String {
     var text = "["
     for (i, a) in allowed.enumerated() {
@@ -132,7 +109,6 @@ public enum ModelTier {
     return domainHash("hasala/v1/category-taxonomy", [Array(text.utf8)])
   }
 
-  /// `fm_cache` key (03c §8.6.7).
   public static func cacheKey(subject: String, taxonomyHash: String, modelTag: String) -> String {
     domainHash("hasala/v1/fm-cache", [Array(subject.utf8), Array(taxonomyHash.utf8), Array(modelTag.utf8)])
   }
@@ -150,21 +126,11 @@ public enum ModelTier {
     return Hex.encode(sha256(bytes))
   }
 
-  /// One suggestion to author.
   public struct Suggestion: Sendable, Equatable {
     public let subject: String
     public let category: String
   }
 
-  /// Asks the model about each distinct subject, in order, within `context`'s
-  /// budget. `now` is a millisecond clock for the phase budget. Answers that
-  /// are not in the allowed set read as unknown. Returns the suggestions and
-  /// the subjects answered `unknown` (to cache for 30 days).
-  ///
-  /// Each call races the per-call limit (03c §8.6.3, 6 s; `callTimeout`
-  /// overrides it in tests): a call still running then is cancelled and its
-  /// row skipped, not cached (§8.6.5). `exceededContextWindowSize` is retried
-  /// once (the model opens a fresh session for every call).
   public static func run(
     subjects: [String], model: any CategoryModel, allowed: [AllowedCategory], context: Context, now: @Sendable () -> Int64,
     callTimeout: Duration? = nil
@@ -209,8 +175,6 @@ public enum ModelTier {
     }
   }
 
-  /// A call against its deadline: the first `finish` resumes the caller and
-  /// cancels both tasks; later ones do nothing.
   private final class Race: Sendable {
     private struct Inner {
       var k: CheckedContinuation<Graded, Never>?

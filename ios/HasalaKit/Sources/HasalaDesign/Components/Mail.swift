@@ -1,12 +1,6 @@
 import HasalaModels
 import SwiftUI
 
-// Mailboxes (Paper page 15 §15.3 "Gmail or Outlook."): the mailbox row with its states and
-// the provider rows of "Choose your email". In lists and settings the thing you connect is a
-// "mailbox"; in steps and buttons it is "your email" (page 07).
-
-/// A mailbox's status chip: 24 tall, 13/16 600. Connected is green, Syncing blue with a
-/// spinner, Sign in again and Reading stopped amber, Disconnected grey. The word always says it.
 public struct MailboxStatusChip: View {
   let state: MailboxState
 
@@ -33,7 +27,6 @@ public struct MailboxStatusChip: View {
     .accessibilityLabel(Self.word(state))
   }
 
-  /// "Connected", "Syncing", "Sign-in ended", "Reading stopped", "Disconnected".
   public static func word(_ state: MailboxState) -> String {
     switch state {
     case .connected: "Connected"
@@ -63,14 +56,6 @@ public struct MailboxStatusChip: View {
   }
 }
 
-/// One mailbox in Profile › Bank alerts (page 15 §15.3): the provider tile, the address on one
-/// line, the provider and when it was last checked, then the status chip. A disconnected
-/// mailbox fades its tile and greys its address. The address is the mailbox's, never the
-/// Hasala account email. Tap opens the mailbox.
-///
-/// The address is the row's identity, so it is never cut: when it and a wider chip ("Sign in
-/// again", "Disconnected") can't share the line, the chip moves down beside the provider
-/// line; an address too long for the row on its own wraps, with the chip under it.
 public struct MailboxRow: View {
   let mailbox: MailboxSnapshot
   let showsChevron: Bool
@@ -105,7 +90,6 @@ public struct MailboxRow: View {
         .overlay(alignment: .trailing) { chevron }
       } else {
         ViewThatFits(in: .horizontal) {
-          // Paper: the address and the chip on one line.
           if mailbox.state != .readingStopped {
             HStack(spacing: HSpacing.listRowGap) {
               mark
@@ -119,7 +103,6 @@ public struct MailboxRow: View {
               chevron
             }
           }
-          // The address on its own line; the chip beside the provider line.
           HStack(spacing: HSpacing.listRowGap) {
             mark
             VStack(alignment: .leading, spacing: 2) {
@@ -134,7 +117,6 @@ public struct MailboxRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             chevron
           }
-          // A very long address wraps; the chip goes under it all.
           HStack(alignment: .top, spacing: HSpacing.listRowGap) {
             mark
             VStack(alignment: .leading, spacing: 2) {
@@ -158,7 +140,6 @@ public struct MailboxRow: View {
     .accessibilityValue(MailboxStatusChip.word(mailbox.state))
   }
 
-  /// "Gmail · Checked 4 min ago".
   private var meta: String { "\(mailbox.provider.appName) · \(mailbox.meta)" }
 
   private var mark: some View { ProviderMark(mailbox.provider, size: .tile40, faded: off) }
@@ -193,15 +174,11 @@ public struct MailboxRow: View {
   }
 }
 
-/// A provider row in "Choose your email" (page 15 §15.3): the provider tile, the mail app's
-/// name ("Gmail", "Outlook"), a line of the account kinds it covers (or the connected address),
-/// and a chevron. Picking it moves to the provider's read-only screen.
 public struct ProviderRow: View {
   let provider: MailProviderKind
   let subtitle: String
   let action: () -> Void
 
-  /// `subtitle` defaults to the provider's chooser line ("Any Google account").
   public init(provider: MailProviderKind, subtitle: String? = nil, action: @escaping () -> Void) {
     self.provider = provider
     self.subtitle = subtitle ?? provider.chooserSubtitle

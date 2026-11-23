@@ -2,15 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-// The parts Bills, one bill and Accounts share (Paper row 07 "Bills and accounts"): the pushed
-// page with its wash, the bill card with its poster, the bill row with a tag after its title,
-// and the line glyphs the kit's icon set doesn't have.
-
-/// A page pushed inside a tab or the profile sheet (Paper "Header · Pushed": Bills, AXA
-/// Insurance, Accounts): the system bar with the back button and the title, the wash that
-/// scrolls away with the content, the column 20 under the header (or `top`), sections
-/// `spacing` apart, 160 above the bottom under the soft scroll edge. In a tab the page hosts
-/// the toast 14 above the bar; in the profile sheet the sheet hosts it.
 struct PushedPage<Content: View>: View {
   @Bindable var app: AppModel
   let title: String
@@ -27,8 +18,6 @@ struct PushedPage<Content: View>: View {
         .padding(.bottom, HSpacing.scrollContentBottom)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-    // The wash starts at the top of the screen, behind the bar, and scrolls away with the
-    // content (Paper: absolute, 420 tall); a pull or a refresh doesn't carry it down.
     .washBehind(wash)
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .background(inProfileSheet ? HColor.sheetSurfaceLarge : HColor.surfaceSecondary)
@@ -39,18 +28,11 @@ struct PushedPage<Content: View>: View {
 }
 
 extension AppRouter {
-  /// Pushes one bill's page onto the stack its list is in: the profile sheet's, or Home's
-  /// (Bills is pushed from Home's widget and from Profile › Bills).
   func openBill(_ id: BillID, inProfileSheet: Bool) {
     if inProfileSheet { profile.append(.bill(id)) } else { home.append(.bill(id)) }
   }
 }
 
-/// A card that asks for a decision about a bill (page 16 §12; Bills · Coming up and found):
-/// a 104 poster in the bill's hue (rose may be late, sand changed price, sky newly found) with
-/// the glyph plate, the name, the status pill and the figure, over a white body: the sentence,
-/// what else the card shows, and one or two 44 buttons. At the accessibility sizes the buttons
-/// stack, primary on top. VoiceOver reads the card as one sentence, then the buttons.
 struct BillCard<Extra: View>: View {
   typealias Action = BillCardAction
 
@@ -59,7 +41,6 @@ struct BillCard<Extra: View>: View {
   let name: String
   let pill: StatusPill
   let amount: Money
-  /// After the figure: "every month".
   var caption: String?
   let message: MoneyPhrase?
   let hidden: Bool
@@ -100,7 +81,6 @@ struct BillCard<Extra: View>: View {
   }
 
   private var poster: some View {
-    // Paper's poster spreads its two rows apart (space-between): 6 at the drawn 104.
     VStack(alignment: .leading, spacing: 0) {
       ReflowingRow(spacing: 6) {
         HStack(spacing: 8) {
@@ -122,13 +102,11 @@ struct BillCard<Extra: View>: View {
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 13)
-    // At least 104; taller when the words need it, the figure still at the bottom.
     .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
     .fixedSize(horizontal: false, vertical: true)
     .background(hue.perceptualGradient)
   }
 
-  /// The 32 plate in `--color-poster-glyph` with the glyph at 18, stroke 2, in the hue's ink.
   @ViewBuilder private var plate: some View {
     switch glyph {
     case .icon(let icon):
@@ -146,7 +124,6 @@ struct BillCard<Extra: View>: View {
     BillCardButtons(primary: primary, secondary: secondary)
   }
 
-  /// "AXA Insurance, AED 550.00, 3 days past usual. Car insurance usually arrives on the 7th."
   private var spoken: String {
     let figure = hidden ? "Amount hidden" : "\(amount.currency) \(MoneyFormat.string(amount.minor))"
     let head = [name, figure + (caption.map { " \($0)" } ?? ""), pill.text].joined(separator: ", ")
@@ -212,18 +189,11 @@ extension BillCard where Extra == EmptyView {
   }
 }
 
-/// What a bill card's poster plate draws: one of the kit's icons, or a Paper path the kit
-/// doesn't carry.
 enum PosterGlyph: Equatable {
   case icon(HIcon)
-  /// Stroked path data on the 24 grid, and an optional part that is filled.
   case path(stroke: String, fill: String?)
 }
 
-/// A bill or income line (page 16 §12 BillRow): the 40 disc, the name with an optional tag
-/// ("Price change"), the due line (a red dot and words when it may be late), and the amount:
-/// "~" when expected, "+" in green for income. Min 64. At the accessibility sizes the parts
-/// stack. One VoiceOver stop.
 struct BillsListRow: View {
   let row: BillRowModel
   var tag: StatusPill?
@@ -271,8 +241,6 @@ struct BillsListRow: View {
   }
 }
 
-/// A row's second line from `PlanDetailPart`s joined by " · ": words in 13/18 secondary, a
-/// status as a 7 dot and words 13/18 600 in its tone ("● Expected the 7th").
 struct BillDetailParts: View {
   let parts: [PlanDetailPart]
   let hidden: Bool
@@ -309,9 +277,6 @@ struct BillDetailParts: View {
   }
 }
 
-/// A line glyph from Paper path data that the kit's icon set doesn't carry (the net worth
-/// arrow, du's wifi), on the 24 grid with round caps and joins, and an optional filled part
-/// (the wifi's dot). Decorative.
 struct StrokeGlyph: View {
   let d: String
   var filled: String?
@@ -336,8 +301,5 @@ struct StrokeGlyph: View {
 }
 
 extension View {
-  /// A pill takes the height its label needs at every text size, never a little less than
-  /// it (the accessibility audit's "Text clipped" at AX3 on a two-line label, as P3's docks
-  /// found).
   func pillHeight() -> some View { fixedSize(horizontal: false, vertical: true) }
 }

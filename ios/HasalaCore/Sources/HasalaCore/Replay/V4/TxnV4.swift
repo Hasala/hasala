@@ -1,10 +1,8 @@
-// 03c §3.1-§3.2: the v4 deltas of the txn payloads, and `CategorySource`.
 import CoreJSON
 import CoreWire
 import HasalaText
 
 extension State {
-  /// The v4-only fields of `txn_ingested` / `txn_superseded` (03c §3.1).
   static func decodeTxnV4Deltas(_ p: JSONObject, into out: inout TxnPayload) throws(PayloadError) {
     if let raw = p["category_source"], !raw.isNull {
       out.categorySource = try decodeCategorySource(raw, category: out.category)
@@ -26,7 +24,6 @@ extension State {
     "no_dmarc_reject",
   ]
 
-  /// 03c §3.1 `gates`: a closed enum per key; unknown keys ignored.
   static func decodeGates(_ v: JSONValue?) throws(PayloadError) -> TxnGates {
     let o = try P.object(v, "gates")
     var g = TxnGates()
@@ -46,8 +43,6 @@ extension State {
     return g
   }
 
-  /// `none`, or `<id>@<version>`: printable ASCII without spaces, at most 128 bytes,
-  /// one `@` with something on both sides.
   private static func isTemplateRef(_ s: String) -> Bool {
     if s == "none" { return true }
     let u = Array(s.utf8)
@@ -57,7 +52,6 @@ extension State {
     return i > 0 && i < u.count - 1
   }
 
-  /// 03c §3.2.1: a `CategorySource` consistent with `category`.
   static func decodeCategorySource(_ v: JSONValue?, category: String?) throws(PayloadError) -> CategorySource {
     let o = try P.object(v, "source")
     let kindName = try P.oneOf(o["kind"], "source.kind", CategorySource.Kind.allCases.map(\.rawValue))
@@ -93,7 +87,6 @@ extension State {
     return s
   }
 
-  /// 03c §3.2: `category` (key present), `needs_review` and `source` all required.
   static func decodeCategorizeV4(_ p: JSONObject) throws(PayloadError) -> (String?, Bool, CategorySource) {
     guard p["category"] != nil else { throw PayloadError("category is required (null to uncategorize)") }
     let category = try P.optionalCategoryV4(p["category"], "category")

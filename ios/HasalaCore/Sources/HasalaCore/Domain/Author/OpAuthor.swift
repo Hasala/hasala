@@ -1,23 +1,3 @@
-// `OpAuthor` (spec 04 §2.4 R5, §5.4; 03c §10; 03a §9): the only constructor of
-// ops reachable from outside HasalaCore. Every op it returns:
-//   - carries `v = SchemaVersion.author` (4) and a ULID `op_id`;
-//   - is stamped by the 03c §1.8.2 author rule:
-//       authored_ms = max(now, min(own_last, now + 24 h) + 1, seen + 1), then +1 per op in the blob,
-//     where `seen` ignores writers more than 24 h ahead;
-//   - has passed `validateOp` and the fold's payload decoder (`Replay.payloadProblem`);
-//   - is at most 8 KiB of canonical JSON (04 §5.4 S7, `opTooLarge`), so an
-//     email body can never slip in.
-// An op failing a check is an author bug: the call throws and nothing is
-// enqueued (03c §2, AT-30). The result is one blob's worth of ops, in order.
-//
-// User text (every `Label` and `Note`) is NFC-normalized and trimmed here
-// (03c §1.6) before it reaches the payload; text that is still outside its
-// grammar after that (empty, too long, a forbidden scalar) is a `refused`
-// that `build()` reports, never an `invalidOp`.
-//
-// The authors are pure: the caller passes what the projection shows (versions,
-// rows), the outbox's pending parent versions folded into `parentVersion`, and
-// an `AuthorContext` (clock, ids, writer, own last stamp, `maxAuthored`).
 import CoreCategorize
 import CoreJSON
 import CorePrimitives
@@ -30,9 +10,7 @@ import HasalaText
 public struct AuthorContext: Sendable {
   public var writerID: String
   public var nowMs: Int64
-  /// The largest `authored_at` this writer has authored, outbox included.
   public var ownLastMs: Int64?
-  /// The fold's per-writer `maxAuthored` (03c §1.8.2).
   public var maxAuthored: [String: Int64]
   public var random: any RandomSource
 
@@ -46,7 +24,6 @@ public struct AuthorContext: Sendable {
 
   static let dayMs: Int64 = 86_400_000
 
-  /// The first stamp of the next blob (03c §1.8.2).
   public var baseMs: Int64 {
     let cap = nowMs + Self.dayMs
     var t = nowMs
@@ -56,7 +33,6 @@ public struct AuthorContext: Sendable {
     return t
   }
 
-  /// `clock_ahead_writers`: distinct writers, this one included, whose newest stamp is > 24 h ahead.
   public var clockAheadWriters: Int {
     let cap = nowMs + Self.dayMs
     var ahead = Set(maxAuthored.filter { $0.value > cap }.map(\.key))
@@ -66,43 +42,32 @@ public struct AuthorContext: Sendable {
 }
 
 public enum AuthorError: Error, Sendable, Equatable {
-  /// An op failed `validateOp` or the payload decoder: an author bug.
   case invalidOp(String)
-  /// 04 §5.4 (S7) `OpTooLarge`: the op's canonical JSON is over `OpAuthor.maxOpBytes`.
   case opTooLarge(type: String, bytes: Int)
-  /// A refusal the UI shows inline; nothing was authored.
   case refused(String)
   case random
 }
 
-/// One blob's worth of authored ops and the last stamp used (persist as `own_last_ms`).
 public struct AuthoredBlob: Sendable {
   public let ops: [Op]
   public let lastAuthoredMs: Int64
 }
 
-/// Builds the ops of one user action.
 public struct OpAuthor: Sendable {
   public let context: AuthorContext
   private var drafts: [(OpType, EntityRef?, Int64?, String?, JSONObject)] = []
-  /// The first user-text refusal of this action; `build()` throws it.
   private var refusal: String?
 
-  /// 04 §5.4 (S7): the largest canonical JSON of one op, in bytes.
   public static let maxOpBytes = 8 * 1024
 
   public init(_ context: AuthorContext) { self.context = context }
-
-  // MARK: Assembly
 
   mutating func add(_ type: OpType, entity: (String, String)? = nil, parent: Int64? = nil, ingestID: String? = nil, _ payload: [(String, JSONValue)]) {
     drafts.append((type, entity.map { EntityRef(kind: $0.0, id: $0.1) }, parent, ingestID, JSONObject(payload)))
   }
 
-  /// The number of ops drafted so far.
   public var count: Int { drafts.count }
 
-  /// Stamps, mints ids, validates and returns the blob.
   public func build() throws(AuthorError) -> AuthoredBlob {
     if let refusal { throw .refused(refusal) }
     var ops: [Op] = []
@@ -124,8 +89,6 @@ public struct OpAuthor: Sendable {
     return AuthoredBlob(ops: ops, lastAuthoredMs: base + Int64(max(drafts.count - 1, 0)))
   }
 
-  /// The byte length of `op`'s canonical JSON: the object `OpCodec.encodeBlobOps`
-  /// writes for it (key order and number form of `JSONWriter`'s defaults).
   static func canonicalSize(_ op: Op) -> Int {
     var o = JSONObject()
     o["v"] = .number(JSONNumber(Int64(op.v)))
@@ -139,20 +102,14 @@ public struct OpAuthor: Sendable {
     return JSONWriter().bytes(.object(o)).count
   }
 
-  /// A fresh entity id (ULID) at this context's clock.
   public func newEntityID() throws(AuthorError) -> String { try Ulid.mint(ms: context.nowMs, random: context.random) }
 
-  // MARK: User text (03c §1.6)
-
-  /// A `Label` as typed: NFC, trimmed; a value still outside the grammar is
-  /// recorded as this action's refusal.
   mutating func label(_ typed: String, _ what: String) -> String {
     let s = UserText.normalize(typed)
     if let v = TextRules.checkLabel(s) { refuse("\(what): \(v)") }
     return s
   }
 
-  /// A `Note` as typed: NFC, trimmed (`""` clears).
   mutating func note(_ typed: String, _ what: String) -> String {
     let s = UserText.normalize(typed)
     if let v = TextRules.checkNote(s) { refuse("\(what): \(v)") }
@@ -163,16 +120,12 @@ public struct OpAuthor: Sendable {
     if refusal == nil { refusal = why }
   }
 
-  // MARK: Transactions (03c §3.8)
-
-  /// `txn_categorized {category, needs_review, source}` (03c §3.2).
   public mutating func categorize(txnID: String, parentVersion: Int64, category: String?, needsReview: Bool = false, source: CategorySource = .user) {
     add(
       .txnCategorized, entity: ("txn", txnID), parent: parentVersion,
       [("category", category.map(JSONValue.string) ?? .null), ("needs_review", .bool(needsReview)), ("source", Self.sourceJSON(source))])
   }
 
-  /// `txn_split {parts}`; `[]` un-splits (03c §3.3).
   public mutating func split(txnID: String, parentVersion: Int64, parts: [(category: String, amountMinor: Int64, note: String?)]) {
     var list: [JSONValue] = []
     for p in parts {
@@ -186,7 +139,6 @@ public struct OpAuthor: Sendable {
     add(.txnSplit, entity: ("txn", txnID), parent: parentVersion, [("parts", .array(list))])
   }
 
-  /// 03c §3.3 "Split evenly": `q, …, q, q + r`.
   public static func evenAmounts(_ total: Int64, _ n: Int) -> [Int64] {
     guard n > 0 else { return [] }
     let q = total / Int64(n)
@@ -194,8 +146,6 @@ public struct OpAuthor: Sendable {
     return Array(repeating: q, count: n - 1) + [q + r]
   }
 
-  /// `txn_annotated {txn_id, set}` (03c §3.5); a nil value clears the field.
-  /// The `note` is user text (NFC, trimmed); the other fields are ids and tokens.
   public mutating func annotate(txnID: String, set: [(String, String?)]) {
     var o: [(String, JSONValue)] = []
     for (k, v) in set {
@@ -208,7 +158,6 @@ public struct OpAuthor: Sendable {
     add(.txnAnnotated, [("txn_id", .string(txnID)), ("set", .object(JSONObject(o)))])
   }
 
-  /// `txn_edited` money/date edit (03c §3.4; user rows only, unsplit, parsed).
   public mutating func editTxn(
     txnID: String, parentVersion: Int64, amountMinor: Int64? = nil, currency: String? = nil, direction: String? = nil, postedAt: String? = nil
   ) {
@@ -220,18 +169,12 @@ public struct OpAuthor: Sendable {
     add(.txnEdited, entity: ("txn", txnID), parent: parentVersion, o)
   }
 
-  /// `merchant_named` (03c §3.6): the key is computed from the raw merchant.
-  /// The name is NFC-normalized and trimmed; a name that trims to nothing (or
-  /// nil) clears the rename, back to the prettified merchant.
   public mutating func renameMerchant(raw: String, to name: String?) {
     var display: JSONValue = .null
     if let name, !UserText.normalize(name).isEmpty { display = .string(label(name, "display_name")) }
     add(.merchantNamed, [("merchant_key", .string(Canon.merchantKey(raw))), ("display_name", display)])
   }
 
-  /// A manual entry (03c §3.1): `txn_ingested` with a fresh manual ingest id, then
-  /// the annotations of "Paid with" / a transfer. `localWallMs` is the chosen wall
-  /// time at +04:00 expressed as if UTC; the stored instant is 4 h earlier.
   public mutating func manualEntry(
     amountMinor: Int64, currency: String, direction: String, localWallMs: Int64, merchant: String, category: String?,
     accountID: String? = nil, counterAccountID: String? = nil, location: String? = nil
@@ -259,15 +202,6 @@ public struct OpAuthor: Sendable {
     return id
   }
 
-  /// A `txn_ingested` (or `txn_superseded`) whose payload the caller built
-  /// whole, as the Gmail lane does (04 §7.5 step 7e). Returns the entity id
-  /// (minted when not given). The payload is checked like every other op.
-  ///
-  /// `predecessor` is the live row a supersede replaces (its category and
-  /// source as the projection shows them). When its source is `user` or
-  /// `held`, the payload's `category` and `category_source` are replaced by
-  /// the predecessor's (03c §3.1 "Mailbox supersede"): a template fix that
-  /// re-reads the email never wipes a person's choice.
   @discardableResult
   public mutating func ingest(
     payload: JSONObject, ingestID: String, superseding: Bool = false, entityID: String? = nil, predecessor: CategoryState? = nil
@@ -282,7 +216,6 @@ public struct OpAuthor: Sendable {
     return id
   }
 
-  /// A row's categorization as the projection shows it.
   public struct CategoryState: Sendable, Equatable {
     public var category: String?
     public var source: CategorySource
@@ -292,10 +225,6 @@ public struct OpAuthor: Sendable {
     }
   }
 
-  /// The `category` / `category_source` fields of a mailbox supersede (03c
-  /// §3.1): the predecessor's when its source is `user` or `held`; otherwise
-  /// the at-ingest decision's (§8.3), or nil (the payload keeps its own) when
-  /// no decision is given.
   public static func supersedeFields(predecessor: CategoryState, decision: Decision?) -> [(String, JSONValue)]? {
     switch predecessor.source.kind {
     case .user, .held:
@@ -305,14 +234,11 @@ public struct OpAuthor: Sendable {
     }
   }
 
-  /// The payload fields `category` and `category_source` for a pipeline decision (03c §8.3).
   public static func decisionFields(_ d: Decision) -> [(String, JSONValue)] {
     guard let c = d.category else { return [("category", .null), ("category_source", sourceJSON(.none))] }
     return [("category", .string(c)), ("category_source", sourceJSON(categorySource(d.source)))]
   }
 
-  /// The writer checkpoint (spec 01 §3.3(c); the sync engine's push step 3):
-  /// the canonical, sorted heads payload.
   public mutating func writerCheckpoint(_ heads: [CheckpointHead]) throws(AuthorError) {
     let payload: JSONValue
     do { payload = try Checkpoint.encodePayload(heads) } catch { throw .invalidOp("writer_checkpoint: \(error)") }
@@ -320,7 +246,6 @@ public struct OpAuthor: Sendable {
     drafts.append((.writerCheckpoint, nil, nil, nil, o))
   }
 
-  /// `hex(SHA-256("hasala/v1/manual-ingest" ‖ 0x00 ‖ 16 random bytes))` (03c §1.10).
   public static func manualIngestID(_ random: any RandomSource) throws(AuthorError) -> String {
     let r: Data
     do { r = try random.bytes(16) } catch { throw .random }
@@ -329,8 +254,6 @@ public struct OpAuthor: Sendable {
     bytes += r
     return Hex.encode(sha256(bytes))
   }
-
-  // MARK: Rules (03c §5)
 
   public struct RuleDraft: Sendable, Equatable {
     public var patterns: [String]
@@ -359,18 +282,14 @@ public struct OpAuthor: Sendable {
     }
   }
 
-  /// `rule_added` create (`parentVersion` nil) or whole-record edit.
   @discardableResult
   public mutating func rule(id: String? = nil, parentVersion: Int64? = nil, _ draft: RuleDraft) throws(AuthorError) -> String {
     let rid: String
     if let id { rid = id } else { rid = try newEntityID() }
-    // Patterns are not NFC-normalized: the matcher compares bytes (Canon
-    // keeps NFC and NFD apart), so a pattern must keep the merchant's own form.
     add(.ruleAdded, entity: ("rule", rid), parent: parentVersion, draft.payload)
     return rid
   }
 
-  /// A rule as the projection shows it, for dedup and pause.
   public struct RuleSnapshot: Sendable, Equatable {
     public var id: String
     public var version: Int64
@@ -382,11 +301,6 @@ public struct OpAuthor: Sendable {
     }
   }
 
-  /// Pause/resume or remove (03c §5.5): the rule edit, then, when pausing or
-  /// removing, a `held` re-categorization of every row the rule files with
-  /// needs_review = 0 (`heldRows`: id, version, category). Chunked at
-  /// `Sweep.maxOpsPerBlob` ops per blob, the rule edit first; enqueue the
-  /// blobs in order, in one transaction.
   public static func setRule(
     _ r: RuleSnapshot, enabled: Bool? = nil, removed: Bool? = nil, heldRows: [(id: String, version: Int64, category: String)],
     context: AuthorContext
@@ -412,8 +326,6 @@ public struct OpAuthor: Sendable {
     out.append(try a.build())
     return out
   }
-
-  // MARK: Categories (03c §4.2)
 
   public mutating func defineCategory(
     id: String, name: String, kind: CategoryKind, bucket: Bucket?, icon: String?, active: Bool, parent: String? = nil
@@ -474,7 +386,6 @@ public struct OpAuthor: Sendable {
     defineCategory(id: c.id, name: c.name, kind: c.kind, bucket: c.bucket, icon: c.icon, active: active, parent: c.builtin ? nil : c.parent)
   }
 
-  /// A new user category id: `c_` + lower-case ULID.
   public func newCategoryID() throws(AuthorError) -> String { try Self.newCategoryID(ms: context.nowMs, random: context.random) }
 
   public static func newCategoryID(ms: Int64, random: any RandomSource) throws(AuthorError) -> String {
@@ -483,15 +394,12 @@ public struct OpAuthor: Sendable {
 
   public static func isNewCategoryID(_ id: String) -> Bool { id.utf8.starts(with: "c_".utf8) && Grammar.isCategoryID(id) }
 
-  // MARK: Plan (03a §3, §9)
-
   public mutating func setBudget(category: String, month: CivilMonth, amountMinor: Int64, scope: String = "onward") {
     add(
       .budgetSet,
       [("category_id", .string(category)), ("month", .string(month.wire)), ("amount_minor", .string(String(amountMinor))), ("scope", .string(scope))])
   }
 
-  /// `budget_moved`; nil legs are Ready to assign. Returns the op's index in this blob.
   public mutating func moveMoney(month: CivilMonth, from: String?, to: String?, amountMinor: Int64, reason: String = "move", batchID: String? = nil, undoes: String? = nil) {
     add(
       .budgetMoved,
@@ -502,7 +410,6 @@ public struct OpAuthor: Sendable {
       ])
   }
 
-  /// Auto-assign's allocations as one blob of moves from Ready to assign (03a §6.11, §3.3).
   public mutating func autoAssign(month: CivilMonth, _ allocations: [(category: String, amount: Int64)], batchID: String) {
     for (c, v) in allocations where v > 0 {
       moveMoney(month: month, from: nil, to: c, amountMinor: v, reason: "auto_assign", batchID: batchID)
@@ -511,9 +418,6 @@ public struct OpAuthor: Sendable {
 
   public typealias Categorization = (txnID: String, version: Int64, category: String, needsReview: Bool, source: CategorySource)
 
-  /// The sweep's re-filings and the model's suggestions as blobs of at most 500
-  /// `txn_categorized` ops (03c §8.4, §8.6.6). `version` is the row's projected
-  /// version (with the outbox's pending parents folded in by the caller).
   public static func categorizations(_ items: [Categorization], context: AuthorContext) throws(AuthorError) -> [AuthoredBlob] {
     var out: [AuthoredBlob] = []
     var ctx = context
@@ -545,7 +449,6 @@ public struct OpAuthor: Sendable {
     add(.categoryPlanRoleSet, [("category_id", .string(category)), ("role", .string(role))])
   }
 
-  /// The 50/30/20 template (v4 authors omit `monthly_total_minor`, 03a §3.1).
   public mutating func setBudgetTemplate(need: Int64, want: Int64, saving: Int64) throws(AuthorError) {
     guard need + want + saving == 100, [need, want, saving].allSatisfy({ (0...100).contains($0) }) else {
       throw .refused("the split must add up to 100")
@@ -553,19 +456,14 @@ public struct OpAuthor: Sendable {
     add(.budgetSplitSet, [("need", .number(JSONNumber(need))), ("want", .number(JSONNumber(want))), ("saving", .number(JSONNumber(saving)))])
   }
 
-  /// Setup 2 "Use this plan": one onward `budget_set` per seeded category (03a §6.12, §9).
   public mutating func seedPlan(income: Int64, split: BudgetSplit?, month: CivilMonth) {
     for (c, amount) in PlanEngine.seed(income: income, split: split).categories {
       setBudget(category: c, month: month, amountMinor: amount)
     }
   }
 
-  // MARK: Projects and goals (03c §6; 03a §9 `defineProject` / `defineGoal`)
-
   public enum Status: String, Sendable, Equatable { case active, completed, removed }
 
-  /// A project as the editor holds it (03c §6.1). `completedOn` is required
-  /// when `status` is `.completed` and dropped otherwise.
   public struct ProjectDraft: Sendable, Equatable {
     public var name: String
     public var startsOn: CivilDate?
@@ -591,8 +489,6 @@ public struct OpAuthor: Sendable {
     }
   }
 
-  /// `project_defined`: create (`id` and `parentVersion` nil) or whole-record
-  /// edit (toggle, Mark complete, remove). Returns the project id.
   @discardableResult
   public mutating func defineProject(id: String? = nil, parentVersion: Int64? = nil, _ d: ProjectDraft) throws(AuthorError) -> String {
     if let s = d.startsOn, let e = d.endsOn, e < s { throw .refused("the end date is before the start date") }
@@ -611,11 +507,8 @@ public struct OpAuthor: Sendable {
     return pid
   }
 
-  /// Where a goal's progress comes from (03c §6.2).
   public enum GoalSourceDraft: Sendable, Equatable {
-    /// A saving-bucket spending category, counted from `since`.
     case category(id: String, since: CivilDate)
-    /// A 03b account's balance (`starting_minor` must be 0).
     case account(id: String)
   }
 
@@ -644,9 +537,6 @@ public struct OpAuthor: Sendable {
     }
   }
 
-  /// `goal_defined`: create or whole-record edit. A goal funded by a new
-  /// dedicated category is `defineCategory` then `defineGoal` on one author
-  /// (one blob, 03c §6.2). Returns the goal id.
   @discardableResult
   public mutating func defineGoal(id: String? = nil, parentVersion: Int64? = nil, _ d: GoalDraft) throws(AuthorError) -> String {
     guard d.targetMinor > 0 else { throw .refused("the target must be more than 0") }
@@ -679,13 +569,8 @@ public struct OpAuthor: Sendable {
     return on
   }
 
-  // MARK: Duplicates (03c §3.7 lane `duplicate`; v3 `txn_duplicate_disposition`)
-
   public enum DuplicateDisposition: String, Sendable, Equatable { case same, different }
 
-  /// Resolves a possible-duplicate notice: `same` (not counted again),
-  /// `different` (counted), nil (undo). `otherTxnID` is the row the notice
-  /// names (`possible_duplicate_of`); the fold refuses a mismatch.
   public mutating func resolveDuplicate(txnID: String, parentVersion: Int64, otherTxnID: String, disposition: DuplicateDisposition?) {
     add(
       .txnDuplicateDisposition, entity: ("txn", txnID), parent: parentVersion,
@@ -704,23 +589,17 @@ public struct OpAuthor: Sendable {
       [("other_txn_id", .string(otherTxnID)), ("decision", decision.map { .string($0.rawValue) } ?? .null)])
   }
 
-  // MARK: Configuration
-
   public mutating func setHomeCurrency(_ code: String) { add(.homeCurrencySet, [("currency", .string(code))]) }
 
-  /// `rate_set {currency, rate_micro}`: home-currency units per unit of
-  /// `currency`, times 10^6 (Settings › Currency; bootstrap's USD 3.6725).
   public mutating func setRate(currency: String, rateMicro: Int64) throws(AuthorError) {
     guard rateMicro > 0 else { throw .refused("the rate must be more than 0") }
     add(.rateSet, [("currency", .string(currency)), ("rate_micro", .string(String(rateMicro)))])
   }
 
-  /// `rate_unset {currency}`: that currency's rows stop counting until a rate is set again.
   public mutating func unsetRate(currency: String) { add(.rateUnset, [("currency", .string(currency))]) }
 
   public mutating func declareBank(_ bank: String, active: Bool) { add(.bankDeclared, [("bank", .string(bank)), ("active", .bool(active))]) }
 
-  /// `sender_trust_set` from typed input (03c §7.2 author rules).
   public mutating func setSenderTrust(typed: String, trusted: Bool, currentTrusted: [String]) throws(AuthorError) {
     let domain: String
     switch SenderTrust.normalize(typed) {
@@ -735,8 +614,6 @@ public struct OpAuthor: Sendable {
     add(.senderTrustSet, [("domain", .string(domain)), ("trusted", .bool(trusted))])
   }
 
-  // MARK: Helpers
-
   public static func sourceJSON(_ s: CategorySource) -> JSONValue {
     var o: [(String, JSONValue)] = [("kind", .string(s.kind.rawValue))]
     if let v = s.ruleID { o.append(("rule_id", .string(v))) }
@@ -746,7 +623,6 @@ public struct OpAuthor: Sendable {
     return .object(JSONObject(o))
   }
 
-  /// The `CategorySource` of a sweep decision.
   public static func categorySource(_ d: DecisionSource) -> CategorySource {
     switch d {
     case .none: .none
@@ -756,9 +632,6 @@ public struct OpAuthor: Sendable {
   }
 }
 
-/// The author's text rule (03c §1.6): NFC, then the edges trimmed of
-/// `EDGE_SPACE` and white space (line breaks included). Author-only: the fold
-/// never normalizes (03c §1.11).
 public enum UserText {
   public static func normalize(_ typed: String) -> String {
     let scalars = Array(typed.precomposedStringWithCanonicalMapping.unicodeScalars)
@@ -770,7 +643,6 @@ public enum UserText {
   }
 }
 
-/// ULIDs (03c §1.7): 48-bit millisecond time, 80 random bits, Crockford base32.
 public enum Ulid {
   static let alphabet = Array("0123456789ABCDEFGHJKMNPQRSTVWXYZ".utf8)
 
@@ -781,10 +653,9 @@ public enum Ulid {
     let t = UInt64(max(0, ms)) & 0xFFFF_FFFF_FFFF
     for i in 0..<6 { value[i] = UInt8((t >> (8 * (5 - i))) & 0xFF) }
     for (i, b) in r.enumerated() { value[6 + i] = b }
-    // 128 bits → 26 base32 digits (the first carries 3 bits).
     var out: [UInt8] = []
     var acc: UInt32 = 0
-    var bits = 2  // pad to 130 bits
+    var bits = 2
     for b in value {
       acc = (acc << 8) | UInt32(b)
       bits += 8

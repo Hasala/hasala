@@ -1,6 +1,3 @@
-// Unit tests for CoreMailbox's pure parts (spec 04 §7.2, §7.5, §7.6): OAuth, token custody,
-// the sender query, the Gmail client's request shapes and the disposition table. The engine's
-// cycle is in MailboxEngineTests. Every message is synthetic (CoreTestSupport.SyntheticMail).
 import CoreJSON
 import CoreMail
 import CoreMailbox
@@ -36,7 +33,6 @@ import Testing
       "code_challenge=\(PKCE.challenge(verifier: a.codeVerifier))", "code_challenge_method=S256", "state=\(a.state)",
       "nonce=the-nonce", "prompt=select_account consent", "access_type=offline",
     ])
-    // Spaces are %20, never '+', so Google reads the scope list as three scopes.
     #expect(a.url.absoluteString.contains("scope=openid%20email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.readonly"))
   }
 
@@ -391,7 +387,6 @@ import Testing
     let f = try #require(p.fields)
     #expect(f.amountMinor == 25000 && f.currency == "AED" && f.direction == "debit")
     #expect(f.merchant == "SYNTHETIC GROCER DUBAI")
-    // Bank printed 05-06-2026 (a bare date): local midnight = 2026-06-04T20:00Z (03c §1.5).
     #expect(f.postedAt == "2026-06-04T20:00:00.000Z" && f.precision == "day")
     #expect(p.ingestID == Hex.encode(sha256(Data(SyntheticMail.dibCard(id: "m1", dateMs: Rig.t0).raw))))
   }
@@ -436,14 +431,12 @@ import Testing
   }
 
   @Test func untrustedOrForeignVerdictStaysInReview() throws {
-    // A foreign A-R above Gmail's: not_topmost, so the sender is not verified.
     let p = try mail(SyntheticMail.dibCard(id: "m1", dateMs: Rig.t0, arTopmost: false))
     #expect(p.gates.ar == "not_topmost" && !p.gates.senderTrusted)
     let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", categorizer: NoCategorizer())
     #expect(d.needsReview)
     #expect(d.payload["gates"]?["sender"] == .string("untrusted"))
-    #expect(d.payload["amount_minor"] == .string("25000"))  // prefilled
-    // Verified, but for a domain outside T.
+    #expect(d.payload["amount_minor"] == .string("25000"))
     let q = try mail(SyntheticMail.dibCard(id: "m3", dateMs: Rig.t0, authDomain: "mailer.example"))
     #expect(q.gates.ar == "fail" && !q.gates.senderTrusted)
   }

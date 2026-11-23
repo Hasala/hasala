@@ -1,14 +1,9 @@
-// PBKDF2-HMAC-SHA256 (RFC 8018), the one CommonCrypto call in the core
-// (spec 01 §2, §4.10; spec 04 §2.3: `CCKeyDerivationPBKDF` appears only here).
 import CommonCrypto
 import Foundation
 
 public enum PBKDF2 {
-  /// The derived key length spec 01 uses everywhere.
   public static let outputByteCount = 32
 
-  /// `PBKDF2(password, salt, iterations)` with HMAC-SHA-256, 32 bytes out, into
-  /// `SecureBytes`. Fails unless CommonCrypto returns `kCCSuccess`.
   public static func sha256(
     password: some ContiguousBytes, salt: some ContiguousBytes, iterations: UInt32,
     outputByteCount: Int = outputByteCount

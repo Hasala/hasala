@@ -40,7 +40,6 @@ func TestPasswordSignInMintsASessionAndAlertsWithAFreezeLink(t *testing.T) {
 	if n := f.count(`SELECT count(*) FROM mail_log WHERE status = 'sent' AND kind = 'alert'`); n != 1 {
 		t.Fatal("the alert's mail_log row is not final")
 	}
-	// A bound sign-in records nothing.
 	if _, err := m.loginPassword(m.s, m.device); err != nil {
 		t.Fatal(err)
 	}
@@ -49,8 +48,6 @@ func TestPasswordSignInMintsASessionAndAlertsWithAFreezeLink(t *testing.T) {
 	}
 }
 
-// Every failure is the same password_rejected after the same one PBKDF2:
-// unknown address, no password, wrong S, a spent ceremony (spec 02 E-09).
 func TestPasswordSignInFailuresAreUniformAndCostOnePBKDF2(t *testing.T) {
 	t.Parallel()
 	f := newAcctFixture(t)
@@ -88,7 +85,6 @@ func TestPasswordSignInFailuresAreUniformAndCostOnePBKDF2(t *testing.T) {
 			t.Errorf("%s ran %d PBKDF2, want 1", name, n)
 		}
 	}
-	// The begin answer has one shape for every valid address.
 	a, _ := f.acct.PasswordLoginBegin(bgctx, m.addr)
 	b, _ := f.acct.PasswordLoginBegin(bgctx, f.newAddr())
 	if len(a.Salt) != len(b.Salt) || len(a.Nonce) != len(b.Nonce) || len(a.CeremonyID) != len(b.CeremonyID) {
@@ -176,8 +172,6 @@ func TestABoundPasswordSuccessGivesItsAttemptBack(t *testing.T) {
 	}
 }
 
-// Five consecutive failures pause unbound attempts (1 min, doubling); a bound
-// attempt ignores the pause and has its own per-writer budget (review 2 F-01).
 func TestPasswordPauseStopsUnboundGuessesButNotABoundDevice(t *testing.T) {
 	t.Parallel()
 	f := newAcctFixture(t)
@@ -202,11 +196,9 @@ func TestPasswordPauseStopsUnboundGuessesButNotABoundDevice(t *testing.T) {
 	if _, err := m.loginPassword(m.s, m.device); err != nil {
 		t.Fatalf("a bound attempt while paused: %v", err)
 	}
-	// Success reset the counter.
 	if n := f.count(`SELECT password_failures FROM users WHERE id = $1`, m.user.UserID); n != 0 {
 		t.Fatalf("failures %d after a success", n)
 	}
-	// Five bound failures exhaust that writer's hour, before any PBKDF2.
 	for i := 0; i < 5; i++ {
 		if _, err := m.loginPassword(wrong, m.device); !errors.Is(err, ErrPasswordRejected) {
 			t.Fatal(err)
@@ -277,9 +269,6 @@ func TestASweepWithinADayOfThePauseKeepsTheFailures(t *testing.T) {
 	}
 }
 
-// The binding is checked before S: an invalid one is 400 bad_signature with no
-// PBKDF2, a revoked writer is writer_revoked, and an unknown writer or no
-// account is checked against a dummy key.
 func TestPasswordSignInChecksTheBindingFirst(t *testing.T) {
 	t.Parallel()
 	f := newAcctFixture(t)
@@ -299,7 +288,6 @@ func TestPasswordSignInChecksTheBindingFirst(t *testing.T) {
 	if f.keys.HashCount() != before {
 		t.Fatal("an invalid binding ran PBKDF2")
 	}
-	// The ceremony is spent by the invalid binding.
 	if _, err := f.acct.PasswordLoginFinish(bgctx, b.CeremonyID, m.s, nil); !errors.Is(err, ErrPasswordRejected) {
 		t.Fatalf("a ceremony after an invalid binding: %v", err)
 	}
@@ -311,8 +299,6 @@ func TestPasswordSignInChecksTheBindingFirst(t *testing.T) {
 	}
 }
 
-// A device step-up: the DAK first, then S, bound (no pause), with its own
-// failure effects; password.change then revokes every other session.
 func TestDeviceStepUpChangesThePassword(t *testing.T) {
 	t.Parallel()
 	f := newAcctFixture(t)
@@ -355,15 +341,12 @@ func TestDeviceStepUpChangesThePassword(t *testing.T) {
 	if !strings.Contains(mailTexts(f.fake.To(m.addr)), "Your Hasala password was changed on") {
 		t.Fatal("no password-changed alert")
 	}
-	// A step-up for another params hash (another S_new) fails.
 	su = m.deviceStepUp(keyproto.ActionPasswordChange, newS, vh)
 	if _, err := f.acct.ChangePassword(bgctx, m.info(), m.s, su); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("a step-up for another verifier: %v", err)
 	}
 }
 
-// A password never authorizes a key action on its own: a device step-up
-// without a valid DAK signature never reaches the password.
 func TestADeviceStepUpWithoutTheDAKNeverReachesThePassword(t *testing.T) {
 	t.Parallel()
 	f := newAcctFixture(t)
@@ -375,7 +358,6 @@ func TestADeviceStepUpWithoutTheDAKNeverReachesThePassword(t *testing.T) {
 	if _, err := f.acct.ChangePassword(bgctx, m.info(), newS, su); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatal(err)
 	}
-	// ChangePassword hashes S_new once before the proof; the proof ran none.
 	if f.keys.HashCount()-before != 1 {
 		t.Fatalf("PBKDF2 runs %d", f.keys.HashCount()-before)
 	}
@@ -384,9 +366,6 @@ func TestADeviceStepUpWithoutTheDAKNeverReachesThePassword(t *testing.T) {
 	}
 }
 
-// C8: the DAK plus an emailed code resets the password on a signed-in iPhone.
-// Wrong codes keep the nonce until the fifth, which burns it and pauses only
-// this account's C8 codes.
 func TestC8ResetsThePasswordWithTheDAKAndAnEmailedCode(t *testing.T) {
 	t.Parallel()
 	f := newAcctFixture(t)
@@ -418,8 +397,6 @@ func TestC8ResetsThePasswordWithTheDAKAndAnEmailedCode(t *testing.T) {
 	if code == wrong {
 		wrong = "111111"
 	}
-	// A malformed guess is a wrong guess like any other: it does not burn the
-	// step-up.
 	for i, guess := range []string{"12345", wrong, wrong, wrong} {
 		su.Proof.Code = guess
 		if _, err := f.acct.ResetPasswordWithCode(bgctx, m.info(), newS, su); !errors.Is(err, ErrStepUpFailed) {
@@ -433,8 +410,6 @@ func TestC8ResetsThePasswordWithTheDAKAndAnEmailedCode(t *testing.T) {
 	if _, err := m.loginPassword(newS, nil); err != nil {
 		t.Fatal(err)
 	}
-	// Five wrong codes burn it and pause this account's C8 for 15 minutes,
-	// never the address's password_reset sends.
 	su = begin()
 	su.Proof.Code = wrong
 	for i := 0; i < 5; i++ {
@@ -532,7 +507,6 @@ func TestSetAndRemoveAPasswordNeedAPasskey(t *testing.T) {
 	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND password_hash IS NULL`, info.UserID); n != 1 {
 		t.Fatal("the password is still there")
 	}
-	// The last passkey of an account without a password stays.
 	if _, err := f.passkeys.DeletePasskey(bgctx, info, a.CredID, stepUp(keyproto.ActionPasskeyDelete, a.CredID)); !errors.Is(err, ErrLastPasskey) {
 		t.Fatalf("deleting the last authenticator: %v", err)
 	}

@@ -1,14 +1,7 @@
-/// A short line of copy that may carry amounts, e.g. "AED 827.28 still to check".
-///
-/// Amounts stay `Money` until the moment the line is drawn, so Hide amounts can
-/// replace exactly the figures and leave the words (Paper "Home · Amounts hidden": "AED ••••
-/// still to check", "•••• of •••• · Jan").
 public struct MoneyPhrase: Sendable, Hashable, Codable, ExpressibleByStringLiteral {
   public enum Part: Sendable, Hashable, Codable {
     case text(String)
-    /// An amount; `hiddenGlyphs` is how many bullets stand in for it when hidden.
     case money(Money, style: MoneyStyle, hiddenGlyphs: Int)
-    /// A signed amount: "+2,140" for money in, "−4,210.50" (U+2212) for money out.
     case signedMoney(Money, style: MoneyStyle, hiddenGlyphs: Int)
   }
 
@@ -17,7 +10,6 @@ public struct MoneyPhrase: Sendable, Hashable, Codable, ExpressibleByStringLiter
   public init(_ parts: [Part]) { self.parts = parts }
   public init(stringLiteral value: String) { self.parts = [.text(value)] }
 
-  /// The line as shown. Hidden amounts become bullets; signs and words stay.
   public func rendered(hidden: Bool) -> String {
     parts.map { part in
       switch part {

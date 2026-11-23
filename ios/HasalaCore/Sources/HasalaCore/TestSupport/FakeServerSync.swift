@@ -1,5 +1,3 @@
-// FakeServer: the op log (`02` #28–#30, §11). Upload in §11.1's order, pull
-// and hashes with "a page never ends inside a batch" (§11.3).
 import CoreAuth
 import CoreCrypto
 import CoreSync
@@ -18,7 +16,6 @@ extension FakeServer {
       return (Self.error(410, "account_deleted"), false)
     }
     if user.frozen { return (Self.error(403, "account_frozen"), false) }
-    // 2: shape.
     guard let b = Self.decode(r, UploadRequest.self) else { return (Self.error(400, "bad_request"), false) }
     guard b.stream == "hot" else { return (Self.error(400, "bad_stream"), false) }
     guard !b.blobs.isEmpty, b.blobs.count <= 8 else { return (Self.error(400, "bad_request"), false) }
@@ -26,14 +23,11 @@ extension FakeServer {
       return (Self.error(400, "bad_signature"), false)
     }
     guard let wid = WriterID(b.writer_id) else { return (Self.error(400, "bad_writer_id"), false) }
-    // 3: the session's writer.
     guard let bound = sess.writerID else { return (Self.error(403, "writer_unbound"), false) }
     guard bound == wid else { return (Self.error(403, "writer_mismatch"), false) }
     guard let writer = user.writers[wid.string] else { return (Self.error(403, "writer_unbound"), false) }
     if writer.revoked != nil { return (Self.error(403, "writer_revoked"), false) }
-    // 4: keys.
     guard let keys = user.keys else { return (Self.error(403, "keys_required"), false) }
-    // 5: each blob.
     var rows: [(counter: Int64, prev: Data, hash: Data, blob: Data)] = []
     for (i, x) in b.blobs.enumerated() {
       guard let blob = try? Base64.decode(x.blob), let c = Int64(x.writer_counter), c >= 1 else {
@@ -57,7 +51,6 @@ extension FakeServer {
       else { return (Self.error(400, "bad_request"), false) }
       rows.append((c, prev, hash, blob))
     }
-    // Internal consistency (a client bug, 400).
     for i in rows.indices {
       if Chain.hash(prev: Hash32(rows[i].prev)!, frame: rows[i].blob).bytes != rows[i].hash {
         return (Self.error(400, "bad_request", "chain"), false)
@@ -66,7 +59,6 @@ extension FakeServer {
         return (Self.error(400, "bad_request", "chain"), false)
       }
     }
-    // 6: the append.
     return state.withLock { s -> (APIResponse, Bool) in
       s.uploads += 1
       var u = s.users[user.id]!
@@ -74,13 +66,11 @@ extension FakeServer {
       let head = own.last
       let headCounter = head?.counter ?? 0
       let headHash = head?.blobHash ?? Data(count: 32)
-      // The head signature, over the batch's last row as recomputed here.
       let last = rows[rows.count - 1]
       let msg = SigningMessage.head(userID: u.id, counter: last.counter, blobHash: Hash32(last.hash)!, writerID: wid)
       guard Ed25519.verify(publicKey: writer.dwk, signature: headSig, message: msg) else {
         return (Self.error(400, "bad_signature", "head_sig"), false)
       }
-      // Rows at or below the stored head: a byte-identical replay or a straddle.
       let stored = rows.filter { $0.counter <= headCounter }
       for x in stored {
         guard let o = own.first(where: { $0.counter == x.counter }), o.blobHash == x.hash else {
@@ -120,8 +110,6 @@ extension FakeServer {
           StoredRow(
             seq: s.seq, writerID: wid.string, counter: x.counter, sizeBucket: x.blob.count, blobHash: x.hash,
             prevHash: x.prev, blob: x.blob,
-            // head_sig covers the batch's last row only: a partial apply stores
-            // no signature on a row it does not sign.
             headSig: i == apply.count - 1 && apply.count == rows.count ? headSig : nil))
       }
       s.users[u.id] = u
@@ -146,7 +134,6 @@ extension FakeServer {
     return (after, limit)
   }
 
-  /// The page after `after`, extended to the end of the batch it is in.
   func page(_ log: [StoredRow], after: Int64, limit: Int) -> [StoredRow] {
     var out = Array(log.filter { $0.seq > after }.prefix(limit))
     if let last = out.last, last.headSig == nil {

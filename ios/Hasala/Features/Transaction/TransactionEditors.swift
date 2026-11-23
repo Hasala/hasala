@@ -4,13 +4,6 @@ import HasalaModels
 import HasalaText
 import SwiftUI
 
-// The pages that push inside the transaction sheet (Paper "Activity · Choose a category"
-// 5PR-0, "Activity · Split" 6N5-0, and the note and rename editors the boards name). Each
-// saves one edit and pops back to the sheet.
-
-/// Choose a category (Paper 5PR-0): the transaction, a search field, the suggestion, "Always
-/// use X for M" with its switch, every category as choice chips by bucket, and Save in a bar
-/// that floats over the list.
 struct CategoryPickerView: View {
   let model: any TransactionModel
   let done: () -> Void
@@ -52,7 +45,6 @@ struct CategoryPickerView: View {
       .padding(.top, 36)
       .padding(.bottom, 8)
       .background {
-        // Paper "Bottom bar · Save": the canvas, solid to 58%, then clear above.
         LinearGradient(stops: [.init(color: HColor.sheetSurfaceLarge.opacity(0), location: 0),
                                .init(color: HColor.sheetSurfaceLarge, location: 0.42)],
                        startPoint: .top, endPoint: .bottom)
@@ -68,7 +60,6 @@ struct CategoryPickerView: View {
     }
   }
 
-  /// The row being sorted, as Activity lists it.
   private func transaction(_ d: TransactionDetail) -> some View {
     let home = d.home ?? HomeAmount(shown: d.amount)
     return HListCard {
@@ -79,7 +70,6 @@ struct CategoryPickerView: View {
     }
   }
 
-  /// "Always use Groceries for Lulu Hypermarket" with the switch.
   private var ruleCard: some View {
     let merchant = model.merchantName
     return VStack(spacing: 0) {
@@ -202,7 +192,6 @@ struct CategoryChooser<Leading: View, Accessory: View>: View {
   }
 }
 
-/// Note (spec 04 §16.2 T1 `NoteEditorView`): `txn_annotated{note}`.
 struct NoteEditorView: View {
   @State var note: String
   let save: (String) -> Void
@@ -241,7 +230,6 @@ struct NoteEditorView: View {
   }
 }
 
-/// Rename merchant (spec 04 §16.2 T1 `RenameMerchantView`): `merchant_named{key, name}`.
 struct RenameMerchantView: View {
   @State var name: String
   let save: (String) -> Void

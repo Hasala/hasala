@@ -1,8 +1,3 @@
-// Payload decoders of the versioned ops. Decoders switch on `op.v`: `v ≤ 3`
-// decodes as the v3 oracle (replay.ts `decodePayload`) except for the cap of 16
-// split parts, which holds at every version; `v == 4` adds
-// 03c §3's deltas (Replay/V4/TxnV4.swift), 03c §5.1's rule shape and §6's
-// projects and goals, and 03b §3.2's bills.
 import CoreJSON
 import CoreTime
 import CoreWire
@@ -61,7 +56,6 @@ extension State {
     }
   }
 
-  /// replay.ts `decodeTxnPayload`: a transaction, or a message no tier could read.
   static func decodeTxnPayload(_ p: JSONObject, v: Int) throws(PayloadError) -> TxnPayload {
     if v < 2 && p["verified_origin_domain"] != nil {
       throw PayloadError("verified_origin_domain requires schema v2")
@@ -128,7 +122,6 @@ extension State {
     return s
   }
 
-  /// A short lower-snake token, never message text: `^[a-z][a-z0-9_]{0,63}$`.
   private static func parseErrorOf(_ v: JSONValue?) throws(PayloadError) -> String? {
     guard let v, !v.isNull, v.stringValue != "" else { return nil }
     guard let s = v.stringValue else { throw PayloadError("parse_error must be a string or null, got \(showValue(v))") }
@@ -140,7 +133,6 @@ extension State {
     return s
   }
 
-  /// The re-fetch id of a well-formed mailbox provenance; never throws.
   private static func mailboxMessageIDOf(_ p: JSONObject) -> String? {
     guard let prov = p["provenance"]?.objectValue else { return nil }
     guard let provider = prov["provider"]?.stringValue, !provider.isEmpty else { return nil }
@@ -169,8 +161,6 @@ extension State {
     return (provider, grant)
   }
 
-  /// replay.ts `decodeEditPayload` (v4: the same fields; `category` is refused
-  /// later, in the fold, so the rest of the op applies).
   static func decodeEditPayload(_ p: JSONObject, v: Int) throws(PayloadError) -> EditPayload {
     var out = EditPayload()
     out.rejected = ["unparsed", "tier", "parse_error"].filter { p[$0] != nil }
@@ -196,8 +186,6 @@ extension State {
     return out
   }
 
-  /// replay.ts `decodeParts`; at v4 (03c §3.3) `[]` or 2-16 parts, each with a
-  /// `CategoryId` and an optional `Note`.
   static func decodeParts(_ raw: JSONValue?, v: Int) throws(PayloadError) -> [Split] {
     guard let list = raw?.arrayValue else { throw PayloadError("parts is not an array") }
     if v >= 4, list.count == 1 { throw PayloadError("parts: a split has 0 or 2-16 parts, got 1") }

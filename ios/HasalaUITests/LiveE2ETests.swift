@@ -1,17 +1,6 @@
 import XCTest
 
-/// The app end to end against a local hasalad (integration plan §4, Lane E: E1-E5), on
-/// two simulators, A and B. Run by ios/scripts/e2e-app.sh, one test per
-/// `xcodebuild test-without-building`, in this order; each builds on the ones before it
-/// (E1 creates the account the others use). Skipped unless the harness set
-/// TEST_RUNNER_HASALA_E2E_API (see LiveE2ESupport).
-///
-/// Passwords only: passkeys need the real relying party (hasala.app), which a local
-/// server can't be. Gmail and the full upload/pull/replay chain from mail are covered at
-/// core level (HasalaCoreE2ETests); here the data is the review account's sample.
 final class LiveE2ETests: LiveE2ECase {
-  /// A fresh simulator opens the live app (no mock scenario) on the stories, and the
-  /// account gate does not stop on its retry wall.
   @MainActor
   func test00_launch() throws {
     let app = launchLive()
@@ -21,10 +10,6 @@ final class LiveE2ETests: LiveE2ECase {
     attach(app, "Launch · stories")
   }
 
-  /// E1 on A, path B (spec §2.5): a review invite, about you, the emailed code, a
-  /// password, the 12 words read off the screen (no word check), ENBD, "Use sample data"
-  /// on Gmail's read-only screen, notifications allowed, then Maya's month on Home,
-  /// Activity, Bills and Plan, and Home's "Sample data" label.
   @MainActor
   func test01_pathB() throws {
     let invite = try XCTUnwrap(e2e.invite, "the harness passes a review invite (HASALA_E2E_INVITE)")
@@ -41,12 +26,10 @@ final class LiveE2ETests: LiveE2ECase {
     tap(app, "about.continue")
     attach(app, "About you")
 
-    // The code email (signup/begin, #43) through the capture.
     XCTAssertTrue(el(app, "code.field").waitForExistence(timeout: 30), "the code screen did not open")
     let code = try waitForEmailCode(to: account.email, excluding: before)
     type(app, "code.field", code)
 
-    // "Use a password instead".
     tap(app, "method.password", timeout: 30)
     tap(app, "method.continue")
     typePassword(app, "password.new", account.password)
@@ -56,20 +39,15 @@ final class LiveE2ETests: LiveE2ECase {
     tap(app, "password.create")
     dismissSystemPrompts(app)
 
-    // The 12 words, read off the grid ("Word 3, scissors").
     tap(app, "phrase.start", timeout: 30)
     tap(app, "phrase.reveal")
     account.words = try readPhrase(app)
     try saveAccount(account)
     attach(app, "Recovery phrase")
-    // "I've written them down" publishes: there is no word check.
     tap(app, "phrase.written")
 
-    // Publishing the keys (password register #45, then GET /keys and /account).
     tap(app, "ready.continue", timeout: 90)
 
-    // Setup: ENBD, then the review account's sample on the bank alerts step, where the
-    // sample is the dock's one pill and Google's sign-in the text button under it.
     tap(app, "bank.change", timeout: 30)
     tap(app, "bank.enbd")
     tap(app, "banks.done")
@@ -79,10 +57,6 @@ final class LiveE2ETests: LiveE2ECase {
     attach(app, "Your email · sample offered")
     sample.tap()
 
-    // Setup ends on Home. Notifications from its Finish setting up: Allow (the reviewer
-    // taps "Not now"). Allowing is what lets A receive E3's push: the simulator delivers
-    // only a push with visible content, and only to an app the user allowed (see
-    // ios/scripts/e2e/wake.apns).
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 90), "the sample did not open Home")
     tap(app, "home.finish.notifications", timeout: 60)
     try recordNotificationsAllowed(allowNotifications(app))
@@ -95,21 +69,15 @@ final class LiveE2ETests: LiveE2ECase {
                   "Home shows no 'Sample data' label on the review account")
   }
 
-  /// E2 on B: a new iPhone signs in with the password (C2-P), unlocks with the 12 words
-  /// typed into one field (C3), pulls and replays Maya's month, then sorts one card from
-  /// the Review tab.
   @MainActor
   func test02_pathA_secondDevice() throws {
     let account = try loadAccount()
     let app = launchLive()
     signInWithPassword(app, account)
 
-    // A password can't unlock the data on a new iPhone: the words do.
     let next = waitForAny(app, ["unlock.words", "phraseEntry.field"], timeout: 60)
     XCTAssertNotNil(next, "the unlock screen did not open after the password sign-in")
     if next == "unlock.words" { tap(app, "unlock.words") }
-    // The entry draws no button while its keyboard is up (Paper GDD: the dock holds the
-    // word list then); Return on the twelfth word unlocks.
     attach(app, "Unlock · 12 words")
     type(app, "phraseEntry.field", account.words.joined(separator: " ") + "\n")
     tap(app, "unlock.open", timeout: 120)
@@ -119,8 +87,6 @@ final class LiveE2ETests: LiveE2ECase {
     assertMayaFigures(app)
     continueAfterFailure = false
 
-    // Sort the first review card as a transfer (no rule: "Always use" is off for it), from
-    // the Review tab.
     app.tabBars.firstMatch.buttons["Review"].tap()
     tap(app, "review.tab.start")
     let position = el(app, "review.position")
@@ -134,16 +100,9 @@ final class LiveE2ETests: LiveE2ECase {
     XCTAssertTrue(waitForLabel(el(app, "review.tab.count"), containing: MayaSample.afterOneSorted, timeout: 15),
                   "the Review tab does not say '\(MayaSample.afterOneSorted)'")
 
-    // Leave time for the coordinator's authored run to seal and upload the edit (#30)
-    // before the next test relaunches anything.
     RunLoop.current.run(until: Date().addingTimeInterval(10))
   }
 
-  /// E3 on A: the session survived the relaunch (Keychain), sign out, sign in again with
-  /// the password (C2b-P: this iPhone is still bound, so no words and the data is kept),
-  /// then a push (`simctl push`, content-available) runs the coordinator's wake, and B's
-  /// sorted card shows here. The sign-in's own pull may already have brought it; the
-  /// push must be accepted (when E1 could allow notifications) and leave the figures right.
   @MainActor
   func test03_rebind() throws {
     let account = try loadAccount()
@@ -167,8 +126,6 @@ final class LiveE2ETests: LiveE2ECase {
       if notificationsAllowed {
         XCTFail("simctl push was refused although A allowed notifications: \(refused)")
       } else {
-        // E1 met no permission alert, so the simulator refuses every push to the app
-        // (UNErrorDomain 2003): reported as an expected failure, not hidden.
         XCTExpectFailure("the simulator refuses a push to an app without notification permission") {
           XCTFail("simctl push was refused: \(refused)")
         }
@@ -181,8 +138,6 @@ final class LiveE2ETests: LiveE2ECase {
     attach(app, "Activity after the wake")
   }
 
-  /// E4 on B: Profile › Delete your account, confirmed with the password and this
-  /// iPhone's key, ends on the stories.
   @MainActor
   func test04_delete() throws {
     let account = try loadAccount()
@@ -191,7 +146,6 @@ final class LiveE2ETests: LiveE2ECase {
                    "B relaunched signed out: its session did not survive in the Keychain")
 
     app.buttons["header.profile"].firstMatch.tap()
-    // The profile's own row (Lane C), else Sign-in & security's.
     if waitForAny(app, ["profile.delete"], timeout: 5) != nil {
       tap(app, "profile.delete")
     } else {
@@ -211,12 +165,8 @@ final class LiveE2ETests: LiveE2ECase {
     attach(app, "Deleted")
   }
 
-  /// E5 on A: the account was deleted on B; A's next call gets 410, A wipes itself and
-  /// shows the stories.
   @MainActor
   func test05_deletedElsewhere() throws {
-    // Only meaningful on a device that still holds the account: one that was never
-    // signed in shows the stories anyway.
     XCTAssertTrue(wasLeftSignedIn, "A was not left signed in by test01_pathB / test03_rebind")
     let app = launchLive()
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 90),
@@ -224,14 +174,10 @@ final class LiveE2ETests: LiveE2ECase {
     attach(app, "Deleted elsewhere")
     try markSignedIn(false)
     app.terminate()
-    // Nothing is left to open: a second launch also starts signed out.
     let again = launchLive()
     XCTAssertTrue(el(again, "stories.getStarted").waitForExistence(timeout: 30))
   }
 
-  // MARK: Helpers
-
-  /// The revealed phrase grid's words, in order ("Word 1, absurd" ... "Word 12, camera").
   @MainActor
   private func readPhrase(_ app: XCUIApplication) throws -> [String] {
     let grid = el(app, "phrase.grid")

@@ -1,13 +1,3 @@
-/**
- * Serves the built site (dist/) on 127.0.0.1 roughly the way Workers Static
- * Assets does in production (wrangler.jsonc), so Lighthouse measures what
- * visitors get: drop-trailing-slash HTML (/privacy -> privacy.html), the
- * 200 rewrites in _redirects, the headers in _headers (including "! Name"
- * detach lines), 404.html for anything else, and gzip for text responses.
- * For local checks and CI only; it is not the production server.
- *
- *   bun scripts/serve-dist.ts [dist] [--port 4321]      (Node runs it too)
- */
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, sep } from 'node:path';
@@ -137,7 +127,6 @@ createServer((req, res) => {
     for (const name of rule.detach) {
       headers.delete(name);
     }
-    // Repeated names are joined, as Cloudflare does; Content-Type replaces the inferred one.
     for (const [name, value] of rule.set) {
       headers[/^content-type$/iu.test(name) ? 'set' : 'append'](name, value);
     }

@@ -1,37 +1,4 @@
 #!/usr/bin/env bash
-# upload.sh: validate and upload an exported Hasala .ipa to App Store Connect with
-# altool (spec 06 §10.2 steps 5–7). Run it by hand, after archive.sh passed and
-# you have looked at ios/build/<BUILD>/summary.txt:
-#
-#   ASC_KEY_ID=… ASC_ISSUER_ID=… ios/scripts/upload.sh ios/build/<BUILD>/export/Hasala.ipa --yes
-#
-# Before anything touches the network or the key it refuses (exit 40) an .ipa that is
-# not ios/build/<BUILD>/export/Hasala.ipa for its own CFBundleVersion, one whose
-# summary.txt is missing, names another build, has a FAIL line, or does not end in
-# archive.sh's "PASS <n>/<n> sha256=<sha256>" line for this very file (a summary cut
-# short has no such line), and a local trial (archive.sh --allow-dirty /
-# --allow-branch writes a TRIAL file beside summary.txt); and (exit 21) a build
-# number that is not newer than ios/build/last-build-number.
-#
-# The key comes from the environment only (asc-env.sh). altool (Xcode 27's, `xcrun
-# altool --help`) takes the key id and issuer with --api-key and --api-issuer, and
-# reads the private key from --p8-file-path; without that it searches for
-# AuthKey_<api-key>.p8 in ./private_keys, ~/private_keys, ~/.private_keys,
-# ~/.appstoreconnect/private_keys and then $API_PRIVATE_KEYS_DIR, in that order, so
-# a stale copy in one of the first four would win. --p8-file-path names ASC_KEY_PATH
-# exactly; API_PRIVATE_KEYS_DIR (its directory) is set too, for the search. Without
-# --yes it validates and stops.
-#
-# The build number is recorded in ios/build/last-build-number before the upload
-# starts, so it stays recorded when the upload fails or is interrupted: App Store
-# Connect may have taken the number even then, and archive.sh and this script refuse
-# a number that is not newer (spec 06 §10.4). A validation alone records nothing.
-#
-# Exit codes (spec 06 §10.4): 2 usage (or HASALA_BUILD_DIR set without
-# HASALA_TEST_MODE=1, see hasala_build_root in release-common.sh, or set with the
-# real xcrun first on PATH), 14 key, 21 not
-# newer (or not recordable), 40 inspection not passed, 50 validation failed, 60
-# upload failed.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -47,7 +14,6 @@ if [[ -z "$ipa" || ! -f "$ipa" ]] || [[ -n "$confirm" && "$confirm" != "--yes" ]
 	echo "usage: upload.sh <path/to/Hasala.ipa> [--yes]" >&2
 	exit 2
 fi
-# Where builds and last-build-number live: ios/build, unless the script tests moved it.
 if ! build_root="$(hasala_build_root "$ios")"; then
 	echo "upload: refusing to run with HASALA_BUILD_DIR set outside test mode" >&2
 	exit 2
@@ -68,7 +34,6 @@ if [[ ! "$build" =~ ^[0-9]{6}\.1[0-9]{4}$ ]]; then
 	exit 40
 fi
 
-# --- this must be archive.sh's own export for this build, and it must have passed ------
 out="$build_root/$build"
 ipa_dir="$(cd "$(dirname "$ipa")" && pwd -P)"
 want_dir="$(cd "$out/export" 2>/dev/null && pwd -P || true)"
@@ -109,8 +74,6 @@ if [[ "$confirm" != "--yes" ]]; then
 	exit 0
 fi
 
-# Recorded before the upload starts: the number may be spent even if altool fails or
-# is interrupted, and it must never be offered again (spec 06 §10.4).
 if ! hasala_record_build "$build_root" "$build"; then
 	echo "upload: cannot record build $build in $last_file; not uploading" >&2
 	exit 21

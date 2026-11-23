@@ -2,15 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// A connect that didn't happen (Paper "Microsoft sign-in didn't finish" 1NQF, "Gmail isn't
-/// connected (permission)"): what happened, that nothing was connected, what the person can
-/// do, and the two ways on. Google gets the same screens in its own words.
-///
-/// `steps` is setup's indicator ("2 of 4"); the profile shows none. `busy` is a retry that
-/// runs on this screen (setup keeps it on top while the sign-in runs): the button or the
-/// link shows it, so a second failure that leaves the screen as it was doesn't read as a
-/// dead tap. The profile goes back to the read-only screen to retry instead. `onUseTexts`
-/// is setup's way back to the source choice, given only where bank texts are offered.
 struct MailConnectErrorView: View {
   let failure: MailConnectFailure
   let provider: MailProviderKind
@@ -80,8 +71,6 @@ struct MailConnectErrorView: View {
     let reasons: Reasons?
   }
 
-  /// The screen's words, verbatim from the boards for Microsoft and in the same pattern for
-  /// Google. Another failure (if a host shows one here) keeps its own line.
   static func permissionStep(_ account: MailProviderKind) -> String {
     switch account {
     case .gmail: "Tick \u{201C}View your email messages and settings\u{201D}"

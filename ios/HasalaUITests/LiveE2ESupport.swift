@@ -1,27 +1,10 @@
 import XCTest
 
-// The live end-to-end tests' plumbing (LiveE2ETests; integration plan §4, Lane E). The
-// harness, ios/scripts/e2e-app.sh, runs a local hasalad and passes its settings to the
-// test runner as TEST_RUNNER_HASALA_E2E_* (xcodebuild strips the prefix). Without
-// HASALA_E2E_API every live test is skipped, so a plain `xcodebuild test` of the UI
-// tests is unaffected.
-//
-// The runner never talks to the server itself: the emailed codes, the account E1
-// creates and the wake requests pass through files under the harness's temporary
-// directory, which the simulator's processes can read and write.
-
-/// What the harness set for this run.
 struct LiveE2EEnvironment {
-  /// The local hasalad, e.g. http://127.0.0.1:18453; the app gets it as its Debug-only
-  /// `HASALA_API_BASE_URL` launch override.
   let api: String
-  /// Where ios/scripts/e2e/mail-capture.ts writes each email as <n>.json.
   let mailDir: URL
-  /// Shared between the tests of one run: account.json, wake-request / wake-sent.
   let stateDir: URL
-  /// A review invite minted for this run (E1 signs up with it).
   let invite: String?
-  /// Which of the run's simulators this is, "A" or "B".
   let device: String
 
   static func current() throws -> LiveE2EEnvironment {
@@ -50,16 +33,12 @@ struct LiveE2EError: Error, CustomStringConvertible {
   init(_ description: String) { self.description = description }
 }
 
-/// The account E1 creates and the later tests sign in to. Synthetic: an @example.test
-/// address on a throwaway server; the file lives in the harness's temporary directory.
 struct LiveE2EAccount: Codable, Equatable {
   var name: String
   var email: String
   var password: String
   var words: [String]
 
-  /// A new address and password for this run: `e2e+<uuid>@example.test`, and a
-  /// passphrase of 30-odd characters the password rules accept.
   static func fresh() -> LiveE2EAccount {
     let id = UUID().uuidString.lowercased()
     let salt = String(UUID().uuidString.lowercased().prefix(8))
@@ -68,17 +47,12 @@ struct LiveE2EAccount: Codable, Equatable {
   }
 }
 
-/// One email the capture received.
 struct CapturedMail: Decodable {
   let to: String
   let subject: String
   let text: String
 }
 
-/// The figures the Maya sample shows on every device: Lane A's `expectMayaSample` (26
-/// October transactions, 6 to review, 8 bills, the "Japan trip" project) as the screens
-/// word them. Bills counts the salary too, so its row says 9 tracked, as it does over
-/// HasalaMocks' MayaLedger.
 enum MayaSample {
   static let transactions = "26 transactions this month"
   static let toSort = "6 to sort"
@@ -87,9 +61,6 @@ enum MayaSample {
   static let project = "Japan trip"
 }
 
-/// The shared steps of the live tests. Subclasses get `e2e` in `setUpWithError` (or a
-/// skip); the first `launchLive()` adds a handler for the system prompts a password app
-/// meets on the simulator.
 class LiveE2ECase: XCTestCase {
   private(set) var e2e: LiveE2EEnvironment!
   private var monitoring = false
@@ -104,16 +75,10 @@ class LiveE2ECase: XCTestCase {
     "Not Now", "Choose My Own Password", "Don\u{2019}t Allow", "Don't Allow", "Never for This Website",
   ]
 
-  // MARK: The app
-
-  /// Launches the Debug build against the local server: no `-HasalaScenario`, so the
-  /// live graph runs.
   @MainActor
   func launchLive() -> XCUIApplication {
     if !monitoring {
       monitoring = true
-      // "Save Password?" (Not Now), the strong-password offer (Choose My Own Password)
-      // and the notification permission (Don't Allow), when one of them blocks a step.
       _ = addUIInterruptionMonitor(withDescription: "System prompts") { alert in
         for title in LiveE2ECase.promptButtons where alert.buttons[title].exists {
           alert.buttons[title].tap()
@@ -129,16 +94,11 @@ class LiveE2ECase: XCTestCase {
     return app
   }
 
-  // `el`, `tap` and `type` are UITestSupport's, shared with every UI test.
-
-  /// Any element whose label contains `text` (static texts, buttons, combined cells).
   @MainActor
   func labelled(_ app: XCUIApplication, containing text: String) -> XCUIElement {
     app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
   }
 
-  /// Types into a password field: the strong-password offer is declined first, and
-  /// anything AutoFill put in the field is deleted.
   @MainActor
   func typePassword(_ app: XCUIApplication, _ id: String, _ password: String,
                     file: StaticString = #filePath, line: UInt = #line) {
@@ -153,8 +113,6 @@ class LiveE2ECase: XCTestCase {
     e.typeText(password)
   }
 
-  /// Taps away the system prompts a password app meets on the simulator, wherever they
-  /// are drawn (the app or SpringBoard). Returns whether it tapped one.
   @MainActor
   @discardableResult
   func dismissSystemPrompts(_ app: XCUIApplication) -> Bool {
@@ -171,12 +129,6 @@ class LiveE2ECase: XCTestCase {
     return false
   }
 
-  /// Home's notifications sheet, answered "Allow notifications" and then "Allow" on
-  /// the system's alert (drawn by SpringBoard or in the app's process). A tap that lands
-  /// while the step is still sliding in is lost, so the button is tapped again until the
-  /// alert shows. The alert does not always appear on a new simulator (the request then
-  /// never returns); after 30 s the step is answered "Not now" instead. Returns whether
-  /// notifications were allowed.
   @MainActor
   @discardableResult
   func allowNotifications(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) -> Bool {
@@ -208,7 +160,6 @@ class LiveE2ECase: XCTestCase {
     return false
   }
 
-  /// Waits until one of `ids` exists and returns it, or nil after `timeout`.
   @MainActor
   func waitForAny(_ app: XCUIApplication, _ ids: [String], timeout: TimeInterval) -> String? {
     let deadline = Date().addingTimeInterval(timeout)
@@ -219,7 +170,6 @@ class LiveE2ECase: XCTestCase {
     return nil
   }
 
-  /// Waits until `element`'s label contains `text`.
   @MainActor
   func waitForLabel(_ element: XCUIElement, containing text: String, timeout: TimeInterval) -> Bool {
     let done = NSPredicate(format: "exists == true AND label CONTAINS %@", text)
@@ -227,7 +177,6 @@ class LiveE2ECase: XCTestCase {
       == .completed
   }
 
-  /// Drives a fresh sign-in to Home: "Not now" on the notifications sheet if it is up.
   @MainActor
   func driveToHome(_ app: XCUIApplication, timeout: TimeInterval = 120,
                    file: StaticString = #filePath, line: UInt = #line) {
@@ -251,8 +200,6 @@ class LiveE2ECase: XCTestCase {
     XCTFail("Home did not open within \(Int(timeout)) s", file: file, line: line)
   }
 
-  /// Signs out of this iPhone from Profile › Sign-in & security ("Sign out of this
-  /// iPhone" and its confirmation), the sign-out every build wires to the account.
   @MainActor
   func signOut(_ app: XCUIApplication) {
     app.buttons["header.profile"].firstMatch.tap()
@@ -263,8 +210,6 @@ class LiveE2ECase: XCTestCase {
     confirm.tap()
   }
 
-  /// Password sign-in from the stories screen (C2-P on a new iPhone, C2b-P on one that
-  /// was bound before).
   @MainActor
   func signInWithPassword(_ app: XCUIApplication, _ account: LiveE2EAccount) {
     tap(app, "stories.signIn", timeout: 30)
@@ -274,11 +219,6 @@ class LiveE2ECase: XCTestCase {
     dismissSystemPrompts(app)
   }
 
-  // MARK: The figures
-
-  /// The Maya sample's figures on this device: Activity's month and review count, the
-  /// tracked bills in the profile, and the "Japan trip" project on Plan. Every check runs
-  /// even when an earlier one fails, so one run reports them all.
   @MainActor
   func assertMayaFigures(_ app: XCUIApplication, toSort: String = MayaSample.toSort,
                          file: StaticString = #filePath, line: UInt = #line) {
@@ -315,8 +255,6 @@ class LiveE2ECase: XCTestCase {
     app.tabBars.firstMatch.buttons["Home"].tap()
   }
 
-  // MARK: Files shared with the harness
-
   var accountURL: URL { e2e.stateDir.appendingPathComponent("account.json") }
 
   func saveAccount(_ account: LiveE2EAccount) throws {
@@ -331,8 +269,6 @@ class LiveE2ECase: XCTestCase {
     return try JSONDecoder().decode(LiveE2EAccount.self, from: data)
   }
 
-  /// Records whether this simulator was left signed in, so a later test can tell a
-  /// wipe it caused from a device that was never signed in (E5).
   func markSignedIn(_ on: Bool) throws {
     let url = e2e.stateDir.appendingPathComponent("signed-in-\(e2e.device)")
     if on {
@@ -346,13 +282,11 @@ class LiveE2ECase: XCTestCase {
     FileManager.default.fileExists(atPath: e2e.stateDir.appendingPathComponent("signed-in-\(e2e.device)").path)
   }
 
-  /// The capture's files so far, so a wait can ignore the emails sent before a step.
   func capturedMailNames() -> Set<String> {
     let names = (try? FileManager.default.contentsOfDirectory(atPath: e2e.mailDir.path)) ?? []
     return Set(names.filter { $0.hasSuffix(".json") })
   }
 
-  /// The six-digit code in the newest email to `address` that is not in `seen`.
   func waitForEmailCode(to address: String, excluding seen: Set<String>, timeout: TimeInterval = 60) throws -> String {
     let deadline = Date().addingTimeInterval(timeout)
     repeat {
@@ -367,9 +301,6 @@ class LiveE2ECase: XCTestCase {
     throw LiveE2EError("no email with a code reached \(address) within \(Int(timeout)) s (capture: \(e2e.mailDir.path))")
   }
 
-  /// Asks the harness for a push to this simulator (`simctl push` with
-  /// ios/scripts/e2e/wake.apns) and waits for the answer: nil once it was delivered, or
-  /// what simctl said when it refused it.
   func requestWake(timeout: TimeInterval = 30) throws -> String? {
     let sent = e2e.stateDir.appendingPathComponent("wake-sent")
     let failed = e2e.stateDir.appendingPathComponent("wake-failed")
@@ -387,7 +318,6 @@ class LiveE2ECase: XCTestCase {
     throw LiveE2EError("the harness sent no push within \(Int(timeout)) s (is ios/scripts/e2e-app.sh running?)")
   }
 
-  /// Whether E1 got notification permission on this simulator (see `allowNotifications`).
   var notificationsAllowed: Bool { FileManager.default.fileExists(atPath: notificationsMarker.path) }
 
   func recordNotificationsAllowed(_ on: Bool) throws {

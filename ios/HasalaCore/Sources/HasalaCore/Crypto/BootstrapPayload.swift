@@ -1,21 +1,3 @@
-// BootstrapPayload v1 (spec 01 §10.3.1): the canonical bytes the AAK signs
-// inside BootstrapMessage (D17). The server rebuilds them from `02` §10.1's JSON.
-//
-//   0     1  payload_version 0x01        293  32  email_hash = SHA256(utf8(email_norm))
-//   1    16  uuid_raw(user_id)            325   1  auth_kind
-//   17   32  amk_commitment               326  32  auth_hash
-//   49   32  authority_pubkey             358   1  0x01 (writer alg ed25519)
-//   81   32  recovery_pubkey              359  32  writer pubkey (DWK)
-//   113   4  u32be(1) initial epoch       391  65  writer dak_pubkey (04 ‖ X ‖ Y)
-//   117   2  u16be(127)                   456   1  u8(40)
-//   119 127  recovery_wrap                457  40  writer_id
-//   246   2  u16be(45)                    497   2  u16be(c), c ∈ {0} ∪ [16, 1023]
-//   248  45  phrase_box                   499   c  credential_id
-//                                         499+c 2  u16be(w), w = 0 if c = 0 else 127
-//                                         501+c w  prf wrap
-//
-// Total 501 + c + w (644 for a passkey payload with a 16-byte credential, 501
-// for a password one).
 import CorePrimitives
 import CoreWire
 import Foundation
@@ -31,12 +13,10 @@ public struct BootstrapPayload: Sendable, Hashable {
   public let phraseBox: Data
   public let emailNorm: String
   public let authKind: AuthKind
-  /// `0^32`; `SHA256(raw attestationObject)` of the creating credential; or `SHA256(S)`.
   public let authHash: Data
   public let writerPublicKey: Data
   public let writerDAKPublicKey: Data
   public let writerID: WriterID
-  /// The asserting or creating credential's PRF wrap, if any.
   public let prfWrap: (credentialID: Data, wrap: Data)?
 
   public init(
@@ -59,7 +39,6 @@ public struct BootstrapPayload: Sendable, Hashable {
     self.prfWrap = prfWrap
   }
 
-  /// The canonical bytes.
   public func encoded() throws(SigningMessageError) -> Data {
     var out = Data([BootstrapPayload.version])
     out += userID.raw

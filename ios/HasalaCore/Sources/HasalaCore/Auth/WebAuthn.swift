@@ -1,21 +1,10 @@
-// WebAuthn on the wire (spec 04 §6.1.1; `02` §7 #3–#6, #10–#11, the step-up
-// `passkey` proof): go-webauthn's `CredentialCreation` / `CredentialAssertion`
-// options in, `PublicKeyCredential` JSON out.
-//
-// The raw `clientDataJSON` and `attestationObject` are kept as the
-// authenticator returned them and sent unparsed (base64url, no padding):
-// BootstrapPayload's `auth_hash` (D17, R-01), RecoverySigninMessage (D18) and
-// PasskeyAddMessage (D33) hash those exact bytes.
 import CorePrimitives
 import Foundation
 
 public enum WebAuthnError: Error, Sendable, Hashable {
-  /// The options are not go-webauthn's shape (a missing or non-base64url field).
   case badOptions(String)
 }
 
-/// `options.publicKey` of a registration ceremony (#3, #10, #48), the fields the
-/// app uses.
 public struct CreationOptions: Sendable, Hashable {
   public let challenge: Data
   public let rpID: String
@@ -32,7 +21,6 @@ public struct CreationOptions: Sendable, Hashable {
   }
 }
 
-/// `options.publicKey` of an assertion ceremony (#5).
 public struct AssertionOptions: Sendable, Hashable {
   public let challenge: Data
   public let rpID: String?
@@ -45,7 +33,6 @@ public struct AssertionOptions: Sendable, Hashable {
   }
 }
 
-/// The go-webauthn JSON shapes, decoded leniently (unknown fields ignored).
 struct WireCredentialDescriptor: Codable, Hashable {
   let type: String?
   let id: String
@@ -116,11 +103,6 @@ public struct WireAssertionOptions: Codable, Sendable, Hashable {
   }
 }
 
-/// What a registration returned (spec 04 §6.1.1). `prfFirst` is the PRF output
-/// for `PRF_SALT` when the authenticator evaluated it at creation.
-///
-/// `@unchecked Sendable`: `prfFirst` is a `SecureBytes` handed from the
-/// authenticator to one ceremony, which wipes it; nothing mutates it meanwhile.
 public struct RawRegistration: @unchecked Sendable {
   public let credentialID: Data
   public let rawClientDataJSON: Data
@@ -134,7 +116,6 @@ public struct RawRegistration: @unchecked Sendable {
     self.prfFirst = prfFirst
   }
 
-  /// `PublicKeyCredential` JSON for go-webauthn's `ParseCredentialCreationResponse`.
   public var credential: PublicKeyCredentialJSON {
     PublicKeyCredentialJSON(
       id: Base64.encodeURL(credentialID), rawId: Base64.encodeURL(credentialID), type: "public-key",
@@ -145,8 +126,7 @@ public struct RawRegistration: @unchecked Sendable {
   }
 }
 
-/// What an assertion returned (spec 04 §6.1.1).
-public struct RawAssertion: @unchecked Sendable {  // as RawRegistration
+public struct RawAssertion: @unchecked Sendable {
   public let credentialID: Data
   public let rawClientDataJSON: Data
   public let authenticatorData: Data
@@ -177,8 +157,6 @@ public struct RawAssertion: @unchecked Sendable {  // as RawRegistration
   }
 }
 
-/// The W3C `PublicKeyCredential` JSON (base64url without padding), as
-/// go-webauthn reads it.
 public struct PublicKeyCredentialJSON: Codable, Sendable, Hashable {
   public struct Response: Codable, Sendable, Hashable {
     public let clientDataJSON: String
@@ -197,22 +175,14 @@ public struct PublicKeyCredentialJSON: Codable, Sendable, Hashable {
 }
 
 public enum PasskeyError: Error, Sendable, Hashable {
-  /// The user closed the system sheet (not an error to show, §6.1.5).
   case cancelled
-  /// Passkey creation unavailable: no passcode, iCloud Keychain off.
   case unsupported
-  /// No Hasala passkey on this iPhone.
   case noCredential
-  /// The registration returned no attestation object (01 §10.1): abort.
   case noAttestation
-  /// The options failed the client's own check (e.g. `C_reg` mismatch).
   case challengeMismatch
   case failed(String)
 }
 
-/// The platform passkey seam: `Platform/Passkeys` (AuthenticationServices,
-/// RP ID `hasala.app`, UV required) in the app, `CoreSoftAuth.SoftPasskey` in
-/// tests. `prfSalt` asks for the PRF extension's first output.
 public protocol PasskeyProvider: Sendable {
   func register(_ options: CreationOptions, prfSalt: Data?) async throws(PasskeyError) -> RawRegistration
   func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError) -> RawAssertion

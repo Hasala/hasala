@@ -1,22 +1,15 @@
-// 03c's parent-free keyed families: `txn_annotated` (§3.5), `merchant_named`
-// (§3.6), `sender_trust_set` (§7.1), and the v4 shapes of `category_defined`
-// (§4.2) and `rule_added` (§5.1). Keyed values install by position (§1.8.1):
-// the fold never compares `authored_at`, writers or op ids to decide one.
 import CoreJSON
 import CoreWire
 import HasalaText
 import OrderedCollections
 
 extension State {
-  /// The closed set of `txn_annotated.set` keys (03c §3.5).
   static let annotationFields = [
     "account_id", "archived", "counter_account_id", "note", "project_id", "refund_of", "transfer_peer",
   ]
 
-  /// Fields §3.5 allows on an unparsed row.
   static func annotationAllowedOnUnparsed(_ field: String) -> Bool { field == "note" || field == "archived" }
 
-  /// Validates one annotation value; returns the value to install (nil = a clear).
   private static func annotationValue(_ field: String, _ v: JSONValue) throws(PayloadError) -> String? {
     if v.isNull { return nil }
     switch field {
@@ -39,7 +32,6 @@ extension State {
     let txnID = try P.ulid(p["txn_id"], "txn_id")
     let set = try P.object(p["set"], "set")
     guard (1...7).contains(set.count) else { throw PayloadError("set holds \(set.count) keys, want 1-7") }
-    // Validate everything first: an invalid op installs nothing.
     var values: [(String, String?)] = []
     for m in set.members.sorted(by: { compareUTF8($0.key, $1.key) < 0 }) {
       guard Self.annotationFields.contains(m.key) else { throw PayloadError("set.\(m.key) is not an annotation") }
@@ -49,8 +41,6 @@ extension State {
       anomaly(e.seq, "unknown_entity", "\(e.op.opID): annotates \(txnID), which no create introduced")
       return
     }
-    // Forward through the successor chain (bounded: a chain longer than the
-    // txn count is a cycle, which the fold never builds).
     var id = txnID
     var steps = 0
     while let next = txns[id]?.successorID, txns[next] != nil, steps <= txns.count {
@@ -105,7 +95,6 @@ extension State {
     senderTrust[domain] = Keyed(trusted, opID: e.op.opID)
   }
 
-  /// 03c §4.2: `category_defined` at v4 (`icon` instead of `color`; strict grammars).
   func decodeCategoryV4(_ p: JSONObject) throws(PayloadError) -> CategoryDef {
     let id = try P.categoryID(p["id"], "id")
     let name = try P.label(p["name"], "name")
@@ -122,7 +111,6 @@ extension State {
     return CategoryDef(shape: 4, id: id, name: name, kind: kind, bucket: bucket, color: nil, icon: icon, parent: parent, active: active)
   }
 
-  /// 03c §5.1: `rule_added` at v4. `created_at` is filled from the create op.
   static func decodeRuleV4(_ p: JSONObject, authoredAt: String) throws(PayloadError) -> Rule {
     guard let list = p["patterns"]?.arrayValue, (1...8).contains(list.count) else {
       throw PayloadError("patterns must be an array of 1-8 strings")

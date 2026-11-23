@@ -2,24 +2,12 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Change a category's budget (Paper "Plan · Change Dining's budget (sheet)", 4B6-0): a white
-/// medium sheet that fits its content. The math row (Budget, Spent, Left), the new budget
-/// between − and +, quick chips, where the money comes from, what Ready to assign becomes,
-/// and "Set Dining to AED 1,800". Saving happens only on that button; Close, a swipe down and
-/// a tap on the scrim all cancel.
-///
-/// "Take it from" pushes the sources inside the sheet. A rise from Ready to assign sets the
-/// budget; a rise from another category moves money from it; a cut gives the money back to
-/// Ready to assign.
 struct BudgetEditSheet: View {
   let model: any BudgetSheetModel
   @State private var draft = ""
-  /// Ready to assign while it has money (Paper's default), else the first place that has some.
   @State private var source: CategoryID?
   @State private var picking = false
   @State private var fitted: CGFloat = 0
-  /// Large at the accessibility sizes, decided when the sheet opens: a text size changed
-  /// while it is up resizes the content, not the kind of sheet.
   @State private var opensLarge: Bool?
   @State private var askingDiscard = false
   @FocusState private var typing: Bool
@@ -32,8 +20,6 @@ struct BudgetEditSheet: View {
     self.model = model
     var openedDraft = ""
     var openedSource: CategoryID?
-    // The budget and where it comes from are there from the first frame, so the fitted
-    // sheet is measured once, at its final height, and does not resize after it rises.
     if let row = model.row {
       openedDraft = PlanAmountField.text(for: row.budget.minor)
       openedSource = model.sources(to: row.id).first?.id
@@ -63,8 +49,6 @@ struct BudgetEditSheet: View {
               .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fitted = $0 }
           }
           .scrollBounceBehavior(.basedOnSize)
-          // The fitted detent leaves the bottom safe area out; the content's own 28 is the
-          // margin under the button (page 14 §06). Large, it scrolls clear of the indicator.
           .ignoresSafeArea(.container, edges: (opensLarge ?? typeSize.isAccessibilitySize) ? [] : .bottom)
         } else {
           EmptyStateCard(icon: .tag, tone: .neutral, title: "This category is gone",
@@ -82,12 +66,9 @@ struct BudgetEditSheet: View {
       }
     }
     .discardGuard(isDirty, title: "Discard this change?", asking: $askingDiscard) { dismiss() }
-    // At the accessibility sizes the sheet is large and scrolls (page 14 §10).
     .planMediumSheet(height: fitted, large: opensLarge ?? typeSize.isAccessibilitySize)
     .onAppear { if opensLarge == nil { opensLarge = typeSize.isAccessibilitySize } }
   }
-
-  // MARK: Content
 
   private func content(_ row: PlanRowModel) -> some View {
     VStack(spacing: 20) {
@@ -103,7 +84,6 @@ struct BudgetEditSheet: View {
       sourceField(row)
       commit(row)
     }
-    // The grabber sits 8 from the top; the header 20 under it (page 14 §05).
     .padding(.top, 33)
     .padding(.horizontal, HSpacing.sheetPadding)
     .padding(.bottom, 28)
@@ -115,9 +95,6 @@ struct BudgetEditSheet: View {
     }
   }
 
-  /// "Budget 1,600 | Spent 642.75 | Left 957.25" on the grey strip. At the accessibility
-  /// sizes the three go one under the other, each figure on its label's line, so none has to
-  /// shrink into a third of the width.
   private func mathRow(_ row: PlanRowModel) -> some View {
     let left = row.leftMinor
     let cells: [(String, Money, MoneyStyle)] = [
@@ -162,7 +139,6 @@ struct BudgetEditSheet: View {
     .background(HColor.surfaceSecondary, in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
   }
 
-  /// − AED 1,800 +: the figure is the field; each step is 100.
   private var stepper: some View {
     HStack(spacing: 8) {
       stepButton(.minus, label: "Less") { step(-100_00) }
@@ -182,15 +158,10 @@ struct BudgetEditSheet: View {
     .accessibilityLabel(label)
   }
 
-  /// "+ 200", "Match September 1,486" (Debug only), "Cover the pace 1,992": each fills the
-  /// field. Their figures hide with the amounts; the field they fill shows the real value.
   private func chips(_ row: PlanRowModel) -> some View {
-    // 8 apart as drawn, 4 under the stepper (Paper "Quick chips", 4LX-0); each chip's target
-    // reaches 3 past it, above and below, into the gaps rather than adding to them.
     GrowingChipRows(spacing: 8, lineSpacing: 8 - 2 * QuickChip.reach) {
       QuickChip(title: "+ 200", hidden: model.hidden, titleIsFigure: true) { step(200_00) }
         .accessibilityLabel("Add 200")
-      // TODO(03a §6.12): "Match September" for live, once last month's spending is read there.
       if BuildSurface.showsUnfinished, let last = model.lastMonth {
         QuickChip(title: "Match \(last.name)", figure: MoneyPhrase([.amount(last.spent, .rounded, hidden: 3)]),
                   hidden: model.hidden) { set(last.spent.minor.plus(50) / 100 * 100) }
@@ -203,8 +174,6 @@ struct BudgetEditSheet: View {
     .padding(.top, 4 - QuickChip.reach)
     .padding(.bottom, -QuickChip.reach)
   }
-
-  // MARK: Where it comes from
 
   private var sources: [MoveSource] { model.sources(to: model.row?.id) }
   private var pick: BudgetSource<MoveSource> { PlanEngine.budgetSource(picked: source, offered: sources) }
@@ -221,8 +190,6 @@ struct BudgetEditSheet: View {
 
   private func rise(_ row: PlanRowModel) -> Int64? { amount.map { $0 - row.budget.minor } }
 
-  /// "Take it from ……… Ready to assign 1,000.00 ›" on the field fill; it pushes the sources.
-  /// A cut gives the money back: "Goes back to ……… Ready to assign".
   @ViewBuilder private func sourceField(_ row: PlanRowModel) -> some View {
     let cut = (rise(row) ?? 0) < 0
     let choosable = !cut && (sources.count > 1 || (gone != nil && !sources.isEmpty))
@@ -236,7 +203,6 @@ struct BudgetEditSheet: View {
       }
     }
     let content = HStack(spacing: 6) {
-      // Side by side while both fit; the value goes under the words when they don't (spec 04 §17).
       SideBySideOrStacked(spacing: 12) {
         label
         value
@@ -269,10 +235,6 @@ struct BudgetEditSheet: View {
     }
   }
 
-  // MARK: Commit
-
-  /// "Ready to assign becomes AED 800.00" (or "Travel keeps AED 2,300.00"), then the button
-  /// that repeats the result: "Set Dining to AED 1,800".
   private func commit(_ row: PlanRowModel) -> some View {
     VStack(spacing: 12) {
       if let refusal {
@@ -296,9 +258,6 @@ struct BudgetEditSheet: View {
     }
   }
 
-  /// Taking from a category that hasn't that much left is refused here, before anything is
-  /// sent (no toast can show over a sheet). Ready to assign may go below zero: that is the
-  /// plan asking for more than the income.
   private var refusal: String? {
     guard let row = model.row, let rise = rise(row), rise > 0 else { return nil }
     if let gone { return model.refusal(noLongerOffered: gone) }
@@ -315,12 +274,9 @@ struct BudgetEditSheet: View {
     } else {
       (words, after) = ("Ready to assign becomes", rta - rise)
     }
-    // A shortfall leads with "−" (U+2212), as MoneyText draws debts; hidden, the figure and
-    // its sign both go (spec 04 §12: only inputs show real values).
     let sign = after < 0 && !model.hidden ? "\u{2212}" : ""
     let figure = MoneyPhrase([.text("\(sign)AED "), .amount(.aed(abs(after)), hidden: 3)])
     return AnyView(
-      // On one line, centred, while it fits; the figure goes under the words when it doesn't.
       SideBySideOrStacked(spacing: 4, spreads: false, stackedAlignment: .center) {
         Text(words).hType(.subheadline).foregroundStyle(HColor.textSecondary)
         Text(figure.rendered(hidden: model.hidden)).hFigure(.compact)
@@ -331,8 +287,6 @@ struct BudgetEditSheet: View {
       .accessibilityAddTraits(.isStaticText)
     )
   }
-
-  // MARK: Editing
 
   private func step(_ by: Int64) {
     set((amount ?? 0) + by)

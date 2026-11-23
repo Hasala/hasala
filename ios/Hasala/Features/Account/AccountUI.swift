@@ -2,35 +2,12 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-// The account templates and their parts (Paper "Template · Account screen" E01-0; P2 rows
-// 14.1–14.8; spec 07 §3, spec 08 §2.3): join, the recovery phrase, setup, sign-in, recovery
-// and the walls all stand on these, built from the design system's parts and motion.
-
-// MARK: - Account screen
-
-/// How an account screen is left from its header (plan decision 7).
 enum AccountBack {
-  /// The system back button with its edge swipe: a screen pushed on a navigation stack.
-  /// The stack's path pops; the model clears what the left screen showed.
   case system
-  /// No way back (the account exists, the step can't be undone, the root of a flow): no
-  /// back button and no swipe.
   case none
-  /// A back button that runs `action`: a screen whose "back" is a change of state on the
-  /// same screen, not a pop (unlock's words, the phrase viewer in Sign-in & security).
   case action(() -> Void)
 }
 
-/// The account screen (Paper "Template · Account screen"): the morning wash under the
-/// system navigation bar, which carries the back button, the step indicator as its
-/// principal item and Skip or Close on the trailing side; the question block (title 1 and
-/// a body line on the wash); the content; and a dock of buttons above the home indicator.
-///
-/// The bar is the system's (decision 7), so back has the interactive swipe and its glass;
-/// screens with no way back hide the button, which also turns the swipe off.
-/// The id of an account screen's question and content together (not the dock), so a screen
-/// can scroll the least that shows all of it, which never takes the title under the header
-/// (`revealsPhraseEntry`).
 let accountScreenBodyID = "account.screenBody"
 
 struct AccountScreen<Content: View, Footer: View>: View {
@@ -60,7 +37,6 @@ struct AccountScreen<Content: View, Footer: View>: View {
     self.footer = footer
   }
 
-  /// The keyboard is up: the dock lifts off it a little.
   @State private var keyboardUp = false
 
   var body: some View {
@@ -90,8 +66,6 @@ struct AccountScreen<Content: View, Footer: View>: View {
     .accountHeader(steps: steps, back: back, trailing: trailing)
   }
 
-  /// Whether the header holds anything. Without back, steps or a trailing action Paper keeps
-  /// a 24 pt header for the rhythm (G80, K34), so the bar goes and the space stays.
   private var hasHeader: Bool {
     if case .none = back { return steps != nil || trailing != nil }
     return true
@@ -110,9 +84,6 @@ extension AccountScreen where Footer == EmptyView {
 }
 
 extension View {
-  /// The account header on the system bar: back as `back` says, the step indicator as the
-  /// principal item, and a trailing text action (`account.trailing`). No title: the
-  /// question block below names the screen.
   func accountHeader(
     steps: (current: Int, of: Int)? = nil, back: AccountBack, trailing: (title: String, action: () -> Void)? = nil
   ) -> some View {
@@ -129,7 +100,6 @@ private struct AccountHeader: ViewModifier {
     content
       .navigationBarTitleDisplayMode(.inline)
       .navigationBarBackButtonHidden(!isSystemBack)
-      // An empty header has no bar; hiding it also keeps the swipe from going back.
       .toolbar(isEmpty ? .hidden : .automatic, for: .navigationBar)
       .toolbar {
         if case .action(let run) = back {
@@ -137,7 +107,6 @@ private struct AccountHeader: ViewModifier {
             Button(action: run) {
               Image(systemName: "chevron.backward")
             }
-            // Ink like the system back and Paper's glass Back (LPY), not the accent.
             .tint(HColor.appleLabelsVibrantPrimary)
             .accessibilityLabel("Back")
           }
@@ -149,7 +118,6 @@ private struct AccountHeader: ViewModifier {
           .sharedBackgroundVisibility(.hidden)
         }
         if let trailing {
-          // Paper draws plain link text in the 72 trailing slot, not a glass capsule.
           ToolbarItem(placement: .topBarTrailing) {
             Button(action: trailing.action) {
               Text(trailing.title)
@@ -177,12 +145,10 @@ private struct AccountHeader: ViewModifier {
   }
 }
 
-/// The question block: Title 1 (28/34 bold) and a body line on the wash, 8 apart.
 private struct QuestionBlock: View {
   let title: String
   let subtitle: String?
   var email: EmailAside?
-  /// 16 under the header; 40 under the status bar when there is no header.
   let top: CGFloat
 
   var body: some View {
@@ -237,10 +203,6 @@ struct SubtitleProse: View {
 }
 
 let accountDockClearance: CGFloat = 12
-
-/// The bottom dock (Paper "Action"): a primary pill, then a secondary link or a note, 4
-/// apart, 20 from the sides, on the home indicator's safe area. A hard scroll edge sits
-/// under it only when content scrolls behind (`dockScrollEdge`).
 
 struct ActionDock<Content: View>: View {
   let keyboardUp: Bool
@@ -318,15 +280,7 @@ private struct KeyboardReveal: ViewModifier {
   }
 }
 
-// MARK: - Actions at the largest text sizes
-
 extension AccountScreen {
-  /// The account template with its actions docked as Paper draws them, except at the
-  /// accessibility text sizes: there two wrapped buttons would fill half the screen and
-  /// still clip (the dock can't scroll), so they follow the content and scroll with it
-  /// (spec 07 §8, plan 0.1 rule 11). The join and phrase screens use it (requests/p1.md 1); a
-  /// screen whose dock must stay over the keyboard at every size (unlock's word list) keeps
-  /// `footer:`.
   init<Main: View, Actions: View>(
     title: String, subtitle: String? = nil, email: EmailAside? = nil, steps: (current: Int, of: Int)? = nil,
     back: AccountBack = .none, trailing: (title: String, action: () -> Void)? = nil, wash: HWash = .setup,
@@ -339,7 +293,6 @@ extension AccountScreen {
   }
 }
 
-/// The page's content, then (at the accessibility sizes only) its actions, 32 under it.
 struct ActionsAfterContent<Main: View, Actions: View>: View {
   let content: Main
   let actions: () -> Actions
@@ -358,7 +311,6 @@ struct ActionsAfterContent<Main: View, Actions: View>: View {
   }
 }
 
-/// The dock's actions, 4 apart, below the accessibility sizes.
 struct DockedActions<Actions: View>: View {
   let actions: () -> Actions
 
@@ -371,15 +323,6 @@ struct DockedActions<Actions: View>: View {
   }
 }
 
-// MARK: - Celebration screen
-
-/// A done screen (Paper "Your account is ready." FJI-0, "You're back in" H5V-0, "You're set"
-/// GWF-0): the ready wash, the success badge with its glow and sparks, a large centred
-/// title and body, a fact card, and the dock. No header and no way back.
-///
-/// The badge lands once (`.celebrate`, under 600 ms; still under Reduce Motion), and
-/// `successHaptic` plays the success haptic as it settles ("You're set", a mailbox
-/// connected: the motion policy's two).
 struct CelebrationScreen<Cards: View, Footer: View>: View {
   var badge: SuccessBadge.Content?
   var title: String
@@ -387,8 +330,6 @@ struct CelebrationScreen<Cards: View, Footer: View>: View {
   var email: EmailAside?
   var wash: HWash
   var successHaptic: Bool
-  /// The badge under the status bar, and the cards under the copy: 76 and 36 on the account
-  /// boards (FJI, GL7, H5V); setup's result and done screens draw 40 and 28 (7DG, GWF).
   var spacing: (top: CGFloat, cards: CGFloat)
   @ViewBuilder var cards: () -> Cards
   @ViewBuilder var footer: () -> Footer
@@ -464,7 +405,6 @@ struct CelebrationScreen<Cards: View, Footer: View>: View {
     .toolbar(.hidden, for: .navigationBar)
     .task {
       guard successHaptic, !landed else { return }
-      // When the badge has settled, not as it starts (spec 01 §4.11).
       try? await Task.sleep(for: .seconds(HMotion.celebrateResponse))
       landed = true
     }
@@ -483,9 +423,6 @@ extension CelebrationScreen where Footer == EmptyView {
   }
 }
 
-// MARK: - Cards
-
-/// A 40 icon tile: a hue disc with a 20 line icon in the hue's ink (Paper "IconTile").
 struct IconTile: View {
   var icon: HIcon
   var hue: Hue
@@ -495,8 +432,6 @@ struct IconTile: View {
   }
 }
 
-/// The mint "Recommended" or "Fastest" chip on an option (Paper "HueChip"): 24 tall,
-/// radius 12, the mint gradient, 13/18 semibold in the mint ink.
 struct HueChip: View {
   var text: String
   var hue: Hue = .mint
@@ -513,8 +448,6 @@ struct HueChip: View {
   }
 }
 
-/// An option with its own button (Paper "OptionCard", spec 08: unlock, recover, forgot):
-/// an icon tile, an optional chip, a 17/22 title and a 15/20 line, then a 50 card button.
 struct OptionCard: View {
   enum ButtonKind { case primary, secondary }
 
@@ -547,9 +480,6 @@ struct OptionCard: View {
   }
 }
 
-/// The 50 button inside an option card (Paper "CardButton"): primary (accent, white label)
-/// or secondary (accent-subtle, link label), 17/24 semibold, radius 25. It presses like
-/// every pill (darken and 0.97, 120 ms back; colour only with Reduce Motion).
 private struct CardButtonStyle: ButtonStyle {
   let kind: OptionCard.ButtonKind
   let icon: HIcon?
@@ -607,8 +537,6 @@ private struct CardButtonBody: View {
   }
 }
 
-/// A choice between two ways (Paper "SelectionCard", S8 and H43): the card is the button,
-/// a 2 pt accent ring and a filled radio mark the one chosen.
 struct SelectionCard: View {
   var icon: HIcon
   var hue: Hue
@@ -645,7 +573,6 @@ struct SelectionCard: View {
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
       .overlay {
-        // 2 pt outside the card edge, no gap (box-shadow 0 0 0 2px).
         RoundedRectangle(cornerRadius: HRadius.card + 2, style: .continuous)
           .strokeBorder(HColor.actionAccent, lineWidth: 2)
           .padding(-2)
@@ -660,8 +587,6 @@ struct SelectionCard: View {
   }
 }
 
-/// The radio of a selection card: 24, accent with a white check when on, a 1.5 neutral
-/// ring when off.
 private struct Radio: View {
   let on: Bool
 
@@ -676,8 +601,6 @@ private struct Radio: View {
   }
 }
 
-/// The text column of an option or selection card: chip, title (padded 4 under a chip) and
-/// the line under it.
 private struct CardText: View {
   let chip: String?
   let title: String
@@ -700,8 +623,6 @@ private struct CardText: View {
   }
 }
 
-/// A card that tells one thing (Paper "InfoCard"; the hand-off cards on the done screens):
-/// an icon tile, a 16/22 title and a 15/20 line, on white, radius 24 (20 as a content card).
 struct InfoCard: View {
   var icon: HIcon
   var hue: Hue
@@ -725,8 +646,6 @@ struct InfoCard: View {
   }
 }
 
-/// A quiet note under the content (Paper "NoteRow"): an 18 icon in icon-secondary and a
-/// 13/18 line, 4 in from the content edge.
 struct NoteRow: View {
   var icon: HIcon
   var text: String
@@ -748,9 +667,6 @@ struct NoteRow: View {
   }
 }
 
-/// The amber note that says why something is held back (Paper "WarningCallout": no
-/// screenshots on the phrase screen): a 20 icon and 15/20 medium text in the warning ink on
-/// the warning surface, radius 20.
 struct WarningCallout: View {
   var icon: HIcon = .cameraSlash
   var text: String
@@ -773,8 +689,6 @@ struct WarningCallout: View {
   }
 }
 
-/// A light hint on the wash (Paper "HintCard · Spam"): an 18 icon and a 13/18 line on the
-/// white-70% surface, radius 16.
 struct HintCard: View {
   var icon: HIcon = .envelope
   var text: String
@@ -797,10 +711,6 @@ struct HintCard: View {
   }
 }
 
-// MARK: - Dock parts
-
-/// The link under the primary button (Paper "Secondary link (44pt target)"): 17/22
-/// semibold in the link colour (or destructive), a 44 box, 16 in.
 struct SecondaryLink: View {
   var title: String
   var identifier: String
@@ -817,15 +727,12 @@ struct SecondaryLink: View {
         .frame(maxWidth: .infinity, minHeight: 44)
         .contentShape(Rectangle())
     }
-    // A link dims while pressed, as text buttons do; it has no fill to darken.
     .buttonStyle(.plain)
     .accessibilityIdentifier(identifier)
     .dockLink()
   }
 }
 
-/// A plain note in the link's place (Paper "Note (not a link)"): 15/22 secondary in the
-/// same 44 box ("Takes about two minutes. It can't be skipped.").
 struct ActionNote: View {
   var text: String
 
@@ -839,10 +746,6 @@ struct ActionNote: View {
   }
 }
 
-// MARK: - Earlier parts (kept; the packages move their screens to the parts above)
-
-/// A labelled field on the grouped canvas: label, a white 52 pt field (r14), a footer.
-/// The same field as `AccountField`, with the control as a view builder.
 struct LabeledField<Field: View, Accessory: View>: View {
   var label: String
   var footer: String?
@@ -868,8 +771,6 @@ extension LabeledField where Accessory == EmptyView {
   }
 }
 
-/// A dot and one line of status: success (green), error (red), info (grey). Small (13/18)
-/// under a field ("Passwords match."), regular (15/20) in a card (the strength line).
 struct StatusLine: View {
   enum Tone { case success, error, info }
   enum Size { case small, regular }
@@ -901,7 +802,6 @@ struct StatusLine: View {
   }
 }
 
-/// A white r20 card with an icon and text (the "We only email you about…" note).
 struct NoteCard: View {
   var systemImage: String
   var title: String?
@@ -932,7 +832,6 @@ struct NoteCard: View {
   }
 }
 
-/// A small footnote with a leading lock (Paper's bottom notes).
 struct LockNote: View {
   var text: String
   var systemImage = "lock"
@@ -953,8 +852,6 @@ struct LockNote: View {
   }
 }
 
-/// A filling pill for a step's main action: the kit's loading state (spinner and label,
-/// same size, taps blocked) while `busy`, and Paper's disabled fill until `enabled`.
 struct BusyButton: View {
   var title: String
   var busy: Bool
@@ -973,7 +870,6 @@ struct BusyButton: View {
 
 typealias LinkButton = SecondaryLink
 
-/// The error banner a screen shows for a failure (one line of copy).
 struct FailureBanner: View {
   var failure: AuthFailure?
 
@@ -1031,7 +927,6 @@ extension View {
   }
 }
 
-/// A text link that opens Safari, with a 44 pt hit area.
 struct WebLink: View {
   var title: String
   var url: String
@@ -1052,8 +947,6 @@ struct WebLink: View {
   }
 }
 
-/// A small inline text button ("Forgot password?", "Resend code", "Change email"): Paper's
-/// InlineLink, 15/20 semibold in the link colour, with a 44 pt hit area.
 struct InlineTextButton: View {
   var title: String
   var identifier: String

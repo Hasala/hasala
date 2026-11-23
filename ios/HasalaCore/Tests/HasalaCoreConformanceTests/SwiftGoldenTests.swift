@@ -1,27 +1,3 @@
-// conformance/swift/: what the Swift executor writes for the other executors to
-// check (spec 01 §15.1-§15.2; critic §5.5 "one writer per directory").
-//
-//   op-manifest-v4.json       the schema-4 registry (00 §3's proposed wire order,
-//                             confirmed) and op-codec cases: input body → the
-//                             bytes this encoder writes, and refusals
-//   crypto-v3/frames.json     Swift-sealed frames (libz gzip, random nonces) with
-//   crypto-v3/frames/*.bin    their key inputs, envelope, prev_hash, blob_hash and
-//                             plaintext: Go opens them with blobtest.Open3
-//   crypto-v3/wraps.json      Swift recovery and PRF wraps and phrase boxes
-//                             (random salt and nonce): Go opens them with cryptoref
-//   crypto-v3/signatures.json CryptoKit Ed25519 and P-256 signatures over every
-//                             §10.1 message vector: Go verifies them
-//   crypto-v3/password.json   CommonCrypto `S` (600,000) for the password inputs
-//
-// Regenerate (it rewrites every file; frames, wraps and signatures change on
-// every run because nonces, salts and signatures are random):
-//
-//   HASALA_WRITE_SWIFT_GOLDENS=1 swift test --filter SwiftGoldenTests
-//
-// Without the variable, the suite checks that the committed files still hold:
-// the op cases re-encode byte for byte, every frame, wrap and box opens, every
-// signature verifies and every `S` is reproduced. Those checks re-read Swift's
-// own outputs; the cross-check is the other executors reading them.
 import CoreCrypto
 import CoreJSON
 import CorePrimitives
@@ -35,8 +11,6 @@ struct SwiftGoldenTests {
   static let root = Fixtures.conformanceRoot.appendingPathComponent("swift", isDirectory: true)
   static let writing = ProcessInfo.processInfo.environment["HASALA_WRITE_SWIFT_GOLDENS"] == "1"
   typealias A = Anchor
-
-  // MARK: - Writing
 
   @Test("write the goldens (only with HASALA_WRITE_SWIFT_GOLDENS=1)", .enabled(if: SwiftGoldenTests.writing))
   func write() async throws {
@@ -76,8 +50,6 @@ struct SwiftGoldenTests {
     ])
   }
 
-  // MARK: op-manifest-v4.json
-
   static let opInputs: [(String, String)] = [
     (
       "v4-parent-free-offset-time",
@@ -101,8 +73,6 @@ struct SwiftGoldenTests {
     ),
   ]
 
-  /// v3 twins of the cases above: the TypeScript oracle (schema 3) reads these
-  /// and must write the same bytes.
   static let v3Inputs: [(String, String)] = [
     (
       "v3-offset-time-truncated-to-ms",
@@ -189,9 +159,6 @@ struct SwiftGoldenTests {
     ])
   }
 
-  // MARK: crypto-v3/frames.json
-
-  /// A plaintext op blob of about `n` bytes of incompressible-ish payload.
   static func plaintext(_ n: Int, seed: String) throws -> Data {
     let filler = Base64.encode(try SystemRandom().bytes(max(1, n)))
     let body =
@@ -204,8 +171,6 @@ struct SwiftGoldenTests {
     let sealer = Sealer(epoch: 1, key: k1)
     var out: [JSONValue] = []
     var prev = Hash32.zero
-    // A chain at counters 1-4 landing in each of the four lower buckets, then
-    // the AAD-length counters 9, 10 and 99999 (L = 83, 84, 87).
     let plan: [(Int64, Int)] = [(1, 600), (2, 2400), (3, 9000), (4, 40000), (9, 50), (10, 50), (99999, 50)]
     for (counter, size) in plan {
       let env = try Envelope(userID: A.userID, writerID: A.writerID, counter: counter)
@@ -236,8 +201,6 @@ struct SwiftGoldenTests {
       ("frames", .array(out)),
     ])
   }
-
-  // MARK: crypto-v3/wraps.json
 
   static func wraps() throws -> JSONValue {
     let body = try KeyBody(amk: A.amk, aakSeed: A.aakSeed)
@@ -276,8 +239,6 @@ struct SwiftGoldenTests {
       ("phrase_boxes", .array(boxes)),
     ])
   }
-
-  // MARK: crypto-v3/signatures.json
 
   static func messages() throws -> [(name: String, signer: String, message: Data)] {
     let c = try StepUp.challenge(nonce: A.stepUpNonce, params: .passkeyDelete(credentialID: A.credentialID))
@@ -398,8 +359,6 @@ struct SwiftGoldenTests {
     ])
   }
 
-  // MARK: crypto-v3/password.json
-
   static let passwordInputs: [(String, String)] = [
     (A.address, A.passwordNFD),
     (A.address, "Hasala café 2026!"),
@@ -434,8 +393,6 @@ struct SwiftGoldenTests {
       ("cases", .array(out)),
     ])
   }
-
-  // MARK: - Checking the committed files
 
   static func load(_ path: String) throws -> JSONValue { try Fixtures.json("swift/" + path) }
 
@@ -551,8 +508,6 @@ struct SwiftGoldenTests {
 
 func obj(_ pairs: [(String, JSONValue)]) -> JSONValue { .object(JSONObject(pairs)) }
 
-/// A two-space-indented rendering for files people diff; values are written by
-/// CoreJSON's canonical writer.
 enum Pretty {
   static func text(_ v: JSONValue) -> String {
     var out = ""

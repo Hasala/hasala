@@ -2,15 +2,6 @@ import HasalaDesign
 import SwiftUI
 import UIKit
 
-/// "View your 12 words" (Paper P2.5 ICI), after "Confirm it's you": a full-screen cover on
-/// the account template, built on the shared `PhraseGrid` (not onboarding's phrase screen),
-/// with the amber no-screenshots callout, Done, and the note that viewing them emailed you.
-///
-/// The privacy rules are onboarding's (spec 04 §6.7; c2 §12): hidden until tapped; hidden
-/// again when the app leaves the foreground, when the cover goes, and while the screen is
-/// recorded or mirrored (then not drawn at all, and the veil says why); a screenshot is
-/// called out; nothing can be copied; the grid is `.privacySensitive()`. Closing the cover
-/// drops the words from memory (`SecurityModel.closePhrase`).
 struct PhraseViewer: View {
   @Bindable var model: SecurityModel
 
@@ -65,7 +56,6 @@ struct PhraseViewer: View {
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
-          // Paper ICI's glass Close draws its cross in ink, not the accent.
           Button(role: .close) { close() }
             .tint(HColor.appleLabelsVibrantPrimary)
             .accessibilityIdentifier("phrase.close")
@@ -82,8 +72,6 @@ struct PhraseViewer: View {
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
       screenshotWarning = model.phraseRevealed
     }
-    // However the cover goes (Done, Close, the session ending under it), the words go
-    // with it.
     .onDisappear { model.closePhrase() }
   }
 
@@ -92,7 +80,6 @@ struct PhraseViewer: View {
     model.closePhrase()
   }
 
-  /// Captured, the words hide and stay hidden until capture stops.
   private func noteCapture() {
     captured = screenIsCaptured()
     model.phraseMasked = captured

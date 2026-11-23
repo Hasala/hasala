@@ -1,11 +1,6 @@
 import XCTest
 
-/// Activity, the transaction sheet and Review on the Release surface.
 final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
-  /// The add button beside the tab bar opens Add a transaction; a row opens its sheet, which offers no bank email to view yet; the
-  /// Review tab is there with its Start and its rows, and every deck control sorts, skips or
-  /// closes, and the unreadable-email card opens Add a transaction ("Use N suggestions" and
-  /// "View bank email" wait for the features behind them).
   @MainActor
   func testActivityAndReviewShowOnlyWhatWorks() throws {
     let app = launchRelease()
@@ -29,10 +24,8 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "txn.merchant").waitForExistence(timeout: uiWait))
     attach(app, "Release · Transaction")
     assertNoPlaceholders(app, "Transaction")
-    // A row read from email shows where it came from, not the sample note.
     XCTAssertTrue(el(app, "txn.rawMerchant").exists)
     assertAbsent(app, ["txn.sample", "txn.viewEmail"], "Transaction")
-    // Its editors push inside the sheet.
     el(app, "txn.category").tap()
     XCTAssertTrue(el(app, "picker.save").waitForExistence(timeout: uiWait))
     assertNoPlaceholders(app, "Category")
@@ -56,12 +49,10 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
     assertPresent(app, ["review.skip", "review.pill.need", "review.pill.want", "review.pill.save",
                         "review.pill.transfer"], "Review")
     assertAbsent(app, ["review.viewEmail"], "Review")
-    // The More menu offers only what works.
     el(app, "review.more").tap()
     XCTAssertTrue(app.buttons["Skip for now"].waitForExistence(timeout: uiWait))
     assertAbsent(app, ["View bank email"], "Review · More")
     assertNoPlaceholders(app, "Review · More")
-    // Dismiss the menu: tap outside it, on the header.
     app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
     el(app, "review.close").tap()
   }
@@ -89,8 +80,6 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "unread.row.unread-gmail").waitForNonExistence(timeout: uiWait))
   }
 
-  /// The App Review demo account: Home says "Sample data", and a sample row's sheet says
-  /// there's no email behind it.
   @MainActor
   func testTheReviewAccountShowsSampleData() throws {
     let app = launchRelease("mayaSample")

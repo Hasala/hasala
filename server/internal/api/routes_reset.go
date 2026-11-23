@@ -7,8 +7,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// routes_reset.go: password reset on a new iPhone approved by a signed-in
-// iPhone (C9, spec 02 §10.9, routes #49–#54). Owner: WS-3.
 func (s *Server) mountReset(mux *http.ServeMux) {
 	if s.Accounts == nil {
 		return
@@ -21,7 +19,6 @@ func (s *Server) mountReset(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/password/reset/finish", s.limited(s.handleResetFinish, s.ResetPerIP))
 }
 
-// ResetBeginResponse is #49's answer, identical for every valid address.
 type ResetBeginResponse struct {
 	ResetID string `json:"reset_id"`
 }
@@ -39,16 +36,14 @@ func (s *Server) handleResetBegin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, ResetBeginResponse{ResetID: id})
 }
 
-// ResetCodeRequest is #50's body.
 type ResetCodeRequest struct {
 	ResetID string `json:"reset_id"`
 	Code    string `json:"code"`
 }
 
-// ResetVerifyResponse is #50's answer.
 type ResetVerifyResponse struct {
-	Nonce     string `json:"nonce"` // b64
-	Salt      string `json:"salt"`  // b64
+	Nonce     string `json:"nonce"`
+	Salt      string `json:"salt"`
 	Approvers bool   `json:"approvers"`
 }
 
@@ -65,10 +60,9 @@ func (s *Server) handleResetVerify(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, ResetVerifyResponse{Nonce: b64(out.Nonce), Salt: b64(out.Salt), Approvers: out.Approvers})
 }
 
-// ResetRequestBody is #51's body.
 type ResetRequestBody struct {
 	ResetID string `json:"reset_id"`
-	EKPub   string `json:"ek_pub"` // b64, 32 bytes
+	EKPub   string `json:"ek_pub"`
 }
 
 func (s *Server) handleResetRequest(w http.ResponseWriter, r *http.Request) {
@@ -89,15 +83,13 @@ func (s *Server) handleResetRequest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// PendingResetWire is one row of #52.
 type PendingResetWire struct {
 	ResetID   string    `json:"reset_id"`
-	Nonce     string    `json:"nonce"`  // b64
-	EKPub     string    `json:"ek_pub"` // b64
+	Nonce     string    `json:"nonce"`
+	EKPub     string    `json:"ek_pub"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// ResetPendingResponse is #52's answer.
 type ResetPendingResponse struct {
 	Pending []PendingResetWire `json:"pending"`
 }
@@ -120,11 +112,10 @@ func (s *Server) handleResetPending(w http.ResponseWriter, r *http.Request, user
 	writeJSON(w, http.StatusOK, out)
 }
 
-// ResetApproveRequest is #53's body.
 type ResetApproveRequest struct {
 	ResetID  string `json:"reset_id"`
 	WriterID string `json:"writer_id"`
-	Sig      string `json:"sig"` // b64, 64 bytes: the DAK over ResetApproveMessage
+	Sig      string `json:"sig"`
 }
 
 func (s *Server) handleResetApprove(w http.ResponseWriter, r *http.Request, _ uuid.UUID) {
@@ -147,11 +138,10 @@ func (s *Server) handleResetApprove(w http.ResponseWriter, r *http.Request, _ uu
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ResetFinishRequest is #54's body.
 type ResetFinishRequest struct {
 	ResetID  string `json:"reset_id"`
-	Verifier string `json:"verifier"` // b64, 32 bytes: S_new
-	EKSig    string `json:"ek_sig"`   // b64, 64 bytes
+	Verifier string `json:"verifier"`
+	EKSig    string `json:"ek_sig"`
 }
 
 func (s *Server) handleResetFinish(w http.ResponseWriter, r *http.Request) {

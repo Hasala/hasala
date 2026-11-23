@@ -1,7 +1,3 @@
-// OpAuthor's beta authors and author rules: projects and goals (03c §6, 03a
-// §9), duplicate dispositions, rates, the 8 KiB op guard (04 §5.4 S7), user
-// text (03c §1.6), rule pause chunking (03c §5.5) and the mailbox supersede
-// rule (03c §3.1). Every authored blob is folded and must fold clean.
 import CoreCategorize
 import CoreJSON
 import CoreReplay
@@ -17,7 +13,6 @@ import Testing
 struct OpAuthorTests {
   static func d(_ s: String) -> CivilDate { CivilDate(wire: s)! }
 
-  /// Folds `ops` at `seq` and expects no anomaly.
   static func fold(_ ops: [Op], _ s: inout State, seq: Int64) throws {
     try Replay.foldOps(ops, seq: seq, writerID: w, into: &s)
     #expect(s.anomalies.isEmpty, "\(s.anomalies)")
@@ -43,14 +38,12 @@ struct OpAuthorTests {
     let g = try #require(s.goals[gid])
     #expect(g.targetMinor == 5_000_000 && g.startingMinor == 3_000_000 && g.source.categoryID == cat && g.targetMonth == "2027-01")
 
-    // Mark complete: a whole-record edit on the projected version.
     var b = OpAuthor(ctx(own: blob.lastAuthoredMs))
     var done = OpAuthor.ProjectDraft(name: "Japan trip", status: .completed, completedOn: Self.d("2026-12-29"))
     try b.defineProject(id: pid, parentVersion: p.version, done)
     try Self.fold(try b.build().ops, &s, seq: 2)
     #expect(s.projects[pid]?.status == "completed" && s.projects[pid]?.completedOn == "2026-12-29" && s.projects[pid]?.icon == "flag")
 
-    // Refusals the editor shows inline.
     var c = OpAuthor(ctx())
     done.completedOn = nil
     #expect(throws: AuthorError.refused("a completed record needs its completion date")) { try c.defineProject(done) }
@@ -119,7 +112,6 @@ struct OpAuthorTests {
       guard case .opTooLarge(let type, let bytes) = e as? AuthorError else { return false }
       return type == "txn_ingested" && bytes > OpAuthor.maxOpBytes
     }
-    // Just under the limit passes, and the measure is the wire's own bytes.
     var b = OpAuthor(ctx())
     try b.ingest(payload: payload(String(repeating: "x", count: 7_000)), ingestID: String(repeating: "a", count: 64))
     let ops = try b.build().ops
@@ -170,14 +162,12 @@ struct OpAuthorTests {
     #expect(held.allSatisfy { $0.payload["source"]?.objectValue?["kind"]?.stringValue == "held" })
     let stamps = blobs.flatMap(\.ops).map(\.authoredAt)
     #expect(stamps == stamps.sorted() && Set(stamps).count == stamps.count)
-    // Re-enabling is the rule edit alone.
     let on = try OpAuthor.setRule(rule, enabled: true, heldRows: rows, context: ctx())
     #expect(on.map(\.ops.count) == [1])
   }
 
   @Test("a mailbox supersede keeps a person's category (03c §3.1)")
   func supersede() throws {
-    // One random source for the whole story, so each author mints fresh ids.
     let random = Counter()
     func ctx(own: Int64? = nil) -> AuthorContext { AuthorContext(writerID: w, nowMs: now, ownLastMs: own, maxAuthored: [:], random: random) }
     var s = State()
@@ -196,7 +186,6 @@ struct OpAuthorTests {
     let blob2 = try b.build()
     try Self.fold(blob2.ops, &s, seq: 2)
 
-    // The template fix re-reads the email; the pipeline now says groceries.
     let decision = Decision(category: "groceries", source: .dictionary(bundle: "2026.10.11-1", entry: "contains:carrefour"), display: nil, suggested: nil)
     var fixed = p
     for (k, v) in OpAuthor.decisionFields(decision) { fixed[k] = v }
@@ -206,7 +195,6 @@ struct OpAuthorTests {
     try Self.fold(try c.build().ops, &s, seq: 3)
     #expect(s.txns[next]?.category == "dining" && s.txns[next]?.categorySource?.kind == .user)
 
-    // A predecessor filed by automation takes the new decision.
     let auto = OpAuthor.CategoryState(category: "shopping", source: CategorySource(kind: .rule, ruleID: "01JC00000000000000000000R1"))
     let fields = try #require(OpAuthor.supersedeFields(predecessor: auto, decision: decision))
     #expect(fields.first { $0.0 == "category" }?.1 == .string("groceries"))

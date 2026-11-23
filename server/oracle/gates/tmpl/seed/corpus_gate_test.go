@@ -1,132 +1,5 @@
 package seed_test
 
-// corpus_gate_test.go is spec §3.5's ship condition for Phase 1: "ported
-// templates must reproduce the existing three parsers' output over the full
-// 3-year corpus".
-//
-// # What is actually being compared
-//
-// Two whole implementations of the same job, over the same mail:
-//
-//	v1  parse.BodyText -> parse.Unwrap -> parse.Cascade{DIB, ENBD, ENBDAlert}
-//	v2  norm.Normalize -> tmpl.Execute over every seed whose Match gates pass
-//
-// Not one line of the v1 side is written here. The cascade is constructed
-// exactly as v1's own cmd/ledger/main.go:239 constructs it (that file stayed in
-// salehtl/ledger; this repo has no cmd/ledger) and the posted-at fallback is
-// computed exactly as oracle/v1ref/parse/processor.go:70 computes it, because a gate that
-// re-implements the thing it is checking cannot see a defect in it — the copy
-// does not share the mistake, so it keeps agreeing and the gate goes green.
-// internal/norm's corpus gate learned that the expensive way: five one-line
-// defects, changing up to 56 messages each, all passed a version of it whose
-// shadow re-implemented nine lines of the function under test.
-//
-// The one thing this file does re-implement is [senderDomain], and it is not
-// part of either implementation: v1 gates on the whole From header including
-// the local part, v2 gates on a DKIM-VERIFIED signing domain that a three-year
-// -old ingest_log row does not carry. Splitting a stored From at its last '@'
-// is the harness's own approximation of a fact neither side stores, and getting
-// it wrong can only run a template against a message it then fails to match.
-//
-// # The bar
-//
-//	mismatches  MUST be 0   v1's template tier produced a result and v2 produced
-//	                        a different one on any of the eight compared fields.
-//	misses      MUST be 0   v1's template tier produced a result and v2 produced
-//	                        none.
-//	ambiguous   MUST be 0   two seeds claimed the same message. v1 stops at the
-//	                        first parser that matches, so a second claimant means
-//	                        the Match blocks are not the partition they look like.
-//	new matches ALLOWED     v2 matched where v1's template tier did not. A strict
-//	                        improvement, but every one is listed in
-//	                        v2-seed-validation (ledgerd design archive) with a
-//	                        justification, because "v2 extracted something v1
-//	                        did not" and "v2 extracted the wrong thing" look
-//	                        identical from inside this test.
-//
-// # Iterate on the JSON, never on the comparison
-//
-// Every temptation to widen a field comparison is the template being wrong. The
-// one place this file spends any words on tolerance is [samePostedAt], and it
-// tolerates nothing — it exists because Go's time.Time carries a monotonic
-// reading and a location that == compares and Equal does not.
-//
-// # What this gate can and cannot see
-//
-// A gate that passes is worth exactly what it would have caught. 26 plausible
-// one-edit template defects were measured against the then-7,004-message corpus
-// (2026-08-01) and against the synthetic table in
-// [TestSeedReproducesV1OnTheBranchesTheCorpusNeverExercises]. The corpus caught
-// 15. It caught NONE of these eleven:
-//
-//	mutation                                     corpus   synthetic
-//	card  last4 capture -> whole line              0         yes
-//	acct  last4 capture -> whole line              0         yes
-//	acct  DEBIT suffix rule deleted                0         yes
-//	acct  CREDIT suffix rule deleted               0         yes
-//	acct  suffix rules moved after the cascade     0         yes
-//	acct  unconditional default flipped to debit   0         yes
-//	acct  من الحساب preposition rule deleted        0         yes
-//	acct  deposit-notice rule deleted              0         yes
-//	acct  case-insensitive flags removed           0         yes
-//	xfer  date-only fallback layout dropped        0         yes
-//	alert credit branch deleted                    0         yes
-//
-// and the fifteen it did catch, it caught hard: the hamza misspelling of the
-// payee anchor breaks 4,997 messages, an amt group that swallows "AED " turns
-// all 4,997 into misses, dropping DIB's TRNSFER misspelling loses 23
-// is_transfer flags and dropping the correctly-spelled TRANSFER loses 339.
-//
-// The eleven are not gaps in the corpus's SIZE. They are branches real bank
-// mail does not take, and each was measured rather than guessed:
-//
-//   - No account line and no card line in 6,879 DIB messages contains a space,
-//     so v1's (\S+) and a whole-line capture cannot differ on any of them.
-//   - No amount block in the corpus writes its currency in lower case, on its
-//     own line, or with no space before the number, so the ccy group's exact
-//     shape is unobservable here.
-//   - The ENBD population is 64 messages on the 2026-08-11 snapshot — 62
-//     transfer advices and 2 alerts, per the gate's own per-template counts —
-//     where it was 63 when this was first measured. All 62 transfer advices
-//     carry a time with the date, so v1's strings.Fields(s)[0] fallback never
-//     runs. The alerts state no date at all; both sides take it from the email.
-//   - The corpus held ONE ENBD alert and it was a debit. On the 2026-08-11
-//     snapshot it holds TWO, both debits: the forwarded `withdrawn` advice, and
-//     ingest_log id 7015, a `deducted` one received 2026-08-03. The credit
-//     branch is still taken by no real message.
-//   - 312 account-layout messages carry a DEBIT/CREDIT description suffix — the
-//     branch is well covered — and on all 312 the suffix AGREES with what the
-//     four-way cascade already decided. It overrides it ZERO times. That is why
-//     deleting either suffix rule, or moving both behind the cascade, changes
-//     nothing here: v1's override never overrides on three years of real mail.
-//
-// That last one matters beyond this file. It means the corpus is structurally
-// incapable of distinguishing the entry ORDER this port uses from v1's literal
-// override shape, so "the full corpus agrees" is not evidence about the
-// override question at all. The synthetic differential table is, and it is why
-// that test exists rather than being a nicety.
-//
-// # The defect neither half held, until it arrived in the mail
-//
-// Both halves are differential against v1, and both were still blind to one
-// thing: an anchor v1 gained AFTER the seed was cut from it. v1's
-// enbd_alert.go matches (?:withdrawn|debited|deducted); the seed shipped
-// (?:withdrawn|debited), because `deducted` was added to v1 later. No corpus
-// message took that branch, so the corpus agreed; no synthetic case named the
-// verb, so the table agreed; and every bank-initiated ENBD debit — transfer
-// issuance, fees — missed the template tier in production and fell through to
-// the heuristic. That is not a quiet loss: heuristic.Parse over id 7015's
-// normalized body returns AED 2,340.00 as a CREDIT with the disclaimer text as
-// its merchant, so an outgoing transfer fee reached the user as needs-review
-// income.
-//
-// It stopped being invisible the ordinary way: the operator's mailbox received
-// one (id 7015, 2026-08-03) and the next full-corpus run reported it as a MISS.
-// The lesson is that a differential table only covers the alternatives someone
-// wrote down, so when v1's frozen reference in oracle/v1ref/parse and a seed
-// pattern are meant to be the same function, the alternations are worth diffing
-// literally rather than trusting either suite to notice.
-
 import (
 	"context"
 	"fmt"
@@ -144,69 +17,27 @@ import (
 	v1 "github.com/salehtl/hasala/server/oracle/v1ref/parse"
 )
 
-// recordedCorpusSize is the message count at the recorded gate pass
-// (2026-08-11; first recorded 2026-08-01 at 7,005 against
-// v2-seed-validation (ledgerd design archive)).
-//
-// Re-recorded on a fresh `.backup` of the live v1 database taken that morning,
-// on the run that closed the enbd.alert.v1 `deducted` gap: 7,057 messages,
-// 5,751 v1 template hits, 0 mismatches, 0 misses, 0 ambiguous. The snapshot is
-// ten days of further ingest, and it is the snapshot that CONTAINS the defect —
-// ingest_log id 7015, an ENBD `deducted` alert received 2026-08-03, was the
-// first real message to take v1's third debit verb, and it was a v2 MISS until
-// template version 2 shipped the verb.
-//
-// v1's ingest_log is append-only, so a snapshot holding materially fewer rows
-// is truncated, stale, or a different database that happens to have an
-// ingest_log. Without this floor the gate is perfectly happy on an EMPTY one:
-// it prints "corpus: 0 messages, v1 template hits: 0, mismatches: 0" and goes
-// green, which is a gate that proves nothing while looking like the strongest
-// check in the repository.
-//
-// A FLOOR, not an equality: the live instance keeps ingesting. The 10% band
-// tolerates an older snapshot while still rejecting an empty or wrong one.
 const recordedCorpusSize = 7057
 
-// recordedV1TemplateHits is how many messages v1's template tier extracted at
-// that same pass. The size floor alone does not stop the other silent failure:
-// a corpus of the right size whose mail no longer reaches the template tier —
-// a broken senderDomain, a Match block that stopped matching, a normalizer that
-// returns empty text — would compare 7,000 non-results to 7,000 non-results and
-// report zero mismatches. Requiring the hit count to stay in the same band
-// makes "the gate compared nothing" a failure rather than a pass.
-//
-// 5,751 on the 2026-08-11 snapshot, from 5,719 on 2026-08-01. v2 matched all
-// 5,751 of them once the `deducted` verb landed.
 const recordedV1TemplateHits = 5751
 
-// maxShown caps how many findings keep their full detail. A template defect
-// that breaks every message would otherwise hold the whole corpus in memory on
-// the way to reporting the first 20.
 const maxShown = 20
 
-// v1Result is what v1's template tier extracted, or hit=false.
 type v1Result struct {
 	hit bool
 	txn v1.ParsedTxn
 }
 
-// v2Result is what one seed template extracted.
 type v2Result struct {
 	id string
 	e  tmpl.Extraction
 }
 
-// TestSeedTemplatesReproduceV1OverTheFullCorpus is the gate.
 func TestSeedTemplatesReproduceV1OverTheFullCorpus(t *testing.T) {
 	path := os.Getenv("HASALA_CORPUS_DB")
 	if path == "" {
-		// A checkout without the corpus skips; oracle/corpus.s package doc
-		// has the snapshot recipe. This is why scripts/check.sh stays green
-		// on a machine that has never seen the v1 database.
 		t.Skip("HASALA_CORPUS_DB is unset; the seed gate needs a scratch .backup of the v1 corpus")
 	}
-	// A path that is SET but unusable FAILS rather than skips: a typo silently
-	// disabling the gate is the one failure mode a gate must not have.
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("HASALA_CORPUS_DB=%s is set but unusable: %v", path, err)
 	}
@@ -249,9 +80,6 @@ func TestSeedTemplatesReproduceV1OverTheFullCorpus(t *testing.T) {
 		t.Logf("NEW MATCH %s", n)
 	}
 
-	// The gate compared something. A corpus of the right size whose mail no
-	// longer reaches the template tier would report zero mismatches while
-	// checking nothing at all.
 	if floor := recordedV1TemplateHits / 10 * 9; g.v1Hits < floor {
 		t.Fatalf("v1's template tier extracted only %d transactions; the recorded pass saw %d, "+
 			"so below %d the gate is comparing non-results to non-results rather than measuring anything",
@@ -262,7 +90,6 @@ func TestSeedTemplatesReproduceV1OverTheFullCorpus(t *testing.T) {
 	}
 }
 
-// gateCounts is one full-corpus comparison.
 type gateCounts struct {
 	total, v1Hits, v2Hits            int
 	mismatch, misses, ambiguous      int
@@ -271,25 +98,12 @@ type gateCounts struct {
 	findings, newList                []string
 }
 
-// runGate compares v1 against the given definitions over the whole corpus.
-//
-// It takes the definitions as an argument rather than calling [Seed] itself so
-// that the mutation battery whose results this file's header records can hand it
-// a DELIBERATELY BROKEN template and read the counts back. Keep it that way: a
-// battery that has to edit the committed JSON instead is editing a shared
-// worktree other sessions are compiling, and it measures whether the files can
-// be broken rather than whether this comparison notices.
 func runGate(db *corpus.DB, defs []tmpl.Definition) (gateCounts, error) {
-	// v1, constructed exactly as v1's cmd/ledger/main.go:239 does (in
-	// salehtl/ledger — see the package comment). AI is nil: the AI
-	// tier never produces a template-tier result, and this gate is about the
-	// template tier.
 	cascade := &v1.Cascade{
 		Parsers:   []v1.BankParser{v1.DIBParser{}, v1.ENBDParser{}, v1.ENBDAlertParser{}},
 		Heuristic: v1.HeuristicParser{},
 		AI:        nil,
 	}
-	// v2. Compiled once, as the ingest pipeline does.
 	compiled := make([]*tmpl.Compiled, len(defs))
 	for i, d := range defs {
 		c, err := tmpl.Compile(d)
@@ -311,7 +125,6 @@ func runGate(db *corpus.DB, defs []tmpl.Definition) (gateCounts, error) {
 			g.v1PerBank[bankOf(m.FromAddr)]++
 		}
 
-		// --- v2 ---------------------------------------------------------
 		r, nerr := norm.Normalize(norm.CurrentVersion, m.RawBody, m.ReceivedAt)
 		if nerr != nil {
 			g.normErrs++
@@ -325,22 +138,12 @@ func runGate(db *corpus.DB, defs []tmpl.Definition) (gateCounts, error) {
 			}
 			return nil
 		}
-		// norm.Result.From, not the ingest_log from_addr: for an inline forward
-		// the two are different senders, and v1 gates its parsers on the one
-		// parse.Unwrap recovers from the INNER header block. Gating v2 on the
-		// outer address instead cost six messages on the first run — five
-		// forwarded DIB card purchases and the corpus's only ENBD alert — and
-		// every one of them was the harness disagreeing with itself about who
-		// sent the mail, not a template failing to extract it. norm's own corpus
-		// gate is what makes this a like-for-like swap: it requires
-		// norm.Result.From to equal v1's unwrapped From on every message.
 		hits := runV2(defs, compiled, r.From, r.Subject, r.Text, r.EmailDate)
 		if len(hits) > 0 {
 			g.v2Hits++
 			g.perTemplate[hits[0].id]++
 		}
 
-		// --- compare ----------------------------------------------------
 		switch {
 		case len(hits) > 1:
 			g.ambiguous++
@@ -381,19 +184,12 @@ func runGate(db *corpus.DB, defs []tmpl.Definition) (gateCounts, error) {
 	return g, err
 }
 
-// runV1 is the v1 half, composed exactly as parse/processor.go composes it.
 func runV1(ctx context.Context, cascade *v1.Cascade, m corpus.Message) v1Result {
 	text, berr := v1.BodyText(m.RawBody)
 	if berr != nil {
-		// processor.go marks the row unparsed and moves on; the template tier
-		// never runs.
 		return v1Result{}
 	}
 	from, subject, fwdDate, text := v1.Unwrap(m.FromAddr, m.Subject, text)
-	// processor.go:70: the forwarded Date header when it parses (the
-	// transaction time even for a late forward), else the mailbox arrival time.
-	// This is what norm.Result.EmailDate folds into one field, and
-	// norm's corpus gate is what proves the two agree.
 	fallback := m.ReceivedAt
 	if fd, err := v1.ParseForwardDate(fwdDate); err == nil {
 		fallback = fd
@@ -401,9 +197,6 @@ func runV1(ctx context.Context, cascade *v1.Cascade, m corpus.Message) v1Result 
 	return runV1Text(ctx, cascade, from, subject, text, fallback)
 }
 
-// runV1Text is the tail of [runV1], from already-decoded text onwards. It is
-// separate so the synthetic differential test drives the SAME v1 code path with
-// a body it composed rather than one it had to wrap in RFC822 first.
 func runV1Text(ctx context.Context, cascade *v1.Cascade, from, subject, text string, fallback time.Time) v1Result {
 	res := cascade.Run(ctx, from, subject, text, fallback)
 	if res.Status != v1.StatusParsed || res.Tier != v1.TierTemplate {
@@ -412,7 +205,6 @@ func runV1Text(ctx context.Context, cascade *v1.Cascade, from, subject, text str
 	return v1Result{hit: true, txn: res.Txn}
 }
 
-// runV2 runs every seed whose gates pass and returns each one's extraction.
 func runV2(defs []tmpl.Definition, compiled []*tmpl.Compiled, from, subject, text string, emailDate time.Time) []v2Result {
 	dom := senderDomain(from)
 	var hits []v2Result
@@ -425,10 +217,6 @@ func runV2(defs []tmpl.Definition, compiled []*tmpl.Compiled, from, subject, tex
 			continue
 		}
 		if defs[i].DateFrom == tmpl.DateFromEmail {
-			// The caller supplies the email date for a template whose format
-			// carries none; v1's Cascade does the same thing with fallbackDate.
-			// Both sides therefore date these from the message, and a
-			// difference here would be a real one.
 			e.PostedAt = emailDate
 		}
 		hits = append(hits, v2Result{id: defs[i].ID, e: e})
@@ -436,10 +224,6 @@ func runV2(defs []tmpl.Definition, compiled []*tmpl.Compiled, from, subject, tex
 	return hits
 }
 
-// v1Excuse re-runs v1 for the report only, to say WHY v1's template tier
-// produced nothing for a message v2 matched. Every new match has to be
-// justified in writing, and "v1 got a heuristic result instead" and "v1's
-// parser errored" are different justifications.
 func v1Excuse(ctx context.Context, cascade *v1.Cascade, m corpus.Message) string {
 	text, berr := v1.BodyText(m.RawBody)
 	if berr != nil {
@@ -457,11 +241,6 @@ func v1Excuse(ctx context.Context, cascade *v1.Cascade, m corpus.Message) string
 	return fmt.Sprintf("status=%s tier=%s", res.Status, res.Tier)
 }
 
-// diffFields compares the eight fields, and returns "" when they agree.
-//
-// It compares every field on every message rather than stopping at the first
-// difference: a template that got the direction AND the merchant wrong should
-// say so once, not twice on two runs.
 func diffFields(a v1.ParsedTxn, b tmpl.Extraction) string {
 	var out []string
 	add := func(field string, v1v, v2v any) {
@@ -491,12 +270,6 @@ func diffFields(a v1.ParsedTxn, b tmpl.Extraction) string {
 	return strings.Join(out, "\n")
 }
 
-// samePostedAt compares two instants, not two time.Time values.
-//
-// == on time.Time compares the wall clock, the monotonic reading and the
-// *Location POINTER, so two values naming the same instant in the same zone
-// can compare unequal. Equal compares the instant, which is the only thing
-// either implementation is claiming.
 func samePostedAt(a, b time.Time) bool { return a.Equal(b) }
 
 func q(s string) string { return fmt.Sprintf("%q", s) }
@@ -513,15 +286,9 @@ func describeV2(e tmpl.Extraction) string {
 		e.Merchant, e.Last4, e.IsTransfer)
 }
 
-// anchorLines are the lines worth seeing when a message disagrees: every v1
-// anchor, plus the line after it, which is where every DIB value lives.
 var anchorLines = regexp.MustCompile(
 	`(?m)^.*(المبلغ|بتاريخ|الدفع الى|المعاملة|رقم البطاقة|من حساب|من الحساب|إشعار|Debit Amount|Transaction Date|Beneficiary Name|has been).*$`)
 
-// anchorSnippet prints the anchor-bearing lines of a message and the line after
-// each, bounded. A field diff says WHAT disagreed; adjudicating it needs the
-// bytes, and paging through a 400-line Arabic HTML-stripped body in a test log
-// is not adjudication.
 func anchorSnippet(text string) string {
 	lines := strings.Split(text, "\n")
 	keep := map[int]bool{}
@@ -552,9 +319,6 @@ func anchorSnippet(text string) string {
 	return b.String()
 }
 
-// senderDomain pulls the domain out of a v1 ingest_log from_addr. See the file
-// comment: this is the harness's approximation of a fact neither implementation
-// stores, not part of either one.
 func senderDomain(fromAddr string) string {
 	at := strings.LastIndex(fromAddr, "@")
 	if at < 0 {
@@ -565,7 +329,6 @@ func senderDomain(fromAddr string) string {
 	return strings.ToLower(d)
 }
 
-// bankOf labels a v1 hit by sender for the per-sender log line.
 func bankOf(fromAddr string) string {
 	f := strings.ToLower(fromAddr)
 	switch {
@@ -596,11 +359,6 @@ func counts(m map[string]int) string {
 	return strings.Join(parts, " ")
 }
 
-// ---------------------------------------------------------------------------
-// Guards that need no corpus
-// ---------------------------------------------------------------------------
-
-// TestSeedDefinitionsArePublishable is what makes [Seed]'s panic unreachable.
 func TestSeedDefinitionsArePublishable(t *testing.T) {
 	defs := Seed()
 	if len(defs) != len(IDs) {
@@ -624,15 +382,6 @@ func TestSeedDefinitionsArePublishable(t *testing.T) {
 	}
 }
 
-// TestSeedAnchorsAreByteIdenticalToV1 re-derives every anchor from
-// oracle/v1ref/parse's own source and requires the seed JSON to contain it.
-//
-// This is the guard the plan's transcription warning asks for, and it is worth
-// more than review: `الدفع إلى` and `الدفع الى` differ by one code point, DIB
-// writes the second, and the first produces a template that compiles,
-// validates, publishes and matches none of the 6,864 DIB messages in the
-// corpus. A reviewer reading right-to-left Arabic in a JSON string does not
-// reliably catch that. A byte comparison does.
 func TestSeedAnchorsAreByteIdenticalToV1(t *testing.T) {
 	a := readV1Anchors(t)
 	raw := Raw()
@@ -665,10 +414,6 @@ func TestSeedAnchorsAreByteIdenticalToV1(t *testing.T) {
 		}
 	}
 
-	// The wrong spelling must NOT appear. `الدفع إلى` (with the hamza) is what a
-	// well-meaning correction produces, and it is the exact failure this test
-	// exists for; it is the ONLY Arabic literal in this file, and it is here to
-	// be rejected.
 	const withHamza = "الدفع إلى"
 	if withHamza == a.payee {
 		t.Fatal("v1's payee anchor now IS the hamza spelling; this guard is asserting the opposite of what dib.go says")
@@ -680,18 +425,12 @@ func TestSeedAnchorsAreByteIdenticalToV1(t *testing.T) {
 	}
 }
 
-// v1Anchors is every anchor literal v1's DIB parser matches on, read out of
-// oracle/v1ref/parse's own SOURCE rather than copied. A copy would be the
-// same transcription risk one level up.
 type v1Anchors struct {
 	amount, date, payee, txn, card, acct          string
 	cardLayout                                    string
 	deposit, debitNotice, withdrawal, fromAccount string
 }
 
-// readV1Anchors locates each anchor by the ASCII context around it in dib.go,
-// so no Arabic is typed anywhere in this file except the one misspelling
-// TestSeedAnchorsAreByteIdenticalToV1 exists to reject.
 func readV1Anchors(t *testing.T) v1Anchors {
 	t.Helper()
 	b, err := os.ReadFile("../../../v1ref/parse/dib.go")
@@ -708,24 +447,20 @@ func readV1Anchors(t *testing.T) v1Anchors {
 		return s
 	}
 	return v1Anchors{
-		amount:     get("amount", "dibAmountRe = regexp.MustCompile(`", `\s*\n`),
-		date:       get("date", "dibDateRe   = regexp.MustCompile(`", `\s*(`),
-		payee:      get("payee", "dibPayeeRe  = regexp.MustCompile(`", `\s*\n`),
-		txn:        get("txn", "dibTxnRe    = regexp.MustCompile(`", `\s*\n`),
-		card:       get("card", "dibCardRe   = regexp.MustCompile(`", `\s*\n`),
-		acct:       get("acct", "dibAcctRe   = regexp.MustCompile(`", `\s*\n`),
-		cardLayout: get("card layout", `isCard := strings.Contains(textBody, "`, `")`),
-		deposit:    get("deposit notice", `case strings.Contains(textBody, "`, `"):`),
-		// The cascade's second case names two anchors on one line, so each needs
-		// its own surrounding context rather than the shared line shape.
+		amount:      get("amount", "dibAmountRe = regexp.MustCompile(`", `\s*\n`),
+		date:        get("date", "dibDateRe   = regexp.MustCompile(`", `\s*(`),
+		payee:       get("payee", "dibPayeeRe  = regexp.MustCompile(`", `\s*\n`),
+		txn:         get("txn", "dibTxnRe    = regexp.MustCompile(`", `\s*\n`),
+		card:        get("card", "dibCardRe   = regexp.MustCompile(`", `\s*\n`),
+		acct:        get("acct", "dibAcctRe   = regexp.MustCompile(`", `\s*\n`),
+		cardLayout:  get("card layout", `isCard := strings.Contains(textBody, "`, `")`),
+		deposit:     get("deposit notice", `case strings.Contains(textBody, "`, `"):`),
 		debitNotice: get("debit notice", "DirectionCredit\n\tcase strings.Contains(textBody, \"", `"), strings.Contains`),
 		withdrawal:  get("withdrawal notice", `"), strings.Contains(textBody, "`, `"):`),
 		fromAccount: get("from account", `if strings.Contains(textBody, "`, `") {`),
 	}
 }
 
-// between returns the text between the first occurrence of before and the next
-// occurrence of after.
 func between(s, before, after string) (string, bool) {
 	i := strings.Index(s, before)
 	if i < 0 {
@@ -739,13 +474,6 @@ func between(s, before, after string) (string, bool) {
 	return rest[:j], true
 }
 
-// TestDIBSeedsPartitionEveryDIBMessage pins the property that makes two
-// templates equivalent to v1's one `isCard` branch: card requires the literal
-// account excludes, so no DIB message can reach both. Every other pair of DIB
-// templates is disjoint the same way, by construction.
-//
-// The gate's `ambiguous` counter would catch a real message hitting both, but
-// only if the corpus happens to contain one. This holds with no corpus at all.
 func TestDIBSeedsPartitionEveryDIBMessage(t *testing.T) {
 	var dib []tmpl.Definition
 	var card, account tmpl.Definition
@@ -792,21 +520,6 @@ func TestDIBSeedsPartitionEveryDIBMessage(t *testing.T) {
 	}
 }
 
-// TestSeedDirectionCascadeNeedsNoOverride records the resolution of the
-// override-budget problem, so a later edit cannot quietly reintroduce it.
-//
-// v1's dib.go computes direction in two steps: a total four-way cascade, and
-// then a re-derivation from the uppercased description suffix that WINS over
-// whatever the cascade decided (dib.go:79-88). Written that way the port needs
-// `override` twice — once for the DEBIT suffix and once for CREDIT — and
-// ValidateDefinition permits it once, on purpose.
-//
-// But "later entry wins" and "earlier entry wins" are the same relation read
-// from opposite ends. The suffix rules are unconditional winners, so placing
-// them FIRST and letting rule 3 (first entry to produce a value wins) skip the
-// cascade behind them is not an approximation of v1's shape — it is the same
-// function. The template therefore needs no override at all, and the format
-// needs no bounded-multi-override extension.
 func TestSeedDirectionCascadeNeedsNoOverride(t *testing.T) {
 	var account tmpl.Definition
 	for _, d := range Seed() {
@@ -825,8 +538,6 @@ func TestSeedDirectionCascadeNeedsNoOverride(t *testing.T) {
 			order = append(order, x.Value+":"+strings.Join(x.Patterns, "|"))
 		}
 	}
-	// Six direction entries: DEBIT suffix, CREDIT suffix, then v1's four-way
-	// cascade with its unconditional default last.
 	if len(order) != 6 {
 		t.Fatalf("dib.account.v1 has %d direction entries, want 6: %v", len(order), order)
 	}
@@ -842,26 +553,6 @@ func TestSeedDirectionCascadeNeedsNoOverride(t *testing.T) {
 	}
 }
 
-// TestSeedReproducesV1OnTheBranchesTheCorpusNeverExercises is the corpus gate's
-// complement, and the reason it exists is measured rather than assumed.
-//
-// The mutation battery recorded in this file's header found NINE plausible
-// one-edit defects the full corpus cannot see (7,004 messages when they were
-// measured, 7,057 today), because the branch
-// each one breaks is never taken by real DIB or ENBD mail: both description
-// -suffix rules, the entry ORDER that makes them work without `override`, the
-// `من الحساب` preposition rule, the deposit-notice rule, the unconditional
-// default, the case-insensitive flags, the ENBD date-only fallback layout, and
-// the alert template's whole credit branch. A gate that green-lights all nine
-// is not a gate over those branches.
-//
-// So this test hands BOTH implementations the same synthetic body and demands
-// the same eight fields, exactly as the corpus gate does with real mail. It is
-// a differential test, not an expectation table: v1's parser computes the
-// expected value on every run, so a case whose comment is wrong is harmless and
-// a case whose expectation drifts from v1 is impossible. That is what makes it
-// worth more than a hand-written `want` — this task is not "extract sensibly",
-// it is "extract what v1 extracts, including where v1 is odd".
 func TestSeedReproducesV1OnTheBranchesTheCorpusNeverExercises(t *testing.T) {
 	defs := Seed()
 	compiled := make([]*tmpl.Compiled, len(defs))
@@ -881,38 +572,6 @@ func TestSeedReproducesV1OnTheBranchesTheCorpusNeverExercises(t *testing.T) {
 	}
 }
 
-// TestTheNormalizerRemovesTheWhitespaceVariationTheENBDAnchorsCannotExpress is
-// the measurement behind a fix that was NOT made.
-//
-// v1's two ENBD parsers are written against raw decoded body text and are
-// whitespace-tolerant throughout: enbd_alert.go separates its tokens with
-// `\s+`, and enbd.go anchors on `Debit Amount:\s*\n\s*(.+)` — trailing spaces
-// after the colon, blank lines between label and value, and an indented value
-// line all parse. The ported seeds are not: `[ \t\n\f\r]` is EXACTLY ONE
-// character and `Debit Amount:\n` requires the value at column 0 of the very
-// next line. Read side by side that is a template that misses real mail.
-//
-// It is not, because the two implementations do not read the same bytes. Both
-// run their parsers over text that has already been through the same collapse —
-// v1 in parse/body.go:101-104, v2 in norm.collapseWith — which replaces every
-// run of [ \t U+00A0] with a single U+0020, trims each line, drops every line
-// that trims to empty, and rejoins with "\n". After that stage a run of
-// separators cannot exist, a blank line cannot exist, and an indented value line
-// cannot exist. v1's `\s+` and `\s*` are defending against shapes its own
-// pipeline has already removed.
-//
-// That is worth a test rather than a comment for two reasons. The claim is a
-// property of a DIFFERENT package, so nothing else in this file would notice it
-// changing; and the tolerant rewrite is not available even if the claim were
-// false — `[ \t\n\f\r]+` in the alert anchor is three unbounded quantifiers in
-// one alternation branch, which internal/tmpl's dialect refuses outright as the
-// polynomial-backtracking shape (measured at 88 seconds on a 400-character body
-// in Bun). So if this ever stops holding, the answer is a normalizer question,
-// not a pattern one.
-//
-// The exception is the alert's last4, whose source is the SUBJECT. A subject is
-// RFC 2047-decoded and trimmed and never collapsed, so that anchor really did
-// need widening, and it is the one place version 3 spells the separator `+`.
 func TestTheNormalizerRemovesTheWhitespaceVariationTheENBDAnchorsCannotExpress(t *testing.T) {
 	defs := Seed()
 	compiled := make([]*tmpl.Compiled, len(defs))
@@ -928,10 +587,7 @@ func TestTheNormalizerRemovesTheWhitespaceVariationTheENBDAnchorsCannotExpress(t
 		name    string
 		from    string
 		subject string
-		// body is deliberately hostile in every way v1 tolerates and the seeds
-		// do not: runs of spaces, tabs, a NBSP, blank lines between a label and
-		// its value, indented value lines, and CRLF endings.
-		body string
+		body    string
 	}{
 		{
 			"transfer advice",
@@ -954,7 +610,6 @@ func TestTheNormalizerRemovesTheWhitespaceVariationTheENBDAnchorsCannotExpress(t
 			if err != nil {
 				t.Fatalf("normalize: %v", err)
 			}
-			// The claim, stated as properties of the text a template sees.
 			if r.Text == "" {
 				t.Fatal("the normalizer produced no text, so every assertion below is vacuous")
 			}
@@ -970,8 +625,6 @@ func TestTheNormalizerRemovesTheWhitespaceVariationTheENBDAnchorsCannotExpress(t
 					t.Errorf("line %d %q is not trimmed; `Debit Amount:\\n` assumes the value starts at column 0", i, line)
 				}
 			}
-			// And the anchors survive it: a normalizer that emitted an empty
-			// body would satisfy every property above.
 			if bad := compareSynthetic(defs, compiled, syntheticCase{
 				name: tc.name, why: "", from: tc.from, subject: tc.subject, text: r.Text,
 			}); bad != "" {
@@ -988,7 +641,6 @@ func TestTheNormalizerRemovesTheWhitespaceVariationTheENBDAnchorsCannotExpress(t
 	}
 }
 
-// syntheticCase is one hand-built message both implementations are handed.
 type syntheticCase struct {
 	name    string
 	why     string
@@ -997,12 +649,8 @@ type syntheticCase struct {
 	text    string
 }
 
-// syntheticEmailDate is the instant supplied to both sides for the
-// date_from=email templates, so a posted_at difference is a real one.
 var syntheticEmailDate = time.Date(2026, 2, 14, 15, 4, 5, 0, time.UTC)
 
-// compareSynthetic runs both implementations over one case and describes the
-// disagreement, or returns "" when they agree.
 func compareSynthetic(defs []tmpl.Definition, compiled []*tmpl.Compiled, tc syntheticCase) string {
 	cascade := &v1.Cascade{
 		Parsers:   []v1.BankParser{v1.DIBParser{}, v1.ENBDParser{}, v1.ENBDAlertParser{}},
@@ -1033,8 +681,6 @@ func compareSynthetic(defs []tmpl.Definition, compiled []*tmpl.Compiled, tc synt
 	return ""
 }
 
-// syntheticCases builds the table. It takes the anchors so no Arabic literal is
-// typed here either.
 func syntheticCases(a v1Anchors) []syntheticCase {
 	const (
 		dibFrom      = "dib.notification@dib.ae"
@@ -1042,9 +688,6 @@ func syntheticCases(a v1Anchors) []syntheticCase {
 		alertFrom    = "alert@emiratesnbd.com"
 		alertSubject = "Emirates NBD Transaction advice for account ending with 8642"
 	)
-	// dibBody composes the account layout: a notice line carrying the date, the
-	// amount block, the description block and the account block. Any part may be
-	// omitted by passing "".
 	dibBody := func(notice, amount, desc, acct string) string {
 		var b strings.Builder
 		b.WriteString(notice + " " + a.date + " 14-02-2026 09:41\n")
@@ -1061,7 +704,6 @@ func syntheticCases(a v1Anchors) []syntheticCase {
 	}
 
 	return []syntheticCase{
-		// --- the description-suffix rules, and the ORDER that expresses them ---
 		{"deposit notice with a DEBIT suffix",
 			"v1's cascade says credit and its suffix re-derivation then says debit. This is the case " +
 				"the whole override question is about: the suffix must WIN.",
@@ -1082,7 +724,6 @@ func syntheticCases(a v1Anchors) []syntheticCase {
 			"the (?:\\n|$) alternative: v1's (.+) ends at the end of the text just as it does at a newline",
 			dibFrom, "", a.deposit + " " + a.date + " 14-02-2026\n" + a.amount + "\nAED 500.00\n" + a.txn + "\nSOME PAYMENT DEBIT"},
 
-		// --- the rest of the four-way cascade ---
 		{"deposit notice, no suffix",
 			"the first cascade arm on its own",
 			dibFrom, "", dibBody(a.deposit, "AED 500.00", "SALARY MAY", "0311000123456")},
@@ -1107,7 +748,6 @@ func syntheticCases(a v1Anchors) []syntheticCase {
 			"the default fires with no description block to re-derive from",
 			dibFrom, "", dibBody("SOMETHING ELSE", "AED 500.00", "", "0311000123456")},
 
-		// --- is_transfer ---
 		{"transfer, spelled correctly",
 			"one half of v1's TRNSFER||TRANSFER test",
 			dibFrom, "", dibBody(a.debitNotice, "AED 500.00", "OUTWARD TRANSFER", "0311000123456")},
@@ -1118,7 +758,6 @@ func syntheticCases(a v1Anchors) []syntheticCase {
 			"v1 tests the upper-cased description",
 			dibFrom, "", dibBody(a.debitNotice, "AED 500.00", "outward transfer", "0311000123456")},
 
-		// --- last4 capture semantics ---
 		{"account line with a trailing token",
 			"v1 captures (\\S+), NOT the rest of the line; a whole-line capture would take " +
 				"its last four digits from the wrong token",
@@ -1137,7 +776,6 @@ func syntheticCases(a v1Anchors) []syntheticCase {
 				"\n400000XXXXXX7777\n" + a.amount + "\nAED 87.50\n" + a.payee +
 				"\nEXAMPLE CAFE\nDIB CUSTOMER CARE\n"},
 
-		// --- amounts ---
 		{"amount with no currency prefix",
 			"default_currency applies, as v1's ParseAEDToFils defaults to AED",
 			dibFrom, "", dibBody(a.debitNotice, "500.00", "SOME PAYMENT", "0311000123456")},
@@ -1148,7 +786,6 @@ func syntheticCases(a v1Anchors) []syntheticCase {
 			"commas are stripped before conversion in both",
 			dibFrom, "", dibBody(a.debitNotice, "AED 1,234,567.89", "SOME PAYMENT", "0311000123456")},
 
-		// --- ENBD transfer ---
 		{"enbd transfer, foreign currency with a space",
 			"the ordinary foreign-currency shape: the ccy group wins over default_currency on both sides",
 			enbdFrom, "Telegraphic Transfer",
@@ -1178,7 +815,6 @@ func syntheticCases(a v1Anchors) []syntheticCase {
 			enbdFrom, "Local Bank Transfer",
 			"Transaction Date:\n15/Mar/2026 09:15 PM\nDebit Amount:\nAED 23,456.00\n"},
 
-		// --- ENBD alert: 2 corpus messages, so nearly everything here is new ---
 		{"enbd alert, withdrawn",
 			"the shape of the forwarded alert the corpus has always held",
 			alertFrom, alertSubject,
@@ -1247,7 +883,6 @@ func syntheticCases(a v1Anchors) []syntheticCase {
 			alertFrom, alertSubject,
 			"AED 250.00 has been reserved on your account 012XXX34XXX56.\n"},
 
-		// --- shapes that must extract NOTHING on both sides ---
 		{"dib card layout with no amount",
 			"v1's parser errors; v2's required-field gate fires",
 			dibFrom, "", a.cardLayout + " " + a.date + " 14-02-2026\n" + a.payee + "\nEXAMPLE CAFE\n"},

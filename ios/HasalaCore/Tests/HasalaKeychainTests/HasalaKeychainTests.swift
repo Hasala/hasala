@@ -1,5 +1,3 @@
-// Unit tests for HasalaKeychain (owner: WS-11): §4.4's query attributes, the
-// add/update/read-back write, the null-vs-throw read, and the purge.
 import CorePrimitives
 import CoreStore
 import Foundation
@@ -87,13 +85,6 @@ struct KeychainTests {
     api.locked = true
     #expect(!k.purgeAll(groups: ["G1"]).complete)
   }
-
-  // The system Keychain itself cannot be exercised here: a hostless package
-  // test bundle has no keychain-access-groups entitlement, so SecItem answers
-  // errSecMissingEntitlement (-34018) even on the simulator. The round trip
-  // belongs to the app's hosted unit tests (ios/HasalaTests), TODO(WS-13
-  // integration): write, read, update, delete each SecretItem through
-  // KeychainSecretStore(accessGroup: "<P>app.hasala.ios").
 }
 
 @Suite("InstallCheck (§4.4, R-03)")

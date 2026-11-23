@@ -1,17 +1,4 @@
 ---
-/**
- * hasala.app/freeze: "Freeze your account?" (Paper page 14, "Web ·
- * hasala.app/freeze"; copy from the Hasala design archive, private). The new-sign-in and
- * recovery-used alert emails link here as https://hasala.app/freeze#<token>:
- * 43 base64url characters in the fragment, which no request carries, so the
- * token never reaches a server log.
- *
- * The page asks for nothing. The button POSTs {token} as a simple CORS
- * request (text/plain, no referrer), so it can read the status. Only a 204
- * shows the done state. The server answers 204 whether or not the token was
- * valid, so the page never claims more than "if this link was valid". Link
- * scanners only GET the page and never press the button.
- */
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
 import FreezeDone from '../components/FreezeDone.astro';
@@ -89,9 +76,6 @@ import { API_BASE } from '../lib/env';
 </Base>
 
 <script>
-  // The freeze request (Hasala design archive, private), with this page's
-  // status line and done state.
-  // onPage: it runs again whenever the router brings this page back (Back).
   import { onPage } from '../scripts/page';
   import { postFreeze } from '../lib/freeze';
   import { arriveAtLink, markLinkDone } from '../lib/link-page';

@@ -1,6 +1,3 @@
-// Unit tests for CoreReplay's v4 families (spec 03c §13 vectors, 03a §12, 03b
-// §10), the snapshot and the canary. The v3 fold is pinned by
-// conformance/replay (HasalaCoreConformanceTests).
 import CoreJSON
 import CoreWire
 import Foundation
@@ -8,7 +5,6 @@ import Testing
 
 @testable import CoreReplay
 
-/// A tiny log builder: ops written as JSON text, folded through blob decode.
 struct Log {
   var state = State()
   var seq: Int64 = 0
@@ -179,10 +175,8 @@ struct CoreReplayV4Tests {
     #expect(log.state.txns[Ids.t1]?.annotations.count == 5)
     #expect(log.state.txns[Ids.t1]?.successorID == Ids.t2)
     #expect(succ.ingestID == log.state.txns[Ids.t1]?.ingestID)
-    // A later parsed supersede copies note and archived only.
     try log.blob(ingest(1, id: Ids.t3).replacingOccurrences(of: "txn_ingested", with: "txn_superseded"))
     #expect(Array(log.state.txns[Ids.t3]!.annotations.keys).sorted() == ["archived", "note"])
-    // annot-05: an annotation addressed to the first row forwards to the live one.
     try log.blob(op("txn_annotated", #"{"txn_id":"\#(Ids.t1)","set":{"note":"forwarded"}}"#, id: 9))
     #expect(log.state.txns[Ids.t3]?.annotation("note") == "forwarded")
     #expect(log.state.txns[Ids.t1]?.annotation("note") == "n")

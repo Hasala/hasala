@@ -6,12 +6,8 @@ import (
 	"time"
 )
 
-// Shared test fixtures. They lived in idp_test.go until the Apple/Google
-// exchange left this package (internal/googlejwt).
-
 var bgctx = context.Background()
 
-// clock is a settable, concurrency-safe test clock.
 type clock struct {
 	mu sync.Mutex
 	t  time.Time

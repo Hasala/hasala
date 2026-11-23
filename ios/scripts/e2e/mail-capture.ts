@@ -1,25 +1,3 @@
-// mail-capture.ts: a stand-in for Cloudflare Email Service's send endpoint, for
-// the local app end-to-end run (ios/scripts/e2e-app.sh). hasalad's mail worker
-// sends to it when HASALA_EMAIL_API_BASE_URL is http://127.0.0.1:<port>/client/v4.
-//
-//   bun ios/scripts/e2e/mail-capture.ts --port 18454 --dir <dir> [--token e2e]
-//
-// It answers exactly the request internal/mail/cloudflare.go makes:
-//
-//   POST /client/v4/accounts/<32 hex>/email/sending/send
-//   Authorization: Bearer <token>
-//   {"to", "from", "subject", "text", "html"?}
-//
-// with the provider's success shape (`success`, `errors`, `result.delivered`,
-// `result.permanent_bounces`, `result.queued`, `result.message_id`), and writes
-// each message to <dir>/<n>.json as {to, from, subject, text, received_at}. The
-// file appears whole (written beside, then renamed), so a reader polling the
-// directory never sees half a message. A wrong path, method or token gets the
-// provider's error shape and nothing is written.
-//
-// Listens on 127.0.0.1 only and never sends anything anywhere. GET /healthz
-// answers 200 for the harness's readiness poll.
-
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -107,8 +85,6 @@ const server = Bun.serve({
     const tmp = join(dir, `.${name}.tmp`);
     writeFileSync(tmp, `${JSON.stringify(record, null, 2)}\n`);
     renameSync(tmp, join(dir, `${name}.json`));
-    // One line per message: the subject and the recipient, never the body (it
-    // carries the code).
     console.log(`mail-capture: ${name} to=${to} subject=${JSON.stringify(subject)}`);
     return Response.json({
       success: true,

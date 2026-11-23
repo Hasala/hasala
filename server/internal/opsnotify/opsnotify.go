@@ -1,10 +1,3 @@
-// Package opsnotify posts operator notices to an ntfy topic: a fixed title
-// and message, and an optional click URL (the operator console). A notice
-// never carries anything about a person (no email address, bank or id), so
-// the topic and its subscribers learn only that something happened.
-//
-// Titles follow the host's alert format, "[host] LEVEL source: subject"
-// (Title), the same as the host's own alerts on the QA host (kakapo).
 package opsnotify
 
 import (
@@ -17,23 +10,18 @@ import (
 	"time"
 )
 
-// Timeout bounds one post; a notice that cannot be delivered is dropped.
 const Timeout = 10 * time.Second
 
-// Notifier posts to URL. Build it with New.
 type Notifier struct {
 	URL    string
-	Click  string // optional; the Click header
+	Click  string
 	Client *http.Client
 }
 
-// New returns a Notifier for url (an ntfy topic URL) and click ("" for none).
 func New(url, click string) *Notifier {
 	return &Notifier{URL: url, Click: click, Client: &http.Client{Timeout: Timeout}}
 }
 
-// Title formats a notice title as "[host] LEVEL source: subject", with this
-// machine's host name ("hasala" when it has none). level is upper-cased.
 func Title(level, source, subject string) string {
 	host, err := os.Hostname()
 	if err != nil || host == "" {
@@ -42,8 +30,6 @@ func Title(level, source, subject string) string {
 	return fmt.Sprintf("[%s] %s %s: %s", host, strings.ToUpper(level), source, subject)
 }
 
-// Post sends one notice and reports whether ntfy accepted it. priority is an
-// ntfy priority ("low", "default", "high"; "" leaves ntfy's default).
 func (n *Notifier) Post(ctx context.Context, title, message, tags, priority string) error {
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()

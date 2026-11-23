@@ -1,4 +1,3 @@
-// Test doubles for the engine's ports. FakeGmail (CoreTestSupport) stands in for Google.
 import CoreJSON
 import CoreMailbox
 import CoreStore
@@ -17,7 +16,6 @@ final class ManualClock: Clock, @unchecked Sendable {
   func set(_ ms: Int64) { lock.withLock { now = ms } }
 }
 
-/// Deterministic bytes (a counter), never a real random source.
 final class CountingRandom: RandomSource, @unchecked Sendable {
   private let lock = NSLock()
   private var n: UInt8 = 0
@@ -114,7 +112,6 @@ actor FakeServer: MailboxServer {
   var watches: [Int64] = []
   var deletes = 0
   var offline = false
-  /// Route 36's refusal, when set (e.g. `.noWatchTopic`: a server without the Pub/Sub push).
   var watchRefusal: MailboxServerError?
   var linkRefusal: MailboxServerError?
   var deleteRefusal: MailboxServerError?
@@ -187,7 +184,6 @@ struct FakeStepUp: MailboxStepUp {
   }
 }
 
-/// The ASWebAuthenticationSession stand-in: Google's consent page auto-approves.
 struct FakePresenter: GmailAuthSessionPresenter {
   let gmail: FakeGmail
   var cancel = false
@@ -197,7 +193,6 @@ struct FakePresenter: GmailAuthSessionPresenter {
   }
 }
 
-/// Files merchants containing GROCER under groceries (a stand-in for 03c §8.2's decide).
 struct GroceryCategorizer: IngestCategorizer {
   func decide(merchantRaw: String, direction: String) -> IngestDecision {
     guard merchantRaw.contains("GROCER") else { return .none }
@@ -207,7 +202,6 @@ struct GroceryCategorizer: IngestCategorizer {
   }
 }
 
-/// The ops the persistence authored (the tests' view of `pending_ops`).
 final class AuthoredDrafts: @unchecked Sendable {
   private let lock = NSLock()
   private var drafts: [MailboxIngestDraft] = []
@@ -246,10 +240,8 @@ final class WriteRefusingTokenStore: MailRefreshTokenStore, @unchecked Sendable 
 
 enum Backend { case sqlite, memory }
 
-/// A whole engine over fakes. The persistence is the production one (ledger.sqlite tables in an
-/// in-memory SQLite database) unless a test asks for the in-memory reference.
 struct Rig {
-  static let t0: Int64 = 1_780_000_000_000  // 2026-05-28, synthetic
+  static let t0: Int64 = 1_780_000_000_000
   let gmail: FakeGmail
   let memory = InMemoryMailboxPersistence()
   let tables = try! MailboxTableStore.inMemory()
@@ -305,10 +297,9 @@ struct Rig {
     gmail.watchExpirationMs = Rig.t0 + 7 * 86_400_000
   }
 
-  /// Connect, scan, confirm every card as mine: the engine ends `active`.
   func connectAndActivate(days: Int = 90) async {
     _ = await engine.connect(presenter: FakePresenter(gmail: gmail), backfillDays: days)
-    _ = await engine.runCycle(trigger: .launch)  // the scan authors what it finds (no cards step)
+    _ = await engine.runCycle(trigger: .launch)
   }
 
   func restarted() -> MailboxEngine {

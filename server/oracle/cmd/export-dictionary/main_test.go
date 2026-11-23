@@ -12,18 +12,17 @@ import (
 	"github.com/salehtl/hasala/server/oracle/corpus"
 )
 
-// Every merchant below is invented.
 func TestExportCanonicalizesDedupesAndReportsEverything(t *testing.T) {
 	rules := []corpus.Rule{
 		{MatchType: "contains", Pattern: "  ZEBRA   Grocer ", Category: "Groceries", Active: true},
-		{MatchType: "contains", Pattern: "zebra grocer", Category: "groceries", Active: true}, // duplicate after canonicalization
+		{MatchType: "contains", Pattern: "zebra grocer", Category: "groceries", Active: true},
 		{MatchType: "exact", Pattern: "Quill Cafe", Category: "Dining", Active: true},
-		{MatchType: "contains", Pattern: "old merchant", Category: "shopping", Active: false}, // inactive
-		{MatchType: "regex", Pattern: "^foo.*bar$", Category: "shopping", Active: true},       // unusable
-		{MatchType: "contains", Pattern: "abc", Category: "shopping", Active: true},           // below the contains floor
-		{MatchType: "contains", Pattern: "Orbit Fuel", Category: "transport", Active: true},   // conflict...
-		{MatchType: "contains", Pattern: "orbit fuel", Category: "Shopping", Active: true},    // ...with this
-		{MatchType: "contains", Pattern: "Comma, Books", Category: "shopping", Active: true},  // CSV quoting
+		{MatchType: "contains", Pattern: "old merchant", Category: "shopping", Active: false},
+		{MatchType: "regex", Pattern: "^foo.*bar$", Category: "shopping", Active: true},
+		{MatchType: "contains", Pattern: "abc", Category: "shopping", Active: true},
+		{MatchType: "contains", Pattern: "Orbit Fuel", Category: "transport", Active: true},
+		{MatchType: "contains", Pattern: "orbit fuel", Category: "Shopping", Active: true},
+		{MatchType: "contains", Pattern: "Comma, Books", Category: "shopping", Active: true},
 	}
 	var buf bytes.Buffer
 	rep, err := export(rules, &buf)
@@ -62,8 +61,6 @@ func TestRunNeedsTheCorpusSnapshot(t *testing.T) {
 	}
 }
 
-// End to end through corpus.Rules, on a tiny synthetic snapshot with v1's two
-// tables.
 func TestRunReadsASnapshot(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "corpus.db")

@@ -1,10 +1,4 @@
 ---
-/**
- * /privacy, /terms, /security, /support: the "Legal template" boards. The
- * words come from docs/legal/*.md (another team owns them); this page only
- * lays them out: header, "In plain words", sticky table of contents, and a
- * draft banner while the frontmatter says status: draft.
- */
 import { render } from 'astro:content';
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
@@ -202,9 +196,6 @@ const jsonLd = {
 </Base>
 
 <script>
-  // Table of contents: marks the section being read; copy-link buttons on
-  // headings; "Print or save as PDF". onPage: set up again for every legal
-  // page the router swaps in, and torn down when it swaps one out.
   import { onPage } from '../scripts/page';
   import { anchorNote } from '../scripts/anchor-note';
 
@@ -275,8 +266,6 @@ const jsonLd = {
     );
 
     for (const head of heads) {
-      // Name the heading by its own text, so the button below doesn't add
-      // "Copy link to …" to what a screen reader announces for the heading.
       const text = document.createElement('span');
       text.id = `${head.id}-text`;
       text.append(...head.childNodes);
@@ -295,7 +284,6 @@ const jsonLd = {
       const copied = anchorNote(note, head.id, signal);
       btn.addEventListener('click', () => {
         const url = `${location.origin}${location.pathname}#${head.id}`;
-        // Keep the router's history state, so Back and Forward still work.
         history.replaceState(history.state, '', `#${head.id}`);
         void copied(() => navigator.clipboard.writeText(url));
       });
@@ -625,7 +613,6 @@ const jsonLd = {
 </style>
 
 <style is:global>
-  /* The rendered Markdown. 680 px measure, 18/30 body. */
   .prose {
     counter-reset: section;
     display: flex;
@@ -667,7 +654,6 @@ const jsonLd = {
     font-weight: 600;
     letter-spacing: 0;
   }
-  /* Paper: the numbered heading comes first, then the "In plain words" card. */
   .prose > h2:first-of-type {
     order: -1;
     margin-top: 0;

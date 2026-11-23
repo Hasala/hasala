@@ -1,8 +1,6 @@
 import HasalaModels
 import Observation
 
-/// Profile · Your profile and its settings pages (spec 04 §16.1 "Profile · Your profile" and its page-14 variant, "Profile · Categories and rules";
-/// §16.2 X2, X6).
 @MainActor
 protocol ProfileModel: AnyObject, Observable {
   var snapshot: ProfileSnapshot { get }
@@ -45,7 +43,6 @@ final class ProfileViewModel: ProfileModel {
     return MoneyPhrase([.amount(rta, hidden: 3), .text(" ready to assign")])
   }
 
-  /// Everything, archived rows included (Settings › Export your data, spec 04 §16.2 X6).
   var exportRows: [ExportRow] {
     exportMemo.value(for: app.store.revision) {
       let s = app.store.state
@@ -53,11 +50,7 @@ final class ProfileViewModel: ProfileModel {
     }
   }
 
-  // TODO(spec 04 §9.3): asking for notification permission and the planner (§9.2).
   func setNotifications(_ level: DevicePrefs.NotificationLevel) { app.perform(.setNotifications(level)) }
 
   func setRule(_ id: RuleID, enabled: Bool) { app.perform(.setRuleEnabled(id, enabled)) }
-
-  // Sign out and Delete your account run on the account session (`AccountService`), not
-  // the ledger: see ProfileSheet and DeleteAccountView.
 }

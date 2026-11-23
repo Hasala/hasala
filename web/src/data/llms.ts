@@ -2,7 +2,6 @@ import { BANKS, FAQ, MAIL, SITE, VISIBILITY, faqText } from './site';
 
 const plain = (text: string): string => text.replaceAll('‑', '-').replaceAll(/[’]/gu, "'");
 
-/** /llms.txt, following the llmstxt.org layout: a title, a summary, then links. */
 export function llmsTxt(): string {
   return plain(`# Hasala
 

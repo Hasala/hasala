@@ -1,7 +1,6 @@
 import { getCollection } from 'astro:content';
 import type { CollectionEntry } from 'astro:content';
 
-/** The four pages rendered from docs/legal/*.md, in footer order. */
 export const LEGAL_PAGES = [
   {
     slug: 'privacy',
@@ -52,7 +51,6 @@ export async function legalForLlms(): Promise<LlmsDoc[]> {
     LEGAL_PAGES.map(async (page) => ({ page, entry: await legalEntry(page.slug) })),
   );
   for (const { page, entry } of entries) {
-    // Drafts (with notes for the owner still in them) stay out until published.
     if (entry?.body && entry.data.status !== 'draft') {
       out.push({
         title: entry.data.title,

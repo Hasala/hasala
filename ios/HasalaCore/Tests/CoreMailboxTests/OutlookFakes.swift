@@ -1,5 +1,3 @@
-// The Outlook lane's test rig: the real MailboxEngine over an OutlookProvider whose Graph and
-// Microsoft token endpoint are FakeGraph (CoreTestSupport). Every message is synthetic.
 import CoreJSON
 import CoreMailbox
 import CorePrimitives
@@ -9,8 +7,6 @@ import CoreTestSupport
 import CoreTime
 import Foundation
 
-/// hasalad's link routes for an Outlook link: the link answer carries a clientState, and `meta`
-/// names the two Graph hook URLs.
 actor OutlookServer: MailboxServer {
   static let clientState = "c3ludGhldGljLWNsaWVudC1zdGF0ZS0wMDAwMDAwMDAwMDA"
   static let notificationURL = "https://hasala.example/hooks/outlook/graph"
@@ -60,7 +56,6 @@ actor OutlookServer: MailboxServer {
   }
 }
 
-/// The ASWebAuthenticationSession stand-in: Microsoft's consent page auto-approves.
 struct OutlookPresenter: MailAuthSessionPresenter {
   let graph: FakeGraph
   var cancel = false
@@ -87,7 +82,6 @@ struct OutlookRig {
   let tokens: RefreshingMailTokenProvider
   let engine: MailboxEngine
 
-  /// `viaURLSession` serves FakeGraph through a real URLSession (`URLSessionHTTPExchange`).
   init(
     viaURLSession: Bool = false, maxResponseBytes: Int? = nil, categorizer: any IngestCategorizer = NoCategorizer(),
     ledgerStore: LedgerStore? = nil, author real: MailboxOpAuthor? = nil,
@@ -128,7 +122,6 @@ struct OutlookRig {
     await engine.connect(presenter: OutlookPresenter(graph: graph), backfillDays: days, confirm: confirm)
   }
 
-  /// Connect, then the first scan authors what it finds: the engine ends `active`.
   func connectAndActivate(days: Int = 90) async {
     _ = await connect(days: days)
     _ = await engine.runCycle(trigger: .launch)
@@ -144,7 +137,6 @@ struct OutlookRig {
 
   var listRequests: [FakeGraph.Recorded] { graph.graphRequests.filter { $0.path == "/v1.0/me/messages" } }
   var rawRequests: [FakeGraph.Recorded] { graph.graphRequests.filter { $0.path.hasSuffix("/$value") } }
-  /// Single-message metadata reads (`GET /me/messages/{id}` without `$value`).
   var metadataRequests: [FakeGraph.Recorded] {
     graph.graphRequests.filter { $0.path.hasPrefix("/v1.0/me/messages/") && !$0.path.hasSuffix("/$value") }
   }

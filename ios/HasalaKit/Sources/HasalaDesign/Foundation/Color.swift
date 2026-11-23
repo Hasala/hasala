@@ -1,7 +1,6 @@
 import HasalaModels
 import SwiftUI
 
-/// One token colour: 8-bit sRGB channels plus opacity, exactly as Paper exports it.
 public struct HRGBA: Sendable, Hashable, CustomStringConvertible {
   public let red: UInt8
   public let green: UInt8
@@ -15,7 +14,6 @@ public struct HRGBA: Sendable, Hashable, CustomStringConvertible {
     self.opacity = opacity
   }
 
-  /// `#RRGGBB`, or `#RRGGBBAA` when not opaque.
   public var description: String {
     let rgb = String(format: "#%02X%02X%02X", red, green, blue)
     return opacity >= 1 ? rgb : rgb + String(format: "%02X", Int((opacity * 255).rounded()))
@@ -34,7 +32,6 @@ public extension Color {
   }
 }
 
-/// Start, end and ink of a hue (Paper `--color-hue-*`, `--color-bucket-other-*`).
 public struct HueColors: Sendable, Hashable {
   public let start: HRGBA
   public let end: HRGBA
@@ -59,32 +56,26 @@ public extension Hue {
   var end: Color { Color(tokens.end) }
   var ink: Color { Color(tokens.ink) }
 
-  /// The 160° gradient as Paper draws it: `linear-gradient(in oklab 160deg, start, end)`.
   var perceptualGradient: some ShapeStyle {
     Self.perceptual(start, end)
   }
 
-  /// The darker end of a legend or choice-chip dot: the hue's end into a deeper step
-  /// (Paper draws `hue-end → oklab(…)`, 160°; spec 02 §03, 03 16.2).
   var dotDeep: HRGBA {
     switch self {
-    case .sand: HRGBA(233, 184, 119, 1)  // oklab(81.3% 0.028 0.096)
-    case .lilac: HRGBA(187, 166, 230, 1)  // oklab(76.6% 0.045 -0.081)
-    case .mint: HRGBA(147, 211, 181, 1)  // oklab(81.5% -0.075 0.022)
-    case .peach: HRGBA(242, 161, 117, 1)  // oklab(78% 0.075 0.085)
-    case .other: HRGBA(164, 164, 170, 1)  // oklab(72% 0.002 -0.008)
-    // Not drawn on any board; the same step down from the end as the others.
+    case .sand: HRGBA(233, 184, 119, 1)
+    case .lilac: HRGBA(187, 166, 230, 1)
+    case .mint: HRGBA(147, 211, 181, 1)
+    case .peach: HRGBA(242, 161, 117, 1)
+    case .other: HRGBA(164, 164, 170, 1)
     case .sky: HRGBA(168, 191, 244, 1)
     case .rose: HRGBA(232, 160, 152, 1)
     }
   }
 
-  /// A small bucket dot: the hue's end into its deeper step, 160°.
   var dotGradient: some ShapeStyle {
     Self.perceptual(end, Color(dotDeep))
   }
 
-  /// CSS 160° on a square: from just left of top-centre to just right of bottom-centre.
   static let gradientStart = UnitPoint(x: 0.33, y: 0)
   static let gradientEnd = UnitPoint(x: 0.67, y: 1)
 
@@ -95,7 +86,6 @@ public extension Hue {
 }
 
 public extension Bucket {
-  /// The bucket's colour tokens (Paper `--color-bucket-*`; each aliases a hue).
   var tokens: HueColors {
     switch self {
     case .needs: HueColors(start: HPalette.bucketNeedsStart, end: HPalette.bucketNeedsEnd, ink: HPalette.bucketNeedsInk)
@@ -123,7 +113,6 @@ public extension Bucket {
 }
 
 public extension Verdict {
-  /// Bar fill (Paper `--color-pace-fill*`).
   var fill: Color {
     switch self {
     case .onTrack: HColor.paceFill
@@ -133,7 +122,6 @@ public extension Verdict {
     }
   }
 
-  /// Sentence colour (Paper `--color-pace-on-track` …).
   var foreground: Color {
     switch self {
     case .onTrack, .done: HColor.paceOnTrack

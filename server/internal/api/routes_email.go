@@ -8,8 +8,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
-// routes_email.go: email change and re-verification (spec 02 §10.12, routes
-// #60–#63). Owner: WS-3.
 func (s *Server) mountEmail(mux *http.ServeMux) {
 	if s.Accounts == nil {
 		return
@@ -20,7 +18,6 @@ func (s *Server) mountEmail(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/account/email/verify/finish", s.requireSession(s.userLimited(s.codeLimited(s.handleEmailVerifyFinish))))
 }
 
-// codeLimited is code-ip on a session route.
 func (s *Server) codeLimited(h authedHandler) authedHandler {
 	return func(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
 		if !s.CodePerIP.Allow(clientKey(r)) {
@@ -31,18 +28,15 @@ func (s *Server) codeLimited(h authedHandler) authedHandler {
 	}
 }
 
-// EmailChangeBeginRequest is #60's body.
 type EmailChangeBeginRequest struct {
 	NewEmail    string      `json:"new_email"`
-	VerifierNew *string     `json:"verifier_new"` // b64 S' for the new address, or null
+	VerifierNew *string     `json:"verifier_new"`
 	StepUp      *StepUpWire `json:"step_up"`
 }
 
-// EmailChangeBeginResponse is #60's answer, identical whether or not the new
-// address is in use.
 type EmailChangeBeginResponse struct {
 	ChangeID string `json:"change_id"`
-	Nonce    string `json:"nonce"` // b64
+	Nonce    string `json:"nonce"`
 }
 
 func (s *Server) handleEmailChangeBegin(w http.ResponseWriter, r *http.Request, _ uuid.UUID) {
@@ -73,12 +67,11 @@ func (s *Server) handleEmailChangeBegin(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, EmailChangeBeginResponse{ChangeID: out.ChangeID.String(), Nonce: b64(out.Nonce)})
 }
 
-// EmailChangeFinishRequest is #61's body.
 type EmailChangeFinishRequest struct {
 	ChangeID string  `json:"change_id"`
 	CodeNew  string  `json:"code_new"`
 	CodeOld  *string `json:"code_old"`
-	RKSig    *string `json:"rk_sig"` // b64, the RK over EmailChangeMessage
+	RKSig    *string `json:"rk_sig"`
 }
 
 func (s *Server) handleEmailChangeFinish(w http.ResponseWriter, r *http.Request, _ uuid.UUID) {
@@ -106,7 +99,6 @@ func (s *Server) handleEmailChangeFinish(w http.ResponseWriter, r *http.Request,
 		s.writeKeyErr(w, r, err)
 		return
 	}
-	// Every other device hears of the new address (spec 02 §12.5).
 	s.wakeOthers(r.Context(), info.UserID, info.WriterID, pushv2.ReasonSecurity)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -122,7 +114,6 @@ func (s *Server) handleEmailVerifyBegin(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// CodeOnlyRequest is #63's body.
 type CodeOnlyRequest struct {
 	Code string `json:"code"`
 }

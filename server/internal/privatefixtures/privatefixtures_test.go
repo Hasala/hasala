@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// recorder stands in for the calling test. Skipf and Fatalf end the call the
-// way the real ones do (they never return), by panicking with what was said.
 type recorder struct {
 	testing.TB
 	logs []string
@@ -28,7 +26,6 @@ func (r *recorder) Fatalf(format string, args ...any) {
 	panic(stopped{"fatal", fmt.Sprintf(format, args...)})
 }
 
-// call runs Path against a recorder and reports how it ended.
 func call(t *testing.T, rel string) (kind, msg, path string, logs []string) {
 	t.Helper()
 	r := &recorder{TB: t}
@@ -83,8 +80,6 @@ func TestSetAndPresentRunsAndSaysSo(t *testing.T) {
 	}
 }
 
-// A configured checkout that lacks the file is broken, and must not pass as a
-// quiet skip.
 func TestSetButMissingFails(t *testing.T) {
 	t.Setenv(EnvVar, t.TempDir())
 	if kind, msg, _, _ := call(t, "conformance/templates/corpus-dib.card.v1.json"); kind != "fatal" {
@@ -105,8 +100,6 @@ func TestReadFileReturnsTheBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(EnvVar, root)
-	// Through a recorder, so this test's own output carries no marker line and
-	// the gate does not count it as a real-corpus run.
 	if got := string(ReadFile(&recorder{TB: t}, "f.json")); got != `{"a":1}` {
 		t.Fatalf("ReadFile = %q", got)
 	}

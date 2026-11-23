@@ -48,7 +48,6 @@ func (c *clock) add(d time.Duration)         { c.t = c.t.Add(d) }
 func fixedTarget(b byte) Target              { return Target{TokenHex: tokenHex(b), Environment: EnvProduction} }
 func wake(d *Dispatcher, t Target, r Reason) { d.run(bg, job{tokens: []Target{t}, r: r}) }
 
-// AT-APNS-5: debounce and caps (spec 02 §12.4).
 func TestDebounceAndCaps(t *testing.T) {
 	c := &clock{t: time.Unix(1_760_000_000, 0)}
 	s := &fakeSender{}
@@ -56,7 +55,6 @@ func TestDebounceAndCaps(t *testing.T) {
 	d.Now = c.now
 	tok := fixedTarget(1)
 
-	// 10 Gmail notifications in 5 s: the leading send, then one trailing at 300 s.
 	for range 10 {
 		wake(d, tok, ReasonMail)
 		c.add(500 * time.Millisecond)
@@ -76,7 +74,6 @@ func TestDebounceAndCaps(t *testing.T) {
 		t.Fatalf("a closed window with nothing pending sent again: %d", s.count())
 	}
 
-	// The 7th Gmail wake in an hour is dropped (each spaced past the window).
 	tok2 := fixedTarget(2)
 	sent := s.count()
 	for i := range 7 {
@@ -94,8 +91,6 @@ func TestDebounceAndCaps(t *testing.T) {
 		t.Fatal("the dropped mail wake was not counted")
 	}
 
-	// The 13th wake across mail, sync and nudge is dropped; a security wake
-	// after both caps is still sent.
 	tok3 := fixedTarget(3)
 	sent = s.count()
 	for i := range 6 {
@@ -119,7 +114,6 @@ func TestDebounceAndCaps(t *testing.T) {
 	if s.count() != sent+14 {
 		t.Fatal("a security or account-gone wake was capped")
 	}
-	// An hour later the caps have rolled.
 	c.add(time.Hour)
 	wake(d, tok3, ReasonNudge)
 	if s.count() != sent+15 {
@@ -190,7 +184,6 @@ func TestAnEnvironmentRefusalPausesOnlyThatEnvironment(t *testing.T) {
 	}
 }
 
-// AT-APNS-6: a full queue drops instead of blocking the caller.
 func TestAFullQueueNeverBlocks(t *testing.T) {
 	s := &fakeSender{block: make(chan struct{})}
 	d := NewDispatcher(nil, s)
@@ -212,8 +205,6 @@ func TestAFullQueueNeverBlocks(t *testing.T) {
 	close(s.block)
 }
 
-// AT-APNS-3 (the database half): a gone token's row is deleted; WakeWriter and
-// WakeOthers reach exactly the right devices.
 func TestDispatcherResolvesTokensAndForgetsGoneOnes(t *testing.T) {
 	pool := pgtest.New(t)
 	u := oplogtest.NewUser(t, pool)

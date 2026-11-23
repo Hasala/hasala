@@ -10,17 +10,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pg"
 )
 
-// runMigrate is `hasalad migrate [--status | --pending] [--to VERSION]` (spec
-// 02 §5.5). It connects with HASALA_MIGRATE_DSN and never falls back to
-// HASALA_PG_DSN, refuses unless connected as hasala_migrate, and holds the
-// session advisory lock hashtext('hasala/migrate') for the run.
-//
-// --pending is read-only and used by the pre-migration dump (05 §5.4): it
-// prints the number of embedded migrations not yet applied (0 for a fresh
-// database, which has nothing to back up), accepts HASALA_PG_DSN with any role
-// when HASALA_MIGRATE_DSN is unset, and takes no lock and no role check.
-//
-// Exit codes: 0 ok, 2 refused (wrong role or DSN), 1 migration error.
 func runMigrate(env *runEnv, args []string) error {
 	var a config.MigrateArgs
 	fs := newFlags(env, "migrate")
@@ -49,7 +38,7 @@ func runMigrate(env *runEnv, args []string) error {
 	ctx := context.Background()
 	dsn := cfg.MigrateDSN
 	if dsn == "" {
-		dsn = cfg.PGDSN // --pending only; ValidateFor refused everything else
+		dsn = cfg.PGDSN
 	}
 	pool, err := pg.Open(ctx, dsn)
 	if err != nil {

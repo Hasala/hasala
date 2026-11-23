@@ -1,31 +1,11 @@
-// The materialized state a fold produces (replay/state.ts, ported; spec 03c §11,
-// 03a §4.1, 03b §3-§4 for the v4 additions).
-//
-// Every field is a deterministic function of (the ops, their positions) and
-// nothing else: no clock, no randomness, no iteration over an unordered
-// collection (every map is an `OrderedDictionary`, every set an `OrderedSet`;
-// spec 04 §2.4 R3). Money is `Int64` minor units (critic A-21); every product
-// goes through `Int128`.
-//
-// `serializeState` (Serialize.swift) is the witness: what it emits is the
-// convergence claim, and on v1-v3 logs it is byte-identical to the TypeScript
-// oracle's. v4 fields are emitted only when not at their default (03c §1.9), so
-// a v3 log's witness is unchanged.
 import CoreJSON
 import HasalaText
 import OrderedCollections
 
-/// The implicit rate of the home currency against itself, 1.000000 in rate
-/// micro units (spec §3.7:124).
 public let homeIdentityMicro: Int64 = 1_000_000
 
-/// The writer id the retired server ingest pipeline wrote under. Hasala has no
-/// server ingest writer; the fold keeps the rule so v3 logs fold as they did.
 public let ingestWriterID = "ingest"
 
-// MARK: - Transactions
-
-/// One part of a split. `note` is v4 (03c §3.3).
 public struct Split: Sendable, Equatable, Codable {
   public var category: String
   public var amountMinor: Int64
@@ -40,19 +20,14 @@ public struct Split: Sendable, Equatable, Codable {
   }
 }
 
-/// Who or what decided a transaction's category (03c §3.2.1).
 public struct CategorySource: Sendable, Equatable, Codable {
   public enum Kind: String, Sendable, Codable, CaseIterable {
     case none, user, held, rule, dictionary, model
   }
   public var kind: Kind
-  /// `rule` (required) and `held` (optional).
   public var ruleID: String?
-  /// `dictionary`.
   public var bundle: String?
-  /// `dictionary`: `<match>:<pattern>`.
   public var entry: String?
-  /// `model`.
   public var model: String?
 
   public init(kind: Kind, ruleID: String? = nil, bundle: String? = nil, entry: String? = nil, model: String? = nil) {
@@ -66,8 +41,6 @@ public struct CategorySource: Sendable, Equatable, Codable {
   public static let none = CategorySource(kind: .none)
   public static let user = CategorySource(kind: .user)
 
-  /// The projection's `category_source_ref` (03c §3.9.1): the rule id, `<bundle>|<entry>`, the
-  /// model tag, or nil.
   public var ref: String? {
     switch kind {
     case .rule, .held: ruleID
@@ -78,8 +51,6 @@ public struct CategorySource: Sendable, Equatable, Codable {
   }
 }
 
-/// The mailbox lane's gate verdicts, stored for display only (03c §3.1; never
-/// trust). Unknown keys are not kept.
 public struct TxnGates: Sendable, Equatable, Codable {
   public var ar: String?
   public var sender: String?
@@ -106,25 +77,20 @@ public struct TxnGates: Sendable, Equatable, Codable {
   public var senderUnverified: Bool { ar != nil && !verified }
 }
 
-/// A transaction as the client shows it (state.ts `Txn`, plus 03c §11).
 public struct Txn: Sendable, Equatable, Codable {
   public var id: String
   public var ingestID: String
   public var amountMinor: Int64
   public var currency: String
-  /// `"debit"`, `"credit"`, or `""` only when unparsed.
   public var direction: String
-  /// Canonical UTC instant.
   public var postedAt: String
   public var merchantRaw: String
   public var last4: String
   public var category: String?
   public var needsReview: Bool
   public var unparsed: Bool
-  /// `"template"`, `"heuristic"` or `"none"`.
   public var tier: String
   public var parseError: String?
-  /// `"ingest"` or `"user"`, from the writer, never the payload.
   public var provenance: String
   public var amountHomeMinor: Int64?
   public enum HomeSource: String, Sendable, Equatable, Codable {
@@ -140,7 +106,6 @@ public struct Txn: Sendable, Equatable, Codable {
   public var duplicateDisposition: String?
   public var version: Int64
 
-  // v4 (03c §11): omitted from the witness at their defaults.
   public var categorySource: CategorySource?
   public var entryMethod: String?
   public var location: String?
@@ -161,13 +126,10 @@ public struct Txn: Sendable, Equatable, Codable {
   public var possibleDuplicateMovedFrom: [String] = []
   public var channel: String? = nil
   public var receivedAt: String? = nil
-  /// field → keyed value (03c §3.5); every value is a string or a clear.
   public var annotations: OrderedDictionary<String, Keyed<String?>> = [:]
 
-  /// The annotation `field`'s current value, or nil when unset or cleared.
   public func annotation(_ field: String) -> String? { annotations[field]?.value ?? nil }
 
-  /// state.ts `countsTowardMoney`.
   public var countsTowardMoney: Bool { !unparsed }
   public var isLive: Bool { supersededBy == nil && retiredBy == nil && mergedInto == nil }
   public var isHeldCopy: Bool { copyOf != nil && copyDecision == nil && isLive }
@@ -179,23 +141,15 @@ public enum TxnChannel {
   public static let sms = "sms"
 }
 
-// MARK: - Rules, categories, configuration
-
-/// A user rule, in its v3 shape (`pattern`, `match ∈ exact|contains|regex`) or,
-/// once a v4 op wrote it, its v4 shape (03c §5.1).
 public struct Rule: Sendable, Equatable, Codable {
-  /// 3 for a rule last written by a v≤3 op, 4 otherwise.
   public var shape: Int
-  /// v3: one pattern. v4: 1-8 alternatives.
   public var patterns: [String]
   public var match: String
   public var category: String
   public var priority: Int64
   public var enabled: Bool
   public var removed: Bool
-  /// `"manual"`, `"learned"`, or `"legacy"` for a v3-shape rule.
   public var origin: String
-  /// The create op's canonical `authored_at` (v4 shape); nil for a v3 rule.
   public var createdAt: String?
   public var version: Int64
 
@@ -227,15 +181,11 @@ public struct BudgetSplit: Sendable, Equatable, Codable {
   }
 }
 
-/// A category definition (state.ts `CategoryDef`), v3 shape (`color`) or v4
-/// shape (`icon`, 03c §4.2).
 public struct CategoryDef: Sendable, Equatable, Codable {
   public var shape: Int
   public var id: String
   public var name: String
-  /// `"spending"`, `"income"` or `"excluded"`.
   public var kind: String
-  /// `"need"`, `"want"` or `"saving"` exactly when spending.
   public var bucket: String?
   public var color: String?
   public var icon: String?
@@ -258,9 +208,6 @@ public struct CategoryDef: Sendable, Equatable, Codable {
   }
 }
 
-// MARK: - Bookkeeping
-
-/// The current head of one versioned entity, and the op that owns it.
 public struct EntityHead: Sendable, Equatable, Codable {
   public var kind: String
   public var id: String
@@ -301,8 +248,6 @@ public struct ForkNotice: Sendable, Equatable, Codable {
   }
 }
 
-/// Something the fold refused, recorded rather than dropped. `detail` is
-/// Swift-canonical (A-21): only `kind` and `atSeq` are compared across executors.
 public struct Anomaly: Sendable, Equatable, Codable {
   public var kind: String
   public var detail: String
@@ -317,7 +262,6 @@ public struct Anomaly: Sendable, Equatable, Codable {
   }
 }
 
-/// A blob that could not be decoded, set aside with a visible warning.
 public struct Unreadable: Sendable, Equatable, Codable {
   public var writerID: String
   public var stream: String
@@ -410,15 +354,12 @@ public struct MailboxRetirement: Sendable, Equatable, Codable {
   }
 }
 
-// MARK: - Projects and goals (03c §6)
-
 public struct Project: Sendable, Equatable, Codable {
   public var name: String
   public var startsOn: String?
   public var endsOn: String?
   public var budgetMinor: Int64?
   public var countInPlan: Bool
-  /// `"active"`, `"completed"` or `"removed"`.
   public var status: String
   public var completedOn: String?
   public var icon: String?
@@ -442,7 +383,6 @@ public struct Project: Sendable, Equatable, Codable {
 }
 
 public struct GoalSource: Sendable, Equatable, Codable {
-  /// `"category"` or `"account"`.
   public var kind: String
   public var categoryID: String?
   public var since: String?
@@ -485,8 +425,6 @@ public struct Goal: Sendable, Equatable, Codable {
     self.version = version
   }
 }
-
-// MARK: - Plan (03a §4.1)
 
 public struct PlanWrite: Sendable, Equatable, Codable {
   public var opID: String
@@ -550,7 +488,6 @@ public struct MoveRecord: Sendable, Equatable, Codable {
   public var from: String?
   public var to: String?
   public var amount: Int64
-  /// `move`, `assign`, `auto_assign` or `undo`.
   public var reason: String
   public var batchID: String?
   public var undoes: String?
@@ -595,7 +532,6 @@ public struct IncomeSource: Sendable, Equatable, Codable {
 }
 
 public struct PlanRoleRecord: Sendable, Equatable, Codable {
-  /// `"everyday"` or `"bills"`.
   public var role: String
   public var write: PlanWrite
 
@@ -608,9 +544,7 @@ public struct PlanRoleRecord: Sendable, Equatable, Codable {
 }
 
 public struct PlanState: Sendable, Equatable, Codable {
-  /// category → month (`YYYY-MM`) → cell.
   public var cells: OrderedDictionary<String, OrderedDictionary<String, PlanCell>> = [:]
-  /// op id → move, in position order.
   public var moves: OrderedDictionary<String, MoveRecord> = [:]
   public var incomeSources: OrderedDictionary<String, IncomeSource> = [:]
   public var roles: OrderedDictionary<String, PlanRoleRecord> = [:]
@@ -622,8 +556,6 @@ public struct PlanState: Sendable, Equatable, Codable {
     cells.isEmpty && moves.isEmpty && incomeSources.isEmpty && roles.isEmpty && overwrites.isEmpty
   }
 }
-
-// MARK: - Bills and accounts (03b §3-§4; minimal for the beta)
 
 public struct BillCadence: Sendable, Equatable, Codable {
   public var unit: String
@@ -766,7 +698,6 @@ public struct Account: Sendable, Equatable, Codable {
 public struct CardLink: Sendable, Equatable, Codable {
   public var bank: String?
   public var last4: String
-  /// `"mine"` or `"not_mine"`.
   public var state: String
   public var account: String?
   public var atSeq: Int64
@@ -822,25 +753,17 @@ public struct MerchantRejection: Sendable, Equatable, Codable {
   }
 }
 
-// MARK: - State
-
 public struct State: Sendable, Equatable, Codable {
-  // v3 (witnessed)
   public var txns: OrderedDictionary<String, Txn> = [:]
-  /// ingest_id → the one live txn id.
   public var liveByIngestID: OrderedDictionary<String, String> = [:]
-  /// fingerprint → live txn ids in fold order (order is load-bearing).
   public var byFingerprint: OrderedDictionary<ExactKey, [String]> = [:]
   public var rules: OrderedDictionary<String, Rule> = [:]
   public var homeCurrency: String?
-  /// The head rate per currency; a present nil is a live `rate_unset`.
   public var rates: OrderedDictionary<String, Int64?> = [:]
   public var rateUpdatedAt: OrderedDictionary<String, String> = [:]
-  /// bank → declared; insertion order is first-declaration order.
   public var banks: OrderedDictionary<ExactKey, Bool> = [:]
   public var budgetSplit: BudgetSplit?
   public var budgetMonthlyTotal: Int64?
-  /// id → definition; insertion order is first-definition order (03c §4.4 `ord`).
   public var categories: OrderedDictionary<ExactKey, CategoryDef> = [:]
   public var pendingByCurrency: OrderedDictionary<String, OrderedSet<String>> = [:]
   public var checkpoints: [CheckpointEntry] = []
@@ -848,10 +771,8 @@ public struct State: Sendable, Equatable, Codable {
   public var anomalies: [Anomaly] = []
   public var unreadable: [Unreadable] = []
   public var cursors = Cursors()
-  /// `kind\0id` → head. Never pruned.
   public var heads: OrderedDictionary<String, EntityHead> = [:]
 
-  // v4 (witnessed when non-empty, 03c §1.9)
   public var merchantNames: OrderedDictionary<ExactKey, Keyed<String?>> = [:]
   public var merchantRejections: OrderedDictionary<String, MerchantRejection> = [:]
   public var senderTrust: OrderedDictionary<String, Keyed<Bool>> = [:]
@@ -859,10 +780,8 @@ public struct State: Sendable, Equatable, Codable {
   public var goals: OrderedDictionary<String, Goal> = [:]
   public var plan = PlanState()
   public var bills: OrderedDictionary<String, Bill> = [:]
-  /// `bill\0due` → resolution.
   public var billResolutions: OrderedDictionary<String, BillResolution> = [:]
   public var accounts: OrderedDictionary<String, Account> = [:]
-  /// `bank\0last4` → link.
   public var cards: OrderedDictionary<String, CardLink> = [:]
   public var checkins: OrderedDictionary<String, Checkin> = [:]
   public var mailboxRetirements: [MailboxRetirement] = []
@@ -870,14 +789,10 @@ public struct State: Sendable, Equatable, Codable {
   public var copyCandidates: OrderedDictionary<ExactKey, [String]> = [:]
   public var mergedIngest: OrderedDictionary<String, String> = [:]
 
-  // Not witnessed: delivery bookkeeping and derived values.
-  /// The op ids applied at `cursors.hot` (the duplicate-delivery guard).
   public var appliedAtCursor: OrderedSet<String> = []
-  /// Per-writer largest `authored_at` (ms) over every op visited (03c §1.8.2).
   public var maxAuthored: OrderedDictionary<String, Int64> = [:]
 
   public init() {}
 
-  /// The key a head is filed under: NUL-joined, so no kind/id pair collides.
   public static func entityKey(_ kind: String, _ id: String) -> String { kind + "\u{0}" + id }
 }

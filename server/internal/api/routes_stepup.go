@@ -10,30 +10,22 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// routes_stepup.go: POST /api/v1/auth/step-up/begin (spec 02 #9, §8.1). The
-// client computes params_hash for the action it is about to perform and the
-// challenge C itself, and refuses to prove a C that differs from the one
-// answered here (spec 01 AT-C9); the guarded route recomputes params_hash from
-// its own request and spends the nonce in the action's transaction.
 func (s *Server) mountStepUp(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/step-up/begin", s.requireSessionForStepUpBegin(s.handleStepUpBegin))
 }
 
-// StepUpBeginRequest is #9.
 type StepUpBeginRequest struct {
 	Action     string `json:"action"`
-	ParamsHash string `json:"params_hash"` // hex, 32 bytes
-	ProofKind  string `json:"proof_kind"`  // passkey | device | device_code
+	ParamsHash string `json:"params_hash"`
+	ProofKind  string `json:"proof_kind"`
 }
 
-// StepUpBeginResponse is #9's answer; rp_id and allow_credentials only for a
-// passkey proof.
 type StepUpBeginResponse struct {
-	Nonce            string    `json:"nonce"`     // b64url
-	Challenge        string    `json:"challenge"` // b64url of C
+	Nonce            string    `json:"nonce"`
+	Challenge        string    `json:"challenge"`
 	ExpiresAt        time.Time `json:"expires_at"`
 	RPID             string    `json:"rp_id,omitempty"`
-	AllowCredentials []string  `json:"allow_credentials,omitempty"` // b64url
+	AllowCredentials []string  `json:"allow_credentials,omitempty"`
 }
 
 func (s *Server) handleStepUpBegin(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
@@ -54,9 +46,6 @@ func (s *Server) handleStepUpBegin(w http.ResponseWriter, r *http.Request, userI
 	if !ok {
 		return
 	}
-	// A suspended account may begin account.delete and nothing else (spec 02
-	// §9.6); a frozen account or a restricted session, account.unfreeze and
-	// nothing else (§9.8). Both at once: neither.
 	st, err := s.accountStatus(r.Context(), userID)
 	if err != nil {
 		s.writeKeyErr(w, r, err)

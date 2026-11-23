@@ -1,21 +1,9 @@
-// Payload readers shared by every op family (replay.ts "Payloads", ported).
-//
-// Money is a decimal STRING on the wire and `Int64` here. Every failure throws
-// `PayloadError`, which the fold records as an `invalid_payload` anomaly: an op
-// whose payload cannot be read is a data condition, never a hard stop.
-//
-// `nil` from a `JSONObject` subscript is JavaScript's `undefined` (an absent
-// key); `.null` is `null`. The v3 readers keep the oracle's distinctions
-// exactly, so v1-v3 logs fold to the oracle's state, except where an op below
-// v4 would leave a state `Invariants.check` refuses (Causal.swift, `decodeParts`).
 import CoreJSON
 import CoreMoney
 import CoreTime
 import CoreWire
 import HasalaText
 
-/// A payload the fold cannot read as its type requires. Its message becomes the
-/// anomaly detail (Swift-canonical, A-21).
 public struct PayloadError: Error, Sendable, Equatable {
   public let message: String
   public init(_ message: String) { self.message = message }
@@ -32,10 +20,6 @@ enum P {
     return o
   }
 
-  // MARK: v3 readers (oracle semantics)
-
-  /// replay.ts `parseMoney`: a decimal-integer string (`^[0-9]+$`), capped at
-  /// Int64 (03c §1.3: v3 fields keep v3's grammar plus the Int64 cap).
   static func money(_ v: JSONValue?, _ what: String) throws(PayloadError) -> Int64 {
     guard let s = v?.stringValue else {
       throw PayloadError("\(what) must be a decimal-integer string, got \(showValue(v))")
@@ -56,8 +40,6 @@ enum P {
     return n
   }
 
-  /// replay.ts `currencyOf`: three ASCII letters, upper-cased at v≤3. At v4 the
-  /// fold never normalizes (03c §1, §1.4): only `^[A-Z]{3}$` is accepted.
   static func currency(_ p: JSONObject, _ key: String, v: Int) throws(PayloadError) -> String {
     let raw = p[key]
     guard let s = raw?.stringValue else {
@@ -83,8 +65,6 @@ enum P {
     return s
   }
 
-  /// replay.ts `instant`: a wire timestamp, canonicalized, refused when the
-  /// canonical form leaves the four-digit-year range.
   static func instant(_ v: JSONValue?, _ what: String) throws(PayloadError) -> String {
     guard let s = v?.stringValue else { throw PayloadError("\(what) must be an RFC3339 timestamp, got \(showValue(v))") }
     do {
@@ -102,8 +82,6 @@ enum P {
     return s
   }
 
-  /// replay.ts `optionalString`: nil when absent; a non-string (null included)
-  /// is refused.
   static func optionalString(_ v: JSONValue?, _ what: String) throws(PayloadError) -> String? {
     guard let v else { return nil }
     guard let s = v.stringValue else { throw PayloadError("\(what) must be a string, got \(showValue(v))") }
@@ -122,22 +100,18 @@ enum P {
     return b
   }
 
-  /// replay.ts `bool`: the fallback when absent; a non-boolean is refused.
   static func bool(_ v: JSONValue?, _ fallback: Bool) throws(PayloadError) -> Bool {
     guard let v else { return fallback }
     guard let b = v.boolValue else { throw PayloadError("want a boolean, got \(showValue(v))") }
     return b
   }
 
-  /// replay.ts `optionalCategory`: absent, null and `""` are uncategorized.
   static func optionalCategory(_ v: JSONValue?) throws(PayloadError) -> String? {
     guard let v, !v.isNull else { return nil }
     guard let s = v.stringValue else { throw PayloadError("category must be a string or null, got \(showValue(v))") }
     return s.isEmpty ? nil : s
   }
 
-  /// replay.ts `intField`: a JSON number that is a JavaScript safe integer. `1.0`
-  /// and `1e2` qualify (JS semantics, kept for v3 parity).
   static func intFieldV3(_ v: JSONValue?, _ what: String) throws(PayloadError) -> Int64 {
     guard case .number(let n)? = v else { throw PayloadError("\(what) must be an integer, got \(showValue(v))") }
     let js = JSNumber.stringify(literal: n.literal)
@@ -147,10 +121,6 @@ enum P {
     return i
   }
 
-  // MARK: v4 readers (03c §1)
-
-  /// 03c §1.2 `Int`: a plain integer literal (no fraction, exponent or `-0`)
-  /// within ±(2^53-1), then `range`.
   static func intV4(_ v: JSONValue?, _ what: String, _ range: ClosedRange<Int64>) throws(PayloadError) -> Int64 {
     guard case .number(let n)? = v, let i = n.v4Int else {
       throw PayloadError("\(what) must be an integer literal, got \(showValue(v))")
@@ -159,7 +129,6 @@ enum P {
     return i
   }
 
-  /// 03c §1.3 `Minor` / `PositiveMinor` / `SignedMinor` (no leading zeros).
   static func minorV4(_ v: JSONValue?, _ what: String, positive: Bool = false, signed: Bool = false)
     throws(PayloadError) -> Int64
   {
@@ -177,7 +146,6 @@ enum P {
     return n
   }
 
-  /// 03a §3.0 plan money (`0..MAX_MINOR`).
   static func planMinor(_ v: JSONValue?, _ what: String, positive: Bool = false) throws(PayloadError) -> Int64 {
     guard let s = v?.stringValue, let n = Grammar.planMinor(s) else {
       throw PayloadError("\(what) must be a plan amount (0 to 9999999999999), got \(showValue(v))")
@@ -205,7 +173,6 @@ enum P {
     return s
   }
 
-  /// A `CategoryId` or null; at v4 `""` still means null on txn payloads (03c §3.1).
   static func optionalCategoryV4(_ v: JSONValue?, _ what: String) throws(PayloadError) -> String? {
     guard let v, !v.isNull, v.stringValue != "" else { return nil }
     return try categoryID(v, what)
@@ -235,7 +202,6 @@ enum P {
     return s
   }
 
-  /// One of `allowed`.
   static func oneOf(_ v: JSONValue?, _ what: String, _ allowed: [String]) throws(PayloadError) -> String {
     guard let s = v?.stringValue, allowed.contains(where: { utf8Equal($0, s) }) else {
       throw PayloadError("\(what) must be one of \(allowed.joined(separator: "|")), got \(showValue(v))")
@@ -243,7 +209,6 @@ enum P {
     return s
   }
 
-  /// The value when present and not null (absent and null mean the same, 03c §1.1 rule 3).
   static func present(_ v: JSONValue?) -> JSONValue? {
     guard let v, !v.isNull else { return nil }
     return v

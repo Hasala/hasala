@@ -14,13 +14,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// TestEverySignedMessageRefusesItsNegativeCases is spec 01 §15.3's
-// "message and step-up cases", run over the committed
-// conformance/api-v1/messages.json as a reader would see it: for every signed
-// message, the committed signature verifies under the committed key, and
-// flipping any byte of the message or the signature, a signature by another
-// key, and (Ed25519) the identity point with the all-zero signature are all
-// refused. P-256 also refuses r = 0 and s = 0.
 func TestEverySignedMessageRefusesItsNegativeCases(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "conformance", "api-v1", "messages.json"))
 	if err != nil {
@@ -61,7 +54,7 @@ func TestEverySignedMessageRefusesItsNegativeCases(t *testing.T) {
 	signed := map[string]int{}
 	for _, m := range file.Messages {
 		if m.Signature == "" {
-			continue // C_reg is a challenge, not a signature
+			continue
 		}
 		msg, pub, sig := dec(m.Name, m.Bytes), dec(m.Name, m.Pubkey), dec(m.Name, m.Signature)
 		var verify func(pub, msg, sig []byte) bool

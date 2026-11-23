@@ -2,14 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// A category's month (Paper "Plan · Dining", 31L-0), pushed from Plan's budget rows, Home and
-/// the bell: the hue's wash, the hero with what is left and the pace bar with today's tick,
-/// the verdict in words, Day by day, This month, the rules that sort into it, and Change
-/// budget and Move money in.
-///
-/// The bar fills once per push (300 ms), the figure rolling with it, then the tick drops in
-/// and the verdict fades in (B1.3, owner rule). Coming back from a sheet or another tab shows
-/// it as it is; a changed budget moves the bar on `.fillUpdate`.
 struct CategoryDetailView: View {
   @Bindable var app: AppModel
   let category: CategoryID
@@ -58,12 +50,6 @@ struct CategoryDetailView: View {
   }
 }
 
-// MARK: - Hero
-
-/// "Hero · Dining": the 56 disc, "AED 957.25" over "left of 1,600 this month", the pace bar
-/// with today's tick, and the verdict: "● Over pace · on course for 1,992" over "Spend about
-/// AED 43 a day to finish on budget". One VoiceOver element: "Dining, AED 957.25 left of
-/// 1,600 this month. Over pace, on course for 1,992. Spend about…".
 private struct CategoryHero: View {
   let detail: CategoryDetail
   let hidden: Bool
@@ -78,8 +64,6 @@ private struct CategoryHero: View {
         CategoryDisc(hue: detail.hue, glyph: detail.glyph, size: .s56)
           .hElevation(.near)
         VStack(alignment: .leading, spacing: 4) {
-          // The figure rolls from zero with the fill (it switches inside the fill's
-          // animation; money stays whole fils, never an in-between amount).
           MoneyText(phase.figure(.aed(Int64(clamping: detail.left.minor.magnitude))), figure: .hero, unit: .unit, hidden: hidden,
                     hiddenGlyphs: 6, color: over ? HColor.statusErrorForeground : HColor.textPrimary, unitGap: 6)
           PhraseText(caption, hidden: hidden).hType(.body).foregroundStyle(HColor.textOnWashSecondary)
@@ -100,7 +84,6 @@ private struct CategoryHero: View {
     .accessibilityIdentifier("category.hero")
   }
 
-  /// "left of 1,600 this month", or "over 600 this month".
   private var caption: MoneyPhrase {
     MoneyPhrase([.text(over ? "over " : "left of "), .amount(detail.budget, .compact, hidden: 3),
                  .text(" this month")])
@@ -128,7 +111,6 @@ private struct CategoryHero: View {
     Text(verbatim: detail.verdictFact.map { " · " + $0.rendered(hidden: hidden) } ?? "")
   }
 
-  /// Over pace draws its dot in the brighter amber of the fill (page 17 §03).
   private var dotColor: Color {
     detail.verdict == .overPace ? HColor.paceFillOverPace : detail.verdict.foreground
   }
@@ -143,10 +125,6 @@ private struct CategoryHero: View {
   }
 }
 
-// MARK: - Day by day
-
-/// "Chart card · Day by day": the white card with its header ("Day by day", "1–10 Oct"), the
-/// chart and the caption under it.
 private struct ChartCard: View {
   let chart: DayByDay
   let name: String
@@ -174,10 +152,6 @@ private struct ChartCard: View {
   }
 }
 
-// MARK: - This month
-
-/// "This month 5": the category's payments this month, newest first; a row opens the
-/// transaction sheet.
 private struct ThisMonth: View {
   let detail: CategoryDetail
   let model: any CategoryDetailModel
@@ -200,8 +174,6 @@ private struct ThisMonth: View {
   }
 }
 
-/// "This month 5", "Transactions 2": the section title with its count in rounded 600
-/// secondary on the same baseline.
 struct CountedTitle: View {
   let title: String
   let count: Int
@@ -217,11 +189,6 @@ struct CountedTitle: View {
   }
 }
 
-// MARK: - Rules
-
-/// "Rules that sort into Dining": a wand, the pattern over "Merchant contains · 28 matches",
-/// a chevron to Categories and rules in Your profile; "Add a rule" last (Debug only until a
-/// rule can be made here).
 private struct Rules: View {
   let detail: CategoryDetail
   let model: any CategoryDetailModel

@@ -1,10 +1,5 @@
 import XCTest
 
-/// Setup on the in-memory mocks (Paper row 10, P2.9 row 1 and X4): the bank alerts step with
-/// the mailbox and its sign-in and how to turn on email alerts, then Home's Finish setting
-/// up: the monthly plan (income on the keypad with the payday strip, the starting plan with
-/// its handles) and notifications. Every screen is audited for accessibility, and
-/// screenshots are attached to the report.
 final class SetupUITests: XCTestCase {
   override func setUp() {
     continueAfterFailure = false

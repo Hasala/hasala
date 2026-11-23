@@ -1,13 +1,5 @@
 package auth
 
-// Password reset on a new iPhone, approved by a signed-in iPhone (C9, spec 02
-// §10.9, routes #49–#54; spec 01 §10.16). N (the new iPhone) proves the
-// address with a password_reset code, posts an ephemeral Ed25519 key, and
-// waits; A (an enrolled iPhone with a bound session) approves with its DAK
-// over ResetApproveMessage, after the user compares the 80-bit approval code
-// derived from that key (the server never computes it). N finishes with the
-// ephemeral key's signature over the new S.
-
 import (
 	"context"
 	"errors"
@@ -21,14 +13,8 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtx"
 )
 
-// ResetTTL is a reset ceremony's lifetime, from creation and again from
-// verification.
 const ResetTTL = 10 * time.Minute
 
-// ResetBegin is #49: one transaction writes the ceremony (with user_id only
-// when the account exists, has a password, is active and not frozen) and a
-// password_reset code, sent only then. The answer is identical for every
-// valid address.
 func (a *Accounts) ResetBegin(ctx context.Context, email string) (string, error) {
 	addr, err := normEmail(email)
 	if err != nil {
@@ -77,15 +63,12 @@ func (a *Accounts) ResetBegin(ctx context.Context, email string) (string, error)
 	return id, nil
 }
 
-// ResetVerified is #50's answer, revealed only to a correct code.
 type ResetVerified struct {
 	Nonce     []byte
 	Salt      []byte
 	Approvers bool
 }
 
-// ResetVerify is #50: the code; on success verified_at and a fresh 10-minute
-// expiry. Every failure is ErrCodeRejected.
 func (a *Accounts) ResetVerify(ctx context.Context, resetID, code string) (ResetVerified, error) {
 	now := a.now()
 	var (
@@ -109,7 +92,7 @@ func (a *Accounts) ResetVerify(ctx context.Context, resetID, code string) (Reset
 	err = a.consumeCode(ctx, codeCheck{CodeID: codeID, Purpose: PurposePasswordReset, CeremonyKind: CeremonyPasswordReset,
 		CeremonyID: resetID, Submitted: code}, func(ctx context.Context, tx pgx.Tx) error {
 		if userID == nil {
-			return fmt.Errorf("%w: no eligible account", ErrCodeRejected) // unreachable: its code was never sent
+			return fmt.Errorf("%w: no eligible account", ErrCodeRejected)
 		}
 		if _, err := tx.Exec(ctx, `UPDATE password_reset_ceremonies SET verified_at = $2, expires_at = $3 WHERE id = $1`,
 			resetID, now, now.Add(ResetTTL)); err != nil {
@@ -127,10 +110,6 @@ func (a *Accounts) ResetVerify(ctx context.Context, resetID, code string) (Reset
 	return out, err
 }
 
-// ResetRequest is #51: the new iPhone's ephemeral key, stored once on a
-// verified, unexpired ceremony. Every failure is ErrResetRefused. The answer
-// wakes every live writer of the account, so one of them can approve (spec 02
-// §12.5).
 func (a *Accounts) ResetRequest(ctx context.Context, resetID string, ekPub []byte) (Wake, error) {
 	if keyproto.CheckEd25519PublicKey(ekPub) != nil {
 		return Wake{}, fmt.Errorf("%w: ek_pub", ErrResetRefused)
@@ -150,7 +129,6 @@ func (a *Accounts) ResetRequest(ctx context.Context, resetID string, ekPub []byt
 	return wakeFor(userID, "", nil), nil
 }
 
-// PendingReset is one row of #52.
 type PendingReset struct {
 	ResetID   string
 	Nonce     []byte
@@ -158,8 +136,6 @@ type PendingReset struct {
 	CreatedAt time.Time
 }
 
-// ResetPending is #52: this account's verified, unexpired, unapproved
-// ceremonies with an ephemeral key.
 func (a *Accounts) ResetPending(ctx context.Context, userID uuid.UUID) ([]PendingReset, error) {
 	rows, err := a.Pool.Query(ctx,
 		`SELECT id, reset_nonce, ek_pubkey, created_at FROM password_reset_ceremonies
@@ -180,8 +156,6 @@ func (a *Accounts) ResetPending(ctx context.Context, userID uuid.UUID) ([]Pendin
 	return out, rows.Err()
 }
 
-// ResetApprove is #53: the approving session's bound, live writer signs
-// ResetApproveMessage with its DAK. Every failure is ErrResetRefused.
 func (a *Accounts) ResetApprove(ctx context.Context, session SessionInfo, resetID, writerID string, sig []byte) error {
 	if writerID == "" || writerID != session.WriterID {
 		return fmt.Errorf("%w: not the session's writer", ErrResetRefused)
@@ -221,10 +195,6 @@ func (a *Accounts) ResetApprove(ctx context.Context, session SessionInfo, resetI
 	return tx.Commit(ctx)
 }
 
-// ResetFinish is #54: the ephemeral key's signature over the new S, then one
-// transaction: the new verifier, every other session revoked except the
-// approver's, N's session minted (password_reset, unbound), the ceremony
-// consumed, and password_reset and sign_in_new recorded.
 func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ekSig []byte) (SignedIn, error) {
 	if _, err := verifierHash(verifier); err != nil {
 		return SignedIn{}, fmt.Errorf("%w: verifier", ErrResetRefused)
@@ -298,7 +268,6 @@ func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ek
 	if err := setPasswordTx(ctx, tx, st.ID, hash, salt, a.Keys.Current(), now); err != nil {
 		return SignedIn{}, err
 	}
-	// Keep the session the approval came from (spec 02 §10.9), and only it.
 	keep := [][]byte{approvedSession}
 	revoked, err := RevokeOtherSessionsTx(ctx, tx, st.ID, keep, now)
 	if err != nil {
@@ -320,8 +289,6 @@ func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ek
 	}
 	held.Release(a.Record)
 	a.Mail.Kick()
-	// The new iPhone has no writer yet: every device of the account hears of
-	// the reset, the approver included (spec 02 §12.5).
 	out.Wake = wakeFor(st.ID, "", revoked)
 	return out, nil
 }

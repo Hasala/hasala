@@ -11,11 +11,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// TestPredicateVectorsAgreeAcrossGoAndSQL runs conformance/crypto-v3/
-// predicate.json through Go's LooksSealed and the SQL function behind the
-// op_log_blob_is_sealed CHECK (spec 01 §15.1: Go, Swift and Postgres must
-// agree on every case). The expectation is the file's; neither side computes
-// it here.
 func TestPredicateVectorsAgreeAcrossGoAndSQL(t *testing.T) {
 	raw, err := os.ReadFile("../../../conformance/crypto-v3/predicate.json")
 	if err != nil {

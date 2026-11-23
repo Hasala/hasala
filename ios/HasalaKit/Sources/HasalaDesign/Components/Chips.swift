@@ -1,13 +1,6 @@
 import HasalaModels
 import SwiftUI
 
-// Chips, status pills and count badges (Paper page 12 Selection controls, page 17 Feedback).
-// A chip narrows a list or picks a value; a pill states a status; a badge counts what waits.
-// Ink is the only selected colour for chips; blue stays for actions and ticks.
-
-/// A filter chip (page 12 §02): 40 tall, a row of them above a list, one selected (ink). A
-/// count follows the label: a plain grey number ("Bills 8"), or the accent badge when the rows
-/// need the person ("To review 6"). Selecting it changes the list at once.
 public struct FilterChip: View {
   public enum CountStyle: Sendable { case plain, accent }
 
@@ -18,7 +11,6 @@ public struct FilterChip: View {
   let onCard: Bool
   let action: () -> Void
 
-  /// `onCard` uses `--color-chip-surface-on-card` for a row of chips on a white card or sheet.
   public init(_ title: String, count: Int? = nil, countStyle: CountStyle = .accent, selected: Bool,
               onCard: Bool = false, action: @escaping () -> Void)
   {
@@ -50,15 +42,11 @@ public struct FilterChip: View {
       .hContrastEdge(Capsule(), active: !selected)
     }
     .buttonStyle(ChipPressStyle())
-    // "To review, 6, selected": the count is read once, with the label (page 12 §10).
     .accessibilityLabel(count.map { "\(title), \($0)" } ?? title)
     .accessibilityAddTraits(selected ? .isSelected : [])
   }
 }
 
-/// A choice chip (page 12 §03): the same pill, picking one value for a transaction. A hue dot
-/// names the bucket or project; the dot keeps its hue when selected. Rows of choice chips wrap;
-/// they never scroll sideways.
 public struct ChoiceChip: View {
   let title: String
   let dot: Hue?
@@ -85,7 +73,6 @@ public struct ChoiceChip: View {
         Text(title).hType(.smallButton)
       }
       .foregroundStyle(selected ? HColor.chipTextSelected : HColor.chipText)
-      // Paper: 12 / 13 with a dot on the grey canvas, 14 / 16 on a card, 16 with no dot.
       .padding(.leading, dot == nil ? HSpacing.chipInset : (onCard ? 14 : 12))
       .padding(.trailing, dot == nil ? HSpacing.chipInset : (onCard ? 16 : 13))
       .frame(minHeight: HSpacing.chipHeight)
@@ -97,12 +84,10 @@ public struct ChoiceChip: View {
   }
 }
 
-/// A chip's press: the state layer over the chip's own fill (page 12, Proposed). No scale.
 struct ChipPressStyle: ButtonStyle {
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
       .overlay { if configuration.isPressed { Capsule().fill(HColor.stateLayerPressed) } }
-      // Drawn 40 tall; the hit area reaches 44 without changing the drawing.
       .contentShape(Capsule().inset(by: -2))
       .animation(.easeOut(duration: HMotion.highlight), value: configuration.isPressed)
   }
@@ -112,17 +97,11 @@ struct ChipPressStyle: ButtonStyle {
   }
 }
 
-/// A small label that explains (page 12 §04, page 16 §07). Not a button: no pressed state, no
-/// trait. A few words; it wraps to a second line, never truncates.
 public struct InfoChip: View {
   public enum Style: Sendable {
-    /// "Seen 5×", "Every ~30 days", "Last on 8 Oct": why we think it is a bill (28 tall, grey).
     case evidence
-    /// "New merchant": why a card is in front of you (28 tall, info, with a 7 dot).
     case reason
-    /// "LULU HYPERMARKET DXB MARINA": the bank's own words, as-is (26 tall, radius 8).
     case rawText
-    /// "Suggested": which pick we suggest (24 tall, info, no dot).
     case suggested
   }
 
@@ -192,22 +171,14 @@ public struct InfoChip: View {
   }
 }
 
-/// A short state label: a dot and two or three words (page 17 §01). Not a button. Five sizes,
-/// picked by where it sits; every size keeps its radius at half the height. White on a poster
-/// or wash (`--color-surface-poster-pill`), tinted on a card.
 public struct StatusPillView: View {
   public enum Surface: Sendable { case white, tinted }
 
   public enum Size: Sendable {
-    /// 36: board labels.
     case s36
-    /// 32: beside a detail hero disc ("3 days past usual").
     case s32
-    /// 28: on a card ("New merchant").
     case s28
-    /// 26: on a brief or bill poster ("2 new today"). The default.
     case s26
-    /// 22: a tag after a row title ("Price change"), no dot.
     case s22
 
     var height: CGFloat {
@@ -285,23 +256,14 @@ public struct StatusPillView: View {
   }
 }
 
-/// A number that says how many things wait (page 17 §02). Red on icons means "act on this";
-/// ink beside a section title means "this many below". Hidden at zero, never "0"; "99+" past 99.
 public struct CountBadge: View {
-  /// The original tones (ink section counts, red unread, accent), kept as they draw today.
   public enum Tone: Sendable { case ink, alert, accent }
 
-  /// The Paper badges, by where they sit.
   public enum Style: Sendable {
-    /// On a glass button: 20 tall, `--color-badge-count`, 2 pt white ring, 12/16 bold.
     case glass20
-    /// On a tab: 18 tall, 2 pt white ring, 11/14 bold.
     case tab18
-    /// Beside a section title: 24 tall, ink, 13/16 bold.
     case title24
-    /// In a list row: 22 tall, `--color-list-row-badge`, 13/16 bold.
     case row22
-    /// After a filter chip's label: 20 tall, accent, 12/16 bold.
     case chip20
   }
 
@@ -312,7 +274,6 @@ public struct CountBadge: View {
 
   let count: Int
   private let variant: Variant
-  /// 24 pt (ink, 13 pt figure) or 20 pt (12 pt figure) at the default text size; both scale.
   @ScaledMetric private var height: CGFloat
 
   public init(_ count: Int, tone: Tone = .ink) {
@@ -330,7 +291,6 @@ public struct CountBadge: View {
   public var body: some View {
     switch variant {
     case .tone(let tone):
-      // .footnote is 13 pt and .caption 12 pt at the default size; both follow Dynamic Type.
       Text("\(count)")
         .font(.system(tone == .ink ? .footnote : .caption, design: .rounded, weight: .bold))
         .foregroundStyle(HColor.white)
@@ -339,8 +299,6 @@ public struct CountBadge: View {
         .background(Self.fill(tone), in: Capsule())
     case .style(let style):
       if count > 0 {
-        // It never grows past AX1, so it never covers the icon (page 17 §02): the cap sits
-        // outside the badge, so its scaled sizes read the capped size.
         StyledBadge(count: count, style: style)
           .dynamicTypeSize(...DynamicTypeSize.accessibility1)
           .accessibilityHidden(true)
@@ -391,7 +349,6 @@ public struct CountBadge: View {
   }
 }
 
-/// A Paper badge, scaled with Dynamic Type up to the cap its parent sets.
 private struct StyledBadge: View {
   let count: Int
   let style: CountBadge.Style
@@ -408,8 +365,6 @@ private struct StyledBadge: View {
   var body: some View {
     Text(count > 99 ? "99+" : "\(count)")
       .font(.system(size: figure, weight: .bold, design: .rounded).monospacedDigit())
-      // Stops growing at AX1 on purpose, like the capped hero figures: the accessibility
-      // audit accepts partial Dynamic Type only on text with this marker.
       .accessibilityIdentifier(hasalaCappedFigureIdentifier)
       .foregroundStyle(style == .title24 ? HColor.white : HColor.badgeCountText)
       .padding(.horizontal, CountBadge.padding(style))

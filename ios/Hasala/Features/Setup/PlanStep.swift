@@ -2,10 +2,6 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Set your monthly plan · Starting plan (Paper 5GY-0): the split with its two handles, the three
-/// buckets with what each gets a month (whole dirhams, following the handles), and "Use this
-/// plan". The split and the salary stay as they were left through Back
-/// and Forward.
 struct PlanStep: View {
   @Bindable var model: MonthlyPlanModel
 
@@ -25,7 +21,6 @@ struct PlanStep: View {
     ) {
       VStack(spacing: 0) {
         SplitHandles(plan: $model.plan)
-          // Paper: the split 28 under the question (the template's content, 24).
           .padding(.top, 4)
         let amounts = model.savedIncomeMinor.map { p.amounts(income: $0) }
         VStack(spacing: 10) {
@@ -61,9 +56,6 @@ struct PlanStep: View {
   }
 }
 
-/// A bucket of the starting plan (Paper "Bucket · Needs"): its hue disc and icon, the name,
-/// what it gets a month ("12,500 a month"), and what goes in it. Without an income the
-/// amount isn't shown.
 private struct BucketCard: View {
   let bucket: Bucket
   let icon: HIcon
@@ -147,7 +139,6 @@ private struct BucketCard: View {
 }
 
 extension HFigure {
-  /// The same figure with Paper's tracking for one place.
   func withTracking(_ t: CGFloat) -> HFigure {
     var f = self
     f.tracking = t

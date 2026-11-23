@@ -19,17 +19,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
-// runInvite is spec 07 §14.3's invite CLI:
-//
-//	hasalad invite mint [--note TEXT] [--ttl 336h] [--review]   prints one code, once
-//	hasalad invite mint --email ADDRESS [--note TEXT] [--ttl …]  queues an invite email; prints the id
-//	hasalad invite list
-//	hasalad invite revoke <id prefix, ≥ 8 hex>
-//
-// A printed code is stored only as a hash. An emailed invite's code is minted
-// by the mail worker in `serve` at send time and never shown here: admin modes
-// have no network (spec 05 §5.7). State-changing modes write admin_audit rows
-// with actor cli:<operator>.
 func runInvite(env *runEnv, args []string) error {
 	positional, rest := splitPositional(args)
 	var (
@@ -135,8 +124,6 @@ func runInvite(env *runEnv, args []string) error {
 		return nil
 	}
 	if email != "" {
-		// The CLI has no auth key and no mail token: the row is queued without a
-		// tag, and serve's worker tags it, mints the code and sends.
 		q := mailq.New(pool, nil, nil)
 		return withTx(ctx, pool, func(tx pgx.Tx) error {
 			id, err := invites.EnqueueEmailed(ctx, tx, q, email, note, ttl)
@@ -163,8 +150,6 @@ func runInvite(env *runEnv, args []string) error {
 	if err != nil {
 		return err
 	}
-	// The bare 24 characters, as ledgerd printed them (spec 07 §14.3:
-	// unchanged behaviour); the app ignores hyphens either way.
 	fmt.Fprintln(env.stdout, code)
 	fmt.Fprintln(env.stderr, "this code is single use, gates ACCOUNT CREATION only, and is not "+
 		"recoverable: it is stored as a hash. Hand it over out of band.")
@@ -211,8 +196,6 @@ func listInvites(ctx context.Context, env *runEnv, pool *pgxpool.Pool) error {
 			}
 			return "no"
 		}
-		// The account an invite created, for `account review` and
-		// `purge-user` (a beta review account is found this way).
 		by := ""
 		if r.RedeemedBy != nil {
 			by = " by=" + r.RedeemedBy.String()
@@ -225,8 +208,6 @@ func listInvites(ctx context.Context, env *runEnv, pool *pgxpool.Pool) error {
 	return nil
 }
 
-// runWaitlist is `hasalad waitlist`: counts by state and by bank, never an
-// address (spec 07 §14.3).
 func runWaitlist(env *runEnv, args []string) error {
 	fs := newFlags(env, "waitlist")
 	if err := parseFlags(fs, args); err != nil {
@@ -271,8 +252,6 @@ func runWaitlist(env *runEnv, args []string) error {
 	return rows.Err()
 }
 
-// runEmail is `hasalad email test <address>`: queues one `test` row for the
-// worker in serve (spec 07 §14.3; spec 05 §5.7).
 func runEmail(env *runEnv, args []string) error {
 	positional, rest := splitPositional(args)
 	fs := newFlags(env, "email")
@@ -319,8 +298,6 @@ func withTx(ctx context.Context, pool *pgxpool.Pool, f func(pgx.Tx) error) error
 
 var actorName = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 
-// adminActor is cli:<operator> from HASALA_ADMIN_ACTOR, else SUDO_USER, else
-// USER; anything that is not a plain user name becomes cli:operator.
 func adminActor(env *runEnv) string {
 	for _, k := range []string{"HASALA_ADMIN_ACTOR", "SUDO_USER", "USER"} {
 		if v, ok := env.lookup(k); ok {
@@ -333,8 +310,6 @@ func adminActor(env *runEnv) string {
 	return "cli:operator"
 }
 
-// audit writes one admin_audit row (spec 07 §2.9, §8.6). params carry no
-// address, name or code.
 func audit(ctx context.Context, tx pgx.Tx, actor, action, kind, target string, params map[string]any) error {
 	if params == nil {
 		params = map[string]any{}

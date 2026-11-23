@@ -10,8 +10,6 @@ import Testing
 
 @testable import Hasala
 
-/// The live gate's decisions (spec 04 §6.5) and what this iPhone keeps about the account
-/// outside its store (§4.5).
 @MainActor
 @Suite("Live gate")
 struct LiveGateTests {
@@ -48,7 +46,7 @@ struct LiveGateTests {
   @Test func theGmailStepResumesFromTheLane() {
     #expect(BootController.mailboxFact(.unlinked) == .unlinked)
     #expect(BootController.mailboxFact(.scanning) == .scanning)
-    #expect(BootController.mailboxFact(.awaitingCards) == .scanning)  // filed on the next run
+    #expect(BootController.mailboxFact(.awaitingCards) == .scanning)
     #expect(BootController.mailboxFact(.otherDevice) == .otherDevice)
     #expect(BootController.mailboxFact(.active) == .linked)
   }
@@ -63,8 +61,6 @@ struct LiveGateTests {
     #expect(AppDelegate.remainingBudget(total, from: start, now: start.advanced(by: .seconds(25))) == .zero)
     #expect(AppDelegate.remainingBudget(total, from: start, now: start.advanced(by: .seconds(40))) == .zero)
   }
-
-  // MARK: UserDefaults (§4.5: no identifier but installID)
 
   static func defaults() -> UserDefaults {
     let name = "LiveGateTests.\(UUID().uuidString)"
@@ -84,7 +80,6 @@ struct LiveGateTests {
     let digests = prefs.skippedDigests(on: today)
     #expect(digests == [LocalAccountData.digest("txn-123", salt: "install-a")])
     #expect(prefs.skippedDigests(on: LocalDate(2026, 10, 13)).isEmpty)
-    // The mapper turns them back into this ledger's ids.
     let c = LedgerStateMapper.Context(
       today: today, profile: ProfileInfo(displayName: "", email: "", signIn: .password), skippedDigests: digests,
       digestSalt: prefs.salt)
@@ -136,9 +131,7 @@ struct LiveGateTests {
     SearchHistory.shared.add("Carrefour")
     LocalAccountData.forget(defaults: d)
     #expect(!LocalAccountData.amountsHidden(d))
-    // What was searched (merchant names) never shows to the next account in this process.
     #expect(SearchHistory.shared.recent.isEmpty)
-    // The provider this iPhone read the account's mail through goes with the account.
     #expect(d.object(forKey: "app.hasala.prefs.mailbox.provider") == nil)
     #expect(!LocalAccountData.setupFinished(d))
     #expect(d.object(forKey: "prefs.review.skipped.v2") == nil)
@@ -187,7 +180,6 @@ struct LiveGateTests {
   }
 }
 
-/// Transactions for the mapper's skipped-card check, from Maya's ledger.
 @MainActor
 enum MayaFixture {
   static func txns(_ ids: [String]) -> [HasalaModels.Txn] {

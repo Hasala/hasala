@@ -1,10 +1,5 @@
 package auth
 
-// Tests for passkey_guarded.go: adding and removing a passkey need more than a
-// session (spec 02 #10, #11, #13, §10.5; spec 01 §10.7, R-01). The reviewer's
-// attack is the reason: a stolen session that could enrol its own passkey
-// would pass every later passkey step-up with it.
-
 import (
 	"bytes"
 	"context"
@@ -22,10 +17,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
-// testBeginAdd and testFinishAdd drive the add ceremony's WebAuthn half
-// without the step-up and the DWK signature, for the tests about handles,
-// credentials and sessions that predate them. A request cannot reach either:
-// the HTTP routes call AddBegin and AddFinish.
 func (p *Passkeys) testBeginAdd(t *testing.T, userID uuid.UUID) (string, *protocol.CredentialCreation, error) {
 	t.Helper()
 	return p.beginAdd(bgctx, p.Pool, userID, authtest.RandBytesTB(t, keyproto.NonceSize))
@@ -43,19 +34,10 @@ func (p *Passkeys) testFinishAdd(ctx context.Context, ceremonyID string, userID 
 	return made.Credential.ID, nil
 }
 
-// deleteCredential is deleteCredentialTx in a transaction of its own. Tests
-// only: a request reaches the removal through DeletePasskey, under step-up.
 func (p *Passkeys) deleteCredential(ctx context.Context, userID uuid.UUID, credentialID, keepSessionHash []byte) (int64, error) {
 	if p == nil || p.Pool == nil {
 		return 0, errors.New("auth: Passkeys is not configured")
 	}
-	// READ COMMITTED pinned rather than inherited, for the reason upsertUser
-	// pins it: default_transaction_isolation is settable per database, per role
-	// and by a pooler, and the lock-then-count relies on a waiter taking a
-	// FRESH snapshot when the lock is released. Under REPEATABLE READ the second
-	// transaction would wake up and still see the row the first one deleted,
-	// which is precisely the miscount this lock exists to prevent. StepUp.Run
-	// pins it the same way (pgtx.BeginReadCommitted).
 	tx, err := p.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return 0, fmt.Errorf("auth: passkey: delete credential: begin: %w", err)
@@ -75,15 +57,11 @@ func (p *Passkeys) deleteCredential(ctx context.Context, userID uuid.UUID, crede
 	return revoked, nil
 }
 
-// guarded wires the fixture's step-up into its relying party, as
-// api.NewServer does.
 func (f *keyFixture) guarded() *keyFixture {
 	f.passkeys.StepUp = f.stepUp
 	return f
 }
 
-// addSig is the device's dwk_sig over PasskeyAddMessage for the credential a
-// just created.
 func addSig(t *testing.T, d *authtest.Device, nonce []byte, a *authtest.Authenticator, wrap []byte) []byte {
 	t.Helper()
 	m, err := keyproto.PasskeyAddMessage(nonce, a.LastClientDataJSON, a.LastAttestationObject, wrap)
@@ -97,8 +75,6 @@ func wellFormedWrap(fill byte) []byte {
 	return append([]byte{1, 2}, bytes.Repeat([]byte{fill}, 125)...)
 }
 
-// addOver runs #10 and #11 on token's session with the device's DWK, and
-// answers the new authenticator and AddFinish's outcome.
 func (f *keyFixture) addOver(token string, signer *authtest.Device, wrap bool) (*authtest.Authenticator, []byte, error) {
 	f.t.Helper()
 	su := f.stepUpPasskey(token, keyproto.ActionPasskeyAdd)
@@ -144,7 +120,6 @@ func TestAddBeginWithoutAStepUpIsRefusedAndMintsNoCeremony(t *testing.T) {
 	if _, _, err := f.passkeys.AddBegin(bgctx, f.info(f.token), nil); !errors.Is(err, ErrStepUpRequired) {
 		t.Fatalf("add/begin with no step-up: %v, want ErrStepUpRequired", err)
 	}
-	// A step-up for another action does not open an add ceremony.
 	su := f.stepUpPasskey(f.token, keyproto.ActionKeysWrapDelete, f.credID)
 	if _, _, err := f.passkeys.AddBegin(bgctx, f.info(f.token), su); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("add/begin with a keys.wrap.delete step-up: %v, want ErrStepUpFailed", err)
@@ -154,10 +129,6 @@ func TestAddBeginWithoutAStepUpIsRefusedAndMintsNoCeremony(t *testing.T) {
 	}
 }
 
-// TestAStolenSessionCannotEnrolAPasskeyBeforeBootstrap is the review's
-// exploit: between register/finish and bootstrap the account has no keys and
-// no writer, so a session alone used to be enough to enrol a passkey and then
-// prove keys.bootstrap with it. An unbound session cannot begin an add.
 func TestAStolenSessionCannotEnrolAPasskeyBeforeBootstrap(t *testing.T) {
 	t.Parallel()
 	f := newKeyFixtureUnbootstrapped(t).guarded()
@@ -165,8 +136,6 @@ func TestAStolenSessionCannotEnrolAPasskeyBeforeBootstrap(t *testing.T) {
 	if _, _, err := f.passkeys.AddBegin(bgctx, f.info(f.token), su); !errors.Is(err, ErrWriterUnbound) {
 		t.Fatalf("add/begin on an unbound session: %v, want ErrWriterUnbound", err)
 	}
-	// And the nonce cannot be spent by an unbound add/finish either: there is
-	// no ceremony.
 	if n := f.count(`SELECT count(*) FROM webauthn_ceremonies WHERE kind = 'add'`); n != 0 {
 		t.Fatalf("%d add ceremonies exist, want 0", n)
 	}
@@ -188,8 +157,6 @@ func TestAddFinishRefusesASignatureFromAnyKeyButTheSessionWriters(t *testing.T) 
 	}
 }
 
-// TestAddFinishRefusesASwappedWrapOrCredential: R-01 and N-11. A terminator
-// that substitutes the wrap (or the credential) changes a hash the DWK signed.
 func TestAddFinishRefusesASwappedWrapOrCredential(t *testing.T) {
 	t.Parallel()
 	f := newKeyFixture(t).guarded()
@@ -206,7 +173,6 @@ func TestAddFinishRefusesASwappedWrapOrCredential(t *testing.T) {
 	if _, err := f.passkeys.AddFinish(bgctx, f.info(f.token), add); !errors.Is(err, ErrBadSignature) {
 		t.Fatalf("add/finish with a swapped wrap: %v, want ErrBadSignature", err)
 	}
-	// A wrap posted when the signature covered none is the same swap.
 	su = f.stepUpPasskey(f.token, keyproto.ActionPasskeyAdd)
 	id, opts, err = f.passkeys.AddBegin(bgctx, f.info(f.token), su)
 	if err != nil {
@@ -272,7 +238,6 @@ func TestDeletingAPasskeyNeedsAStepUpForThatCredential(t *testing.T) {
 	if _, err := f.passkeys.DeletePasskey(bgctx, info, second.CredID, nil); !errors.Is(err, ErrStepUpRequired) {
 		t.Fatalf("delete with no step-up: %v, want ErrStepUpRequired", err)
 	}
-	// A step-up for the OTHER credential does not remove this one.
 	wrong := f.stepUpPasskey(f.token, keyproto.ActionPasskeyDelete, f.credID)
 	if _, err := f.passkeys.DeletePasskey(bgctx, info, second.CredID, wrong); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("delete with another credential's step-up: %v, want ErrStepUpFailed", err)
@@ -289,8 +254,6 @@ func TestDeletingAPasskeyNeedsAStepUpForThatCredential(t *testing.T) {
 	}
 }
 
-// TestRefusingTheLastPasskeyLeavesTheNonceUsable is spec 02 §8.1 5.5 (AT-SU-8):
-// an action refused after a good proof does not burn the step-up.
 func TestRefusingTheLastPasskeyLeavesTheNonceUsable(t *testing.T) {
 	t.Parallel()
 	f := newKeyFixture(t).guarded()

@@ -1,21 +1,3 @@
-// The rule and dictionary matcher (categorize/rules.ts, ported, extended to the
-// v4 matcher of spec 03c §5.2).
-//
-//   - Subject: `Canon.subject(merchant_raw)` (canonical, at most 512 scalars).
-//   - Prepare: every usable rule expands into one entry per alternative pattern
-//     (canonicalized). Floors in scalars: exact ≥ 2, starts_with ≥ 3,
-//     contains ≥ 4, all ≤ 512. A refused rule or entry is a REPORTED defect,
-//     never silently dropped; `disabled` and `removed` are states, not defects.
-//   - Hit: byte comparisons over UTF-8 (equal, prefix, containment). Scalar-
-//     sequence containment and UTF-8 containment agree (UTF-8 is
-//     self-synchronizing); `String ==` would equate NFC and NFD.
-//   - Total order: priority ascending (lower wins), then exact < starts_with <
-//     contains < regex, then the longer pattern, then pattern, category and id
-//     by code point. Every user rule precedes every dictionary entry.
-//
-// v3 regex rules are not executed (spec 04 §2.2: no regex at v4): such a rule
-// is a `regex_not_supported` defect. conformance/categorize marks the cases
-// that need a regex executor (`requires: ["regex"]`), and this port skips them.
 import HasalaText
 
 public enum MatchKind: String, Sendable, Codable, CaseIterable {
@@ -24,7 +6,6 @@ public enum MatchKind: String, Sendable, Codable, CaseIterable {
   case contains
   case regex
 
-  /// 03c §5.2 `MATCH_ORDER`.
   public var order: Int {
     switch self {
     case .exact: 0
@@ -34,7 +15,6 @@ public enum MatchKind: String, Sendable, Codable, CaseIterable {
     }
   }
 
-  /// The floor in scalars after canonicalization.
   public var minRunes: Int {
     switch self {
     case .exact: 2
@@ -45,8 +25,6 @@ public enum MatchKind: String, Sendable, Codable, CaseIterable {
   }
 }
 
-/// A user rule as the matcher reads it (v3 rules read as one pattern, enabled,
-/// not removed; 03c §5.1).
 public struct RuleInput: Sendable, Equatable {
   public var id: String
   public var patterns: [String]
@@ -67,7 +45,6 @@ public struct RuleInput: Sendable, Equatable {
   }
 }
 
-/// A dictionary entry (`m`, `p`, `c`, `d` in the bundle; 03c §8.5.1).
 public struct DictEntry: Sendable, Equatable {
   public var pattern: String
   public var match: String
@@ -92,14 +69,12 @@ public struct Defect: Sendable, Equatable {
   }
 }
 
-/// One prepared alternative.
 public struct PreparedPattern: Sendable, Equatable {
   public let id: String
   public let pattern: String
   public let match: MatchKind
   public let category: String
   public let priority: Int64
-  /// The dictionary display name (`d`), if any.
   public let display: String?
   let bytes: [UInt8]
   let runes: Int
@@ -140,18 +115,15 @@ public struct PreparedRules: Sendable {
   public let rules: [PreparedPattern]
   public let entries: [PreparedPattern]
   public let defects: [Defect]
-  /// Exact dictionary entries by pattern bytes → index of the first in order.
   let exactIndex: [[UInt8]: Int]
 
   public static let empty = PreparedRules(rules: [], entries: [], defects: [], exactIndex: [:])
 }
 
-/// What the matcher decided for one subject.
 public struct MatchHit: Sendable, Equatable {
   public enum Source: String, Sendable { case rule, dictionary }
   public let source: Source
   public let category: String
-  /// The rule id (for a dictionary entry: `"<match> <pattern>"`).
   public let id: String
   public let pattern: String
   public let match: MatchKind
@@ -159,13 +131,9 @@ public struct MatchHit: Sendable, Equatable {
 }
 
 public enum Matcher {
-  /// Scalar floors and caps of rules.ts.
   public static let maxRulePatternRunes = 512
   public static let maxDictPatternRunes = 64
 
-  /// rules.ts `prepare`, with the v4 extensions. `categories`, when given, gates
-  /// each rule and entry on its category: unknown or retired categories are
-  /// defects (03c §5.2); nil reads every category as active (the v3 vectors).
   public static func prepare(rules: [RuleInput], entries: [DictEntry], categories: (any CategoryLookup)? = nil) -> PreparedRules {
     var defects: [Defect] = []
     var out: [PreparedPattern] = []
@@ -226,7 +194,6 @@ public enum Matcher {
     case defect(Defect)
   }
 
-  /// rules.ts `validateDictEntry`, with v4's `starts_with` (03c §8.5.1).
   public static func validateDictEntry(_ e: DictEntry) -> EntryCheck {
     let id = "\(e.match) \(e.pattern) -> \(e.category)"
     func bad(_ code: String) -> EntryCheck { .defect(Defect(id: id, code: code)) }
@@ -249,7 +216,6 @@ public enum Matcher {
     return .entry(DictEntry(pattern: pattern, match: e.match, category: category, display: e.display))
   }
 
-  /// The first hit for `merchantRaw`, or nil (rules.ts `categorize`).
   public static func firstHit(_ merchantRaw: String, _ prepared: PreparedRules, accept: (PreparedPattern) -> Bool = { _ in true })
     -> MatchHit?
   {
@@ -264,13 +230,10 @@ public enum Matcher {
     return nil
   }
 
-  /// Every pattern that hits, in order (the rule editor's preview, the overreach guard).
   public static func hits(_ pattern: PreparedPattern, merchantRaw: String) -> Bool {
     let subject = Array(Canon.subject(merchantRaw).utf8)
     return !subject.isEmpty && pattern.hits(subject)
   }
-
-  // MARK: Byte and scalar predicates
 
   static func contains(_ hay: [UInt8], _ needle: [UInt8]) -> Bool {
     if needle.isEmpty { return true }
@@ -289,12 +252,10 @@ public enum Matcher {
     return false
   }
 
-  /// `[\n\r\v\f\u0085  ]`.
   static func hasLineBreak(_ s: String) -> Bool {
     s.unicodeScalars.contains { [0x0a, 0x0d, 0x0b, 0x0c, 0x85, 0x2028, 0x2029].contains($0.value) }
   }
 
-  /// `\p{C}`: control, format, surrogate, private use, unassigned.
   static func isUnprintable(_ s: Unicode.Scalar) -> Bool {
     switch s.properties.generalCategory {
     case .control, .format, .surrogate, .privateUse, .unassigned: true
@@ -302,7 +263,6 @@ public enum Matcher {
     }
   }
 
-  /// `[\p{L}\p{N}]`.
   static func isAlnum(_ s: Unicode.Scalar) -> Bool {
     switch s.properties.generalCategory {
     case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter, .decimalNumber, .letterNumber,
@@ -312,7 +272,6 @@ public enum Matcher {
     }
   }
 
-  /// `^[a-z0-9][a-z0-9 _/&-]{0,31}$`.
   static func isDictCategory(_ s: String) -> Bool {
     let u = Array(s.utf8)
     guard (1...32).contains(u.count), ASCII.isLower(u[0]) || ASCII.isDigit(u[0]) else { return false }

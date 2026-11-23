@@ -1,28 +1,3 @@
-// Command hasalad is Hasala's server (spec 02): `hasalad <mode> [arguments]`.
-//
-// Modes (spec 02 §18.3; the rest of that table arrives with its workstream):
-//
-//	serve                                   the API (runtime role)
-//	migrate [--status | --pending] [--to N] apply the embedded migrations (schema owner)
-//	verify structural|usage [--user U] [--repair] [--json]
-//	purge-user <uuid> --confirm <uuid> [--dry-run] | --replay-ledger
-//	invite mint [--note T] [--ttl D] [--review | --email A] | list | revoke <id>
-//	account review <uuid> on|off --confirm <uuid>
-//	account unfreeze <uuid> --confirm <uuid> lift any freeze (the out-of-band recovery path)
-//	account suspend <uuid> --confirm <uuid> suspend an account
-//	account unsuspend <uuid> --confirm <uuid> lift a suspension
-//	waitlist                                counts by state and bank
-//	email test <address>                    queue one test email
-//	console                                 the operator console (spec 07 §8; not built yet)
-//	version                                 hasalad <version> <go version>
-//
-// Exit codes: 0 ok; 2 refused (a startup check, a wrong role or DSN, bad
-// arguments); 1 any other failure.
-//
-// Every mode except migrate and version connects as the runtime role and runs
-// spec 02 §5.6's startup refusals first (internal/pg.CheckServing): no mode
-// runs as a superuser or as the schema owner, behind the embedded migrations,
-// or against a database whose sealed-frame guarantee was weakened.
 package main
 
 import (
@@ -41,14 +16,8 @@ import (
 	"github.com/salehtl/hasala/server/internal/pg"
 )
 
-// version is set at link time (-X main.version=...; the Nix build passes the
-// flake's short revision, 05 §4.2). Empty falls back to the VCS revision in
-// the build info.
 var version string
 
-// modeHandlers is the single dispatch table. checkModeHandlers asserts on every
-// start that its key set is exactly config.Modes(), so a mode cannot be
-// advertised without a handler or handled without being advertised.
 var modeHandlers = map[string]func(env *runEnv, args []string) error{
 	"serve":      runServe,
 	"migrate":    runMigrate,
@@ -63,9 +32,6 @@ var modeHandlers = map[string]func(env *runEnv, args []string) error{
 	"version":    runVersion,
 }
 
-// runEnv is what every mode receives: its output streams, its environment and
-// how to load configuration. A struct rather than globals so a test can run a
-// mode with its own environment and capture what it printed.
 type runEnv struct {
 	stdout, stderr io.Writer
 	environ        []string
@@ -81,7 +47,6 @@ func (e *runEnv) lookup(name string) (string, bool) {
 	return "", false
 }
 
-// load reads the configuration and checks it for one mode.
 func (e *runEnv) load(mode string, apply func(*config.Config)) (config.Config, error) {
 	cfg, err := config.LoadEnv(e.configPath, e.lookup, e.environ)
 	if err != nil {
@@ -100,7 +65,6 @@ func (e *runEnv) load(mode string, apply func(*config.Config)) (config.Config, e
 	return cfg, nil
 }
 
-// refusal marks an error that exits 2.
 type refusal struct{ error }
 
 func (r refusal) Unwrap() error { return r.error }
@@ -133,8 +97,6 @@ func checkModeHandlers() {
 
 func main() {
 	checkModeHandlers()
-	// Spec 02 §20: structured JSON lines on stdout (journald). The standard
-	// log package is routed through the same handler.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	env := &runEnv{stdout: os.Stdout, stderr: os.Stderr, environ: os.Environ()}
 	err := run(env, os.Args[1:])
@@ -148,8 +110,6 @@ func main() {
 	os.Exit(exitCode(err))
 }
 
-// run dispatches argv: the mode comes first, then its own arguments. A global
-// --config before the mode is accepted; HASALA_CONFIG is the alternative.
 func run(env *runEnv, argv []string) error {
 	if len(argv) > 1 && (argv[0] == "--config" || argv[0] == "-config") {
 		env.configPath, argv = argv[1], argv[2:]
@@ -177,7 +137,6 @@ func usage(w io.Writer) {
 		"every mode answers --help\n", strings.Join(modes, ", "))
 }
 
-// newFlags is a FlagSet for one mode that prints to the run's stderr.
 func newFlags(env *runEnv, name string) *flag.FlagSet {
 	fs := flag.NewFlagSet("hasalad "+name, flag.ContinueOnError)
 	fs.SetOutput(env.stderr)
@@ -185,8 +144,6 @@ func newFlags(env *runEnv, name string) *flag.FlagSet {
 	return fs
 }
 
-// parseFlags parses a mode's flags, mapping a usage error to a refusal and
-// --help to flag.ErrHelp (exit 0).
 func parseFlags(fs *flag.FlagSet, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -197,9 +154,6 @@ func parseFlags(fs *flag.FlagSet, args []string) error {
 	return nil
 }
 
-// splitPositional separates leading positional words from flags, so both
-// `purge-user <uuid> --confirm <uuid>` and `verify structural --user U` parse
-// with the standard flag package (which stops at the first non-flag).
 func splitPositional(args []string) (positional, flags []string) {
 	for i, a := range args {
 		if strings.HasPrefix(a, "-") {

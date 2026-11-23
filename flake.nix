@@ -197,7 +197,7 @@
             ]
             ++ goToolsFor system pkgs
             ++ [
-              pkgs.postgresql_17 # initdb/pg_ctl/postgres for internal/pgtest
+              pkgs.postgresql_17.out
               pkgs.bun
               # web/: wrangler (`bun run deploy`) is unreliable under Bun's
               # runtime; `bun run` starts its `#!/usr/bin/env node` bin with this.

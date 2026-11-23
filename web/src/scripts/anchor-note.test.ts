@@ -22,7 +22,7 @@ function button() {
     },
     clearTimeout: (id: number) => timers.delete(id),
   };
-  const note = { textContent: '' as string | null };
+  const note = { textContent: '' };
   const page = new AbortController();
   const press = anchorNote(note, 'data', page.signal);
   const runTimers = () => [...timers.values()].forEach((fn) => fn());

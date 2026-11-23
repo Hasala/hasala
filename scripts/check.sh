@@ -433,6 +433,9 @@ bun install --frozen-lockfile
 bun run --bun typecheck
 bun test
 
+step "typecheck the scripts (scripts, ios/scripts)"
+(cd "$ROOT" && tsgo --noEmit -p scripts)
+
 # --- 6. conformance suites ------------------------------------------------------------
 # Every fixture set under conformance/, with the Go packages that check it:
 # "set|go packages (in server/)". The Go half already ran in step 4. It is
@@ -544,7 +547,7 @@ for entry in "${KNOWN_FAILING[@]}"; do
 done
 
 # --- the real corpus, accounted for -----------------------------------------------
-GATE_STEPS+=", go vet, go test, assist worker, conformance"
+GATE_STEPS+=", go vet, go test, assist worker, scripts typecheck, conformance"
 read -r go_ran go_skipped <"$REAL_GO"
 corpus="go ${go_ran} ran / ${go_skipped} skipped"
 echo

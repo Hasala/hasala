@@ -34,6 +34,11 @@ cat >"$work/bin/oxfmt" <<'STUB'
 printf 'oxfmt %s\n' "$*" >>"$STUB_LOG"
 exit "${STUB_OXFMT_RC:-0}"
 STUB
+cat >"$work/bin/tsgo" <<'STUB'
+#!/bin/sh
+printf 'tsgo %s\n' "$*" >>"$STUB_LOG"
+exit "${STUB_TSGO_RC:-0}"
+STUB
 cat >"$work/bin/go" <<'STUB'
 #!/bin/sh
 case "$PWD" in
@@ -87,7 +92,7 @@ case " $* " in
 esac
 exit 0
 STUB
-chmod +x "$work/bin/bun" "$work/bin/govulncheck" "$work/bin/oxlint" "$work/bin/oxfmt" "$work/bin/go"
+chmod +x "$work/bin/bun" "$work/bin/govulncheck" "$work/bin/oxlint" "$work/bin/oxfmt" "$work/bin/tsgo" "$work/bin/go"
 
 sed -nE 's/^[[:space:]]*"[^|]*\|[^|]*\|[^|]*\|(.*)"$/\1/p' "$ROOT/scripts/check.sh" >"$work/recorded"
 
@@ -152,7 +157,7 @@ lacks() {
 fresh
 g update-ref refs/remotes/origin/main HEAD
 gate "a local run with a merge base" 0
-says "check: OK (real-mail fence, toolchain, fence, oxlint, oxfmt, govulncheck, go vet, go test, assist worker, conformance)"
+says "check: OK (real-mail fence, toolchain, fence, oxlint, oxfmt, govulncheck, go vet, go test, assist worker, scripts typecheck, conformance)"
 lacks "NOT RUN"
 
 fresh
@@ -162,7 +167,7 @@ says "NOT RUN: the golden-fixture rule"
 fresh
 commit second
 gate "a CI run" 0 GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$work/summary"
-says "check: OK (real-mail fence, toolchain, fence, oxlint, oxfmt, go vet, go test, assist worker, conformance)"
+says "check: OK (real-mail fence, toolchain, fence, oxlint, oxfmt, go vet, go test, assist worker, scripts typecheck, conformance)"
 says "NOT RUN: govulncheck"
 lacks "golden-fixture rule ("
 if grep -qF "govulncheck" "$work/summary"; then echo "ok   ...and the job summary names it"; else
@@ -238,6 +243,16 @@ if grep -qxF "oxfmt --check infra/assist scripts ios/scripts" "$work/log"; then 
 	sed 's/^/     /' "$work/log"
 	failures=$((failures + 1))
 fi
+
+if grep -qxF "tsgo --noEmit -p scripts" "$work/log"; then echo "ok   ...ran tsgo on the scripts project"; else
+	echo "FAIL tsgo did not run on the scripts project; the log has:"
+	sed 's/^/     /' "$work/log"
+	failures=$((failures + 1))
+fi
+
+fresh
+gate "a type error in a script" 1 STUB_TSGO_RC=1
+lacks "check: OK"
 
 fresh
 gate "a lint finding" 1 STUB_OXLINT_RC=1

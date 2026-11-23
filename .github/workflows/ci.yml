@@ -443,6 +443,11 @@ jobs:
       - name: oxfmt --check the iOS scripts
         run: nix shell --inputs-from . nixpkgs#oxfmt --command oxfmt --check ios/scripts
 
+      - name: Typecheck the iOS scripts
+        run: >-
+          nix shell --inputs-from . nixpkgs#bun nixpkgs#typescript-go --command
+          bash -c '(cd infra/assist && bun install --frozen-lockfile) && tsgo --noEmit -p scripts'
+
   # The iOS checks that need neither the app build nor a simulator: the
   # HasalaKit package tests (macOS, the newest Xcode), token generator
   # freshness, the project against ios/project.yml, the release-script tests
@@ -625,6 +630,9 @@ jobs:
 
       - name: oxfmt --check
         run: nix develop --command oxfmt --check web
+
+      - name: Typecheck the TypeScript and the tests (TypeScript 7)
+        run: nix develop --command bash -c 'cd web && bun run typecheck'
 
       - name: astro check
         run: nix develop --command bash -c 'cd web && bun run check'

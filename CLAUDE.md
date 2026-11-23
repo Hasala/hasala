@@ -103,8 +103,9 @@ reachable.
 - `go vet` and `go test` in `server/`, then in `server/oracle/`. Both use one
   temporary Postgres (unix socket only). The tests run in random order (refer
   to "Go test order and cleanup").
-- The typecheck and `bun test` of the assist worker (`infra/assist`). Its
-  dependencies are always installed from the lockfile.
+- The typecheck and `bun test` of the assist worker (`infra/assist`), then the
+  typecheck of `scripts/*.ts` and `ios/scripts` (refer to "Typecheck" below).
+  The worker's dependencies are always installed from the lockfile.
 - The conformance suites. The `CONFORMANCE` table in `scripts/check.sh` names
   the Go packages of each fixture set. Each directory
   in `conformance/` must have an entry. When you add a fixture set, add its
@@ -202,8 +203,8 @@ time is Postgres work for each test database, and password hashing.
 
 `scripts/pre-push.sh` runs the fast CI checks on the paths that you changed
 since `origin/main`: the fence, the HasalaCore lints, gitleaks on the new
-commits, gofmt and go vet, nixfmt, oxlint, oxfmt, the tokens, the project,
-the templates, the CI path rules, shellcheck and the web check. It takes seconds. `--all` runs all the checks.
+commits, gofmt and go vet, nixfmt, oxlint, oxfmt, the typechecks, the
+tokens, the project, the templates, the CI path rules, shellcheck and the web check. It takes seconds. `--all` runs all the checks.
 It shows PASS, FAIL or SKIP for each check and fails on a FAIL. A check skips
 when its tool is not on PATH, thus run it in the devShell.
 
@@ -243,6 +244,30 @@ repository root. It takes less than one second.
   TOML files. The JSON fixtures and templates must stay the same byte for
   byte.
 
+### Typecheck
+
+`tsgo` (TypeScript 7, the package `typescript-go` from the flake) does the
+typechecks. Each one takes less than one second.
+
+| Project | Command | Files |
+| --- | --- | --- |
+| `infra/assist/tsconfig.json` | `tsgo --noEmit` | The worker, with the Workers types. |
+| `infra/assist/tsconfig.test.json` | `tsgo --noEmit -p tsconfig.test.json` | The worker and its tests, with the Bun types. |
+| `scripts/tsconfig.json` | `tsgo --noEmit -p scripts` | `scripts/*.ts` and `ios/scripts/**/*.ts`. The Bun types come from `infra/assist/node_modules`, thus install them there first. |
+| `web/tsconfig.json` | `tsgo --noEmit` | The `.ts` and `.mjs` files of the site. |
+| `web/tsconfig.test.json` | `tsgo --noEmit -p tsconfig.test.json` | The tests of the site, with the Bun types. |
+
+- In `infra/assist` and in `web/`, `bun run typecheck` runs the two projects.
+  In `web/` it first runs `astro sync`, which writes `web/.astro/types.d.ts`
+  (the types of `astro:content` and `import.meta.env`). That file is not in the
+  repository, and `tsgo` alone fails in a new checkout.
+- `tsgo` does not read `.astro` files. `bun run check` (`astro check`, with
+  TypeScript 6 from `web/node_modules`) is the only typecheck of the
+  frontmatter, the markup and the `<script>` elements. Do not remove it. It
+  also fails on a hint, thus an unused import in a frontmatter stops it.
+- `gate` runs the worker and the scripts projects, `web` runs the two web
+  projects and `astro check`, and `secrets` runs the scripts project.
+
 ### CI
 
 CI is `.github/workflows/ci.yml`. It runs on each pull request, on each
@@ -271,8 +296,8 @@ jobs run at the same time:
   fails if it finds a reachable advisory.
 - `secrets`: the real-mail fence, the HasalaCore lints
   (`ios/scripts/check-imports.sh --no-manifest` and `check-forbidden.sh`),
-  then gitleaks on the full history, then `oxlint` and `oxfmt --check` on
-  `ios/scripts`.
+  then gitleaks on the full history, then `oxlint`, `oxfmt --check` and the
+  typecheck on `ios/scripts`.
 
 Do not change these job names or the name `ci-ok`. The required status
 checks find the jobs by their names. Add a new job to the `needs` of `ci-ok`
@@ -685,7 +710,8 @@ From `web/`:
 
 1. Run `bun install --frozen-lockfile` one time.
 2. When you edit, run `bun run dev`.
-3. Run `bun run check` (this is `astro check`) and `bun run test`.
+3. Run `bun run typecheck` (TypeScript 7), `bun run check` (this is
+   `astro check`) and `bun run test`.
 4. Run `bun run build`. It writes `dist/` and then runs
    `scripts/check-dist.ts`. The build fails if one of these conditions
    occurs:

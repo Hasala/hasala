@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { ipKey } from '../src/index';
-import { BODY, OK_ANSWER, call, fakes, request } from './helpers';
+import { BODY, OK_ANSWER, call, fakes, need, request } from './helpers';
 
 const ARABIC = 'مطعم الياسمين الشعبي';
 const UNKNOWN_ANSWER = {
@@ -489,7 +489,7 @@ describe('rate limits', () => {
     ]) {
       const fake = fakes();
       await call(fake, request(BODY, { headers: { 'cf-connecting-ip': ip } }));
-      keys.push(fake.limitCalls[0]?.key);
+      keys.push(need(fake.limitCalls[0]).key);
     }
     expect(keys).toEqual(['2001:db8:1:2::/64', '2001:db8:1:2::/64', '2001:db8:1:2::/64']);
   });

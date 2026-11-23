@@ -25,8 +25,9 @@ import { join } from 'node:path';
 
 function arg(name: string, fallback?: string): string {
   const index = Bun.argv.indexOf(`--${name}`);
-  if (index !== -1 && index + 1 < Bun.argv.length) {
-    return Bun.argv[index + 1];
+  const value = index === -1 ? undefined : Bun.argv[index + 1];
+  if (value !== undefined) {
+    return value;
   }
   if (fallback !== undefined) {
     return fallback;

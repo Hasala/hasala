@@ -136,7 +136,9 @@ function quantile(values: number[], fraction: number): number {
   const at = (sorted.length - 1) * fraction;
   const low = Math.floor(at);
   const high = Math.ceil(at);
-  return sorted[low] + (sorted[high] - sorted[low]) * (at - low);
+  const lower = sorted[low] ?? Number.NaN;
+  const upper = sorted[high] ?? Number.NaN;
+  return lower + (upper - lower) * (at - low);
 }
 const show = (value: number): string => (Number.isNaN(value) ? '-' : String(Math.round(value)));
 const pair = (values: number[]): string =>
@@ -273,7 +275,7 @@ if (showSteps) {
     if (quantile(list, 0.95) < 3) {
       continue;
     }
-    const [job, kind, step] = key.split('\t');
+    const [job, kind, step = ''] = key.split('\t');
     console.log(
       `| \`${job}\` | ${kind} | ${step.replaceAll('|', String.raw`\|`)} | ${list.length} | ${pair(list)} |`,
     );

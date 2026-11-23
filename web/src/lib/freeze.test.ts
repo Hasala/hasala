@@ -34,14 +34,14 @@ describe('postFreeze', () => {
   }, 500);
 
   test('an answer inside the wait counts and ends the wait', async () => {
-    let signal: AbortSignal | null | undefined = null;
+    const seen: { signal?: AbortSignal | null } = {};
     const quick = ((_u: string, init: RequestInit) => {
-      ({ signal } = init);
+      seen.signal = init.signal;
       return Promise.resolve(new Response(null, { status: 204 }));
     }) as unknown as typeof fetch;
     expect(await postFreeze('https://api.example/api', token, quick, 5)).toBe('done');
     await Bun.sleep(20);
-    expect(signal?.aborted).toBe(false);
+    expect(seen.signal?.aborted).toBe(false);
   });
 
   test('a network failure inside the wait stays unreachable', async () => {

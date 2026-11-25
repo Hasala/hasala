@@ -24,6 +24,37 @@ Applies to: `ios/HasalaKit/Sources/HasalaModels/Ledger/LedgerStore.swift`
 (`LedgerStore.revision`), `ios/Hasala/Live/Ledger/LiveLedgerStore.swift`,
 `ios/HasalaKit/Sources/HasalaMocks/InMemoryLedger.swift`.
 
+## The contract types stay in HasalaModels, and there is no HasalaContracts module
+
+**Decided by the owner, 2026-11-25.**
+
+Spec 04 §2.2 puts the write surface and the read seam (`LedgerEdit`, `LedgerStore`,
+`UndoToken`, `ActionError` and the drafts) in a module `HasalaContracts`. That module is not
+built, and it will not be built. These types stay in the `HasalaModels` target, in
+`Ledger/LedgerStore.swift`. On this point the layout of `ios/HasalaKit/Package.swift` is the
+record, not the module map of spec 04 §2.2.
+
+The reasons:
+
+- The engines of `HasalaModels` use `LedgerEdit`. `PlanSnapshot.keepExpiredMoves` returns
+  `[LedgerEdit]`, `SortedForYouEngine` gives its undo as a `LedgerEdit`, and `CategoriesEngine`
+  reads a `LedgerEdit` in `refusal`, `apply` and `toast`. A `HasalaContracts` target above
+  `HasalaModels` makes a cycle. A target below it must also take `LedgerState` and each value
+  type that an edit names, and then it is `HasalaModels` with a different name.
+- The cost of the present layout is small. A target that needs only the value types also gets
+  the `LedgerStore` protocol and one `import Observation`. Observation is part of the system,
+  so it adds no dependency.
+- The split changes nothing that a person sees, and it adds an import to each file of the app,
+  HasalaMocks and the tests that names one of these types.
+
+Do not add a `HasalaContracts` target, and do not move these types to a new target, without a
+new decision of the owner. A new contract type (a draft, an edit case, an error case) goes in
+`Ledger/LedgerStore.swift` or next to it in `HasalaModels`.
+
+Applies to: `ios/HasalaKit/Package.swift`,
+`ios/HasalaKit/Sources/HasalaModels/Ledger/LedgerStore.swift` (`LedgerEdit`,
+`ManualEntryDraft`, `BillDraft`, `CategoryDraft`, `UndoToken`, `ActionError`, `LedgerStore`).
+
 ## The Bills chip on Activity counts the payments in the data, not the number on the board
 
 Paper's Activity board draws "Bills 8". The data of that same board has six payments in

@@ -726,8 +726,9 @@ example a freeze dated to a phrase recovery). Refer to
 `cli.account_unsuspend`) and record a `suspend` or `unsuspend` line in the
 restore ledger. Refer to "Suspend an account, or lift a suspension" in
 `docs/runbooks/restore.md`. `console` is the operator
-console of spec 07. It is minimal: waitlist approval, invites and the email
-log.
+console of spec 07. It is minimal: waitlist approval, invites, the email
+log and the banks. That is the accepted scope for the beta
+(`docs/decisions/console-scope.md`).
 
 `HASALA_MIN_IOS_BUILD` (Nix: `services.hasala.minIosBuild`) is the oldest iOS
 build that hasalad serves: the `CFBundleVersion` with the dot removed
@@ -1144,6 +1145,13 @@ the approval of the owner for that deployment.
   chain it reads. Checkpoints come later, with a written rule for the cadence
   and for what a mismatch does. Refer to
   `docs/decisions/sync-writer-checkpoints.md`.
+- **Operator console (2026-11-25)**: the minimal console is the scope for the
+  beta. Account actions, the audit log and a mail retry go through the
+  `hasalad` command line, not a console screen. Refer to
+  `docs/decisions/console-scope.md`.
+- **HasalaKit layout (2026-11-25)**: `LedgerEdit`, `LedgerStore` and the other
+  contract types stay in `HasalaModels`. There is no `HasalaContracts` module.
+  Refer to `docs/decisions/code/ios-hasalakit-to-tests.md`.
 - **Outbound mail**: Cloudflare Email Service.
 - **Hosting (QA)**: the QA host, behind Cloudflare Tunnel. hasalad listens
   only on loopback. It has no TLS code.

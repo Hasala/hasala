@@ -12,7 +12,7 @@ The decisions of record of each area are one level up, in `docs/decisions/`.
 | [CI, the flake, the QA module and the app shell](github-to-ios.md) | 29 |
 | [iOS crypto core](ios-crypto.md) | 16 |
 | [iOS core, Domain to Mail](ios-domain-to-mail.md) | 18 |
-| [iOS account, accounts, activity and bills screens](ios-hasala-features-account-to-bills.md) | 13 |
+| [iOS account, accounts, activity and bills screens](ios-hasala-features-account-to-bills.md) | 14 |
 | [iOS Home and Mailbox screens](ios-hasala-features-home-to-mailbox.md) | 12 |
 | [iOS onboarding](ios-hasala-features-onboarding-to-mocks.md) | 14 |
 | [iOS app, Plan, Profile, Review and Search screens](ios-hasala-features-plan-to-search.md) | 12 |

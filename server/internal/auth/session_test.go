@@ -295,3 +295,41 @@ func TestIssueRejectsAnUnusableConfiguration(t *testing.T) {
 		t.Fatal("the zero user id must be rejected")
 	}
 }
+
+func TestSessionInfoCarriesTheAccountStatus(t *testing.T) {
+	t.Parallel()
+	pool := pgtest.New(t)
+	u := newTestUser(t, pool)
+	c := newClock()
+	s := newSessions(pool, time.Hour, c)
+	tok, err := s.Issue(bgctx, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct {
+		name string
+		sql  string
+		want AccountStatus
+	}{
+		{name: "active", want: AccountStatus{}},
+		{name: "suspended", sql: `UPDATE users SET status = 'suspended', suspended_at = now() WHERE id = $1`,
+			want: AccountStatus{Suspended: true}},
+		{name: "suspended and frozen", sql: `UPDATE users SET frozen_at = now(), freeze_trigger_at = now(),
+			frozen_by = 'holder' WHERE id = $1`, want: AccountStatus{Suspended: true, Frozen: true}},
+		{name: "frozen", sql: `UPDATE users SET status = 'active', suspended_at = NULL WHERE id = $1`,
+			want: AccountStatus{Frozen: true}},
+	} {
+		if step.sql != "" {
+			if _, err := pool.Exec(bgctx, step.sql, u); err != nil {
+				t.Fatalf("%s: %v", step.name, err)
+			}
+		}
+		info, err := s.Info(bgctx, tok)
+		if err != nil {
+			t.Fatalf("%s: %v", step.name, err)
+		}
+		if info.Account != step.want {
+			t.Fatalf("%s: Account = %+v, want %+v", step.name, info.Account, step.want)
+		}
+	}
+}

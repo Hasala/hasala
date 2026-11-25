@@ -46,11 +46,7 @@ func (s *Server) handleStepUpBegin(w http.ResponseWriter, r *http.Request, userI
 	if !ok {
 		return
 	}
-	st, err := s.accountStatus(r.Context(), userID)
-	if err != nil {
-		s.writeKeyErr(w, r, err)
-		return
-	}
+	st := info.Account
 	if st.Suspended && keyproto.Action(req.Action) != keyproto.ActionAccountDelete {
 		s.logf("api: %s: refused, the account is suspended", route(r))
 		writeAccountSuspended(w)

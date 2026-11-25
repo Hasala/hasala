@@ -153,6 +153,8 @@ func accountByEmail(ctx context.Context, q querier, emailNorm string) (accountSt
 	return s, true, nil
 }
 
+const accountSuspended = "suspended"
+
 type AccountStatus struct {
 	Suspended bool
 	Frozen    bool

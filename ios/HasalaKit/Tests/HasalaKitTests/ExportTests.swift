@@ -6,11 +6,44 @@ import Testing
 struct CSVExportTests {
   @Test(arguments: [
     ("=SUM(A1)", "'=SUM(A1)"), ("+971", "'+971"), ("-5", "'-5"), ("@cmd", "'@cmd"),
-    ("  =x", "'  =x"), ("\u{A0}+x", "'\u{A0}+x"), ("\tTab", "'\tTab"), ("\u{FF1D}1", "'\u{FF1D}1"),
-    ("Carrefour", "Carrefour"), ("a=b", "a=b"), ("", ""),
+    ("\u{FF1D}1", "'\u{FF1D}1"), ("\u{FF0B}1", "'\u{FF0B}1"), ("\u{FF0D}1", "'\u{FF0D}1"), ("\u{FF20}1", "'\u{FF20}1"),
   ])
-  func neutralizesFormulas(input: String, expected: String) {
+  func neutralizesEachTrigger(input: String, expected: String) {
     #expect(CSVExport.neutralize(input) == expected)
+  }
+
+  @Test(arguments: ["=", "+", "-", "@", "\u{FF1D}", "\u{FF0B}", "\u{FF0D}", "\u{FF20}"])
+  func neutralizesATriggerAlone(trigger: String) {
+    #expect(CSVExport.neutralize(trigger) == "'" + trigger)
+  }
+
+  @Test(arguments: [" ", "\t", "\n", "\u{0B}", "\u{0C}", "\r", "\u{A0}"])
+  func skipsEachBlankBeforeATrigger(blank: String) {
+    #expect(CSVExport.neutralize(blank + "=x") == "'" + blank + "=x")
+    #expect(CSVExport.neutralize(" " + blank + "+x") == "' " + blank + "+x")
+    #expect(CSVExport.neutralize("x" + blank + "=x") == "x" + blank + "=x")
+  }
+
+  @Test(arguments: ["\t", "\r", "\n"])
+  func neutralizesEachFirstControl(control: String) {
+    #expect(CSVExport.neutralize(control + "Tab") == "'" + control + "Tab")
+    #expect(CSVExport.neutralize(control) == "'" + control)
+    #expect(CSVExport.neutralize(" " + control + "Tab") == " " + control + "Tab")
+    #expect(CSVExport.neutralize("Tab" + control) == "Tab" + control)
+  }
+
+  @Test(arguments: [" ", "\u{0B}", "\u{0C}", "\u{A0}"])
+  func keepsABlankBeforePlainText(blank: String) {
+    #expect(CSVExport.neutralize(blank + "Carrefour") == blank + "Carrefour")
+    #expect(CSVExport.neutralize(blank) == blank)
+  }
+
+  @Test(arguments: [
+    "", "Carrefour", "a=b", "a+b", "a-b", "a@b", "5", "0.5", "'", "'=1", "\"=1\"", "x \u{FF1D}1", "كارفور", "Al-Futtaim",
+    "me@example.com",
+  ])
+  func keepsPlainValues(value: String) {
+    #expect(CSVExport.neutralize(value) == value)
   }
 
   @Test func quotesAfterNeutralizing() {

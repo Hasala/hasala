@@ -35,7 +35,7 @@ func newWebRig(t *testing.T) *webRig {
 	h := newHarness(t).passkeys()
 	tagger, fake, q := h.accounts()
 	q.Register("test", mailq.TestRenderer)
-	q.Register("invite", invites.Renderer{WebBase: "https://hasala.app", ManualTestFlight: true})
+	q.Register("invite", invites.Renderer{WebBase: "https://hasala.app"})
 	wl := waitlist.New(h.pool, tagger, "https://hasala.app")
 	wl.Register(q)
 	generous := func() *Limiter { return NewLimiter(1000, 1000, 100, time.Now) }

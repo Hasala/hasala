@@ -263,12 +263,11 @@ type OpsConfig struct {
 func (o OpsConfig) Enabled() bool { return o.NtfyURL != "" }
 
 type ConsoleConfig struct {
-	Listen         string
-	MetricsListen  string
-	Host           string
-	Logins         []string
-	Tailnet        string
-	TestFlightMode string
+	Listen        string
+	MetricsListen string
+	Host          string
+	Logins        []string
+	Tailnet       string
 }
 
 type PurgeArgs struct {
@@ -484,7 +483,6 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	str("HASALA_CONSOLE_HOST", &c.Console.Host)
 	list("HASALA_CONSOLE_LOGINS", &c.Console.Logins)
 	str("HASALA_CONSOLE_TAILNET", &c.Console.Tailnet)
-	str("HASALA_TESTFLIGHT_MODE", &c.Console.TestFlightMode)
 	return errors.Join(errs...)
 }
 
@@ -1000,9 +998,6 @@ func (c Config) validateConsole() error {
 	}
 	if c.Auth.RPID != "" && (k.Host == c.Auth.RPID || strings.HasSuffix(k.Host, "."+c.Auth.RPID)) {
 		return fmt.Errorf("HASALA_CONSOLE_HOST %q is under the RP ID: the console never lives on a %s name", k.Host, c.Auth.RPID)
-	}
-	if k.TestFlightMode != "external" && k.TestFlightMode != "manual" {
-		return fmt.Errorf("HASALA_TESTFLIGHT_MODE is %q: want external or manual", k.TestFlightMode)
 	}
 	return nil
 }

@@ -611,10 +611,8 @@ struct HonestEndScreen: View {
   var onSignOut: (() -> Void)?
 
   @Environment(AccountSession.self) private var session: AccountSession?
-  @State private var failure: AuthFailure?
   @State private var confirmSignOut = false
 
-  private var startsFresh: Bool { BuildSurface.showsUnfinished }
   private var addsPasskeys: Bool { session?.capabilities.contains(.addPasskey) ?? false }
 
   var body: some View {
@@ -623,30 +621,18 @@ struct HonestEndScreen: View {
       subtitle: "We never had its key. Only your words or a passkey can open it.",
       back: .system
     ) {
-      VStack(alignment: .leading, spacing: 12) {
-        NeedsCard {
-          NeedRow(icon: .iPad, hue: .sky, title: "Another device still signed in?",
-                  detail: Self.otherDevice(addsPasskeys: addsPasskeys, method: session?.account.profile?.method))
-          NeedRow(icon: .paper, hue: .sand, title: "Look again",
-                  detail: "Check where you keep important papers. Any copy works if the order is right.")
-        }
-        if startsFresh {
-          WarningNote(text: "Starting fresh deletes your old sealed data after 7 days. Plans, rules and edits can't come back.")
-        }
-        FailureBanner(failure: failure)
+      NeedsCard {
+        NeedRow(icon: .iPad, hue: .sky, title: "Another device still signed in?",
+                detail: Self.otherDevice(addsPasskeys: addsPasskeys, method: session?.account.profile?.method))
+        NeedRow(icon: .paper, hue: .sand, title: "Look again",
+                detail: "Check where you keep important papers. Any copy works if the order is right.")
       }
     } footer: {
       Button("I found my words", action: onFoundWords)
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("honest.foundWords")
-      if startsFresh {
-        SecondaryLink(title: "Start fresh with this email", identifier: "honest.startFresh", role: .destructive) {
-          failure = .notInThisBuild
-        }
-      } else {
-        WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "honest.talk")
-        WebLink(title: "Delete my account instead", url: "mailto:privacy@hasala.app?subject=Delete%20my%20account",
-                identifier: "honest.delete")
+      ForEach(Self.helpLinks, id: \.identifier) { link in
+        WebLink(title: link.title, url: link.url, identifier: link.identifier)
       }
       if onSignOut != nil {
         SecondaryLink(title: "Sign out", identifier: "unlock.signOut", role: .destructive) { confirmSignOut = true }
@@ -659,6 +645,18 @@ struct HonestEndScreen: View {
       Text(AccountCopy.signOutMessage)
     }
   }
+
+  struct HelpLink: Equatable {
+    var title: String
+    var url: String
+    var identifier: String
+  }
+
+  static let helpLinks = [
+    HelpLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "honest.talk"),
+    HelpLink(title: "Delete my account instead", url: "mailto:privacy@hasala.app?subject=Delete%20my%20account",
+             identifier: "honest.delete"),
+  ]
 
   static func otherDevice(addsPasskeys: Bool, method: SignInMethod?) -> String {
     switch method {

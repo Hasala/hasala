@@ -11,7 +11,7 @@ nonisolated enum BillPatch {
       let index = base.year * 12 + (base.month - 1) + months
       let year = index >= 0 ? index / 12 : (index - 11) / 12
       let ym = YearMonth(year, index - year * 12 + 1)
-      return LocalDate(ym.year, ym.month, min(b.usualDay, ym.days))
+      return b.usualLastWorkingDay ? ym.lastWorkingDay : LocalDate(ym.year, ym.month, min(b.usualDay, ym.days))
     }
   }
 
@@ -176,8 +176,9 @@ nonisolated enum BillPatch {
       guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
       try BillLifecycle.dismissNotice(&s.bills[i], id: noticeID)
       return nil
-    case .editIncome(let id, let amount, let payday, let active):
-      try BillLifecycle.editIncome(&s, id, amount: amount, payday: payday, active: active, today: today)
+    case .editIncome(let id, let amount, let payday, let lastWorkingDay, let active):
+      try BillLifecycle.editIncome(
+        &s, id, amount: amount, payday: payday, lastWorkingDay: lastWorkingDay, active: active, today: today)
       return "Income updated"
     default:
       throw .notFound

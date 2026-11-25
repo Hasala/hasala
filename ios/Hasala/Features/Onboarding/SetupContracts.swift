@@ -88,6 +88,9 @@ struct SetupReadBack: Equatable, Sendable {
   var incomeMinor: Int64?
   var payday: Int?
   var split: StartingPlan?
+  var paydayLastWorkingDay = false
+
+  var paydayChoice: PaydayChoice? { payday.map { PaydayChoice(day: $0, lastWorkingDay: paydayLastWorkingDay) } }
 }
 
 @MainActor
@@ -98,7 +101,13 @@ protocol SetupAuthoring: AnyObject {
   func requestBank(_ name: String) async throws(SetupFailure)
   func requestBank(slug: String, senderDomain: String?) async throws(SetupFailure)
   func bankRequests() async throws(SetupFailure) -> BankRequestsSnapshot
-  func savePlan(income: Int64?, payday: Int?, plan: StartingPlan?) async throws(SetupFailure)
+  func savePlan(income: Int64?, payday: Int?, lastWorkingDay: Bool, plan: StartingPlan?) async throws(SetupFailure)
+}
+
+extension SetupAuthoring {
+  func savePlan(income: Int64?, payday: Int?, plan: StartingPlan?) async throws(SetupFailure) {
+    try await savePlan(income: income, payday: payday, lastWorkingDay: false, plan: plan)
+  }
 }
 
 @MainActor

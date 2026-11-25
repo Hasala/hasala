@@ -9,6 +9,17 @@ enum PaydayChoice: Hashable, Sendable {
 
   static let standard = PaydayChoice.day(28)
 
+  init(day: Int, lastWorkingDay: Bool) {
+    self = lastWorkingDay ? .lastWorkingDay : .day(day)
+  }
+
+  var isLastWorkingDay: Bool { self == .lastWorkingDay }
+
+  func opDay(today: LocalDate, saved: PaydayChoice?, savedDay: Int?) -> Int {
+    if self == saved, let savedDay { return savedDay }
+    return opDay(today: today)
+  }
+
   var index: Int {
     switch self {
     case .day(let d): min(max(d, 1), 31) - 1
@@ -21,9 +32,7 @@ enum PaydayChoice: Hashable, Sendable {
     case .day(let d):
       return LocalDate(month.year, month.month, min(max(d, 1), month.days))
     case .lastWorkingDay:
-      var date = LocalDate(month.year, month.month, month.days)
-      while date.weekday >= 5 { date = date.adding(days: -1) }
-      return date
+      return month.lastWorkingDay
     }
   }
 

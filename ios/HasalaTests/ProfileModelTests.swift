@@ -111,7 +111,7 @@ struct ProfileModelTests {
     let bills = BillsViewModel(app: app)
     let axa = try #require(bills.detail("axa"))
     #expect(axa.isLate)
-    bills.markPaid("axa")
+    #expect(app.perform(.markBillPaid("axa")))
     #expect(bills.detail("axa")?.state == .upcoming)
     #expect(bills.detail("axa")?.history.dropFirst().first?.title == "Wed 7 Oct")
     bills.stopTracking("axa")

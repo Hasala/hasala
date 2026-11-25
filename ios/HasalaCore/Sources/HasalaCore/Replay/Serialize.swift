@@ -277,10 +277,12 @@ extension State {
         ])
       }),
       "income_sources": .array(p.incomeSources.values.sorted { compareUTF8($0.id, $1.id) < 0 }.map { s in
-        obj([
+        var source: [String: JSONValue] = [
           "id": .string(s.id), "name": .string(s.name), "category_id": .string(s.categoryID), "amount_minor": dec(s.amountMinor),
           "payday": num(s.payday), "active": .bool(s.active), "write": write(s.write),
-        ])
+        ]
+        if s.paydayLastWorkingDay { source["payday_last_working_day"] = .bool(true) }
+        return obj(source)
       }),
       "roles": .array(p.roles.keys.sorted { compareUTF8($0, $1) < 0 }.map { c in
         obj(["category_id": .string(c), "role": .string(p.roles[c]!.role), "write": write(p.roles[c]!.write)])

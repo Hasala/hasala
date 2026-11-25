@@ -228,3 +228,20 @@ The invite field shows the code in groups of four with hyphens. Its state
 
 Applies to: `ios/Hasala/Features/Account/CredentialRules.swift` (`InviteCodeEntry`,
 `InviteCode.entryCharacters`).
+
+## Recurring has no "All schedules" link
+
+The Upcoming header of the Recurring page shows the fact "N tracked" in every build
+(`BillsView.trackedFact`). N is `BillsSnapshot.tracked`.
+
+- The Debug surface had a link "All schedules · N" in this header. The screen behind it
+  (`AllSchedulesView`, spec 04 §16.2 B1) was never built, so the link only showed the
+  toast "Every schedule comes in a later build". The owner decided on 2026-11-25 to
+  remove the link and the toast and not to build the screen (issue #316).
+- The page already lists the upcoming, paused and ended items, so the count needs no
+  destination.
+- `ReleaseSurfaceHomeTests` and `ReleaseSurfaceProfileTests` still assert that
+  `bills.allSchedules` is absent. Thus the link cannot come back without a decision.
+
+Applies to: `ios/Hasala/Features/Bills/BillsView.swift` (`BillsView.upcoming`,
+`BillsView.trackedFact`).

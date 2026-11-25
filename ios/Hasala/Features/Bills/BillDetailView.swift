@@ -333,7 +333,7 @@ struct BillDetailView: View {
             .accessibilityIdentifier("bills.detail.editSalary")
         } else {
           if d.isLate && !model.holdsLate {
-            Button("I paid it — find the payment") { model.markPaid(d.id) }
+            Button("I paid it — find the payment") { sheet = RecurringSheet.find(d.id, in: app.store.state) }
               .buttonStyle(.pill(.primary, fill: true))
               .pillHeight()
               .accessibilityIdentifier("bills.detail.paid")

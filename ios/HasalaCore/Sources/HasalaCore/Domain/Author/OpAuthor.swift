@@ -435,14 +435,17 @@ public struct OpAuthor: Sendable {
     return out
   }
 
-  public mutating func setIncomeSource(id: String, name: String, category: String = "salary", amountMinor: Int64, payday: Int64, active: Bool = true) {
+  public mutating func setIncomeSource(
+    id: String, name: String, category: String = "salary", amountMinor: Int64, payday: Int64, lastWorkingDay: Bool? = nil,
+    active: Bool = true
+  ) {
     let name = label(name, "name")
-    add(
-      .incomeSourceSet,
-      [
-        ("id", .string(id)), ("name", .string(name)), ("category_id", .string(category)), ("amount_minor", .string(String(amountMinor))),
-        ("payday", .number(JSONNumber(payday))), ("active", .bool(active)),
-      ])
+    var fields: [(String, JSONValue)] = [
+      ("id", .string(id)), ("name", .string(name)), ("category_id", .string(category)), ("amount_minor", .string(String(amountMinor))),
+      ("payday", .number(JSONNumber(payday))), ("active", .bool(active)),
+    ]
+    if let lastWorkingDay { fields.append(("payday_last_working_day", .bool(lastWorkingDay))) }
+    add(.incomeSourceSet, fields)
   }
 
   public mutating func setPlanRole(category: String, role: String) {

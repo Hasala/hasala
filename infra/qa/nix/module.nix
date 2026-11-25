@@ -206,20 +206,8 @@ let
     HASALA_CONSOLE_LOGINS = concatStringsSep "," cfg.console.logins;
     HASALA_CONSOLE_TAILNET = toString cfg.console.tailnet;
     HASALA_PURGE_LEDGER_PATH = "${ledgerDir}/purged";
-    HASALA_TESTFLIGHT_MODE = if cfg.asc.enable then "external" else "manual";
     GOMEMLIMIT = "200MiB";
     TZ = "UTC";
-  }
-  // optionalAttrs cfg.asc.enable {
-    HASALA_ASC_KEY_FILE = "%d/asc-key.p8";
-    HASALA_ASC_KEY_ID = cfg.asc.keyId;
-    HASALA_ASC_KEY_KIND = cfg.asc.keyKind;
-    HASALA_ASC_ISSUER_ID = cfg.asc.issuerId;
-    HASALA_ASC_BUNDLE_ID = cfg.asc.bundleId;
-    HASALA_ASC_BETA_GROUP = cfg.asc.betaGroup;
-    HASALA_ASC_TESTER_LIMIT = toString cfg.asc.testerLimit;
-    HASALA_ASC_RECONCILE_INTERVAL = "10m";
-    HASALA_ASC_REQUEST_BUDGET = "300";
   };
 
   retryText = ''
@@ -754,7 +742,6 @@ let
     inherit (cfg) mailboxRouteKeyFile authKeyFile saltKeyFile;
     "email.apiTokenFile" = cfg.email.apiTokenFile;
     "web.turnstile.secretFile" = cfg.web.turnstile.secretFile;
-    "asc.keyFile" = cfg.asc.keyFile;
     "tunnel.credentialsFile" = cfg.tunnel.credentialsFile;
     "backup.offsite.rcloneConfigFile" = cfg.backup.offsite.rcloneConfigFile;
   };
@@ -765,6 +752,17 @@ let
   secretsInStore = lib.attrNames (lib.filterAttrs (_: p: !outsideStore p) secretFiles);
 in
 {
+  imports = [
+    (lib.mkRemovedOptionModule
+      [
+        "services"
+        "hasala"
+        "asc"
+      ]
+      "The operator adds each invited tester to TestFlight by hand (docs/decisions/testflight-manual.md)."
+    )
+  ];
+
   options.services.hasala = {
     enable = mkEnableOption "the Hasala QA backend (spec 05)";
 
@@ -1044,41 +1042,6 @@ in
       };
     };
 
-    asc = {
-      enable = mkEnableOption "App Store Connect automation in the console (else manual TestFlight mode)";
-      keyFile = secretPath "The dedicated App Manager .p8 key; reaches hasala-console only.";
-      keyId = nullStr "The key's id (not secret).";
-      keyKind = mkOption {
-        type = types.enum [
-          "individual"
-          "team"
-        ];
-        default = "team";
-        description = "Individual or team key (spec 07 §7.2).";
-      };
-      issuerId = nullStr "The team key issuer id (a UUID; not secret).";
-      refusedKeyIds = mkOption {
-        type = types.listOf types.str;
-        default = [ ];
-        description = "Key ids that must never run on this host (the owner's upload key, PQ-16; M20).";
-      };
-      bundleId = mkOption {
-        type = types.str;
-        default = "app.hasala.ios";
-        description = "The app's bundle id.";
-      };
-      betaGroup = mkOption {
-        type = types.str;
-        default = "Hasala Beta";
-        description = "The external TestFlight group.";
-      };
-      testerLimit = mkOption {
-        type = types.ints.between 1 10000;
-        default = 10000;
-        description = "Apple's external tester cap.";
-      };
-    };
-
     hardening.inaccessiblePaths = mkOption {
       type = types.listOf types.str;
       default = [
@@ -1267,28 +1230,14 @@ in
             )
             "exactly one nginx virtual host may proxy to the console, it must be in services.nginx.tailscaleAuth.virtualHosts, every location of it other than /auth must run auth_request /auth (never auth_request off), and no http, stream or top-level nginx config may name the console port."
           )
-          (a "M20"
-            (
-              (
-                !cfg.asc.enable
-                || (
-                  cfg.console.enable
-                  && cfg.asc.keyFile != null
-                  && matches "[A-Z0-9]{10}" cfg.asc.keyId
-                  && cfg.asc.refusedKeyIds != [ ]
-                  && !lib.elem cfg.asc.keyId cfg.asc.refusedKeyIds
-                  && matches uuidRe cfg.asc.issuerId
-                )
-              )
-              && !lib.any (
-                k:
-                lib.hasPrefix "HASALA_CONSOLE_" k
-                || lib.hasPrefix "HASALA_ASC_" k
-                || lib.hasPrefix "HASALA_TESTFLIGHT_" k
-              ) (lib.attrNames (fixedEnv // cfg.extraEnvironment))
-            )
-            "App Store Connect needs the console, the dedicated key (file, 10-character id not in a non-empty refusedKeyIds) and a UUID issuer; serve never gets a console, ASC or TestFlight variable."
-          )
+          (a "M20" (
+            !lib.any (
+              k:
+              lib.hasPrefix "HASALA_CONSOLE_" k
+              || lib.hasPrefix "HASALA_ASC_" k
+              || lib.hasPrefix "HASALA_TESTFLIGHT_" k
+            ) (lib.attrNames (fixedEnv // cfg.extraEnvironment))
+          ) "serve never gets a console, App Store Connect or TestFlight variable.")
           (a "M21"
             (
               !(cfg.console.enable || cfg.tunnel.enable)
@@ -1716,7 +1665,6 @@ in
             "hasala-ledger"
           ];
           ExecStart = "${hasalad} console";
-          LoadCredential = optional cfg.asc.enable "asc-key.p8:${cfg.asc.keyFile}";
           InaccessiblePaths = hardening.InaccessiblePaths ++ [ "-/run/credentials/hasalad.service" ];
           ReadWritePaths = [ ledgerDir ];
           Restart = "on-failure";

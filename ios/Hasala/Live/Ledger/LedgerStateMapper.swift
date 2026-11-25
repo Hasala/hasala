@@ -136,7 +136,7 @@ nonisolated enum LedgerStateMapper {
       income: .aed(Fils.sum(sources.map(\.amountMinor))), payday: Int(sources.first?.payday ?? 28),
       startingSplit: split.map { [Int($0.need), Int($0.want), Int($0.saving)] } ?? [50, 30, 20], budgets: budgets,
       incomeByMonth: incomeByMonth, incomeExpectedByMonth: expectedByMonth, incomeReceivedByMonth: receivedByMonth,
-      zeroSet: zeroSet, expiredMoves: expiredMoves)
+      zeroSet: zeroSet, expiredMoves: expiredMoves, paydayLastWorkingDay: sources.first?.paydayLastWorkingDay ?? false)
 
     let bills = try liveBills(feed, r: r, context: c, txns: txns, income: engine.plan.incomeSources.values)
 
@@ -165,11 +165,12 @@ nonisolated enum LedgerStateMapper {
         learnedToday: rule.origin == "learned" && rule.createdAt.flatMap(localDay) == c.today)
     }
 
+    let rates = try r.rates().map { CurrencyRate(currency: $0.currency, rateMicro: $0.rateMicro, updatedAt: $0.updatedAt) }
     let state = LedgerState(
       categories: categories, accounts: accounts, txns: txns, plan: plan, bills: bills, billCandidates: feed.candidates,
       projects: projects, goals: goals, rules: mappedRules, profile: c.profile, mailbox: c.mailbox, prefs: c.prefs,
-      netWorth: NetWorthHistory(), skippedReview: skipped(txns, c),
-      rates: try r.rates().map { CurrencyRate(currency: $0.currency, rateMicro: $0.rateMicro, updatedAt: $0.updatedAt) },
+      netWorth: netWorthHistory(accounts: liveAccounts, checkins: checkins, rates: rates, month: month),
+      skippedReview: skipped(txns, c), rates: rates,
       unreadMail: unreadMail, unreadTexts: unreadTexts, reading: c.reading)
     return Mapped(state: state, candidates: feed.derived.candidates)
   }
@@ -447,13 +448,6 @@ nonisolated enum LedgerStateMapper {
 
   static func clamp(_ year: Int, _ month: Int, _ day: Int) -> LocalDate {
     LocalDate(year, month, min(day, CivilCalendar.daysIn(year: year, month: month)))
-  }
-
-  static func nextPayday(_ day: Int, after: LocalDate) -> LocalDate {
-    let this = clamp(after.year, after.month, day)
-    if this >= after { return this }
-    let n = after.yearMonth.next
-    return clamp(n.year, n.month, day)
   }
 
   static func health(_ st: MailboxStatus, nowMs: Int64) -> MailboxHealth {

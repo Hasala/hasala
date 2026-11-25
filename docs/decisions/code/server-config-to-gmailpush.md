@@ -65,7 +65,9 @@ Fence F7-4 (spec 07 §8.1) has two halves in the server itself:
 
 - `hasalad serve` refuses to start while a `HASALA_CONSOLE_*` variable, a `HASALA_ASC_*`
   variable or `HASALA_TESTFLIGHT_MODE` is set. Thus a unit with incorrect wiring cannot
-  turn the public process into a console, and cannot give it the App Store Connect key.
+  turn the public process into a console, and cannot give it an App Store Connect key.
+  No build reads the last two names now (`docs/decisions/testflight-manual.md`). The
+  refusal stays, because a unit that carries one has incorrect wiring.
 - `hasalad console` refuses to start while one of the secret files of `serve` is named
   (the auth key, the salt key, the APNs key, the route key, the email token, the
   Turnstile secret).

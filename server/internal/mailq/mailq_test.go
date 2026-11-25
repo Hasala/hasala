@@ -424,6 +424,27 @@ func TestInviteStepsAndCode(t *testing.T) {
 	}
 }
 
+func TestInviteSaysWeAddTheTesterOurselves(t *testing.T) {
+	r, err := RenderTemplate("invite", Content{Email: "a@example.com", Code: "ABCD-EFGH-IJKL-MNOP-QRST-UV23",
+		InviteURL: "https://hasala.app/i/X#y", FallbackText: "hasala.app/i/X", Until: "Sunday 25 October"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const step = "Accept Apple's invitation and install Hasala. We'll add you to Hasala's TestFlight beta ourselves, " +
+		"and Apple then emails you the invitation: open it on your iPhone, tap View in TestFlight, then Accept and Install."
+	if !strings.Contains(r.HTML, "\n<li>"+step+"</li>\n") {
+		t.Errorf("invite HTML lacks the manual step:\n%s", r.HTML)
+	}
+	if !strings.Contains(r.Text, "\n2. "+step+"\n") {
+		t.Errorf("invite text lacks the manual step:\n%s", r.Text)
+	}
+	for _, gone := range []string{"it can arrive before or after this email", "App Store Connect"} {
+		if strings.Contains(r.HTML, gone) || strings.Contains(r.Text, gone) {
+			t.Errorf("the invite still has the automatic step (%q)", gone)
+		}
+	}
+}
+
 func TestBankSupportedOffersTestFlightToAccounts(t *testing.T) {
 	acct, err := RenderTemplate("bank_supported", Content{BankName: "Emirates NBD", AccountAudience: true})
 	if err != nil {

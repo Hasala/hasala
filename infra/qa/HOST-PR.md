@@ -9,7 +9,7 @@ Every value in angle brackets is a placeholder the owner fills from his own
 records when opening the PR. None of them belongs in this public repository:
 the console's host name, the tailnet name, the owner's tailnet login, the
 tunnel UUID, the Cloudflare account id, the APNs key id, the Google client and
-project ids, the age recipients and the App Store Connect key ids. An opened PR
+project ids and the age recipients. An opened PR
 must contain no placeholder (spec 05 AT-K3).
 
 The host repository's own rules apply to each PR: an agent works in its own
@@ -459,7 +459,7 @@ console that serves (spec 07 §8). Until then, enabling it leaves
 | File | Change |
 | --- | --- |
 | `<the host's LAN reverse-proxy module>` | Its tailnet-only list gains the entry below; that module's own assertions then cover it (gated names, `Expected-Tailnet` on `/auth`, only `/` and `/auth` locations) |
-| `modules/services/hasala.nix` | The `console`, `asc` and `web` settings below, and the taken-ports assertion also checks `console.port` and `console.metricsPort` |
+| `modules/services/hasala.nix` | The `console` and `web` settings below, and the taken-ports assertion also checks `console.port` and `console.metricsPort` |
 | `<the host's taken-ports list>` | Gains `8472` and `9473` |
 | `CLAUDE.md` | The Hasala bullet gains: the console at `https://<console host>`, tailnet-only, identity from tailscale-nginx-auth's `X-Webauth-User`, and the kernel rule that lets only nginx connect to 8472 |
 
@@ -486,18 +486,12 @@ console that serves (spec 07 §8). Until then, enabling it leaves
       logins = [ "<owner's tailnet login>" ];
       tailnet = "<tailnet name>";
     };
-    # Manual TestFlight mode until the dedicated App Manager key exists; a
-    # follow-up PR adds hasala/asc_key_p8 to sops and switches it on:
-    #   asc = {
-    #     enable = true;
-    #     keyFile = secret "asc_key_p8";
-    #     keyId = "<APP_MANAGER_KEY_ID>";
-    #     keyKind = "team";                       # or "individual"
-    #     issuerId = "<ISSUER_ID>";
-    #     refusedKeyIds = [ "<the Mac's upload key id>" ];   # never runs here (PQ-16)
-    #   };
-    asc.refusedKeyIds = [ "<the Mac's upload key id>" ];
 ```
+
+TestFlight is manual: the operator adds each invited tester in App Store Connect
+(`docs/decisions/testflight-manual.md`). The module has no `asc` options. A host that still
+sets `services.hasala.asc` (for example `asc.refusedKeyIds`) fails its evaluation until
+the setting is removed, so remove it in the PR that takes this revision.
 
 What the module adds by itself when `console.enable`:
 
@@ -519,13 +513,13 @@ What the module adds by itself when `console.enable`:
   exactly one nginx vhost proxying to the console (by any loopback spelling,
   in `proxyPass`, `extraConfig` or through an upstream), which must be in
   `services.nginx.tailscaleAuth.virtualHosts` with `auth_request /auth;` on `/`.
-  M20 also needs a non-empty `asc.refusedKeyIds` whenever `asc.enable`.
+  M20 keeps every console, App Store Connect and TestFlight variable out of `serve`.
 - A Prometheus job `hasala-console` (127.0.0.1:9473) and health probe P8.
 
 PR C's body adds the LAN DNS result for the console's name, the closure
-diff (the hasala units, nginx's regenerated config, the firewall script) and,
-while `asc.enable = false`, the line "TestFlight is manual until the App Store
-Connect server key exists".
+diff (the hasala units, nginx's regenerated config, the firewall script) and
+the line "TestFlight is manual: the operator adds each tester in App Store
+Connect".
 
 ## Rollback and kill switch
 

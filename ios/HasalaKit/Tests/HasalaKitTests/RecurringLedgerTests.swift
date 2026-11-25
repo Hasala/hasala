@@ -260,6 +260,28 @@ struct RecurringLedgerTests {
     #expect(ledger.state.bill("salary") == MayaLedger.state.bill("salary"))
   }
 
+  @Test func editIncomeToTheLastWorkDayFollowsEachMonth() throws {
+    let ledger = InMemoryLedger()
+    let token = try #require(try ledger.apply(.editIncome(id: "salary", amount: .aed(25_000_00), payday: 30,
+                                                          lastWorkingDay: true, active: true)))
+    let salary = try #require(ledger.state.bill("salary"))
+    #expect(ledger.state.plan.paydayLastWorkingDay && salary.usualLastWorkingDay)
+    #expect(salary.nextDue == LocalDate(2026, 10, 30))
+    #expect(BillDueDates.shift(salary, from: salary.nextDue, by: 1) == LocalDate(2026, 11, 30))
+    #expect(BillDueDates.shift(salary, from: salary.nextDue, by: 2) == LocalDate(2026, 12, 31))
+    #expect(BillDueDates.shift(salary, from: salary.nextDue, by: 3) == LocalDate(2027, 1, 29))
+    #expect(BillDueDates.shift(salary, from: salary.nextDue, by: 4) == LocalDate(2027, 2, 26))
+    #expect(PlanEngine.payday(ledger.state, month: YearMonth(2027, 1)) == LocalDate(2027, 1, 29))
+    #expect(PlanEngine.payday(ledger.state, month: YearMonth(2026, 12)) == LocalDate(2026, 12, 31))
+    #expect(BillsEngine.salary(ledger.state, bill: "salary")?.lastWorkingDay == true)
+    #expect(salary.usualDayPhrase == "last work day")
+    #expect(YearMonth(2026, 10).lastWorkingDay == LocalDate(2026, 10, 30))
+    ledger.undo(token)
+    #expect(ledger.state.plan.paydayLastWorkingDay == false && ledger.state.plan.payday == 28)
+    #expect(ledger.state.bill("salary") == MayaLedger.state.bill("salary"))
+    #expect(PlanEngine.payday(ledger.state, month: YearMonth(2027, 1)) == LocalDate(2027, 1, 28))
+  }
+
   @Test func editIncomeRefusalsAndInactive() throws {
     let ledger = InMemoryLedger()
     #expect(throws: ActionError.notFound) {

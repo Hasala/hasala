@@ -430,6 +430,7 @@ public struct Bill: Sendable, Hashable, Identifiable, Codable {
   public var approximate: Bool
   public var isIncome: Bool
   public var usualDay: Int
+  public var usualLastWorkingDay: Bool
   public var nextDue: LocalDate
   public var accountID: AccountID?
   public var state: State
@@ -455,8 +456,9 @@ public struct Bill: Sendable, Hashable, Identifiable, Codable {
     source: Source = .detected, cadence: BillCadence = .monthly, every: Int = 1, pausedSince: LocalDate? = nil,
     pausedUntil: LocalDate? = nil, endedOn: LocalDate? = nil, trackingSince: LocalDate? = nil,
     nextAmount: Money? = nil, nextAmountFrom: LocalDate? = nil, payments: [BillPayment] = [],
-    notices: [BillNotice] = [], keys: [String] = []
+    notices: [BillNotice] = [], keys: [String] = [], usualLastWorkingDay: Bool = false
   ) {
+    self.usualLastWorkingDay = usualLastWorkingDay
     self.id = id
     self.name = name
     self.kind = kind
@@ -507,7 +509,14 @@ public struct Bill: Sendable, Hashable, Identifiable, Codable {
       nextAmountFrom: try c.decodeIfPresent(LocalDate.self, forKey: .nextAmountFrom),
       payments: try c.decodeIfPresent([BillPayment].self, forKey: .payments) ?? [],
       notices: try c.decodeIfPresent([BillNotice].self, forKey: .notices) ?? [],
-      keys: try c.decodeIfPresent([String].self, forKey: .keys) ?? [])
+      keys: try c.decodeIfPresent([String].self, forKey: .keys) ?? [],
+      usualLastWorkingDay: try c.decodeIfPresent(Bool.self, forKey: .usualLastWorkingDay) ?? false)
+  }
+
+  public var usualDayPhrase: String { usualLastWorkingDay ? "last work day" : PlanEngine.ordinal(usualDay) }
+
+  public func usualDate(in month: YearMonth) -> LocalDate {
+    usualLastWorkingDay ? month.lastWorkingDay : LocalDate(month.year, month.month, min(max(1, usualDay), month.days))
   }
 }
 
@@ -662,6 +671,7 @@ public struct Rule: Sendable, Hashable, Identifiable, Codable {
 public struct PlanState: Sendable, Hashable, Codable {
   public var income: Money
   public var payday: Int
+  public var paydayLastWorkingDay: Bool
   public var startingSplit: [Int]
   public var budgets: [String: Money]
   public var incomeByMonth: [YearMonth: Money]
@@ -673,7 +683,8 @@ public struct PlanState: Sendable, Hashable, Codable {
   public init(income: Money, payday: Int, startingSplit: [Int], budgets: [String: Money],
               incomeByMonth: [YearMonth: Money] = [:], incomeExpectedByMonth: [YearMonth: Money] = [:],
               incomeReceivedByMonth: [YearMonth: Money] = [:], zeroSet: Set<String> = [],
-              expiredMoves: [CategoryID: Money] = [:]) {
+              expiredMoves: [CategoryID: Money] = [:], paydayLastWorkingDay: Bool = false) {
+    self.paydayLastWorkingDay = paydayLastWorkingDay
     self.zeroSet = zeroSet
     self.expiredMoves = expiredMoves
     self.incomeExpectedByMonth = incomeExpectedByMonth
@@ -812,10 +823,10 @@ public struct DevicePrefs: Sendable, Hashable, Codable {
 }
 
 public struct NetWorthHistory: Sendable, Hashable, Codable {
-  public var monthChange: Money
+  public var monthChange: Money?
   public var spark: [Int]
 
-  public init(monthChange: Money = .aed(0), spark: [Int] = []) {
+  public init(monthChange: Money? = nil, spark: [Int] = []) {
     self.monthChange = monthChange
     self.spark = spark
   }

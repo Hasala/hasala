@@ -119,7 +119,8 @@ final class ProfileUITests: XCTestCase {
     try audit(app)
     attachPage(app, "AXA Insurance", screens: 3)
 
-    tap(app, "bills.detail.paid")
+    tap(app, "bills.detail.paid", opening: "bills.find.notListed")
+    tap(app, "bills.find.notListed")
     XCTAssertTrue(app.staticTexts["AXA Insurance marked paid"].waitForExistence(timeout: uiWait))
     app.buttons["Undo"].firstMatch.tap()
     XCTAssertTrue(el(app, "bills.detail.paid").waitForExistence(timeout: uiWait), "Undo brings the late bill back")

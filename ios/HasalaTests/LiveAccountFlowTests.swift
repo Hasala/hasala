@@ -826,6 +826,8 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     var offline = false
     var deleted = 0
     var lastStepUpAction: String?
+    var stepUps: [String: (action: String, proofKind: String?)] = [:]
+    var mailboxUnlinkProofs: [String] = []
     var addCeremonies: [String: String] = [:]
     var reviewAccounts = false
     var unfreezeCalls = 0
@@ -864,6 +866,7 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
   var lastCode: String? { state.withLock { $0.lastCode } }
   var deletedAccounts: Int { state.withLock { $0.deleted } }
   var lastStepUpAction: String? { state.withLock { $0.lastStepUpAction } }
+  var mailboxUnlinkProofs: [String] { state.withLock { $0.mailboxUnlinkProofs } }
   var passkeysAdded: Int { state.withLock { $0.users.values.reduce(0) { $0 + $1.passkeys.count } } }
   var wrapsStored: Int { state.withLock { $0.users.values.reduce(0) { $0 + $1.wraps.count } } }
   var unfreezeCalls: Int { state.withLock { $0.unfreezeCalls } }
@@ -1110,7 +1113,11 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
       let n = bytes(32)
       guard let c = try? StepUp.challenge(nonce: n, action: action, paramsHash: ph) else { return error(400, "bad_request") }
       s.lastStepUpAction = action
-      return ok(["nonce": Base64.encodeURL(n), "challenge": Base64.encodeURL(c)])
+      let proofKind = b["proof_kind"] as? String
+      s.stepUps[Base64.encodeURL(n)] = (action, proofKind)
+      var begun: [String: Any] = ["nonce": Base64.encodeURL(n), "challenge": Base64.encodeURL(c)]
+      if proofKind == "passkey" { begun["allow_credentials"] = u.passkeys }
+      return ok(begun)
     case "POST /api/v1/auth/passkey/add/begin":
       guard let su = b["step_up"] as? [String: Any], let proof = su["proof"] as? [String: Any],
         s.lastStepUpAction == "passkey.add", sess.writer != nil
@@ -1164,6 +1171,29 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
       s.mailboxLinkAsks += 1
       guard let link = s.mailboxLink else { return error(404, "no_link") }
       return ok(["holder": ["is_this_device": link.thisDevice], "provider": link.provider, "watch_expires_at": NSNull()])
+    case "DELETE /api/v1/mailbox/link":
+      guard let su = b["step_up"] as? [String: Any], let nonce = su["nonce"] as? String,
+        let proof = su["proof"] as? [String: Any], let kind = proof["kind"] as? String,
+        let begun = s.stepUps.removeValue(forKey: nonce), begun.action == "mailbox.unlink"
+      else { return error(403, "step_up_required") }
+      guard begun.proofKind == kind else { return error(403, "step_up_failed") }
+      switch kind {
+      case "passkey":
+        guard let assertion = proof["assertion"] as? [String: Any], let rawID = assertion["rawId"] as? String,
+          u.passkeys.contains(rawID)
+        else { return error(403, "step_up_failed") }
+      case "device":
+        guard let v = (proof["verifier"] as? String).flatMap({ try? Base64.decode($0) }),
+          Data(SHA256.hash(data: v)) == u.verifierHash, let writer = proof["writer_id"] as? String,
+          writer == sess.writer, let sig = proof["sig"] as? String, !sig.isEmpty
+        else { return error(403, "step_up_failed") }
+      default:
+        return error(403, "step_up_failed")
+      }
+      guard s.mailboxLink != nil else { return error(404, "no_link") }
+      s.mailboxLink = nil
+      s.mailboxUnlinkProofs.append(kind)
+      return APIResponse(status: 204)
     case "DELETE /api/v1/account":
       guard b["step_up"] != nil, b["sig"] != nil else { return error(400, "bad_request") }
       s.users[u.id]?.deleted = true

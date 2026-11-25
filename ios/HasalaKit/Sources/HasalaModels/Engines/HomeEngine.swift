@@ -452,7 +452,7 @@ public enum HomeEngine {
     return NetWorthWidget(
       total: total.money,
       change: MoneyPhrase([
-        .signedMoney(s.netWorth.monthChange, style: .rounded, hiddenGlyphs: 3), .text(" this month"),
+        .signedMoney(s.netWorth.monthChange ?? .aed(0), style: .rounded, hiddenGlyphs: 3), .text(" this month"),
       ]),
       spark: s.netWorth.spark.map(Permille.init),
       mark: total.mark

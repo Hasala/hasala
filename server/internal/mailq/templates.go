@@ -34,9 +34,8 @@ type Content struct {
 	InvitedOn    string
 	Why          string
 
-	Invited          bool
-	ManualTestFlight bool
-	AccountAudience  bool
+	Invited         bool
+	AccountAudience bool
 }
 
 type Rendered struct {

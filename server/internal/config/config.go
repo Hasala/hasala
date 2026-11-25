@@ -47,7 +47,6 @@ type Config struct {
 
 type ServerConfig struct {
 	HTTPListen        string `toml:"http_listen"`
-	MetricsListen     string `toml:"metrics_listen"`
 	TrustedProxy      string `toml:"trusted_proxy"`
 	MinIOSBuild       int    `toml:"min_ios_build"`
 	LogLevel          string `toml:"log_level"`
@@ -416,7 +415,6 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	str("HASALA_MIGRATE_DSN", &c.MigrateDSN)
 
 	str("HASALA_HTTP_LISTEN", &c.Server.HTTPListen)
-	str("HASALA_METRICS_LISTEN", &c.Server.MetricsListen)
 	str("HASALA_TRUSTED_PROXY", &c.Server.TrustedProxy)
 	var minBuild = int64(c.Server.MinIOSBuild)
 	integer("HASALA_MIN_IOS_BUILD", &minBuild)
@@ -501,15 +499,6 @@ func (c Config) validate(lookup func(string) (string, bool), environ []string) e
 	if !IsLoopbackListen(c.Server.HTTPListen) {
 		return fmt.Errorf("server.http_listen is %q (HASALA_HTTP_LISTEN): it must be a loopback "+
 			"host:port; hasalad serves plain HTTP only and is reached through the tunnel", c.Server.HTTPListen)
-	}
-	if c.Server.MetricsListen != "" {
-		if !IsLoopbackListen(c.Server.MetricsListen) {
-			return fmt.Errorf("server.metrics_listen is %q (HASALA_METRICS_LISTEN): it must be loopback",
-				c.Server.MetricsListen)
-		}
-		if samePort(c.Server.MetricsListen, c.Server.HTTPListen) {
-			return fmt.Errorf("server.metrics_listen and server.http_listen must use different ports")
-		}
 	}
 	if c.Server.MinIOSBuild < 0 {
 		return fmt.Errorf("server.min_ios_build must not be negative")
@@ -995,7 +984,7 @@ func (c Config) validateConsole() error {
 	if !isLiteralLoopback(k.Listen) {
 		return fmt.Errorf("HASALA_CONSOLE_LISTEN is %q: it must be a literal loopback IP:port (127.0.0.1 or ::1)", k.Listen)
 	}
-	for _, other := range []string{c.Server.HTTPListen, c.Server.MetricsListen, k.MetricsListen} {
+	for _, other := range []string{c.Server.HTTPListen, k.MetricsListen} {
 		if other != "" && samePort(k.Listen, other) {
 			return fmt.Errorf("HASALA_CONSOLE_LISTEN %q shares a port with %q", k.Listen, other)
 		}

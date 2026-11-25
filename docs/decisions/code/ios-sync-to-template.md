@@ -27,6 +27,28 @@ Applies to: `ios/HasalaCore/Sources/HasalaCore/Sync/AccountCreation.swift`
 (`registerPasskey`), `ios/HasalaCore/Sources/HasalaCore/Sync/AccountCreationResume.swift`
 (`bootstrapInterrupted`).
 
+## A passkey signup with no PRF output asks the passkey again for its wrap
+
+Some passkeys give no PRF output when they are created and give it at a later assertion.
+The bootstrap of such a signup carries no PRF wrap (spec 04 §6.2 C1, steps 11 to 15). Step
+16 follows: after the bootstrap is stored on this iPhone, `bootstrapPasskey` runs the
+step-up `keys.wrap.put` on the new passkey with the PRF salt (a second passkey prompt),
+seals the PRF wrap, signs `WrapPutMessage` with the DWK and sends `POST /keys/wraps`.
+
+- The step runs after `persistAndCompare`, thus after the binding. If the app stops at the
+  second prompt, the account is complete and opens on this iPhone.
+- The step cannot fail the signup. A passkey that gives no PRF output again, a cancelled
+  prompt, a credential that is not the new one and a refused request all leave the account
+  with no PRF wrap. A new iPhone then unlocks with the 12 words, which this signup already
+  showed (`docs/decisions/recovery-phrase-no-quiz.md`).
+- The account keys stay in memory until the step ends. `bootstrapPasskey` wipes them and the
+  PRF output of the step-up on each path.
+- Nothing runs the step again later. An account that ended without a wrap gets one when
+  the person adds a passkey that gives PRF output (`AccountPasskeys.add`).
+
+Applies to: `ios/HasalaCore/Sources/HasalaCore/Sync/AccountCreation.swift`
+(`bootstrapPasskey`, `putPRFWrap`, `persistAndCompare`).
+
 ## Enrolment stores the writer key first and the binding last
 
 Each enrolment (C1, C1-P, C2, C2-P, C3 and recovery) has the same order on the iPhone.

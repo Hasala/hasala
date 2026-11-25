@@ -3,6 +3,7 @@ package authtest
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -55,6 +56,13 @@ func New(t *testing.T) *Authenticator {
 		AAGUID:  RandBytes(t, 16),
 		Counter: 1,
 	}
+}
+
+func PRF(secret, salt []byte) []byte {
+	input := sha256.Sum256(append(append([]byte("WebAuthn PRF"), 0), salt...))
+	mac := hmac.New(sha256.New, secret)
+	mac.Write(input[:])
+	return mac.Sum(nil)
 }
 
 func RandBytes(t *testing.T, n int) []byte {

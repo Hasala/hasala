@@ -7,7 +7,7 @@ let l0: [Target.Dependency] = [
 let l1: [Target.Dependency] = ["CoreWire", "CoreCrypto", "CoreAuth", "CoreNorm", "CoreTemplate", "CoreExtract", "CoreMail"]
 let l2: [Target.Dependency] = ["CoreReplay", "CoreInvariants", "CoreCategorize", "CoreDomain"]
 let l3: [Target.Dependency] = ["CoreStore", "CoreProjection"]
-let l4: [Target.Dependency] = ["CoreSync", "CoreOutbox", "CoreMailbox", "CoreSignals"]
+let l4: [Target.Dependency] = ["CoreSync", "CoreOutbox", "CoreMailbox"]
 
 let ordered: Target.Dependency = .product(name: "OrderedCollections", package: "swift-collections")
 let grdb: Target.Dependency = .product(name: "GRDB", package: "GRDB.swift")
@@ -24,7 +24,7 @@ let libraries = [
   "CoreWire", "CoreCrypto", "CoreAuth", "CoreNorm", "CoreTemplate", "CoreExtract", "CoreMail",
   "CoreReplay", "CoreInvariants", "CoreCategorize", "CoreDomain",
   "CoreStore", "CoreProjection",
-  "CoreSync", "CoreOutbox", "CoreMailbox", "CoreSignals",
+  "CoreSync", "CoreOutbox", "CoreMailbox",
   "HasalaModel", "HasalaKeychain", "CoreTestSupport", "CoreSoftAuth", "HasalaCloud",
 ]
 let unitTested = libraries.filter { $0 != "CoreResources" && $0 != "CoreTestSupport" }
@@ -77,7 +77,6 @@ let package = Package(
     core("CoreSync", "Sync", l0 + l1 + l2 + l3),
     core("CoreOutbox", "Outbox", ["CoreSync"]),
     core("CoreMailbox", "Mailbox", l0 + l1 + l2 + l3 + ["CoreOutbox", "CoreSync"]),
-    core("CoreSignals", "Signals", ["CoreDomain", "CoreProjection", ordered]),
 
     core("HasalaModel", "Model", ["CoreCategorize"]),
     core("HasalaKeychain", "Keychain", ["CorePrimitives", "CoreStore"]),
@@ -91,7 +90,7 @@ let package = Package(
     .testTarget(
       name: "HasalaCoreConformanceTests",
       dependencies: l0 + ["CoreWire", "CoreCrypto", "CoreNorm", "CoreTemplate", "CoreExtract", "CoreMail"]
-        + ["CoreReplay", "CoreInvariants", "CoreCategorize", "CoreDomain", "CoreSoftAuth"],
+        + ["CoreReplay", "CoreInvariants", "CoreCategorize", "CoreDomain", "CoreSoftAuth", "CoreAuth"],
       path: "Tests/HasalaCoreConformanceTests"),
     .testTarget(
       name: "HasalaCoreE2ETests",

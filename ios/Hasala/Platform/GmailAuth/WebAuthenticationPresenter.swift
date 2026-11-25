@@ -2,12 +2,16 @@ import AuthenticationServices
 import CoreMailbox
 import UIKit
 
-final class WebAuthenticationPresenter: NSObject, GmailAuthSessionPresenter, ASWebAuthenticationPresentationContextProviding {
+@MainActor
+final class WebAuthenticationPresenter: NSObject, GmailAuthSessionPresenter {
   private var session: ASWebAuthenticationSession?
+  private var anchorProvider: FixedPresentationAnchor?
+  private let currentAnchor: PresentationAnchors.Lookup
   let ephemeral: Bool
 
-  init(ephemeral: Bool) {
+  init(ephemeral: Bool, anchor: @escaping PresentationAnchors.Lookup = PresentationAnchors.current) {
     self.ephemeral = ephemeral
+    self.currentAnchor = anchor
     super.init()
   }
 
@@ -29,13 +33,20 @@ final class WebAuthenticationPresenter: NSObject, GmailAuthSessionPresenter, ASW
   ) -> ASWebAuthenticationSession {
     let session = ASWebAuthenticationSession(url: url, callback: .customScheme(scheme), completionHandler: completion)
     session.prefersEphemeralWebBrowserSession = ephemeral
-    session.presentationContextProvider = self
     return session
   }
 
   private func start(url: URL, scheme: String, done: @escaping (Result<URL, GmailOAuthError>) -> Void) {
+    guard let anchor = currentAnchor() else {
+      done(.failure(.malformedCallback))
+      return
+    }
+    let provider = FixedPresentationAnchor(anchor)
     let session = makeSession(url: url, scheme: scheme) { [weak self] callback, error in
-      Task { @MainActor in self?.session = nil }
+      Task { @MainActor in
+        self?.session = nil
+        self?.anchorProvider = nil
+      }
       if let callback {
         done(.success(callback))
       } else if let e = error as? ASWebAuthenticationSessionError, e.code == .canceledLogin {
@@ -44,16 +55,13 @@ final class WebAuthenticationPresenter: NSObject, GmailAuthSessionPresenter, ASW
         done(.failure(.malformedCallback))
       }
     }
+    session.presentationContextProvider = provider
     self.session = session
+    self.anchorProvider = provider
     if !session.start() {
       self.session = nil
+      self.anchorProvider = nil
       done(.failure(.malformedCallback))
     }
-  }
-
-  func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-    if let key = scenes.flatMap(\.windows).first(where: \.isKeyWindow) { return key }
-    return ASPresentationAnchor(windowScene: scenes.first!)
   }
 }

@@ -15,15 +15,18 @@ public actor Outbox {
   let clock: any CoreTime.Clock
   let onAuthored: @Sendable () async -> Void
   let debounceWindow: Duration
+  let sleep: @Sendable (Duration) async -> Void
   private var pendingTrigger: Task<Void, Never>?
 
   public init(
     store: LedgerStore, clock: any CoreTime.Clock, debounce: Duration = Outbox.debounce,
+    sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
     onAuthored: @escaping @Sendable () async -> Void
   ) {
     self.store = store
     self.clock = clock
     self.debounceWindow = debounce
+    self.sleep = sleep
     self.onAuthored = onAuthored
   }
 
@@ -64,8 +67,9 @@ public actor Outbox {
     pendingTrigger?.cancel()
     let run = onAuthored
     let wait = debounceWindow
+    let sleep = sleep
     pendingTrigger = Task {
-      try? await Task.sleep(for: wait)
+      await sleep(wait)
       guard !Task.isCancelled else { return }
       pendingTrigger = nil
       await run()

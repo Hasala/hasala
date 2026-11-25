@@ -14,11 +14,10 @@ import (
 )
 
 type PasskeySummary struct {
-	CredentialID  string     `json:"credential_id"`
-	CreatedAt     time.Time  `json:"created_at"`
-	LastUsedAt    *time.Time `json:"last_used_at"`
-	Authenticator *string    `json:"authenticator"`
-	Current       bool       `json:"current"`
+	CredentialID string     `json:"credential_id"`
+	CreatedAt    time.Time  `json:"created_at"`
+	LastUsedAt   *time.Time `json:"last_used_at"`
+	Current      bool       `json:"current"`
 }
 
 type DeletePasskeyRequest struct {
@@ -48,11 +47,10 @@ func (s *Server) handleListPasskeys(w http.ResponseWriter, r *http.Request, user
 	out := PasskeysResponse{Passkeys: make([]PasskeySummary, 0, len(creds))}
 	for _, c := range creds {
 		out.Passkeys = append(out.Passkeys, PasskeySummary{
-			CredentialID:  base64.StdEncoding.EncodeToString(c.ID),
-			CreatedAt:     c.CreatedAt,
-			LastUsedAt:    c.LastUsedAt,
-			Authenticator: nil,
-			Current:       len(mine) > 0 && bytes.Equal(mine, c.ID),
+			CredentialID: base64.StdEncoding.EncodeToString(c.ID),
+			CreatedAt:    c.CreatedAt,
+			LastUsedAt:   c.LastUsedAt,
+			Current:      len(mine) > 0 && bytes.Equal(mine, c.ID),
 		})
 	}
 	writeJSON(w, http.StatusOK, out)

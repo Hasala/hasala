@@ -85,8 +85,6 @@ targets:
       - package: HasalaCore
         product: CoreMailbox
       - package: HasalaCore
-        product: CoreSignals
-      - package: HasalaCore
         product: HasalaModel
       - package: HasalaCore
         product: HasalaCloud

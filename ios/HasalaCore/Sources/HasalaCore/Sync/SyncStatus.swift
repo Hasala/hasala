@@ -38,7 +38,6 @@ public struct SyncStatus: Sendable, Hashable {
   public var suspended: Bool = false
   public var integrityAlarms: Int = 0
   public var rowAlarms: Int = 0
-  public var lastFailingRequestID: String?
   public var retryAfterSeconds: Int?
 
   public init() {}

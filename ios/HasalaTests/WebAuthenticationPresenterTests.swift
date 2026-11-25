@@ -24,4 +24,11 @@ struct WebAuthenticationPresenterTests {
     }
     #expect(MailProviderID.outlook.prefersEphemeralSession && !MailProviderID.gmail.prefersEphemeralSession)
   }
+
+  @Test func aSignInWithNoWindowSceneFailsBeforeASessionStarts() async {
+    let presenter = WebAuthenticationPresenter(ephemeral: true, anchor: { nil })
+    await #expect(throws: MailOAuthError.malformedCallback) {
+      _ = try await presenter.authorize(url: url, callbackScheme: "app.test")
+    }
+  }
 }

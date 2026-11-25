@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func corpusPath(t *testing.T) string {
@@ -104,5 +106,71 @@ func TestEachStreamsGunzippedRFC822(t *testing.T) {
 	}
 	if withHeaders != 200 {
 		t.Fatalf("%d/200 messages had a CRLF header block; raw_body is not byte-exact RFC822", withHeaders)
+	}
+}
+
+func syntheticCorpus(t *testing.T, received ...string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "corpus.db")
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec(`CREATE TABLE ingest_log (id INTEGER PRIMARY KEY, received_at TEXT, from_addr TEXT,
+		subject TEXT, raw_body BLOB)`); err != nil {
+		t.Fatal(err)
+	}
+	for i, r := range received {
+		var recv any
+		if r != "" {
+			recv = r
+		}
+		if _, err := raw.Exec(`INSERT INTO ingest_log VALUES (?, ?, 'alerts@bank.example', 'Synthetic', ?)`,
+			i+1, recv, []byte("Subject: Synthetic\r\n\r\nbody")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return path
+}
+
+func TestEachReadsReceivedAt(t *testing.T) {
+	db, err := Open(syntheticCorpus(t, "2026-01-02T03:04:05Z", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var got []time.Time
+	if err := db.Each(func(m Message) error {
+		got = append(got, m.ReceivedAt)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	want := []time.Time{time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), {}}
+	if len(got) != len(want) || !got[0].Equal(want[0]) || !got[1].IsZero() {
+		t.Fatalf("ReceivedAt = %v, want %v", got, want)
+	}
+}
+
+func TestEachFailsOnAMalformedReceivedAt(t *testing.T) {
+	db, err := Open(syntheticCorpus(t, "2026-01-02T03:04:05Z", "2 January 2026", "2026-01-03T00:00:00Z"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	seen := 0
+	err = db.Each(func(Message) error {
+		seen++
+		return nil
+	})
+	if err == nil {
+		t.Fatal("Each passed a malformed received_at with a zero time")
+	}
+	if !strings.Contains(err.Error(), "message 2") || strings.Contains(err.Error(), "2 January 2026") {
+		t.Fatalf("the error %q must name message 2 and not carry the value", err)
+	}
+	if seen != 1 {
+		t.Fatalf("fn saw %d messages before the failure, want 1", seen)
 	}
 }

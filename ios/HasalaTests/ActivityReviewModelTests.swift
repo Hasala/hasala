@@ -370,11 +370,16 @@ struct ActivityReviewModelTests {
   @Test func aRequestFromSearchOpensActivityFiltered() {
     let app = AppModel(store: InMemoryLedger())
     app.router.activity = [.bill("dewa")]
-    ActivityRequests.shared.show(TxnFilter(category: "dining"), in: app)
+    let other = AppModel(store: InMemoryLedger())
+    app.sheet = .search
+    app.router.showActivity(TxnFilter(category: "dining"))
     #expect(app.tab == .activity && app.router.activity.isEmpty)
-    #expect(ActivityRequests.shared.take(for: AppModel(store: InMemoryLedger())) == nil)
-    #expect(ActivityRequests.shared.take(for: app) == TxnFilter(category: "dining"))
-    #expect(ActivityRequests.shared.take(for: app) == nil)
+    #expect(app.sheet == nil)
+    #expect(app.router.pendingActivityFilter == TxnFilter(category: "dining"))
+    #expect(other.router.takeActivityFilter() == nil)
+    #expect(other.tab == .home)
+    #expect(app.router.takeActivityFilter() == TxnFilter(category: "dining"))
+    #expect(app.router.takeActivityFilter() == nil)
   }
 
   @Test func theTransactionSheetEdits() throws {

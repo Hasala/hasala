@@ -109,7 +109,6 @@ let
 
   fixedEnv = {
     HASALA_HTTP_LISTEN = "${cfg.listen.address}:${toString cfg.listen.port}";
-    HASALA_METRICS_LISTEN = loopback cfg.metrics.port;
     HASALA_PG_DSN = runtimeDSN;
     HASALA_TRUSTED_PROXY = if cfg.tunnel.enable then "cloudflare" else "none";
     HASALA_RP_ID = cfg.rpId;
@@ -622,7 +621,6 @@ let
     );
   hasalaPorts = [
     cfg.listen.port
-    cfg.metrics.port
     cfg.tunnel.metricsPort
   ];
   consolePorts = [
@@ -783,7 +781,6 @@ in
       description = "API bind address. Asserted to be 127.0.0.1 (M1): cloudflared is the only ingress.";
     };
     listen.port = portOption 8471 "API port.";
-    metrics.port = portOption 9471 "Prometheus metrics port, always on 127.0.0.1.";
 
     publicHostname = mkOption {
       type = types.str;
@@ -1126,7 +1123,7 @@ in
           (a "M1" (
             cfg.listen.address == "127.0.0.1"
           ) "listen.address must be 127.0.0.1: cloudflared and the health probe reach the API there.")
-          (a "M2" (distinct hasalaPorts) "listen.port, metrics.port and tunnel.metricsPort must differ.")
+          (a "M2" (distinct hasalaPorts) "listen.port and tunnel.metricsPort must differ.")
           (a "M3" (
             !lib.any (p: lib.elem p firewallPorts) hasalaPorts
           ) "never open a Hasala port in the firewall.")
@@ -1227,17 +1224,15 @@ in
           (a "M13" (
             cfg.backup.retentionDays <= 29
           ) "backup.retentionDays is at most 29 (the 30-day disclosure is a hard bound).")
-          (a "M14" (!cfg.console.enable || distinct (hasalaPorts ++ consolePorts))
-            "console.port, console.metricsPort, listen.port, metrics.port and tunnel.metricsPort must all differ."
-          )
+          (a "M14" (
+            !cfg.console.enable || distinct (hasalaPorts ++ consolePorts)
+          ) "console.port, console.metricsPort, listen.port and tunnel.metricsPort must all differ.")
           (a "M15" (
             !lib.any (p: lib.elem p firewallPorts) consolePorts
           ) "never open a console port in the firewall; nginx reaches it on loopback.")
           (a "M16" (
-            !lib.any (p: lib.hasInfix ":${toString p}" cfg.tunnel.renderedConfig) (
-              consolePorts ++ [ cfg.metrics.port ]
-            )
-          ) "the tunnel ingress may never name a console or metrics port.")
+            !lib.any (p: lib.hasInfix ":${toString p}" cfg.tunnel.renderedConfig) consolePorts
+          ) "the tunnel ingress may never name a console port.")
           (a "M17" (
             !cfg.console.enable
             || (
@@ -1626,13 +1621,7 @@ in
       services.prometheus.scrapeConfigs =
         mkIf (cfg.monitoring.prometheus && config.services.prometheus.enable)
           (
-            [
-              {
-                job_name = "hasala";
-                static_configs = [ { targets = [ (loopback cfg.metrics.port) ]; } ];
-              }
-            ]
-            ++ optional cfg.tunnel.enable {
+            optional cfg.tunnel.enable {
               job_name = "hasala-cloudflared";
               static_configs = [ { targets = [ (loopback cfg.tunnel.metricsPort) ]; } ];
             }

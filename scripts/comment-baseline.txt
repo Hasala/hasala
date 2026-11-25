@@ -21,7 +21,6 @@ infra/qa/cloudflared/bad/console-port.yml	c91d1d15e386
 server/config.example.toml	05017291171d
 server/config.example.toml	05017291171d
 server/config.example.toml	2539f0351635
-server/config.example.toml	493f239b912a
 server/config.example.toml	5ed9366ea9a5
 server/config.example.toml	62a3f857cd47
 server/config.example.toml	7cb28b355f11

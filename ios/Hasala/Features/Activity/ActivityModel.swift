@@ -73,24 +73,3 @@ final class ActivityViewModel: ActivityModel {
   }
   func startReview() { ReviewEntry.open(app, at: nil) }
 }
-
-@MainActor
-@Observable
-final class ActivityRequests {
-  static let shared = ActivityRequests()
-
-  private(set) var pending: (app: ObjectIdentifier, filter: TxnFilter)?
-
-  func show(_ filter: TxnFilter, in app: AppModel) {
-    pending = (ObjectIdentifier(app), filter)
-    app.router.activity = []
-    app.tab = .activity
-    if app.router.sheet == .search || app.router.sheet == .profile { app.router.sheet = nil }
-  }
-
-  func take(for app: AppModel) -> TxnFilter? {
-    guard let p = pending, p.app == ObjectIdentifier(app) else { return nil }
-    pending = nil
-    return p.filter
-  }
-}

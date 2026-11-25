@@ -46,14 +46,4 @@ public enum MoneyMath {
     }
     return out
   }
-
-  public static func pctChange(_ a: Int64, _ b: Int64) -> Int64? {
-    guard b != 0 else { return nil }
-    let d = Int128(a) - Int128(b)
-    let base = Int128(b).magnitude
-    let q = (d.magnitude * 200 + base) / (2 * base)
-    guard let qq = Int128(exactly: q) else { return nil }
-    let negative = (d < 0) != (b < 0)
-    return Int64(exactly: negative ? -qq : qq)
-  }
 }

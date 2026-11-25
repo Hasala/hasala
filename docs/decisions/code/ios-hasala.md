@@ -89,9 +89,28 @@ Applies to: `ios/Hasala/Platform/GmailAuth/WebAuthenticationPresenter.swift`
 (`WebAuthenticationPresenter`), `ios/Hasala/Platform/Delivery/BuildInfo.swift`
 (`googleRedirectScheme`, `outlookRedirectScheme`).
 
+## A sign-in sheet needs a window scene before it starts
+
+The mailbox sign-in (`ASWebAuthenticationSession`) and the passkey ceremony
+(`ASAuthorizationController`) ask for a presentation anchor in a callback that must return
+one. The scene list can be empty at that moment: the scene disconnected during an await, or
+a ceremony started with no foreground scene.
+
+Thus the anchor is found before the session or the controller starts
+(`PresentationAnchors.current`: the key window, then a window, then a window scene). When
+there is none, the ceremony ends with its usual failure and nothing starts: the mailbox
+sign-in gives `malformedCallback`, and the passkey ceremony throws `AuthFailure.unsupported`.
+`FixedPresentationAnchor` gives the callback the anchor that was found. Do not find the
+anchor in the callback, and do not force unwrap or index the scene list.
+
+Applies to: `ios/Hasala/Platform/PresentationAnchors.swift` (`PresentationAnchors`,
+`FixedPresentationAnchor`), `ios/Hasala/Platform/GmailAuth/WebAuthenticationPresenter.swift`
+(`WebAuthenticationPresenter`), `ios/Hasala/Platform/Passkeys/PasskeyAuthenticator.swift`
+(`PasskeyAuthenticator`).
+
 ## HasalaCore package: layers, the HasalaText name and pinned packages
 
-`ios/HasalaCore/Package.swift` declares every module of the spec 04 §2.2 map, one time. The
+`ios/HasalaCore/Package.swift` declares the modules of the spec 04 §2.2 map, each one time. The
 layers are the target graph: a module depends only on modules in a lower layer, or on the
 modules that §2.2 lists for it.
 
@@ -111,6 +130,12 @@ modules that §2.2 lists for it.
 - `HasalaKeychain` is an adapter outside layers L0 to L4, as `HasalaModel` is. It needs
   Security, which §2.3 keeps out of L0 to L4 (spec 04 §4.4). It is in the package, not in the
   app target, so that its query logic runs under `swift test`. Only the app links it.
+- `CoreSignals` (`Signals/`) of §2.2 is not in the package. §2.2 gives it the notification
+  planner, the widget snapshot composer and the Needs-you ranking, and none of these is
+  written. The target was a placeholder with one empty file, which the app linked. Add the
+  target, its product, its `imports.allow` line and its line in `ios/project.yml` in the
+  change that adds the first of these types, not before. The `notification_ledger` table of
+  migration v1 (`Store/LedgerSchema.swift`) stays: a shipped migration does not change.
 
 Applies to: `ios/HasalaCore/Package.swift`.
 

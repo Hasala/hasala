@@ -23,7 +23,7 @@
         shell(.activity, sheet: .transaction("carrefour"), transaction: [.split])(graph)
       }),
       Screen("activity.filtered", scenario: "maya", prepare: { graph in
-        ActivityRequests.shared.show(TxnFilter(category: "dining"), in: graph.app)
+        graph.app.router.showActivity(TxnFilter(category: "dining"))
       }),
       Screen("review", scenario: "maya", prepare: shell(.review)),
       Screen("review.texts", scenario: "textsWorking", prepare: shell(.review)),

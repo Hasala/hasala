@@ -316,6 +316,30 @@ extension FakeServer {
     return Self.ok(PasskeyAddResponse(credential_id: idB64), status: 201)
   }
 
+  func putKeyWrap(_ r: APIRequest, token: String, sess: Session) -> APIResponse {
+    guard let b = Self.decode(r, PutKeyWrapRequest.self), let id = try? Base64.decodeURL(b.credential_id),
+      let wrap = try? Base64.decode(b.wrap), wrap.count == 127, wrap.prefix(2) == Data([1, 2]), b.wrap_version == 1,
+      let n = try? Base64.decodeURL(b.step_up.nonce)
+    else { return Self.error(400, "bad_request") }
+    guard let w = sess.writerID, let user = state.withLock({ $0.users[sess.userID] }), let writer = user.writers[w.string],
+      writer.revoked == nil
+    else { return Self.error(403, "writer_unbound") }
+    if let refusal = consumeStepUp(b.step_up, token: token, sess: sess, action: "keys.wrap.put", tuple: [id]) {
+      return refusal
+    }
+    guard b.step_up.proof.assertion.flatMap({ try? Base64.decodeURL($0.rawId) }) == id else {
+      return Self.error(403, "step_up_failed")
+    }
+    guard let sig = try? Base64.decode(b.dwk_sig),
+      let msg = try? SigningMessage.wrapPut(nonce: n, credentialID: id, wrap: wrap),
+      Ed25519.verify(publicKey: writer.dwk, signature: sig, message: msg)
+    else { return Self.error(400, "bad_signature") }
+    state.withLock { s in
+      s.users[sess.userID]?.wraps[b.credential_id] = .init(credential_id: b.credential_id, wrap: b.wrap, wrap_version: 1)
+    }
+    return APIResponse(status: 204)
+  }
+
   func bootstrap(_ r: APIRequest, token: String, sess: Session) -> APIResponse {
     guard let b = Self.decode(r, BootstrapBody.self) else { return Self.error(400, "bad_request") }
     guard var user = state.withLock({ $0.users[sess.userID] }) else { return Self.error(401, "unauthorized") }

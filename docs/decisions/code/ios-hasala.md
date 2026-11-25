@@ -89,6 +89,25 @@ Applies to: `ios/Hasala/Platform/GmailAuth/WebAuthenticationPresenter.swift`
 (`WebAuthenticationPresenter`), `ios/Hasala/Platform/Delivery/BuildInfo.swift`
 (`googleRedirectScheme`, `outlookRedirectScheme`).
 
+## A sign-in sheet needs a window scene before it starts
+
+The mailbox sign-in (`ASWebAuthenticationSession`) and the passkey ceremony
+(`ASAuthorizationController`) ask for a presentation anchor in a callback that must return
+one. The scene list can be empty at that moment: the scene disconnected during an await, or
+a ceremony started with no foreground scene.
+
+Thus the anchor is found before the session or the controller starts
+(`PresentationAnchors.current`: the key window, then a window, then a window scene). When
+there is none, the ceremony ends with its usual failure and nothing starts: the mailbox
+sign-in gives `malformedCallback`, and the passkey ceremony throws `AuthFailure.unsupported`.
+`FixedPresentationAnchor` gives the callback the anchor that was found. Do not find the
+anchor in the callback, and do not force unwrap or index the scene list.
+
+Applies to: `ios/Hasala/Platform/PresentationAnchors.swift` (`PresentationAnchors`,
+`FixedPresentationAnchor`), `ios/Hasala/Platform/GmailAuth/WebAuthenticationPresenter.swift`
+(`WebAuthenticationPresenter`), `ios/Hasala/Platform/Passkeys/PasskeyAuthenticator.swift`
+(`PasskeyAuthenticator`).
+
 ## HasalaCore package: layers, the HasalaText name and pinned packages
 
 `ios/HasalaCore/Package.swift` declares the modules of the spec 04 §2.2 map, each one time. The

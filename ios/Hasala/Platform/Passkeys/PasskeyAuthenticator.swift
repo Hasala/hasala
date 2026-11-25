@@ -26,6 +26,13 @@ final class PasskeyAuthenticator: NSObject {
   private let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: relyingParty)
   private var continuation: CheckedContinuation<ASAuthorization, Error>?
   private var controller: ASAuthorizationController?
+  private var anchorProvider: FixedPresentationAnchor?
+  private let currentAnchor: PresentationAnchors.Lookup
+
+  init(anchor: @escaping PresentationAnchors.Lookup = PresentationAnchors.current) {
+    self.currentAnchor = anchor
+    super.init()
+  }
 
   func register(challenge: Data, userID: Data, excludedCredentials: [Data] = [], prfSalt: Data?)
     async throws(AuthFailure) -> RawRegistration
@@ -77,12 +84,15 @@ final class PasskeyAuthenticator: NSObject {
   private static func bytes(_ key: SymmetricKey) -> Data { key.withUnsafeBytes { Data($0) } }
 
   private func perform(_ request: ASAuthorizationRequest) async throws(AuthFailure) -> ASAuthorization {
+    guard let anchor = currentAnchor() else { throw .unsupported }
+    let anchorProvider = FixedPresentationAnchor(anchor)
+    self.anchorProvider = anchorProvider
     do {
       return try await withCheckedThrowingContinuation { (c: CheckedContinuation<ASAuthorization, Error>) in
         continuation = c
         let controller = ASAuthorizationController(authorizationRequests: [request])
         controller.delegate = self
-        controller.presentationContextProvider = self
+        controller.presentationContextProvider = anchorProvider
         self.controller = controller
         controller.performRequests()
       }
@@ -100,13 +110,14 @@ final class PasskeyAuthenticator: NSObject {
 
   private func finish(_ result: Result<ASAuthorization, Error>) {
     controller = nil
+    anchorProvider = nil
     let c = continuation
     continuation = nil
     c?.resume(with: result)
   }
 }
 
-extension PasskeyAuthenticator: ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+extension PasskeyAuthenticator: ASAuthorizationControllerDelegate {
   nonisolated func authorizationController(controller: ASAuthorizationController,
                                            didCompleteWithAuthorization authorization: ASAuthorization) {
     MainActor.assumeIsolated { finish(.success(authorization)) }
@@ -114,14 +125,5 @@ extension PasskeyAuthenticator: ASAuthorizationControllerDelegate, ASAuthorizati
 
   nonisolated func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
     MainActor.assumeIsolated { finish(.failure(error)) }
-  }
-
-  nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-    MainActor.assumeIsolated {
-      let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-      let windows = scenes.flatMap(\.windows)
-      if let w = windows.first(where: \.isKeyWindow) ?? windows.first { return w }
-      return ASPresentationAnchor(windowScene: scenes[0])
-    }
   }
 }

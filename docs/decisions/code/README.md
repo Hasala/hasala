@@ -23,7 +23,7 @@ The decisions of record of each area are one level up, in `docs/decisions/`.
 | [HasalaModels engines and read models](ios-hasalakit-hasalamodels-engines.md) | 6 |
 | [HasalaKit ledger models and tests](ios-hasalakit-to-tests.md) | 5 |
 | [iOS app unit tests](ios-hasalatests.md) | 2 |
-| [iOS UI tests](ios-hasalauitests.md) | 6 |
+| [iOS UI tests](ios-hasalauitests.md) | 7 |
 | [iOS mailbox lane and model](ios-mailbox-to-model.md) | 23 |
 | [iOS core, money to projection](ios-money-to-projection.md) | 22 |
 | [iOS replay, soft auth and store](ios-replay-to-store.md) | 28 |

@@ -173,6 +173,53 @@ struct BillsScreenTests {
     #expect(presentation.delegate === later)
   }
 
+  @Test func findThePaymentHoldsOnePick() {
+    #expect(FindPaymentSheet.pick(nil, from: ["a"]) == "a")
+    #expect(FindPaymentSheet.pick("a", from: ["a", "b"]) == "b")
+    #expect(FindPaymentSheet.pick("a", from: []) == nil)
+    #expect(FindPaymentSheet.pick("a", from: ["a"]) == "a")
+    let sheet = RecurringSheet.findPayment("axa", due: LocalDate(2026, 10, 7))
+    #expect(!sheet.fitted && sheet.id == "find.axa")
+  }
+
+  @Test func findThePaymentOffersOnlyTheDueItOpenedFor() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let due = try #require(app.store.state.bill("axa")?.nextDue)
+    let offered = FindPaymentSheet.candidates(app.store.state, bill: "axa", due: due)
+    let picked = try #require(offered.first)
+    #expect(offered.allSatisfy { $0.due == due })
+    #expect(FindPaymentSheet.candidates(app.store.state, bill: "axa", due: due.adding(days: 1)).isEmpty)
+    #expect(FindPaymentSheet.candidates(app.store.state, bill: "nope", due: due).isEmpty)
+    #expect(app.perform(.linkBillPayments("axa", [picked.id])))
+    let bills = BillsViewModel(app: app)
+    #expect(bills.detail("axa")?.isLate == false)
+    #expect(bills.detail("axa")?.history.contains { $0.note == "Linked by you" } == true)
+    #expect(app.store.state.bill("axa")?.payments.first?.txnID == picked.id)
+    #expect(FindPaymentSheet.candidates(app.store.state, bill: "axa", due: due).isEmpty)
+  }
+
+  @Test func findThePaymentKeepsTheDueItOpenedForWhenTheLedgerChanges() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let late = try #require(app.store.state.bill("axa")?.nextDue)
+    let opened = try #require(RecurringSheet.find("axa", in: app.store.state))
+    #expect(opened == .findPayment("axa", due: late))
+    #expect(RecurringSheet.find("nope", in: app.store.state) == nil)
+    func rebuilt() throws -> FindPaymentSheet {
+      guard case .findPayment(let bill, let due) = opened else { throw ActionError.notFound }
+      return FindPaymentSheet(app: app, bill: bill, due: due)
+    }
+    #expect(try rebuilt().waiting)
+    #expect(try !rebuilt().payments.isEmpty)
+    #expect(app.perform(.markBillPaid("axa")))
+    let next = try #require(app.store.state.bill("axa")?.nextDue)
+    #expect(next > late)
+    let after = try rebuilt()
+    #expect(after.due == late)
+    #expect(!after.waiting)
+    #expect(after.payments.isEmpty)
+    #expect(RecurringSheet.find("axa", in: app.store.state) == .findPayment("axa", due: next))
+  }
+
   @Test func pauseAndEndAreFittedSheets() {
     #expect(RecurringSheet.pause("netflix").fitted && RecurringSheet.end("netflix").fitted)
     #expect(!RecurringSheet.add.fitted && !RecurringSheet.salary("salary").fitted)

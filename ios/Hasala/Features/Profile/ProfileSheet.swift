@@ -273,7 +273,7 @@ private struct ProfilePage: View {
   var body: some View {
     switch route {
     case .bills:
-      BillsScreen(app: app, showsToast: false)
+      BillsScreen(app: app)
     case .bill(let id):
       BillDetailView(app: app, bill: id)
     case .project(let id):

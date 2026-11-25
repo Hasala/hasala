@@ -126,6 +126,29 @@ extension BillsEngine {
     return Array(found.filter { kept.contains($0.id) }.prefix(limit))
   }
 
+  public static func paymentsNear(_ s: LedgerState, for b: Bill, due: LocalDate, limit: Int = pastPaymentLimit)
+    -> [PastPayment]
+  {
+    guard limit > 0 else { return [] }
+    let keys = Set(b.keys.map { $0.trimmedSpaces.lowercased() }.filter { !$0.isEmpty })
+    let before = BillDueDates.shift(b, from: due, by: -1)
+    let after = BillDueDates.shift(b, from: due, by: 1)
+    let terms = amount(b, on: due)
+    var found: [(known: Int, gap: UInt64, days: Int, p: PastPayment)] = []
+    for t in s.txns {
+      let day = t.postedAt.date
+      guard eligible(t), t.billID == nil, day > before, day < after, BillDueDates.nearest(b, to: day) == due else {
+        continue
+      }
+      let gap = comparable(t, currency: terms.currency).map { ($0 - terms.minor).magnitude } ?? .max
+      let p = PastPayment(id: t.id, merchant: t.merchant, date: day, amount: t.amount, due: due,
+                          account: s.account(t.accountID)?.shortName)
+      found.append((keys.contains(key(t)) ? 0 : 1, gap, abs(day.days(until: due)), p))
+    }
+    found.sort { ($0.known, $0.gap, $0.days, $0.p.id) < ($1.known, $1.gap, $1.days, $1.p.id) }
+    return found.prefix(limit).map(\.p)
+  }
+
   static func rank(_ p: PastPayment) -> (Int, LocalDate, TxnID) {
     (abs(p.date.days(until: p.due)), p.date, p.id)
   }

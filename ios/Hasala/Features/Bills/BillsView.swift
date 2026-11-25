@@ -16,7 +16,6 @@ protocol BillsModel: AnyObject, Observable {
   var incomeInNext14: Bool { get }
   func detail(_ bill: BillID) -> BillDetail?
   func setRange(_ range: BillsSnapshot.Range)
-  func markPaid(_ bill: BillID)
   func remind(_ bill: BillID)
   func acceptAmount(_ bill: BillID)
   func stopTracking(_ bill: BillID)
@@ -76,8 +75,6 @@ final class BillsViewModel: BillsModel {
 
   func setRange(_ range: BillsSnapshot.Range) { self.range = range }
 
-  func markPaid(_ bill: BillID) { app.perform(.markBillPaid(bill)) }
-
   func remind(_ bill: BillID) { app.say("Reminders aren't in this build yet", icon: .bell) }
 
   func acceptAmount(_ bill: BillID) { app.perform(.acceptBillAmount(bill)) }
@@ -91,7 +88,6 @@ final class BillsViewModel: BillsModel {
 struct BillsView: View {
   @Bindable var app: AppModel
   let model: any BillsModel
-  var showsToast = true
   @Environment(\.inProfileSheet) private var inProfileSheet
   @Environment(\.dynamicTypeSize) private var typeSize
   @State private var sheet: RecurringSheet?
@@ -231,7 +227,9 @@ struct BillsView: View {
       hue: isLate ? .rose : .sand, glyph: Self.posterGlyph(item), name: item.name, pill: item.pill,
       amount: item.amount, message: item.body, hidden: model.hidden,
       primary: isLate
-        ? .init(title: "I paid it", id: "bills.paid.\(item.billID)") { model.markPaid(item.billID) }
+        ? .init(title: "I paid it", id: "bills.paid.\(item.billID)") {
+          sheet = RecurringSheet.find(item.billID, in: app.store.state)
+        }
         : .init(title: "Accept new amount", id: "bills.accept.\(item.billID)") { model.acceptAmount(item.billID) },
       secondary: secondary, id: "bills.attention.\(item.id)")
   }

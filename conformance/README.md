@@ -74,3 +74,8 @@ branch with no change under `ios/HasalaCore/Tests`. In CI it compares with
 that the ledgerd TypeScript fold (schema 3) could not express: held copies, the Undo
 pairs, same-purchase pairing with archived and held rows, and money at the
 Int64 limits.
+
+`swift/soft-passkey.json` holds the bytes of the software passkey of the Swift
+tests (`CoreSoftAuth`) for fixed inputs. `SoftPasskeyGoldenTests` compares them
+with `SoftPasskey`, and `server/internal/authtest` compares them with the Go
+test authenticator and verifies them with go-webauthn.

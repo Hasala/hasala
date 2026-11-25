@@ -104,6 +104,31 @@ Do not change the canvas back to a `Text` view. The audit fails again.
 
 Applies to: `ios/HasalaKit/Sources/HasalaDesign/Components/Discs.swift` (`BankPlate`).
 
+## The avatar gradient blends in oklab and keeps literal colours for now
+
+Paper draws the avatar disc as
+`linear-gradient(in oklab 145deg, oklab(82.1% .042 .111) 0%, oklab(75.6% .086 .050) 55%, oklab(59.2% .064 -.100) 100%)`.
+`AvatarDisc.gradient` sets `.colorSpace(.perceptual)` on its gradient, as the hue discs do
+(`Hue.perceptual`; refer to "Paper gives CSS values, and their SwiftUI equivalents are
+different numbers" in `ios-hasalakit-hasaladesign-to-hasalamocks.md`). The unit points
+(0.2, 0) and (0.8, 1) are CSS 145° on a square.
+
+Keep the colour space explicit. On the macOS 27 host a gradient with no colour space gave
+the same pixels as a perceptual gradient (measured with `ImageRenderer` on 2026-11-25),
+but a `.device` gradient did not, and the default of an OS is not a contract. Between the
+second stop and the third stop the two blends differ by 3 to 4 levels of 255.
+`AvatarGradientTests` draws the disc and compares pixels on the gradient axis with the
+oklab blend and with the sRGB blend of the stops.
+
+The three stops and the ink of the initial are literal sRGB values, converted by hand from
+Paper's oklab values. No token in `design/tokens/paper-tokens.json` holds them. That file
+is an export of the Paper design file, and the owner makes the export (decision of the
+owner, 2026-11-25). Do not add the avatar colours to the token file by hand. When the
+export has them, replace the literals with the generated `HPalette` values (issue #359).
+
+Applies to: `ios/HasalaKit/Sources/HasalaDesign/Components/Discs.swift` (`AvatarDisc`),
+`ios/HasalaKit/Tests/HasalaKitTests/AvatarGradientTests.swift`.
+
 ## The toast has the system material under the frost
 
 The glass toast draws two layers behind its words: the system material

@@ -179,18 +179,24 @@ public struct AvatarDisc: View {
 
   private var pixels: Int { max(1, Int((size * displayScale).rounded(.up))) }
 
+  static let gradientStops: [(color: HRGBA, location: Double)] = [
+    (HRGBA(246, 182, 107, 1), 0),
+    (HRGBA(232, 152, 138, 1), 0.55),
+    (HRGBA(140, 107, 184, 1), 1),
+  ]
+  static let gradientSpace = Gradient.ColorSpace.perceptual
+  static let gradientStart = UnitPoint(x: 0.2, y: 0)
+  static let gradientEnd = UnitPoint(x: 0.8, y: 1)
+
+  static var gradient: some ShapeStyle {
+    let stops = gradientStops.map { Gradient.Stop(color: Color($0.color), location: $0.location) }
+    return .linearGradient(Gradient(stops: stops).colorSpace(gradientSpace), startPoint: gradientStart,
+                           endPoint: gradientEnd)
+  }
+
   public var body: some View {
     Circle()
-      .fill(
-        LinearGradient(
-          gradient: Gradient(stops: [
-            .init(color: Color(HRGBA(246, 182, 107, 1)), location: 0),
-            .init(color: Color(HRGBA(232, 152, 138, 1)), location: 0.55),
-            .init(color: Color(HRGBA(140, 107, 184, 1)), location: 1),
-          ]),
-          startPoint: UnitPoint(x: 0.2, y: 0), endPoint: UnitPoint(x: 0.8, y: 1)
-        )
-      )
+      .fill(Self.gradient)
       .frame(width: size, height: size)
       .overlay {
         Text(initial)

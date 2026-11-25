@@ -11,8 +11,6 @@
 [server]
 # Plain HTTP; there is no TLS code in hasalad. Must be loopback.
 http_listen = "127.0.0.1:8443"
-# Prometheus text endpoint on its own loopback listener; "" is off.
-metrics_listen = ""
 # "none" (local runs) or "cloudflare" (behind Cloudflare Tunnel, QA).
 trusted_proxy = "none"
 min_ios_build = 0

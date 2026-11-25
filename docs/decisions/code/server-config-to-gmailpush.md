@@ -137,7 +137,7 @@ Applies to: `server/internal/console/console.go` (`Console.actionThen`).
 ## The console health listener is outside the identity check and names no person
 
 The console has a second listener (`HASALA_CONSOLE_METRICS_LISTEN`, spec 07 §13.3) with
-`GET /healthz` for probe P8. It is not behind the identity check of the console, because
+`GET /healthz` for probe P8 and `GET /metrics` for Prometheus. It is not behind the identity check of the console, because
 Prometheus and the health probe reach it on loopback with no tailnet identity.
 
 Thus its body must say nothing about a person. It reports only the database, the App
@@ -145,11 +145,36 @@ Store Connect key and the number of requests with a Cloudflare header that reach
 console in the last 24 hours. One such request turns the answer to 503 for 24 hours, so a
 leak of the tunnel to the console pages the owner.
 
-The count is in memory, and a restart forgets it. Each refusal is also an ERROR line in
-the journal. Do not add a field with an address, a login or an account id to this body.
+The count is in memory, and a restart forgets it. This is intended: each refusal is also
+an ERROR line in the journal, and Prometheus keeps the history of the counter below, so
+the console needs no table for it. Do not add a field with an address, a login or an
+account id to this body.
+
+`/metrics` is the Prometheus text format, written by hand, so the server has no
+Prometheus dependency. It has three series and no labels:
+
+- `hasala_console_tunnel_refusals_total`: a counter of the refused requests since the
+  process started. It does not stop at the 1024 entries that the 24-hour window keeps.
+- `hasala_console_tunnel_refusals_24h`: the number that `/healthz` reports.
+- `hasala_console_db_up`: 1 or 0.
+
+The same rule applies to `/metrics`: no series and no label may name a person.
 
 Applies to: `server/internal/console/health.go` (`Console.HealthHandler`, `HealthBody`,
 `refusalLog`).
+
+## `hasalad serve` has no metrics listener
+
+`server.metrics_listen` (`HASALA_METRICS_LISTEN`) was a setting that the configuration
+validated and that nothing served. It is removed, with the `metrics.port` option and the
+`hasala` Prometheus job of the QA module, so an operator cannot set a value that gives no
+endpoint. A TOML file that has the key is refused as unrecognized, and the environment
+name gets the warning for a name that this build does not read.
+
+Add the setting again in the same change that serves the endpoint of spec 02 §20.1.
+
+Applies to: `server/internal/config/config.go` (`ServerConfig`),
+`infra/qa/nix/module.nix`.
 
 ## The reference packages stay outside hasalad
 

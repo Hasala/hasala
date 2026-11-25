@@ -172,13 +172,47 @@ func TestHealthzTurnsOnATunnelLeak(t *testing.T) {
 	if code, _ := health(); code != http.StatusOK {
 		t.Fatalf("a day later: %d", code)
 	}
-	for _, p := range []string{"/metrics", "/", "/api/v1/healthz"} {
+	for _, p := range []string{"/", "/api/v1/healthz", "/metrics/"} {
 		w := httptest.NewRecorder()
 		c.HealthHandler().ServeHTTP(w, httptest.NewRequest("GET", p, nil))
 		if w.Code != http.StatusNotFound {
 			t.Errorf("%s on the health listener: %d", p, w.Code)
 		}
 	}
+}
+
+func TestMetricsCountsTunnelRefusals(t *testing.T) {
+	c := New(pgtest.New(t), host, "tail.example.ts.net", []string{"owner@github"}, 0)
+	scrape := func(method string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		c.HealthHandler().ServeHTTP(w, httptest.NewRequest(method, "/metrics", nil))
+		return w
+	}
+	want := func(when string, lines ...string) {
+		t.Helper()
+		w := scrape("GET")
+		if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "text/plain; version=0.0.4; charset=utf-8" {
+			t.Fatalf("%s: %d %q", when, w.Code, w.Header().Get("Content-Type"))
+		}
+		for _, l := range lines {
+			if !strings.Contains(w.Body.String(), "\n"+l+"\n") {
+				t.Errorf("%s: no line %q in\n%s", when, l, w.Body)
+			}
+		}
+	}
+	want("at the start", "hasala_console_tunnel_refusals_total 0", "hasala_console_tunnel_refusals_24h 0",
+		"hasala_console_db_up 1", "# TYPE hasala_console_tunnel_refusals_total counter")
+	req(c, "GET", "/", nil, func(r *http.Request) { r.Header.Set("Cdn-Loop", "cloudflare") })
+	req(c, "GET", "/", nil, func(r *http.Request) { r.Header.Set("Cf-Ray", "x") })
+	req(c, "GET", "/", nil, func(r *http.Request) { r.Host = "other.example" })
+	want("after a leak", "hasala_console_tunnel_refusals_total 2", "hasala_console_tunnel_refusals_24h 2")
+	c.Now = func() time.Time { return time.Now().Add(25 * time.Hour) }
+	want("a day later", "hasala_console_tunnel_refusals_total 2", "hasala_console_tunnel_refusals_24h 0")
+	if w := scrape("POST"); w.Code != http.StatusNotFound {
+		t.Errorf("POST /metrics: %d", w.Code)
+	}
+	c.Pool = nil
+	want("with no database", "hasala_console_db_up 0")
 }
 
 func TestARevokedInviteIsRecordedInTheRestoreLedger(t *testing.T) {

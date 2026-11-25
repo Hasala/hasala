@@ -125,17 +125,17 @@ let
       "M1"
       (hasala { listen.address = "::1"; })
     ];
-    "listen.port = metrics.port" = [
+    "listen.port = tunnel.metricsPort" = [
       "M2"
-      (hasala { listen.port = 9471; })
+      (hasala { listen.port = 9472; })
     ];
     "API port in the firewall" = [
       "M3"
       { networking.firewall.allowedTCPPorts = [ 8471 ]; }
     ];
-    "metrics port open on one interface" = [
+    "cloudflared metrics port open on one interface" = [
       "M3"
-      { networking.firewall.interfaces.eth0.allowedTCPPorts = [ 9471 ]; }
+      { networking.firewall.interfaces.eth0.allowedTCPPorts = [ 9472 ]; }
     ];
     "extraEnvironment HASALA_ADMIN_TOKEN" = [
       "M4"
@@ -686,7 +686,6 @@ let
   );
   serveKeys = [
     "HASALA_HTTP_LISTEN"
-    "HASALA_METRICS_LISTEN"
     "HASALA_PG_DSN"
     "HASALA_TRUSTED_PROXY"
     "HASALA_RP_ID"

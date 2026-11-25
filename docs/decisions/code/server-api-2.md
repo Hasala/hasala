@@ -24,14 +24,14 @@ Applies to: `server/internal/api/passkeymanage.go` (`handleDeletePasskey`),
 
 ## The passkey list has no key material
 
-`GET /api/v1/auth/passkeys` returns five fields for each credential: `credential_id`,
-`created_at`, `last_used_at`, `authenticator` and `current`. It never returns a public
+`GET /api/v1/auth/passkeys` returns four fields for each credential: `credential_id`,
+`created_at`, `last_used_at` and `current`. It never returns a public
 key. A client has no use for the key bytes, thus they are only a liability on the
 wire.
 
 `auth.Credential` has no public key field. Thus the rule is a property of the type,
 not of a column list that somebody can make wider. The test
-`TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial` searches the response for the
+`TestListPasskeysCarriesFourFieldsAndNoKeyMaterial` searches the response for the
 stored key bytes in each encoding that the API uses. Do not add a key field to
 `auth.Credential` or to `PasskeySummary`.
 

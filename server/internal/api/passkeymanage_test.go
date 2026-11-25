@@ -89,7 +89,7 @@ func TestPasskeyManagementRequiresASession(t *testing.T) {
 	}
 }
 
-func TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial(t *testing.T) {
+func TestListPasskeysCarriesFourFieldsAndNoKeyMaterial(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)
@@ -109,8 +109,7 @@ func TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial(t *testing.T) {
 		t.Fatalf("%d passkeys, want 2 (%s)", len(raw.Passkeys), body)
 	}
 	want := map[string]bool{
-		"credential_id": true, "created_at": true, "last_used_at": true,
-		"authenticator": true, "current": true,
+		"credential_id": true, "created_at": true, "last_used_at": true, "current": true,
 	}
 	for i, row := range raw.Passkeys {
 		if len(row) != len(want) {
@@ -118,7 +117,7 @@ func TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial(t *testing.T) {
 		}
 		for k := range row {
 			if !want[k] {
-				t.Fatalf("row %d carries an unexpected field %q — the client reads five and no more", i, k)
+				t.Fatalf("row %d carries an unexpected field %q — the client reads four and no more", i, k)
 			}
 		}
 	}
@@ -163,9 +162,6 @@ func TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial(t *testing.T) {
 		}
 		if (p.LastUsedAt == nil) != (i == 1) {
 			t.Fatalf("row %d last_used_at = %v", i, p.LastUsedAt)
-		}
-		if p.Authenticator != nil {
-			t.Fatalf("row %d named an authenticator this server cannot resolve", i)
 		}
 	}
 	if !out.Passkeys[0].Current {

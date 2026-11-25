@@ -30,6 +30,11 @@ stops. The owner merges.
   `HASALA_METRICS_LISTEN`. Port 9471 stays unused. `hasala-health` has no
   probe P6 for that reason. The console serves `/metrics` beside `/healthz`
   on `console.metricsPort`.
+- **`hasala-health` has probe P7.** With the tunnel on, it reads the token
+  pages `/i/test`, `/freeze` and `/waitlist/confirm` of `https://hasala.app`
+  every two minutes, with the checks of `web/scripts/verify-live.sh`. The host
+  sets nothing for this. `monitoring.healthCheck.tokenPagesUrl` changes the
+  address, and null switches the probe off.
 - **`trusted_proxy = cloudflare` needs a release with spec 02 §16.1's
   client-IP code** (`internal/api/clientip.go`). Before it, every request
   arrives from loopback through the tunnel and each per-IP limit is one global

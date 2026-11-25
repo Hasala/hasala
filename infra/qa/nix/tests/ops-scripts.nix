@@ -132,7 +132,31 @@ let
     body='{"status":"ok"}'
     type=text/plain
     want=200
+    extra=""
+    [ -z "''${URLS:-}" ] || echo "$url" >> "$URLS"
     case "$url" in
+      */i/test | */freeze | */waitlist/confirm)
+        probe=P7
+        type=text/html
+        body='<!doctype html>'
+        csp="default-src 'none'; script-src 'self'; connect-src https://api.hasala.app; frame-ancestors 'none'"
+        cache='Cache-Control: no-store\r\n'
+        referrer='Referrer-Policy: no-referrer\r\n'
+        case "''${P7_FAULT:-}" in
+          "") ;;
+          two-csp) extra="content-security-policy: $csp\r\n" ;;
+          analytics) csp="$csp https://static.cloudflareinsights.com" ;;
+          no-script) csp="default-src 'none'; connect-src https://api.hasala.app; frame-ancestors 'none'" ;;
+          no-connect) csp="default-src 'none'; script-src 'self'; frame-ancestors 'none'" ;;
+          framed) csp="default-src 'none'; script-src 'self'; connect-src https://api.hasala.app" ;;
+          cached) cache="" ;;
+          no-referrer) referrer="" ;;
+          two-referrers) referrer="$referrer$referrer" ;;
+          *) echo "curl stub: unexpected P7_FAULT $P7_FAULT" >&2; exit 99 ;;
+        esac
+        case "$url" in */i/test) ;; *) cache=""; referrer="" ;; esac
+        extra="''${extra}Content-Security-Policy: $csp\r\n$cache$referrer"
+        ;;
       http://127.0.0.1:8471/api/v1/healthz) probe=P1 ;;
       https://api.hasala.app/api/v1/healthz) probe=P2 ;;
       */metrics | */admin/) probe=P3; want=404 ;;
@@ -151,7 +175,7 @@ let
     esac
     case " ''${DOWN:-} " in *" $probe "*) want=503 ;; esac
     printf '%s' "$body" > "$out"
-    printf 'HTTP/2 %s\r\ncontent-type: %s\r\n' "$want" "$type" > "$headers"
+    printf 'HTTP/2 %s\r\ncontent-type: %s\r\n%b' "$want" "$type" "$extra" > "$headers"
     printf '%s' "$want"
   '';
 
@@ -178,6 +202,11 @@ let
     }
   );
   healthApi = healthWith ntfy;
+  healthPages = healthWith { monitoring.healthCheck.tokenPagesUrl = "http://127.0.0.1:4321/"; };
+  healthNoPages = healthWith {
+    tunnel.enable = true;
+    monitoring.healthCheck.tokenPagesUrl = null;
+  };
   healthQuiet = healthWith { };
 
   retry = pkgs.writeShellApplication {
@@ -467,6 +496,8 @@ pkgs.runCommand "hasala-ops-scripts"
     all=${lib.getExe healthAll}
     api=${lib.getExe healthApi}
     quiet=${lib.getExe healthQuiet}
+    pages=${lib.getExe healthPages}
+    no_pages=${lib.getExe healthNoPages}
     health() { rc=0; "$1" > out.log 2>&1 || rc=$?; cat out.log; }
     posted() { wc -l < "$POSTS" | tr -d ' '; }
     health_scenario() { scenario "$1"; export POSTS="$PWD/posts" POST_HEADERS="$PWD/post-headers"; : > "$POSTS"; : > "$POST_HEADERS"; }
@@ -545,6 +576,73 @@ pkgs.runCommand "hasala-ops-scripts"
     health "$quiet"
     [ "$(posted)" = 0 ] || no "a host with no address posted"
     [ "$(find state -name 'recovered.*' | wc -l | tr -d ' ')" = 0 ] || no "a host with no address kept an owed notice"
+
+    health_scenario "P7 reads the three token pages of the apex when the tunnel is on"
+    URLS="$PWD/urls" health "$all"
+    [ "$rc" = 0 ] || no "a healthy run exited $rc"
+    for path in i/test freeze waitlist/confirm; do
+      [ "$(grep -cx "https://hasala.app/$path" urls)" = 1 ] || no "P7 did not read https://hasala.app/$path once: $(cat urls)"
+    done
+    [ "$(cat state/failures.P7)" = 0 ] || no "a healthy P7 counted a failure"
+
+    health_scenario "P7 alerts on its second failing run and names the page"
+    DOWN=P7 health "$all"
+    [ "$rc" = 0 ] || no "the first failing run alerted"
+    for path in i/test freeze waitlist/confirm; do
+      grep -qx "hasala-health: P7 /$path answered 503" out.log || no "P7 did not report /$path"
+    done
+    DOWN=P7 health "$all"
+    [ "$rc" = 1 ] || no "the second failing run did not alert"
+    health "$all"
+    [ "$(cat "$POSTS")" = "Probes recovered: P7" ] || no "the recovery notice was: $(cat "$POSTS")"
+
+    for fault in two-csp analytics no-script no-connect framed; do
+      health_scenario "P7 refuses the content security policy fault '$fault' on each page"
+      P7_FAULT=$fault health "$all"
+      for path in i/test freeze waitlist/confirm; do
+        grep -q "^hasala-health: P7 /$path: want one content-security-policy header" out.log || no "'$fault' on /$path was not reported"
+      done
+      [ "$(grep -c '^hasala-health: ' out.log)" = 3 ] || no "'$fault' reported something else"
+      P7_FAULT=$fault health "$all"
+      [ "$rc" = 1 ] || no "'$fault' did not alert on its second run"
+    done
+
+    health_scenario "P7 wants cache-control no-store on /i/test only"
+    P7_FAULT=cached health "$all"
+    [ "$(grep '^hasala-health: ' out.log)" = "hasala-health: P7 /i/test: no cache-control: no-store" ] || no "a cached /i/test was not the one report"
+    P7_FAULT=cached health "$all"
+    [ "$rc" = 1 ] || no "a cached /i/test did not alert on its second run"
+
+    health_scenario "P7 wants exactly one referrer-policy no-referrer on /i/test"
+    P7_FAULT=no-referrer health "$all"
+    [ "$(grep '^hasala-health: ' out.log)" = "hasala-health: P7 /i/test: 0 referrer-policy: no-referrer headers, want 1" ] || no "a missing referrer policy was not the one report"
+    P7_FAULT=two-referrers health "$all"
+    [ "$rc" = 1 ] || no "a wrong referrer policy did not alert on its second run"
+    [ "$(grep '^hasala-health: ' out.log)" = "hasala-health: P7 /i/test: 2 referrer-policy: no-referrer headers, want 1" ] || no "two referrer policies were not the one report"
+
+    health_scenario "with the tunnel off and no address P7 does not run"
+    URLS="$PWD/urls" DOWN=P7 health "$api"
+    URLS="$PWD/urls" DOWN=P7 health "$api"
+    [ "$rc" = 0 ] || no "P7 alerted with the tunnel off"
+    [ "$(sort -u urls)" = "http://127.0.0.1:8471/api/v1/healthz" ] || no "a run with the tunnel off read: $(cat urls)"
+    [ ! -e state/failures.P7 ] || no "P7 kept a failure count while off"
+
+    health_scenario "an address of its own switches P7 on without the tunnel"
+    URLS="$PWD/urls" DOWN=P7 health "$pages"
+    URLS="$PWD/urls" DOWN=P7 health "$pages"
+    [ "$rc" = 1 ] || no "P7 at its own address did not alert"
+    for path in i/test freeze waitlist/confirm; do
+      [ "$(grep -cx "http://127.0.0.1:4321/$path" urls)" = 2 ] || no "P7 did not read http://127.0.0.1:4321/$path: $(cat urls)"
+    done
+
+    health_scenario "a null address switches P7 off with the tunnel on, and drops its count"
+    DOWN=P7 health "$all"
+    [ "$(cat state/failures.P7)" = 1 ] || no "P7 did not count its failure"
+    URLS="$PWD/urls" DOWN=P7 health "$no_pages"
+    URLS="$PWD/urls" DOWN=P7 health "$no_pages"
+    [ "$rc" = 0 ] || no "P7 alerted with a null address"
+    ! grep -q -e /i/test -e /freeze -e /waitlist urls || no "P7 read a token page with a null address: $(cat urls)"
+    [ ! -e state/failures.P7 ] || no "P7 kept its failure count after it was switched off"
 
     fw_both() { iptables "$@"; ip6tables "$@"; }
     fw_scenario() {

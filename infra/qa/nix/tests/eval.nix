@@ -599,6 +599,10 @@ let
       (c: c.authKeyFile)
       (hasala { authKeyFile = ./lib.nix; })
     ];
+    "monitoring.healthCheck.tokenPagesUrl as a list" = [
+      (c: c.monitoring.healthCheck.tokenPagesUrl)
+      (hasala { monitoring.healthCheck.tokenPagesUrl = [ "https://hasala.app" ]; })
+    ];
     "tunnel.credentialsFile as a Nix path literal" = [
       (c: c.tunnel.credentialsFile)
       (hasala { tunnel.credentialsFile = ./lib.nix; })
@@ -640,6 +644,13 @@ let
   linkOnlySys = t.evalSystem (hasala gmailLink);
   outlookLinkOnlySys = t.evalSystem (hasala outlookLink);
   manualSys = t.evalSystem (lib.recursiveUpdate full { services.hasala.asc.enable = false; });
+  pagesOnlySys = t.evalSystem (hasala {
+    monitoring.healthCheck.tokenPagesUrl = "http://127.0.0.1:4321/";
+  });
+  noPagesSys = t.evalSystem (
+    lib.recursiveUpdate full { services.hasala.monitoring.healthCheck.tokenPagesUrl = null; }
+  );
+  healthOf = sys: sys.config.services.hasala.renderedScripts.health;
 
   positiveErrors =
     lib.optional (failedAny minimal != [ ]) "AT-E1 minimal: ${builtins.toJSON (failedAny minimal)}"
@@ -1050,6 +1061,28 @@ let
       && lib.any (lib.hasInfix "systemctl start hasala.target") lines
       && lib.elem "hasala.target" fullSys.config.systemd.timers.hasala-health.wantedBy
     ) "AT-E3 the restore runbook must stop the health probes and bring them back with hasala.target"
+    ++ check (
+      fullSys.config.services.hasala.monitoring.healthCheck.tokenPagesUrl == "https://hasala.app"
+      && lib.hasInfix "on=(P1 P2 P3 P5 P9 P7 P8 P10)\n" (healthOf fullSys)
+      && lib.hasInfix "off=()\n" (healthOf fullSys)
+      && lib.hasInfix "for p in i/test freeze waitlist/confirm; do" (healthOf fullSys)
+      && lib.hasInfix "c=$(code https://hasala.app/\"$p\")" (healthOf fullSys)
+    ) "AT-E3 with the tunnel on, hasala-health must run probe P7 against the apex token pages"
+    ++ check (
+      minimal.config.services.hasala.monitoring.healthCheck.tokenPagesUrl == null
+      && lib.hasInfix "on=(P1)\n" (healthOf minimal)
+      && lib.hasInfix "off=(P2 P3 P5 P7 P8 P9 P10)\n" (healthOf minimal)
+      && !lib.hasInfix "note P7" (healthOf minimal)
+    ) "AT-E3 with the tunnel off, hasala-health must not run probe P7 and must drop its state"
+    ++ check (
+      lib.hasInfix "on=(P1 P7)\n" (healthOf pagesOnlySys)
+      && lib.hasInfix "c=$(code http://127.0.0.1:4321/\"$p\")" (healthOf pagesOnlySys)
+    ) "AT-E3 healthCheck.tokenPagesUrl must switch probe P7 on without the tunnel"
+    ++ check (
+      lib.hasInfix "on=(P1 P2 P3 P5 P9 P8 P10)\n" (healthOf noPagesSys)
+      && lib.hasInfix "off=(P7)\n" (healthOf noPagesSys)
+      && !lib.hasInfix "note P7" (healthOf noPagesSys)
+    ) "AT-E3 a null healthCheck.tokenPagesUrl must switch probe P7 off with the tunnel on"
     ++ check (lib.all (n: lib.elem n fullSys.config.security.pki.caCertificateBlacklist) (
       [ "Comodo AAA Services root" ]
       ++ lib.optional (lib.versionOlder fullSys.pkgs.cacert.version "3.131.1") "emSign ECC Root CA - G3"

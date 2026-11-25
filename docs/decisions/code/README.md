@@ -20,7 +20,7 @@ The decisions of record of each area are one level up, in `docs/decisions/`.
 | [iOS app, transaction sheet and Live layer](ios-hasala-features-to-live.md) | 15 |
 | [iOS platform adapters, package layout, API client and categorization](ios-hasala.md) | 12 |
 | [HasalaDesign foundation and icons](ios-hasalakit-hasaladesign-to-hasalamocks.md) | 10 |
-| [HasalaModels engines and read models](ios-hasalakit-hasalamodels-engines.md) | 5 |
+| [HasalaModels engines and read models](ios-hasalakit-hasalamodels-engines.md) | 6 |
 | [HasalaKit ledger models and tests](ios-hasalakit-to-tests.md) | 5 |
 | [iOS app unit tests](ios-hasalatests.md) | 2 |
 | [iOS UI tests](ios-hasalauitests.md) | 6 |

@@ -740,9 +740,10 @@ public extension PlanEngine {
   }
 
   static func rules(_ c: Category, _ s: LedgerState) -> [CategoryRule] {
-    s.rules.filter { $0.categoryID == c.id }
+    let counts = ProfileEngine.matchCounts(s)
+    return s.rules.filter { $0.categoryID == c.id }
       .map { r -> (CategoryRule, Int) in
-        let n = ProfileEngine.matchCount(r, s)
+        let n = counts[r.id] ?? 0
         let how = switch r.match {
         case .contains: "Merchant contains"
         case .startsWith: "Merchant starts with"

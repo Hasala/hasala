@@ -569,6 +569,37 @@ struct LiveSortingTests {
     #expect(Self.sortedForYou(l, reached).isEmpty, "\(Self.sortedForYou(l, reached).map(\.title))")
   }
 
+  static func shownAndFiled(_ l: Ledger) throws -> (shown: [String: Int], filed: [String: Int], core: [String: Int]) {
+    let rows = try LedgerStateMapper.allRows(l.reader).filter { $0.categorySource == "rule" && $0.archived == nil }
+    let filed = Dictionary(grouping: rows, by: { $0.categorySourceRef ?? "" }).mapValues(\.count)
+    let rules = try l.reader.rules()
+    let page = ProfileEngine.rules(l.store.state)
+    return (
+      Dictionary(uniqueKeysWithValues: page.map { ($0.id, $0.matches) }),
+      Dictionary(uniqueKeysWithValues: rules.map { ($0.id, filed[$0.id] ?? 0) }),
+      Dictionary(uniqueKeysWithValues: rules.map { ($0.id, $0.matchCount) })
+    )
+  }
+
+  @Test func theRulesPageCountsThePaymentsThatEachRuleFiled() async throws {
+    let (l, old) = try await Self.wideLedger(suite: "sorting.wide.counts", clock: MovableClock(ms: Self.weeksAgo))
+    let id = { (name: String) in l.ids[name]![0] }
+    #expect(l.store.state.txns.count { $0.merchant.lowercased().contains("tailscale") } > 1)
+    var counts = try Self.shownAndFiled(l)
+    #expect(counts.shown == counts.filed && counts.shown == counts.core)
+    #expect(counts.shown == [old: 1])
+    #expect(SearchResults("tailscale", l.store.state, now: MayaLedger.now).rules.map(\.matches) == [1])
+
+    try l.store.apply(.categorize(id("pick"), "subscriptions", learnRule: true, project: nil))
+    let reached = ["waiting", "dict", "ruled", "auto"].map(id)
+    try await Mapper.eventually { try reached.allSatisfy { try l.row($0)?.categorySource == "rule" } }
+    await l.store.reload()
+    let rule = try #require(try l.reader.rules().first { $0.origin == "learned" })
+    counts = try Self.shownAndFiled(l)
+    #expect(counts.shown == counts.filed && counts.shown == counts.core)
+    #expect(counts.shown == [old: 0, rule.id: 4])
+  }
+
   @Test func undoAllPutsEachReachedPaymentBackExactlyAsItWas() async throws {
     let (l, old) = try await Self.wideLedger(suite: "sorting.wide.undoall", clock: MovableClock(ms: Self.weeksAgo))
     let id = { (name: String) in l.ids[name]![0] }

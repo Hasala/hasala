@@ -16,6 +16,70 @@ final class Counter: Sendable {
   var value: Int { n.withLock { $0 } }
 }
 
+final class Signal: Sendable {
+  private let stream: AsyncStream<Void>
+  private let continuation: AsyncStream<Void>.Continuation
+
+  init() { (stream, continuation) = AsyncStream.makeStream() }
+
+  func send() { continuation.yield() }
+
+  func wait() async {
+    for await _ in stream { return }
+  }
+}
+
+final class ManualSleeper: Sendable {
+  struct State {
+    var nextID = 0
+    var waiting: [Int: CheckedContinuation<Void, Never>] = [:]
+    var cancelled: Set<Int> = []
+    var asked: [Duration] = []
+  }
+
+  let state = Mutex(State())
+  let began = Signal()
+  let cancelled = Signal()
+
+  var asked: [Duration] { state.withLock { $0.asked } }
+  var waitingCount: Int { state.withLock { $0.waiting.count } }
+
+  func sleep(_ duration: Duration) async {
+    let id = state.withLock {
+      $0.nextID += 1
+      $0.asked.append(duration)
+      return $0.nextID
+    }
+    await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        let done = state.withLock {
+          if $0.cancelled.contains(id) { return true }
+          $0.waiting[id] = continuation
+          return false
+        }
+        if done { continuation.resume() }
+        began.send()
+      }
+    } onCancel: {
+      let continuation = state.withLock {
+        $0.cancelled.insert(id)
+        return $0.waiting.removeValue(forKey: id)
+      }
+      continuation?.resume()
+      cancelled.send()
+    }
+  }
+
+  func advance() {
+    let due = state.withLock {
+      let all = Array($0.waiting.values)
+      $0.waiting.removeAll()
+      return all
+    }
+    for continuation in due { continuation.resume() }
+  }
+}
+
 @Suite("CoreOutbox")
 struct OutboxTests {
   @Test("enqueue stores each op's canonical JSON in one transaction")
@@ -93,16 +157,24 @@ struct OutboxTests {
     #expect(cancelled.value == 0)
   }
 
-  @Test("flushing inside the window fires once: the replaced wait never fires")
+  @Test("flushing inside the window fires once: the replaced wait never fires", .timeLimit(.minutes(1)))
   func flushInsideWindowFiresOnce() async throws {
     let store = try LedgerStore.inMemory()
     let fired = Counter()
-    let box = Outbox(store: store, clock: FakeClock(), debounce: .milliseconds(300), onAuthored: { fired.bump() })
+    let sleeper = ManualSleeper()
+    let box = Outbox(
+      store: store, clock: FakeClock(), debounce: .milliseconds(300), sleep: sleeper.sleep,
+      onAuthored: { fired.bump() })
     try await box.enqueue([op("a")])
     await box.flushTriggerNow()
     #expect(fired.value == 1)
-    try await Task.sleep(for: .milliseconds(500))
+    await sleeper.began.wait()
+    await sleeper.cancelled.wait()
+    _ = await box.pendingCount()
+    sleeper.advance()
+    _ = await box.pendingCount()
     #expect(fired.value == 1)
+    #expect(sleeper.asked == [.milliseconds(300)])
   }
 
   @Test("a sender's pending import is written with its ops, or not at all")
@@ -122,15 +194,30 @@ struct OutboxTests {
     #expect(try tables.pendingImports().map(\.sinceMs) == [5_000])
   }
 
-  @Test("several enqueues inside the debounce window fire one authored trigger")
+  @Test("several enqueues inside the debounce window fire one authored trigger", .timeLimit(.minutes(1)))
   func debounce() async throws {
     let store = try LedgerStore.inMemory()
     let fired = Counter()
-    let box = Outbox(store: store, clock: FakeClock(), debounce: .milliseconds(400), onAuthored: { fired.bump() })
+    let done = Signal()
+    let sleeper = ManualSleeper()
+    let box = Outbox(
+      store: store, clock: FakeClock(), debounce: .milliseconds(400), sleep: sleeper.sleep,
+      onAuthored: {
+        fired.bump()
+        done.send()
+      })
     try await box.enqueue([op("a")])
     try await box.enqueue([op("b")])
-    for _ in 0..<100 where fired.value == 0 { try await Task.sleep(for: .milliseconds(50)) }
-    try await Task.sleep(for: .milliseconds(600))
+    await sleeper.began.wait()
+    await sleeper.began.wait()
+    await sleeper.cancelled.wait()
+    _ = await box.pendingCount()
+    #expect(fired.value == 0)
+    #expect(sleeper.waitingCount == 1)
+    sleeper.advance()
+    await done.wait()
+    _ = await box.pendingCount()
     #expect(fired.value == 1)
+    #expect(sleeper.asked == [.milliseconds(400), .milliseconds(400)])
   }
 }

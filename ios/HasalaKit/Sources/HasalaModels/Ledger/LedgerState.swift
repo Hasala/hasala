@@ -823,10 +823,10 @@ public struct DevicePrefs: Sendable, Hashable, Codable {
 }
 
 public struct NetWorthHistory: Sendable, Hashable, Codable {
-  public var monthChange: Money
+  public var monthChange: Money?
   public var spark: [Int]
 
-  public init(monthChange: Money = .aed(0), spark: [Int] = []) {
+  public init(monthChange: Money? = nil, spark: [Int] = []) {
     self.monthChange = monthChange
     self.spark = spark
   }

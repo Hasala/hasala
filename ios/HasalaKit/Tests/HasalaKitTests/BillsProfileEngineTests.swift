@@ -146,6 +146,14 @@ struct BillsProfileEngineParityTests {
     #expect(plates == ["R", "FADB", "BAE", "FAB", "ENBD", "W", "م", "HSBC"].map { .initials($0) })
   }
 
+  @Test func aMonthChangeShowsWithoutAChart() {
+    var live = s
+    live.netWorth = NetWorthHistory(monthChange: .aed(-50_00))
+    let a = AccountsEngine.snapshot(live, now: now)
+    #expect(a.chart == nil)
+    #expect(a.monthChange == .aed(-50_00))
+  }
+
   @Test func accountsWithoutHistoryDrawNoChart() {
     var live = s
     live.netWorth = NetWorthHistory()

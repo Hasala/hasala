@@ -227,6 +227,19 @@ it.
 Applies to: `ios/Hasala/Features/Shared/ScreenParts.swift` (`WashPin`, `washBehind`),
 `ios/Hasala/Features/Shared/TabScreen.swift`.
 
+## The month title of the plan is plain text in each build
+
+The plan screens show one month, and there is no month picker (spec 04 §16.2 P1 is not
+built). `MonthPill` is thus only the title of that month: no chevron, no capsule and no
+button. A chevron or a capsule says that a tap opens a picker.
+
+Before 2026-11-25, the Debug surface (`BuildSurface.showsUnfinished`) drew the chevron
+and the capsule, and Release drew the plain title. The owner decided on 2026-11-25 to
+remove the Debug chrome and not to build the picker (issue #325). Add the chrome again
+only together with a picker that it opens.
+
+Applies to: `ios/Hasala/Features/Shared/ScreenParts.swift` (`MonthPill`).
+
 ## A support mail link is followed by the support page
 
 Where the build does not offer an account action, the screen shows a mail link to

@@ -21,7 +21,7 @@ The decisions of record of each area are one level up, in `docs/decisions/`.
 | [iOS platform adapters, package layout, API client and categorization](ios-hasala.md) | 13 |
 | [HasalaDesign foundation and icons](ios-hasalakit-hasaladesign-to-hasalamocks.md) | 10 |
 | [HasalaModels engines and read models](ios-hasalakit-hasalamodels-engines.md) | 6 |
-| [HasalaKit ledger models and tests](ios-hasalakit-to-tests.md) | 5 |
+| [HasalaKit ledger models and tests](ios-hasalakit-to-tests.md) | 6 |
 | [iOS app unit tests](ios-hasalatests.md) | 2 |
 | [iOS UI tests](ios-hasalauitests.md) | 7 |
 | [iOS mailbox lane and model](ios-mailbox-to-model.md) | 23 |

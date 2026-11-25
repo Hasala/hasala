@@ -446,8 +446,9 @@ public final class InMemoryLedger: LedgerStore {
       guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
       try BillLifecycle.dismissNotice(&s.bills[i], id: noticeID)
       title = nil
-    case .editIncome(let id, let amount, let payday, let active):
-      try BillLifecycle.editIncome(&s, id, amount: amount, payday: payday, active: active, today: today)
+    case .editIncome(let id, let amount, let payday, let lastWorkingDay, let active):
+      try BillLifecycle.editIncome(
+        &s, id, amount: amount, payday: payday, lastWorkingDay: lastWorkingDay, active: active, today: today)
       touchedBills = true
       touchedPlan = true
       title = "Income updated"
@@ -584,7 +585,10 @@ public final class InMemoryLedger: LedgerStore {
         if old.zeroSet.contains(key) { s.plan.zeroSet.insert(key) } else { s.plan.zeroSet.remove(key) }
       }
       if s.plan.income == new.income { s.plan.income = old.income }
-      if s.plan.payday == new.payday { s.plan.payday = old.payday }
+      if s.plan.payday == new.payday, s.plan.paydayLastWorkingDay == new.paydayLastWorkingDay {
+        s.plan.payday = old.payday
+        s.plan.paydayLastWorkingDay = old.paydayLastWorkingDay
+      }
       for m in Set(old.incomeByMonth.keys).union(new.incomeByMonth.keys)
       where s.plan.incomeByMonth[m] == new.incomeByMonth[m] {
         s.plan.incomeByMonth[m] = old.incomeByMonth[m]

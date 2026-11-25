@@ -5,12 +5,31 @@ import SwiftUI
 struct SalaryEditSheet: View {
   struct Fields: Equatable {
     var amountText: String
-    var payday: Int
+    var payday: PaydayChoice
     var active: Bool
 
     static func opened(_ terms: SalaryTerms?) -> Fields {
-      Fields(amountText: terms.map { MoneyFormat.draft($0.amount.minor) } ?? "", payday: terms?.payday ?? 1,
+      Fields(amountText: terms.map { MoneyFormat.draft($0.amount.minor) } ?? "",
+             payday: terms.map { PaydayChoice(day: $0.payday, lastWorkingDay: $0.lastWorkingDay) } ?? .day(1),
              active: terms?.active ?? true)
+    }
+
+    var paydaySlot: Int {
+      get { payday.index + 1 }
+      set { payday = PaydayChoice.all[min(max(newValue, 1), PaydayChoice.all.count) - 1] }
+    }
+
+    var paydayPhrase: String {
+      switch payday {
+      case .day(let d): PlanEngine.ordinal(d)
+      case .lastWorkingDay: "last work day"
+      }
+    }
+
+    func opDay(_ terms: SalaryTerms?, today: LocalDate) -> Int {
+      payday.opDay(
+        today: today, saved: terms.map { PaydayChoice(day: $0.payday, lastWorkingDay: $0.lastWorkingDay) },
+        savedDay: terms?.payday)
     }
   }
 
@@ -29,8 +48,6 @@ struct SalaryEditSheet: View {
   }
 
   private var terms: SalaryTerms? { BillsEngine.salary(app.store.state, bill: bill) }
-  private var payday: Int { fields.payday }
-
   private var minor: Int64? { RecurringCopy.positiveMinor(fields.amountText) }
 
   var body: some View {
@@ -40,17 +57,17 @@ struct SalaryEditSheet: View {
                            id: "bills.salary.amount", amount: true)
       }
       RecurringCard {
-        Stepper(value: $fields.payday, in: 1...31) {
+        Stepper(value: $fields.paydaySlot, in: 1...PaydayChoice.all.count) {
           VStack(alignment: .leading, spacing: 2) {
             Text("Payday").hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
-            Text("The \(PlanEngine.ordinal(payday)) of each month").hType(.footnote)
+            Text("The \(fields.paydayPhrase) of each month").hType(.footnote)
               .foregroundStyle(HColor.textSecondary)
           }
           .padding(.vertical, 8)
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 52)
-        .accessibilityValue("the \(PlanEngine.ordinal(payday))")
+        .accessibilityValue("the \(fields.paydayPhrase)")
         .accessibilityIdentifier("bills.salary.payday")
         HDivider(inset: .text16)
         Toggle(isOn: $fields.active) {
@@ -70,7 +87,10 @@ struct SalaryEditSheet: View {
     } dock: {
       Button("Save") {
         guard let minor else { return }
-        if app.perform(.editIncome(id: bill, amount: .aed(minor), payday: fields.payday, active: fields.active)) { dismiss() }
+        let edit = LedgerEdit.editIncome(
+          id: bill, amount: .aed(minor), payday: fields.opDay(terms, today: app.store.now.date),
+          lastWorkingDay: fields.payday.isLastWorkingDay, active: fields.active)
+        if app.perform(edit) { dismiss() }
       }
       .buttonStyle(.pill(.primary, fill: true))
       .pillHeight()

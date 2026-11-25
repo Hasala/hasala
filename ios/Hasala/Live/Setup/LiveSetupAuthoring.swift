@@ -40,7 +40,9 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
     let split = (try? r.budgetTemplate()).flatMap { $0 }.map {
       StartingPlan(needsPercent: Int($0.need), wantsPercent: Int($0.want), savingsPercent: Int($0.saving))
     }
-    return SetupReadBack(incomeMinor: salary?.amountMinor, payday: salary.map { Int($0.payday) }, split: split)
+    return SetupReadBack(
+      incomeMinor: salary?.amountMinor, payday: salary.map { Int($0.payday) }, split: split,
+      paydayLastWorkingDay: salary?.paydayLastWorkingDay ?? false)
   }
 
   func today() -> LocalDate {
@@ -130,13 +132,14 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
     return BankRequestsSnapshot(list)
   }
 
-  func savePlan(income: Int64?, payday: Int?, plan: StartingPlan?) async throws(SetupFailure) {
+  func savePlan(income: Int64?, payday: Int?, lastWorkingDay: Bool, plan: StartingPlan?) async throws(SetupFailure) {
     let rt = try open()
     let now = rt.context.clock.nowMs()
     guard let month = LocalClock.localMonth(now) else { throw .failed("The date is out of range.") }
     try await author(rt) { a throws(AuthorError) in
       if let income {
-        a.setIncomeSource(id: "salary", name: "Salary", amountMinor: income, payday: Int64(payday ?? 28))
+        a.setIncomeSource(
+          id: "salary", name: "Salary", amountMinor: income, payday: Int64(payday ?? 28), lastWorkingDay: lastWorkingDay)
       }
       if let plan, plan.isValid {
         try a.setBudgetTemplate(

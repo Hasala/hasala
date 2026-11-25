@@ -230,6 +230,28 @@ struct LiveRecurringTests {
     #expect(store.state.bills.first { $0.isIncome }?.id == salary.id)
   }
 
+  @Test func aLastWorkDayPaydayIsAuthoredMappedAndUndone() async throws {
+    let a = try Mapper.account()
+    let store = try await Self.store(a, suite: "recurring.income.lastday.tests")
+    let salary = try #require(store.state.bills.first { $0.isIncome })
+    let edit = LedgerEdit.editIncome(id: salary.id, amount: .aed(25_000_00), payday: 30, lastWorkingDay: true, active: true)
+    let token = try #require(try store.apply(edit))
+    func source() throws -> IncomeSource? { try a.projection.reader.incomeSources().first { $0.id == "salary" } }
+    try await Mapper.eventually { try source()?.paydayLastWorkingDay == true }
+    #expect(try source()?.payday == 30)
+    await store.reload()
+    let shown = try #require(store.state.bills.first { $0.isIncome })
+    #expect(store.state.plan.paydayLastWorkingDay && shown.usualLastWorkingDay)
+    #expect(shown.nextDue == LocalDate(2026, 10, 30))
+    #expect(PlanEngine.payday(store.state, month: YearMonth(2026, 12)) == LocalDate(2026, 12, 31))
+    #expect(PlanEngine.payday(store.state, month: YearMonth(2027, 1)) == LocalDate(2027, 1, 29))
+    #expect(BillPatch.shift(shown, from: shown.nextDue, by: 4) == LocalDate(2027, 2, 26))
+    #expect(BillsEngine.salary(store.state, bill: shown.id)?.lastWorkingDay == true)
+    store.undo(token)
+    try await Mapper.eventually { try source()?.paydayLastWorkingDay == false }
+    #expect(try source()?.payday == 28)
+  }
+
   @Test func oldShapedBillsMapAsBefore() async throws {
     let live = try await Mapper.foldedState()
     let rent = try #require(live.bills.first { $0.name == "Rent · Al Habtoor" })

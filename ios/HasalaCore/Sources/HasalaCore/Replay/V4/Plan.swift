@@ -89,8 +89,15 @@ extension State {
     let active = try P.boolField(p["active"], "active")
     let w = planWrite(e)
     let cur = plan.incomeSources[id]
+    let last: Bool
+    if let v = P.present(p["payday_last_working_day"]) {
+      last = try P.boolField(v, "payday_last_working_day")
+    } else {
+      last = cur.map { $0.paydayLastWorkingDay && $0.payday == payday } ?? false
+    }
     noteOverwrite("income_source", id, cur?.write, cur.map { String($0.amountMinor) }, w, seq: e.seq)
-    plan.incomeSources[id] = IncomeSource(id: id, name: name, categoryID: c, amountMinor: a, payday: payday, active: active, write: w)
+    plan.incomeSources[id] = IncomeSource(
+      id: id, name: name, categoryID: c, amountMinor: a, payday: payday, paydayLastWorkingDay: last, active: active, write: w)
   }
 
   mutating func applyCategoryPlanRoleSet(_ e: LogEntry) throws(PayloadError) {

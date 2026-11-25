@@ -47,7 +47,8 @@ public enum BillLifecycle {
   }
 
   public static func editIncome(
-    _ s: inout LedgerState, _ id: BillID, amount: Money, payday: Int, active: Bool, today: LocalDate
+    _ s: inout LedgerState, _ id: BillID, amount: Money, payday: Int, lastWorkingDay: Bool, active: Bool,
+    today: LocalDate
   ) throws(ActionError) {
     guard let i = s.bills.firstIndex(where: { $0.id == id && $0.isIncome }) else { throw .notFound }
     guard amount.minor > 0, amount.minor <= ManualEntryDraft.maxMinor else { throw .invalidAmount }
@@ -55,14 +56,16 @@ public enum BillLifecycle {
     let old = s.bills[i]
     s.bills[i].amount = amount
     s.bills[i].usualDay = payday
+    s.bills[i].usualLastWorkingDay = lastWorkingDay
     s.bills[i].state = active ? .tracked : .ended
     s.bills[i].endedOn = active ? nil : today
     let ym = today.yearMonth
-    let thisMonth = ym.date(clampedDay: payday)
-    s.bills[i].nextDue = thisMonth >= today ? thisMonth : ym.next.date(clampedDay: payday)
+    let thisMonth = s.bills[i].usualDate(in: ym)
+    s.bills[i].nextDue = thisMonth >= today ? thisMonth : s.bills[i].usualDate(in: ym.next)
     let removed = old.state == .tracked ? old.amount.minor : 0
     s.plan.income = .aed(max(0, s.plan.income.minor - removed + (active ? amount.minor : 0)))
     s.plan.payday = payday
+    s.plan.paydayLastWorkingDay = lastWorkingDay
     for m in s.plan.incomeByMonth.keys where m >= ym { s.plan.incomeByMonth[m] = nil }
     for m in s.plan.incomeExpectedByMonth.keys where m >= ym { s.plan.incomeExpectedByMonth[m] = nil }
   }

@@ -507,7 +507,8 @@ public struct LedgerReader: Sendable {
       for r in try Row.fetchAll(db, sql: "SELECT * FROM income_source ORDER BY id") {
         let id: String = r["id"]
         p.incomeSources[id] = IncomeSource(
-          id: id, name: r["name"], categoryID: r["category_id"], amountMinor: r["amount_minor"], payday: r["payday"], active: r["active"],
+          id: id, name: r["name"], categoryID: r["category_id"], amountMinor: r["amount_minor"], payday: r["payday"],
+          paydayLastWorkingDay: r["payday_last_working_day"], active: r["active"],
           write: PlanWrite(opID: "", writerID: "", atMs: r["written_ms"]))
       }
       for r in try Row.fetchAll(db, sql: "SELECT * FROM category_plan_role ORDER BY category_id") {

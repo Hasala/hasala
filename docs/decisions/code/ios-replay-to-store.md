@@ -248,6 +248,33 @@ Applies to: `ios/HasalaCore/Sources/HasalaCore/Replay/V4/Base.swift` (`Keyed`),
 `ios/HasalaCore/Sources/HasalaCore/Replay/V4/Keyed03c.swift`,
 `ios/HasalaCore/Sources/HasalaCore/Replay/V4/Plan.swift`.
 
+## An income source keeps its last-work-day choice through an edit that has no key
+
+`income_source_set` has an optional boolean key, `payday_last_working_day`
+(`docs/decisions/recurring-items.md`, decision 30). `applyIncomeSourceSet` reads a present
+key as the choice. With no key (or `null`) it keeps the record's choice only when the op's
+`payday` is the record's `payday`; otherwise the choice is off. A build that does not know
+the key writes the whole record with no key, so this rule keeps the choice through its
+amount edit and drops it when the person picked another day there. The rule reads only the
+op and the record at its position, like each keyed record.
+
+`payday` stays 1 to 31 on such a record. It is what a build without the key shows, and it
+is the number the rule compares. An author that changes the choice must write the key:
+`OpAuthor.setIncomeSource` omits it only when `lastWorkingDay` is `nil`.
+
+The canary has a source with the key and an edit of it with no key (`canary-v4-84`,
+`canary-v4-85`), so a build with this rule has another fold print than a build without it.
+
+`CivilMonth.lastWorkingDay` (core) and `YearMonth.lastWorkingDay` (HasalaModels) are one
+rule in two calendars: the last day of the month that is not a Saturday or a Sunday.
+
+Applies to: `ios/HasalaCore/Sources/HasalaCore/Replay/V4/Plan.swift`
+(`applyIncomeSourceSet`), `ios/HasalaCore/Sources/HasalaCore/Replay/Serialize.swift`,
+`ios/HasalaCore/Sources/HasalaCore/Domain/Author/OpAuthor.swift` (`setIncomeSource`),
+`ios/HasalaCore/Sources/HasalaCore/Domain/Plan/PlanEngine.swift` (`IncomeSource.payday(in:)`),
+`ios/HasalaCore/Sources/HasalaCore/Time/CivilDate.swift`,
+`ios/Hasala/Features/Setup/Payday.swift` (`PaydayChoice.opDay`).
+
 ## An op installs nothing until all of it is valid
 
 An op that sets more than one value is examined completely before the first write.

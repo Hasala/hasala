@@ -13,7 +13,8 @@ public enum BillDueDates {
   }
 
   public static func shift(_ b: Bill, from base: LocalDate, by n: Int) -> LocalDate {
-    shift(base, day: b.usualDay, cadence: b.cadence, every: max(1, b.every), by: n)
+    let shifted = shift(base, day: b.usualDay, cadence: b.cadence, every: max(1, b.every), by: n)
+    return b.usualLastWorkingDay && b.cadence != .weekly ? shifted.yearMonth.lastWorkingDay : shifted
   }
 
   public static func nearest(_ b: Bill, to date: LocalDate) -> LocalDate {
@@ -85,9 +86,11 @@ public struct SalaryTerms: Sendable, Hashable {
   public var name: String
   public var amount: Money
   public var payday: Int
+  public var lastWorkingDay: Bool
   public var active: Bool
 
-  public init(id: BillID, name: String, amount: Money, payday: Int, active: Bool) {
+  public init(id: BillID, name: String, amount: Money, payday: Int, lastWorkingDay: Bool = false, active: Bool) {
+    self.lastWorkingDay = lastWorkingDay
     self.id = id
     self.name = name
     self.amount = amount
@@ -220,7 +223,7 @@ extension BillsEngine {
   public static func salary(_ s: LedgerState, bill id: BillID) -> SalaryTerms? {
     guard let b = s.bill(id), b.isIncome, b.state != .dismissed else { return nil }
     return SalaryTerms(id: b.id, name: b.name, amount: b.amount, payday: b.usualDay,
-                       active: b.state == .tracked || b.state == .paused)
+                       lastWorkingDay: b.usualLastWorkingDay, active: b.state == .tracked || b.state == .paused)
   }
 
   static func amount(_ b: Bill, on due: LocalDate) -> Money {

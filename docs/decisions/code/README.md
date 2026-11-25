@@ -26,7 +26,7 @@ The decisions of record of each area are one level up, in `docs/decisions/`.
 | [iOS UI tests](ios-hasalauitests.md) | 6 |
 | [iOS mailbox lane and model](ios-mailbox-to-model.md) | 23 |
 | [iOS core, money to projection](ios-money-to-projection.md) | 22 |
-| [iOS replay, soft auth and store](ios-replay-to-store.md) | 28 |
+| [iOS replay, soft auth and store](ios-replay-to-store.md) | 29 |
 | [iOS scripts and tools](ios-scripts-to-tools.md) | 15 |
 | [iOS sync, account ceremonies and bank templates](ios-sync-to-template.md) | 26 |
 | [iOS core tests, mailbox to Keychain](ios-tests-coremailboxtests-to-hasalakeychaintests.md) | 6 |

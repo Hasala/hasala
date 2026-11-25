@@ -119,8 +119,20 @@ struct BillsScreenTests {
     #expect(until != pause)
     let salary = SalaryEditSheet.Fields.opened(BillsEngine.salary(state, bill: "salary"))
     var later = salary
-    later.payday = salary.payday == 1 ? 2 : 1
+    later.paydaySlot = salary.paydaySlot == 1 ? 2 : 1
     #expect(later != salary)
+    later.paydaySlot = 32
+    #expect(later.payday == .lastWorkingDay && later.paydayPhrase == "last work day")
+    later.paydaySlot = 28
+    #expect(later.payday == .day(28) && later.paydayPhrase == "28th")
+    let terms = SalaryTerms(id: "salary", name: "Salary", amount: .aed(25_000_00), payday: 30, lastWorkingDay: true, active: true)
+    let kept = SalaryEditSheet.Fields.opened(terms)
+    #expect(kept.payday == .lastWorkingDay && kept.paydaySlot == 32)
+    #expect(kept.opDay(terms, today: LocalDate(2026, 12, 10)) == 30)
+    #expect(later.opDay(terms, today: LocalDate(2026, 12, 10)) == 28)
+    var chosen = SalaryEditSheet.Fields.opened(BillsEngine.salary(state, bill: "salary"))
+    chosen.payday = .lastWorkingDay
+    #expect(chosen.opDay(BillsEngine.salary(state, bill: "salary"), today: LocalDate(2026, 12, 10)) == 31)
   }
 
   private final class SheetDelegate: NSObject, UIAdaptivePresentationControllerDelegate {}

@@ -215,7 +215,7 @@ struct SearchView: View {
                 HDivider(inset: .disc68)
                 Button {
                   SearchHistory.shared.add(q)
-                  ActivityRequests.shared.show(TxnFilter(text: text), in: app)
+                  app.router.showActivity(TxnFilter(text: text))
                 } label: {
                   HStack(spacing: 12) {
                     Text(SearchResults.seeAllLabel(found.rows.count)).hType(.callout.weight(.medium))
@@ -241,7 +241,7 @@ struct SearchView: View {
                 if i > 0 { HDivider(inset: .disc68) }
                 Button {
                   SearchHistory.shared.add(q)
-                  ActivityRequests.shared.show(TxnFilter(category: c.id), in: app)
+                  app.router.showActivity(TxnFilter(category: c.id))
                 } label: {
                   HStack(spacing: 12) {
                     CategoryDisc(hue: c.hue, icon: c.glyph.icon)
@@ -417,7 +417,7 @@ struct SearchView: View {
           if let filter = a.activity, let label = AskSearch.seeAllLabel(a, app.store.state) {
             Button {
               SearchHistory.shared.add(q)
-              ActivityRequests.shared.show(filter, in: app)
+              app.router.showActivity(filter)
             } label: {
               Text(verbatim: label).hType(.subheadline.weight(.medium)).foregroundStyle(HColor.textLink)
                 .multilineTextAlignment(.trailing)
@@ -449,7 +449,7 @@ struct SearchView: View {
     let summary = TopResultSummary(top, in: rows)
     return Button {
       SearchHistory.shared.add(q)
-      ActivityRequests.shared.show(TxnFilter(text: top.merchant), in: app)
+      app.router.showActivity(TxnFilter(text: top.merchant))
     } label: {
       HStack(alignment: typeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
         CategoryDisc(hue: top.hue, icon: top.glyph.icon)

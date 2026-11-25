@@ -1,3 +1,4 @@
+import HasalaModels
 import Observation
 
 @MainActor
@@ -17,6 +18,7 @@ final class AppRouter {
   var nextSheet: (SheetRoute, profilePath: [ProfileRoute])?
   var nextCover: CoverRoute?
   var pasteBankText = false
+  private(set) var pendingActivityFilter: TxnFilter?
 
   #if HASALA_MOCKS
     var pendingLaunch: PendingLaunch?
@@ -47,6 +49,18 @@ final class AppRouter {
     guard let next = nextSheet else { return }
     nextSheet = nil
     present(next.0, profile: next.profilePath)
+  }
+
+  func showActivity(_ filter: TxnFilter) {
+    pendingActivityFilter = filter
+    activity = []
+    tab = .activity
+    if sheet == .search || sheet == .profile { sheet = nil }
+  }
+
+  func takeActivityFilter() -> TxnFilter? {
+    defer { pendingActivityFilter = nil }
+    return pendingActivityFilter
   }
 
   func popToRoot(_ tab: AppTab) {

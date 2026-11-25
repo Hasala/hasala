@@ -70,6 +70,35 @@ final class RecurringManageUITests: XCTestCase {
   }
 
   @MainActor
+  func testIPaidItLinksThePaymentThatIsPicked() throws {
+    let app = launchRecurring()
+    tap(app, "bills.paid.axa", opening: "bills.find.save")
+    let save = el(app, "bills.find.save")
+    XCTAssertFalse(save.isEnabled, "Link payment is on before a payment is picked")
+    XCTAssertTrue(el(app, "bills.find.notListed").isEnabled)
+    let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'bills.past.'"))
+    let first = rows.element(boundBy: 0)
+    let second = rows.element(boundBy: 1)
+    XCTAssertTrue(first.waitForExistence(timeout: uiWait), "no payment is offered for the late bill")
+    XCTAssertTrue(second.exists, "only one payment is offered")
+    try audit(app, overSheet: true)
+    attach(app, "Find the payment")
+    first.tap()
+    second.tap()
+    XCTAssertTrue(second.isSelected && !first.isSelected, "a second pick did not replace the first")
+    XCTAssertTrue(save.isEnabled)
+    tap(app, "bills.find.save")
+    toast(app, "Linked 1 payment")
+    XCTAssertFalse(el(app, "bills.paid.axa").exists, "the bill is still late after its payment was linked")
+
+    open(app, "axa")
+    let linked = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Linked by you'"))
+    XCTAssertTrue(linked.firstMatch.waitForExistence(timeout: uiWait), "the linked payment is not in the history")
+    XCTAssertFalse(el(app, "bills.detail.paid").exists)
+    attach(app, "AXA Insurance · payment linked")
+  }
+
+  @MainActor
   func testEditAmountPauseAndEnd() throws {
     let app = launchRecurring()
     open(app, "netflix")

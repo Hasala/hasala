@@ -212,6 +212,31 @@ struct LiveRecurringTests {
     #expect(throws: ActionError.self) { try store.apply(.linkBillPayments(netflix.id, [taken])) }
   }
 
+  @Test func aPaymentPickedForALateBillPaysItsLateDue() async throws {
+    let a = try Mapper.account()
+    let store = try await Self.store(a, suite: "recurring.find.tests")
+    let axa = try Self.bill(store, "AXA Insurance")
+    #expect(axa.nextDue == LocalDate(2026, 10, 7))
+    let picked = try #require(BillsEngine.paymentsNear(store.state, for: axa, due: axa.nextDue).first)
+    func linked() throws -> Bool {
+      try a.projection.reader.billResolutions(bill: axa.id).contains {
+        $0.due == "2026-10-07" && $0.resolution == "paid" && $0.txn == picked.id
+      }
+    }
+    let token = try #require(try store.apply(.linkBillPayments(axa.id, [picked.id])))
+    try await Mapper.eventually { try linked() }
+    #expect(try linked())
+    try await Mapper.eventually { try Self.bill(store, "AXA Insurance").nextDue == LocalDate(2026, 11, 7) }
+    let paid = try Self.bill(store, "AXA Insurance")
+    #expect(paid.nextDue == LocalDate(2026, 11, 7))
+    #expect(paid.payments.first?.link == .linked && paid.payments.first?.txnID == picked.id)
+    store.undo(token)
+    try await Mapper.eventually { try !linked() }
+    #expect(try !linked())
+    try await Mapper.eventually { try Self.bill(store, "AXA Insurance").nextDue == LocalDate(2026, 10, 7) }
+    #expect(try Self.bill(store, "AXA Insurance").nextDue == LocalDate(2026, 10, 7))
+  }
+
   @Test func editingIncomeIsAuthoredAndUndone() async throws {
     let a = try Mapper.account()
     let store = try await Self.store(a, suite: "recurring.income.tests")

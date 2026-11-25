@@ -173,6 +173,30 @@ struct BillsScreenTests {
     #expect(presentation.delegate === later)
   }
 
+  @Test func findThePaymentHoldsOnePick() {
+    #expect(FindPaymentSheet.pick(nil, from: ["a"]) == "a")
+    #expect(FindPaymentSheet.pick("a", from: ["a", "b"]) == "b")
+    #expect(FindPaymentSheet.pick("a", from: []) == nil)
+    #expect(FindPaymentSheet.pick("a", from: ["a"]) == "a")
+    #expect(!RecurringSheet.findPayment("axa").fitted && RecurringSheet.findPayment("axa").id == "find.axa")
+  }
+
+  @Test func findThePaymentOffersOnlyTheDueItOpenedFor() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let due = try #require(app.store.state.bill("axa")?.nextDue)
+    let offered = FindPaymentSheet.candidates(app.store.state, bill: "axa", due: due)
+    let picked = try #require(offered.first)
+    #expect(offered.allSatisfy { $0.due == due })
+    #expect(FindPaymentSheet.candidates(app.store.state, bill: "axa", due: nil).isEmpty)
+    #expect(FindPaymentSheet.candidates(app.store.state, bill: "nope", due: due).isEmpty)
+    #expect(app.perform(.linkBillPayments("axa", [picked.id])))
+    let bills = BillsViewModel(app: app)
+    #expect(bills.detail("axa")?.isLate == false)
+    #expect(bills.detail("axa")?.history.contains { $0.note == "Linked by you" } == true)
+    #expect(app.store.state.bill("axa")?.payments.first?.txnID == picked.id)
+    #expect(FindPaymentSheet.candidates(app.store.state, bill: "axa", due: due).isEmpty)
+  }
+
   @Test func pauseAndEndAreFittedSheets() {
     #expect(RecurringSheet.pause("netflix").fitted && RecurringSheet.end("netflix").fitted)
     #expect(!RecurringSheet.add.fitted && !RecurringSheet.salary("salary").fitted)

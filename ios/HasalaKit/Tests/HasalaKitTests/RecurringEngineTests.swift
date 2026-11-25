@@ -98,6 +98,50 @@ struct RecurringEngineTests {
     #expect(BillsEngine.pastPayments(state, for: bill).map(\.id) == ["gym-b", "gym-usd"])
   }
 
+  @Test func aLateDueOffersTheUnlinkedPaymentsNearestIt() {
+    var state = s
+    var other = gym("elsewhere", LocalDate(2026, 10, 6))
+    other.merchant = "Fitness LLC"
+    other.merchantKey = "fitness llc"
+    var taken = gym("taken", LocalDate(2026, 10, 7))
+    taken.billID = "netflix"
+    var moved = gym("moved", LocalDate(2026, 10, 7))
+    moved.isTransfer = true
+    var usd = gym("usd", LocalDate(2026, 10, 7), 81_69)
+    usd.amount = Money(minor: 81_69, currency: "USD")
+    state.txns = [
+      gym("dearer", LocalDate(2026, 10, 8), 310_00), gym("exact", LocalDate(2026, 10, 3)), other, taken, moved, usd,
+      gym("last-month", LocalDate(2026, 9, 10)), gym("next-month", LocalDate(2026, 10, 23)),
+      gym("edge", LocalDate(2026, 10, 22), 350_00),
+    ]
+    let bill = BillsEngine.bill(from: BillDraft(
+      name: "Gym", keys: ["gym"], amount: .aed(300_00), firstDue: LocalDate(2026, 10, 7), categoryID: "subscriptions"))
+    let due = LocalDate(2026, 10, 7)
+    let offered = BillsEngine.paymentsNear(state, for: bill, due: due)
+    #expect(offered.map(\.id) == ["exact", "dearer", "edge", "usd", "elsewhere"])
+    #expect(offered.allSatisfy { $0.due == due && BillDueDates.nearest(bill, to: $0.date) == due })
+    #expect(BillsEngine.paymentsNear(state, for: bill, due: due, limit: 2).map(\.id) == ["exact", "dearer"])
+    #expect(BillsEngine.paymentsNear(state, for: bill, due: LocalDate(2026, 9, 7)).map(\.id) == ["last-month"])
+  }
+
+  @Test func aPaymentPickedForALateDuePaysThatDue() throws {
+    let ledger = InMemoryLedger()
+    let axa = try #require(ledger.state.bill("axa"))
+    let due = LocalDate(2026, 10, 7)
+    #expect(axa.nextDue == due && due < now.date)
+    let offered = BillsEngine.paymentsNear(ledger.state, for: axa, due: due)
+    let picked = try #require(offered.first)
+    #expect(offered.count <= BillsEngine.pastPaymentLimit)
+    let token = try #require(try ledger.apply(.linkBillPayments("axa", [picked.id])))
+    let paid = try #require(ledger.state.bill("axa"))
+    #expect(paid.nextDue == LocalDate(2026, 11, 7))
+    #expect(paid.payments.first == BillPayment(due: due, txnID: picked.id, amount: picked.amount, link: .linked))
+    #expect(ledger.state.txn(picked.id)?.billID == "axa")
+    #expect(!BillsEngine.paymentsNear(ledger.state, for: paid, due: due).contains { $0.id == picked.id })
+    ledger.undo(token)
+    #expect(ledger.state.bill("axa")?.nextDue == due && ledger.state.txn(picked.id)?.billID == nil)
+  }
+
   @Test func anEndedBillOffersOnlyPaymentsItCanStillLink() throws {
     var state = MayaHistory.state
     let i = try #require(state.bills.firstIndex { $0.id == "netflix" })

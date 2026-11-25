@@ -241,6 +241,23 @@ payment). The matcher never writes it.
     suggestions are not used for bills. Notifications about bills stay off (Remind me
     stays Debug only).
 
+### "I paid it" (2026-11-25)
+
+32. "I paid it" on a late bill opens **Find the payment**. It writes nothing before the
+    person chooses. The sheet lists the payments that can pay the late due: debit rows that
+    no bill holds, that are not archived, transfer, held-copy or refund rows, and whose
+    nearest due of this bill is the late due (the same rule that linking uses, so the
+    picked payment always lands on the late due). A row needs no merchant key of the bill
+    and no amount near its terms: the matcher already gave the due a row with both
+    (decision 20), unless that row waits in Review. The order
+    is: rows with a key of the bill, then the amount nearest the due's terms, then the day
+    nearest the due. At most 24 rows are shown. The person picks one row, and **Link
+    payment** writes `paid{txn}` on the late due through the edit that links past payments.
+    **It's not in the list** writes the plain `paid` with no `txn`, as "I paid it" did
+    before. Both have Undo. The sheet is for the due that was late when it opened: when
+    that due is paid in the meantime, it offers nothing. Spec 04 §16.2 B1 and its drawing
+    are not in this repository, so the layout is that of Link past payments.
+
 ## Parallel build plan
 
 Contracts first, then independent streams, each in its own worktree, merged into

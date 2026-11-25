@@ -29,6 +29,7 @@ placeholders; nothing real belongs in this file.
 | `<ACCOUNT_ID>` | an account id (36 lowercase characters) |
 | `<INVITE_ID>` | the first 8 hex characters `invite list` prints for an invite |
 | `<MS_TEST_ACCOUNT>` | the test Microsoft account's address: a personal outlook.com mailbox made for review, holding no real mail |
+| `<QA_GMAIL>` | a test Gmail mailbox for the disconnect run (step 5), holding no real mail |
 
 ## 0. Before you start
 
@@ -122,7 +123,66 @@ sudo hasala-admin invite mint --review --note app-review --ttl 336h
 sudo hasala-admin invite mint --review --note app-review --ttl 336h
 ```
 
-## 5. App Store Connect: Test Information
+## 5. Run the mailbox disconnect on QA
+
+The owner does this run, on the spare iPhone, against QA, before the build
+goes to review. It is the only evidence for a real mailbox disconnect: the
+`mailbox.unlink` step-up on the server, Google's revoke and the server's link
+delete. The app test `LiveMailboxDisconnectTests` runs the same path only
+against stubs of hasalad and of Google.
+
+The **Disconnect this mailbox** button ships only while the table below has a
+pass for a passkey account and a pass for a password-only account. If one of
+the two runs fails, take `.disconnect` out of `capabilities` in
+`ios/Hasala/Live/Mailbox/LiveMailboxConnecting.swift`. The button then goes
+from each screen. Write the failed run in the table too.
+
+Do the run two times, with two accounts that are not review accounts (a review
+account cannot connect a mailbox). Do not use the demo account.
+
+1. Mint two ordinary invites, one for each account:
+
+   ```sh
+   sudo hasala-admin invite mint --note disconnect-qa --ttl 24h
+   sudo hasala-admin invite mint --note disconnect-qa --ttl 24h
+   ```
+
+2. Create the **passkey account**: as step 3, items 1 and 2, with an address
+   you can read. At "How do you want to sign in?" choose the passkey. At
+   "Choose your email" choose **Gmail**, then **Continue with Google**, and
+   sign in as `<QA_GMAIL>`.
+3. Profile › **Bank alerts** › the Gmail mailbox › **Disconnect this
+   mailbox** › **Disconnect**. The iPhone asks for the passkey (Face ID or the
+   device passcode). It must not ask for a password.
+4. Check the result:
+   - The app says "Gmail disconnected." and Bank alerts shows no mailbox.
+   - At myaccount.google.com/permissions, signed in as `<QA_GMAIL>`, Hasala is
+     not in the list.
+   - **Add a mailbox** › Gmail connects `<QA_GMAIL>` again, and the app does
+     not say that another iPhone reads it. Disconnect it again before the
+     next account.
+5. Create the **password-only account** with the second invite: as step 3,
+   items 1 to 4 (**Use a password**), with a second address you can read. Add
+   no passkey. Connect `<QA_GMAIL>` as in item 2.
+6. Disconnect as in item 3. The iPhone shows the alert "Confirm it's you to
+   disconnect this mailbox" and asks for the Hasala password. Type it and tap
+   **Continue**. Then do the checks of item 4.
+7. Write one row for each account in the table: the date, the build, the
+   account kind, the provider and the result. Write no address, no account id
+   and no password.
+8. Purge the two accounts (their ids are on the redeemed invites, `by=` in
+   `invite list`):
+
+   ```sh
+   sudo hasala-admin purge-user <ACCOUNT_ID> --confirm <ACCOUNT_ID>
+   ```
+
+| Date | Build | Account | Provider | Result |
+| --- | --- | --- | --- | --- |
+| (no run is recorded yet) | | passkey | | |
+| (no run is recorded yet) | | password only | | |
+
+## 6. App Store Connect: Test Information
 
 - **Sign-in required**: yes. User name `<REVIEW_ADDRESS>`, password from the
   password manager.
@@ -170,7 +230,7 @@ Give reviewers a test Microsoft account only when the build ships Outlook.
 5. After the verdict, change its password and, at
    account.live.com/consent/Manage, remove Hasala's permission.
 
-## 6. While the build is in review
+## 7. While the build is in review
 
 - Watch `<API>/api/v1/healthz` for the whole review.
 - No deploys, purges or key changes (step 0).
@@ -194,7 +254,7 @@ in Test Information:
    new details.
 4. Rotate the password-manager entry: the old password and words are dead.
 
-## 7. After the verdict
+## 8. After the verdict
 
 1. Revoke the reviewer codes that were not used:
 

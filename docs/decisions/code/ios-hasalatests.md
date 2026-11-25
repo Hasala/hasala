@@ -42,6 +42,41 @@ CoreTestSupport to the `HasalaTests` target in `ios/project.yml` to get `FakeSer
 Applies to: `ios/HasalaTests/LiveAccountFlowTests.swift` (`MiniHasalad`),
 `ios/HasalaTests/LiveAccountServiceTests.swift`, `ios/project.yml` (target `HasalaTests`).
 
+## The live mailbox disconnect is tested against stubs, and on QA by the owner
+
+`LiveMailboxDisconnectTests` runs `LiveMailboxConnecting.disconnect` on an `AccountRuntime`
+that holds a Gmail link: the mailbox state row, the refresh token and the link on the
+server. The runtime keeps its shipped parts (`LiveStepUp`, `HTTPMailboxServer`,
+`MailboxEngine`, `GmailProvider`). Only the two network ends are stubs: `MiniHasalad` for
+hasalad, and `StubGoogle` for the token, revoke and `users.stop` endpoints of Google. The
+test runs for an account that has a passkey and for an account that has only a password,
+and it examines the sequence of "Disconnect stops when the revoke fails"
+(`ios-mailbox-to-model.md`): step-up begin, `users.stop`, revoke, `DELETE /mailbox/link`.
+
+`AccountRuntime.open` takes `askPassword` for this test. The shipped default shows the
+alert of `StepUpPrompt`, and a unit test cannot answer an alert. The test gives the
+password through this parameter and records the reason that the alert would show.
+
+`MiniHasalad` answers `DELETE /api/v1/mailbox/link` only for a step-up that it began for
+`mailbox.unlink`, with the proof kind that the begin named. For a passkey proof, the
+credential must be one that the account added. For a device proof, the verifier must be
+the one of the account and the writer must be the one of the session. It checks no
+signature, as the section above says. Thus this test is not evidence for the real
+step-up, for Google's revoke or for the server's link delete. That evidence is the
+owner's run on QA, step 5 of `docs/runbooks/beta-review.md`, and its result table decides
+if `.disconnect` stays in `capabilities` (issue #332; the owner set this division on
+2026-11-25).
+
+A wrong password is refused only by the server, after the revoke. The disconnect then
+reports a failure and keeps the token and the link, and a second try with the right
+password ends the link.
+
+Applies to: `ios/HasalaTests/LiveMailboxDisconnectTests.swift`,
+`ios/HasalaTests/LiveAccountFlowTests.swift` (`MiniHasalad`),
+`ios/Hasala/Live/Runtime/AccountRuntime.swift` (`open`),
+`ios/Hasala/Live/Mailbox/LiveMailboxConnecting.swift` (`capabilities`, `disconnect`),
+`docs/runbooks/beta-review.md` (step 5).
+
 ## The system Keychain is tested in the app tests, on a signed simulator build
 
 `KeychainSystemTests` is the only test that calls `SecItem`. Each other test of

@@ -8,11 +8,17 @@ public protocol RandomSource: Sendable {
 extension RandomSource {
   public func bytes(_ count: Int) throws(PrimitivesError) -> Data {
     var out = Data(count: count)
-    var failure: PrimitivesError?
-    out.withUnsafeMutableBytes { (b: UnsafeMutableRawBufferPointer) in
-      do throws(PrimitivesError) { try fill(b) } catch { failure = error }
-    }
-    if let failure { throw failure }
+    #if compiler(>=6.4)
+      try out.withUnsafeMutableBytes { (b: UnsafeMutableRawBufferPointer) throws(PrimitivesError) in
+        try fill(b)
+      }
+    #else
+      var failure: PrimitivesError?
+      out.withUnsafeMutableBytes { (b: UnsafeMutableRawBufferPointer) in
+        do throws(PrimitivesError) { try fill(b) } catch { failure = error }
+      }
+      if let failure { throw failure }
+    #endif
     return out
   }
 

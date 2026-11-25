@@ -382,6 +382,23 @@ struct MiscTests {
     #expect(try r.uuidV4() != u)
   }
 
+  @Test("bytes carries the fill of the source, and throws its error with no partial result")
+  func randomSourceBytes() throws {
+    struct Counting: RandomSource {
+      func fill(_ buffer: UnsafeMutableRawBufferPointer) throws(PrimitivesError) {
+        for i in buffer.indices { buffer[i] = UInt8(truncatingIfNeeded: i + 1) }
+      }
+    }
+    struct Failing: RandomSource {
+      func fill(_ buffer: UnsafeMutableRawBufferPointer) throws(PrimitivesError) {
+        throw .randomUnavailable(status: -67)
+      }
+    }
+    #expect(try Counting().bytes(5) == Data([1, 2, 3, 4, 5]))
+    #expect(throws: PrimitivesError.randomUnavailable(status: -67)) { try Failing().bytes(16) }
+    #expect(throws: PrimitivesError.randomUnavailable(status: -67)) { try Failing().uuidV4() }
+  }
+
   @Test("SecureBytes never describes its content, and wipes")
   func secureBytes() {
     let s = SecureBytes(copying: Data([1, 2, 3]))

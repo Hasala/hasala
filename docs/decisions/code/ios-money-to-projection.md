@@ -355,6 +355,21 @@ Applies to: `ios/HasalaCore/Sources/HasalaCore/Primitives/Random.swift` (`Random
 `SystemRandom`), `ios/HasalaCore/Sources/HasalaCore/Primitives/Hashing.swift`
 (`PrimitivesError.randomUnavailable`).
 
+## RandomSource.bytes is built for two SDKs
+
+Before the Xcode 27 SDK, `Data.withUnsafeMutableBytes` rethrows only `any Error`. From the
+Xcode 27 SDK it has typed throws. The CI job `swift` builds HasalaCore with Xcode 26
+(Swift 6.3), and the app builds with Xcode 27. Thus `RandomSource.bytes` has the two forms
+behind `#if compiler(>=6.4)`: the new form throws the `PrimitivesError` of `fill` directly
+from the closure, and the old form keeps it in a local variable and throws it after the
+closure. This is the same split as `GenerationOptions.greedy` (`ios-mailbox-to-model.md`).
+
+Remove the `#else` branch when the job `swift` of `.github/workflows/ci.yml` moves from
+Xcode 26. Do not remove it before that.
+
+Applies to: `ios/HasalaCore/Sources/HasalaCore/Primitives/Random.swift`
+(`RandomSource.bytes`).
+
 ## Account ids and writer ids have one spelling
 
 A `UserID` is the lower-case RFC 4122 text of 36 characters (`uuid_str`) and its 16 bytes

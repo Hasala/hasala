@@ -147,6 +147,8 @@ final class PlanUITests: XCTestCase {
     let rule = el(app, "plan.rule.r-talabat")
     XCTAssertTrue(reveal(app, rule))
     XCTAssertTrue(rule.label.contains("Merchant contains"))
+    XCTAssertFalse(el(app, "plan.addRule").exists, "a rule comes only from Always use it")
+    XCTAssertFalse(app.buttons["Add a rule"].exists, "a rule comes only from Always use it")
     attach(app, "Plan · Dining · Rules")
     try audit(app)
     rule.tap()

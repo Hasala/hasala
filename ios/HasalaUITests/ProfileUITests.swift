@@ -55,6 +55,9 @@ final class ProfileUITests: XCTestCase {
     XCTAssertTrue(el(app, "profile.bills").label.contains("9 tracked · 3 to check"))
     try audit(app)
     attachPage(app, "Profile", screens: 3)
+    let placeholderRows = app.descendants(matching: .any).matching(
+      NSPredicate(format: "label BEGINSWITH 'Appearance' OR label BEGINSWITH 'Swipe directions'"))
+    XCTAssertEqual(placeholderRows.count, 0, "Your profile shows a setting with nothing behind it")
     XCTAssertTrue(el(app, "profile.buildFooter").label.hasSuffix("End\u{2011}to\u{2011}end encrypted, never sold"))
     app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
       .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
@@ -77,6 +80,8 @@ final class ProfileUITests: XCTestCase {
     tap(app, "profile.rules")
     XCTAssertTrue(el(app, "rule.r-carrefour").waitForExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "rules.segment").exists, "the page shows the Categories segment")
+    XCTAssertFalse(el(app, "rules.add").exists, "a rule comes only from Always use it")
+    XCTAssertFalse(app.buttons["Add a rule"].exists, "a rule comes only from Always use it")
     attach(app, "Categories and rules")
     try audit(app)
     back(app)

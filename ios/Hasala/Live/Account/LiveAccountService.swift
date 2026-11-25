@@ -418,10 +418,12 @@ final class LiveAccountService: AccountService {
 
   func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure) {
     guard let r = recovery, r.ceremonyID == ticket.id else { throw .refused }
-    guard kind == .passkey else { throw .notInThisBuild }
     let held = try heldBinding()
     do {
-      try await AccountRecovery.verifyForPasskey(env, r, code: code)
+      switch kind {
+      case .passkey: try await AccountRecovery.verifyForPasskey(env, r, code: code)
+      case .password: try await AccountRecovery.verifyForPassword(env, r, code: code)
+      }
       codeTries = 5
     } catch {
       if error.failureClass == .codeRejected {
@@ -440,9 +442,11 @@ final class LiveAccountService: AccountService {
 
   func finishRecovery(_ ticket: RecoveryTicket, credential: NewCredential) async throws(AuthFailure) {
     guard let r = recovery, r.ceremonyID == ticket.id, r.userID != nil else { throw .refused }
-    guard credential == .passkey else { throw .notInThisBuild }
     do {
-      enrolled = try await AccountRecovery.finishWithPasskey(env, r)
+      switch credential {
+      case .passkey: enrolled = try await AccountRecovery.finishWithPasskey(env, r)
+      case .password(let password): enrolled = try await AccountRecovery.finishWithPassword(env, r, password: password)
+      }
     } catch {
       if !r.canFinish(after: error) {
         r.wipe()
@@ -454,7 +458,7 @@ final class LiveAccountService: AccountService {
     recovery = nil
     signIn = nil
     let b = binding
-    profile = AccountProfile(displayName: b?.display_name ?? "", email: b?.email_norm ?? "", method: .passkey)
+    profile = AccountProfile(displayName: b?.display_name ?? "", email: b?.email_norm ?? "", method: credential.method)
     methodConfirmed = true
   }
 

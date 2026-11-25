@@ -508,7 +508,7 @@ struct AccountGatePhaseTests: AccountSuite {
   @Test func aRecoveryToStartAgainGoesBackToItsWords() async {
     let account = MockAccountService(existing: .passkey)
     let (store, _, m) = await recoveryOnItsLastScreen(account)
-    account.capabilities = .beta
+    account.capabilities = AccountCapabilities.beta.subtracting(.recoverWithPassword)
     #expect(await m.submitRecoveryCode())
     account.failNext = .offline
     store.recoveryResult(await m.finishRecovery(.passkey))

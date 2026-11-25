@@ -15,14 +15,14 @@ struct AccountCapabilitiesTests {
 
   @Test func betaIsTheAgreedSubset() {
     let hidden: AccountCapabilities = [
-      .resetPassword, .recoverWithPassword, .rotatePhrase, .changeEmail, .freeze,
+      .resetPassword, .rotatePhrase, .changeEmail, .freeze,
       .removePasskey, .changePassword, .removeDevice, .removeThisIPhone,
     ]
     #expect(AccountCapabilities.all.isSuperset(of: .beta))
     #expect(AccountCapabilities.beta.isDisjoint(with: hidden))
     #expect(AccountCapabilities.beta.union(hidden) == .all)
     #expect(AccountCapabilities.all.rawValue.nonzeroBitCount == 22)
-    #expect(AccountCapabilities.beta.isSuperset(of: [.recoverAccess, .deleteAccount]))
+    #expect(AccountCapabilities.beta.isSuperset(of: [.recoverAccess, .recoverWithPassword, .deleteAccount]))
     #expect(AccountCapabilities.beta.contains(.addPasskey))
     #expect(AccountCapabilities.beta.contains(.changeName))
     #expect(AccountCapabilities.beta.contains(.unfreeze))

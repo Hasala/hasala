@@ -36,7 +36,7 @@ The decisions of record of each area are one level up, in `docs/decisions/`.
 | [Account, passkey, mailbox and hook routes (api)](server-api-2.md) | 26 |
 | [Sync routes (api)](server-api-3.md) | 14 |
 | [API routes (api)](server-api.md) | 21 |
-| [Passkeys, passwords, sessions and recovery (auth)](server-auth-2.md) | 20 |
+| [Passkeys, passwords, sessions and recovery (auth)](server-auth-2.md) | 21 |
 | [Server step-up, writers, server keys, blob framing and storage budget](server-auth-to-budget.md) | 20 |
 | [Server auth (accounts, codes, freeze, invites, passkeys)](server-auth.md) | 21 |
 | [Server config, console, crypto reference, dictionary and Gmail push](server-config-to-gmailpush.md) | 18 |

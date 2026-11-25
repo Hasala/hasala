@@ -90,6 +90,7 @@ type RecoverVerified struct {
 	CurrentEpoch    int
 	Options         *protocol.CredentialCreation
 	Salt            []byte
+	EmailNorm       string
 }
 
 func (a *Accounts) RecoverVerify(ctx context.Context, ceremonyID, code, kind string) (RecoverVerified, error) {
@@ -151,7 +152,7 @@ func (a *Accounts) RecoverVerify(ctx context.Context, ceremonyID, code, kind str
 			}
 			out.Options, session = opts, raw
 		} else {
-			out.Salt = a.Keys.PasswordSalt(email)
+			out.Salt, out.EmailNorm = a.Keys.PasswordSalt(email), email
 		}
 		_, err := tx.Exec(ctx,
 			`UPDATE recovery_ceremonies SET verified_at = $2, kind = $3, session_data = $4, expires_at = $5 WHERE id = $1`,

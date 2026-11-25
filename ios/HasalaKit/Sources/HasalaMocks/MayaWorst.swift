@@ -586,7 +586,8 @@ public enum MayaWorst {
     let span = MayaLedger.now.date.ordinal - start.ordinal + 1
     var filed: [Txn] = []
     for i in 0..<filedCount {
-      let p = pool[r.int(pool.count)]
+      let k = r.int(pool.count)
+      let p = pool[k]
       let day = start.adding(days: r.int(span))
       let hour = day == MayaLedger.now.date ? r.int(13) : r.int(24)
       let minor = p.low + Int64(r.int(Int(max(1, p.high - p.low))))
@@ -596,6 +597,7 @@ public enum MayaWorst {
         account: ["enbd", "dib", "acc-0", "acc-1", "acc-2"][r.int(5)], category: category,
         source: [.user, .dictionary, .rule(pattern: p.raw.lowercased())][r.int(3)], raw: p.raw)
       if category == "transfer" { t.isTransfer = true }
+      if t.ruleID == nil, case .rule? = t.categorySource { t.ruleID = "hg-rule-\(k)" }
       filed.append(t)
     }
     s.txns += filed

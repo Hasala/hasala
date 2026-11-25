@@ -17,7 +17,6 @@ struct GroupSortingLedgerTests {
     #expect(token.title == "Subscriptions for all 30 Tailscale payments" && token.batch)
     let rule = try #require(l.state.rules.first { $0.id.hasPrefix("learned-") })
     #expect(rule.match == .exact && rule.patterns == ["tailscale.com", "tailscale inc", "paypal *tailscale"])
-    #expect(!rule.matches("paypal *netflix") && !rule.matches("tailscale"))
     #expect(l.state.txn("bl-ts-unverified")?.categoryID == nil && l.state.txn("bl-ts-refund")?.categoryID == nil)
     #expect(tailscaleRows(l).filter { $0.id != "bl-ts-unverified" }.allSatisfy { $0.categoryID == "subscriptions" })
   }

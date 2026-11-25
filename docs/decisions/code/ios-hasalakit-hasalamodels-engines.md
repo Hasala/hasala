@@ -92,3 +92,30 @@ The percent label of a goal is the whole percent, rounded down. A goal at 99.9% 
 tells the person that a goal is done while money is still missing.
 
 Applies to: `ios/HasalaKit/Sources/HasalaModels/Home.swift` (`GoalWidget.percentLabel`).
+
+## The match count of a rule is the payments that the rule filed
+
+The rules page, the rules of a category and Search show "N matches" for a rule. N is the
+number of payments that the rule filed and that are not archived: the rows whose `ruleID` is
+the rule. This is the `match_count` of the view `rule_stats` in the projection.
+
+The read model does not run the patterns of a rule against merchant names. Only
+CoreCategorize's `Matcher` decides if a pattern matches a merchant (spec 03c §5.2), and
+HasalaKit cannot import HasalaCore. A second matcher in HasalaModels gave a count that
+differed from the rows that the rule sorted (issue #339). Do not add one.
+
+Two results follow:
+
+- A payment that the person filed by hand does not count, also when a pattern matches its
+  merchant. A rule that was learned from one payment shows "0 matches" until it files a row.
+- A payment that a rule with a higher priority filed counts for that rule only.
+
+The mock ledger obeys the same rule. A seeded row that a rule filed has the `ruleID` of the
+rule (`MayaLedger.keyed` fills it from the pattern that the row names), and `InMemoryLedger`
+applies a learned rule with `GroupRule.reaches`.
+
+Applies to: `ios/HasalaKit/Sources/HasalaModels/Engines/ProfileEngine.swift`
+(`matchCounts`, `rules`), `ios/HasalaKit/Sources/HasalaModels/Engines/PlanEngine.swift`
+(`rules`), `ios/Hasala/Features/Search/SearchView.swift` (`SearchResults`),
+`ios/HasalaKit/Sources/HasalaMocks/MayaLedger.swift` (`keyed`),
+`ios/HasalaKit/Sources/HasalaMocks/InMemoryLedger.swift` (`reachBack`).

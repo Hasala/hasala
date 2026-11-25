@@ -72,25 +72,10 @@ public enum ProfileEngine {
     ] + (netWorth.mark?.caption.map { [.text(" · \($0)")] } ?? []))
   }
 
-  static func matchCount(_ r: Rule, _ s: LedgerState) -> Int {
-    s.txns.filter { r.matches($0.merchant) || r.matches($0.provenance?.rawMerchant ?? "") }.count
-  }
-
-  struct MerchantKey: Hashable {
-    let merchant: String
-    let raw: String
-  }
-
-  static func matchCounts(_ s: LedgerState) -> [RuleID: Int] {
-    var merchants: [MerchantKey: Int] = [:]
-    for t in s.txns {
-      merchants[MerchantKey(merchant: t.merchant, raw: t.provenance?.rawMerchant ?? ""), default: 0] += 1
-    }
+  public static func matchCounts(_ s: LedgerState) -> [RuleID: Int] {
     var out: [RuleID: Int] = [:]
-    for r in s.rules {
-      out[r.id] = merchants.reduce(0) { n, e in
-        n + (r.matches(e.key.merchant) || r.matches(e.key.raw) ? e.value : 0)
-      }
+    for t in s.txns where !t.archived {
+      if let id = t.ruleID { out[id, default: 0] += 1 }
     }
     return out
   }

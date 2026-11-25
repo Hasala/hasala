@@ -152,6 +152,10 @@ public enum MayaLedger {
     var t = t
     if t.merchantKey == nil { t.merchantKey = t.merchant.lowercased() }
     if t.merchantGroup == nil { t.merchantGroup = "n:" + t.merchant.lowercased() }
+    if t.ruleID == nil, case .rule(let pattern)? = t.categorySource {
+      let named = pattern.lowercased()
+      t.ruleID = rules.first { $0.patterns.contains { $0.lowercased() == named } }?.id
+    }
     return t
   }
 

@@ -225,27 +225,6 @@ struct NeedsCard<Content: View>: View {
   }
 }
 
-struct WarningNote: View {
-  var text: String
-
-  @ScaledMetric(relativeTo: .footnote) private var lane: CGFloat = 18
-
-  var body: some View {
-    HStack(alignment: .top, spacing: 10) {
-      HIconView(.lock, size: 18, color: HColor.statusErrorForeground).frame(height: lane)
-      Text(text)
-        .hType(.footnote.weight(.medium))
-        .foregroundStyle(HColor.statusErrorForeground)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    .padding(.vertical, 12)
-    .padding(.horizontal, 14)
-    .background(HColor.statusErrorSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    .accessibilityElement(children: .combine)
-  }
-}
-
 struct CardNote: View {
   var icon: HIcon
   var text: String

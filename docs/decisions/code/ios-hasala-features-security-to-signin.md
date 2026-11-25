@@ -113,6 +113,21 @@ Applies to: `ios/Hasala/Features/Security/SecurityModel.swift` (`words(for:email
 `ios/Hasala/Features/Shared/AccountCopy.swift` (`signOutMessage`),
 `ios/Hasala/Features/SignIn/SignInViews.swift` (`HonestEndScreen.otherDevice`).
 
+## The honest end offers a person and deletion, not a fresh start
+
+The honest end (Paper H9F) has a link "Start fresh with this email" and a warning that the
+old sealed data is deleted after 7 days. The app does not have them. No start-fresh
+ceremony exists: the server has no route for it and `AccountService` has no method. A
+Debug build showed the link as a placeholder that only gave the failure "Not in the beta
+yet", and a Release build showed the two links below. The owner decided on 2026-11-25 to
+remove the placeholder and not to build the ceremony (issue #324).
+
+Thus each build shows the same two links (`HonestEndScreen.helpLinks`): "Talk to a
+person" opens the support page, and "Delete my account instead" starts a mail to the
+privacy address. Do not add the link again without the ceremony behind it.
+
+Applies to: `ios/Hasala/Features/SignIn/SignInViews.swift` (`HonestEndScreen.helpLinks`).
+
 ## A password reset on a new iPhone uses the 16-character code, and the new password comes first
 
 The forgot-password ceremony (C9) has two rules that Paper does not show.

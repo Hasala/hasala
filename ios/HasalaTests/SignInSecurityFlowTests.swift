@@ -624,6 +624,14 @@ struct SignInSecurityFlowTests: AccountSuite {
       == "\u{201C}Freeze my account\u{201D} was used just now." + tail)
   }
 
+  @Test func theHonestEndOffersAPersonAndDeletionInEveryBuild() {
+    #expect(HonestEndScreen.helpLinks.map(\.identifier) == ["honest.talk", "honest.delete"])
+    #expect(HonestEndScreen.helpLinks.map(\.title) == ["Talk to a person", "Delete my account instead"])
+    #expect(HonestEndScreen.helpLinks.map { URL(string: $0.url)?.scheme } == ["https", "mailto"])
+    #expect(HonestEndScreen.helpLinks.first?.url == "https://hasala.app/support")
+    #expect(!HonestEndScreen.helpLinks.contains { $0.title.localizedCaseInsensitiveContains("fresh") })
+  }
+
   @Test func theHonestEndPromisesOnlyWhatTheOtherDeviceCanDo() {
     let paper = "It can add a passkey or show your words, after Face ID."
     #expect(HonestEndScreen.otherDevice(addsPasskeys: true, method: .passkey) == paper)

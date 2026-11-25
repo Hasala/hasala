@@ -255,8 +255,15 @@ payment). The matcher never writes it.
     payment** writes `paid{txn}` on the late due through the edit that links past payments.
     **It's not in the list** writes the plain `paid` with no `txn`, as "I paid it" did
     before. Both have Undo. The sheet is for the due that was late when it opened: when
-    that due is paid in the meantime, it offers nothing. Spec 04 §16.2 B1 and its drawing
-    are not in this repository, so the layout is that of Link past payments.
+    that due is paid in the meantime, it offers nothing and both buttons are off. The
+    button that opens the sheet reads the due one time and puts it in the sheet's value
+    (`RecurringSheet.findPayment(bill, due:)`). The sheet does not read the bill's next
+    due again, because the host builds the sheet again on each ledger change, and the next
+    due is then a different, maybe not late, due. The list cannot offer a row that the
+    link refuses as unread or replaced: the read model holds only rows that are read and
+    not replaced (`LedgerReader.activity` and `archived`), and the list leaves archived
+    rows out. Spec 04 §16.2 B1 and its drawing are not in this repository, so the layout is
+    that of Link past payments.
 
 ## Parallel build plan
 

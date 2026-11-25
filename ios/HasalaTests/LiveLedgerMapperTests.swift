@@ -454,6 +454,49 @@ struct LiveLedgerMapperTests {
     #expect(app.reviewCount == 6)
   }
 
+  @Test func theBudgetSheetReadsLastMonthsSpendingFromTheLiveLedger() async throws {
+    let a = try Self.account()
+    var blobs = try await Self.seed(a)
+    let september = Int64(1_789_905_600_000)
+    let added = try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+      _ = try o.manualEntry(amountMinor: 110_20, currency: "AED", direction: "debit", localWallMs: september,
+                            merchant: "Spinneys", category: "groceries")
+      _ = try o.manualEntry(amountMinor: 40_00, currency: "EUR", direction: "debit", localWallMs: september,
+                            merchant: "Monoprix", category: "groceries")
+    }
+    blobs.append(try #require(added))
+    for b in blobs { try await a.outbox.enqueue(b.ops) }
+    try await a.observer.reproject()
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox),
+      profile: Self.context().profile,
+      prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "last.month.tests")!), clock: { MayaLedger.now })
+    await store.reload()
+    let app = AppModel(store: store)
+    let mock = AppModel(store: InMemoryLedger())
+    func lastMonth(_ app: AppModel, _ category: CategoryID) -> (name: String, spent: Money)? {
+      BudgetSheetViewModel(app: app, category: category).lastMonth
+    }
+
+    let monoprix = try #require(store.state.txns.first { $0.merchant == "Monoprix" })
+    #expect(monoprix.postedAt.date.yearMonth == YearMonth(2026, 9) && monoprix.isNotCounted)
+    #expect(lastMonth(app, "groceries")?.name == "September")
+    #expect(lastMonth(app, "groceries")?.spent == .aed(800_00))
+    #expect(lastMonth(mock, "groceries")?.spent == .aed(689_80))
+
+    let emirates = try #require(store.state.txns.first { $0.merchant == "Emirates" })
+    #expect(emirates.postedAt.date.yearMonth == YearMonth(2026, 9) && emirates.categoryID == "travel")
+    #expect(emirates.projectID != nil)
+    #expect(lastMonth(app, "travel") == nil)
+    #expect(lastMonth(app, "dining") == nil)
+
+    #expect(!store.state.categories.isEmpty)
+    for c in store.state.categories where c.id != "groceries" {
+      #expect(lastMonth(app, c.id)?.name == lastMonth(mock, c.id)?.name, "\(c.id)")
+      #expect(lastMonth(app, c.id)?.spent == lastMonth(mock, c.id)?.spent, "\(c.id)")
+    }
+  }
+
   @Test func aStoppedImportKeepsItsCount() throws {
     let a = try Self.account()
     let store = LiveLedgerStore(

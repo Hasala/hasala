@@ -2,6 +2,7 @@ import UIKit
 import XCTest
 
 let uiWait: TimeInterval = 15
+let splitHandleSlot: CGFloat = 20
 
 extension XCTestCase {
   @MainActor
@@ -316,9 +317,10 @@ extension XCTestCase {
   }
 
   @MainActor
-  func nudge(_ handle: XCUIElement, steps: Int) {
+  func nudge(_ app: XCUIApplication, _ handle: XCUIElement, steps: Int) {
+    let track = el(app, "plan.split.bar").frame.width - 2 * splitHandleSlot
     let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-    let end = start.withOffset(CGVector(dx: 17 * CGFloat(steps), dy: 0))
+    let end = start.withOffset(CGVector(dx: track / 20 * CGFloat(steps), dy: 0))
     start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
   }
 }

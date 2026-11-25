@@ -48,6 +48,21 @@ async function readMessage(req: Request): Promise<Message | null> {
   }
 }
 
+function senderAddress(from: unknown): string | null {
+  if (typeof from === 'string') {
+    return from;
+  }
+  if (
+    typeof from === 'object' &&
+    from !== null &&
+    'address' in from &&
+    typeof from.address === 'string'
+  ) {
+    return from.address;
+  }
+  return null;
+}
+
 const server = Bun.serve({
   hostname: '127.0.0.1',
   port,
@@ -69,10 +84,11 @@ const server = Bun.serve({
     if (body === null) {
       return failure(400, 10_001, 'Invalid JSON');
     }
-    const { to, from, subject, text } = body;
+    const { to, subject, text } = body;
+    const from = senderAddress(body.from);
     if (
       typeof to !== 'string' ||
-      typeof from !== 'string' ||
+      from === null ||
       typeof subject !== 'string' ||
       typeof text !== 'string'
     ) {

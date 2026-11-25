@@ -76,7 +76,7 @@ struct ProfileModelTests {
     #expect(app.perform(.categorize("lulu", "groceries", learnRule: true, project: nil)))
     let learned = try #require(profile.rules.first { $0.learnedToday })
     #expect(learned.pattern == "\u{201C}lulu hypermarket dxb marina\u{201D}")
-    #expect(learned.detail == "Exact match · Groceries · 1 match")
+    #expect(learned.detail == "Exact match · Groceries · 0 matches")
     #expect(profile.snapshot.categoriesAndRules == "18 categories · 7 rules")
   }
 

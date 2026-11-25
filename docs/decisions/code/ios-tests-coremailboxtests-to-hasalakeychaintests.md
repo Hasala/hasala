@@ -103,6 +103,30 @@ routes are tested in the Go suite of the server.
 
 Applies to: `ios/HasalaCore/Tests/HasalaCoreE2ETests/LiveRecoveryTests.swift`.
 
+## The live tests make their accounts through the routes of the server
+
+The live suites (`ios/scripts/e2e-hasalad.sh`) make each account as the app does: an
+invite, `signup/begin`, the email code, then `password/register` or the passkey ceremony
+(`Live.signUp`, `Live.passwordAccount`). The second iPhone signs in through
+`password/login` or the passkey login (`Live.secondPhone`). No test writes a row into
+`users` or `sessions`.
+
+- Two things still go through SQL, because the harness has no mail sink and no operator
+  CLI: the invite row, and the MAC of the email code (`Live.setCode` writes the MAC of a
+  code that the test chose, with the auth key of the server).
+- `SoftPasskey` signs for the relying party `hasala.app`, and the script starts `hasalad`
+  with that relying party. Change the two together.
+- Each suite makes at most 12 calls to the signup, sign-in and passkey routes, because
+  `hasalad` refuses the thirteenth from one address and the script gives each suite a new
+  server process (`ios-scripts-to-tools.md`). A password account with a second iPhone is
+  5 calls. `LivePasskeyTests` makes 8. Put a new live account in a suite of its own.
+- `NewAccountKeys` is wiped when the account is made. Thus `Live.passwordAccount` reads the
+  words and the authority key before it calls `createWithPassword`.
+
+Applies to: `ios/HasalaCore/Tests/HasalaCoreE2ETests/LiveHasaladTests.swift` (`Live`,
+`LiveHasaladTests`, `LivePasskeyTests`),
+`ios/HasalaCore/Tests/HasalaCoreE2ETests/LiveScenarioTests.swift` (`Live.twoRuntimes`).
+
 ## A regeneration of the Swift goldens changes every random file
 
 `conformance/swift/` has one writer, the Swift executor

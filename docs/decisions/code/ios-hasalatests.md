@@ -41,3 +41,34 @@ CoreTestSupport to the `HasalaTests` target in `ios/project.yml` to get `FakeSer
 
 Applies to: `ios/HasalaTests/LiveAccountFlowTests.swift` (`MiniHasalad`),
 `ios/HasalaTests/LiveAccountServiceTests.swift`, `ios/project.yml` (target `HasalaTests`).
+
+## The system Keychain is tested in the app tests, on a signed simulator build
+
+`KeychainSystemTests` is the only test that calls `SecItem`. Each other test of
+`KeychainSecretStore` uses `InMemoryKeychainAPI`. The test is in `HasalaTests` and not in
+the HasalaCore package: a package test bundle has no host app, thus it has no
+`keychain-access-groups` entitlement, and `SecItem` answers `errSecMissingEntitlement`
+(-34018), also on the simulator.
+
+The test uses the access group of the app (`AppEnvironment.keychainGroup`). For one item
+of each `SecretItem` service it writes, reads, writes again (the update path), lists the
+account and deletes. It also reads the stored attributes with its own query and compares
+the access group, the accessibility class and the synchronizable flag.
+
+- The test needs the entitlements of the host app, thus a signed build (the default of
+  `xcodebuild test`). With `CODE_SIGNING_ALLOWED=NO` it fails with -34018. It does not skip:
+  a skip would hide the only test of the real attributes.
+- The simulator stores an item of the class `whenPasscodeSetThisDeviceOnly` with no
+  passcode set, thus `.approvalKey` does the full round trip. A device without a passcode
+  refuses that class; the test does not show this.
+- `.accountBinding`, `.textKeySecret` and `.readerWordKey` have one fixed account. The
+  other items use a random user id and writer id and a host under `.invalid`. For each
+  item the test keeps the value that it finds and puts it back at the end, so that a
+  simulator with a signed-in debug build keeps its account.
+- The test does not call `purgeAll`: it deletes each item of each service in the group,
+  also the items of that debug build.
+- The suite is serialized, because the fixed accounts are process state.
+
+Applies to: `ios/HasalaTests/KeychainSystemTests.swift` (`KeychainSystemTests`),
+`ios/HasalaCore/Sources/HasalaCore/Keychain/KeychainSecretStore.swift`
+(`SystemKeychain`, `KeychainSecretStore`).

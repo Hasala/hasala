@@ -84,7 +84,7 @@ struct SyncNoticesTests {
     showing.wrappedValue = false
     #expect(app.syncNotices.setAside == 1)
     app.router.sheet = nil
-    app.router.cover = .review
+    app.router.cover = .review()
     #expect(!showing.wrappedValue)
     showing.wrappedValue = false
     #expect(app.syncNotices.setAside == 1)

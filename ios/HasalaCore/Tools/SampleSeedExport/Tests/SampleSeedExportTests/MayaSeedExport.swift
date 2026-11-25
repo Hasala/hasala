@@ -301,7 +301,7 @@ enum MayaSeed {
       let category = t.needsReview ? nil : t.categoryID
       if let c = category {
         p.append(("category", .string(categoryID(c))))
-        p.append(("category_source", try source(t.categorySource, category: c, raw: raw, rules: s.rules, categorizer: categorizer)))
+        p.append(("category_source", try source(t.categorySource, ruleID: t.ruleID, category: c, raw: raw, rules: s.rules, categorizer: categorizer)))
       } else {
         p.append(("category", .null))
         p.append(("category_source", .object(JSONObject([("kind", .string("none"))]))))
@@ -377,13 +377,11 @@ enum MayaSeed {
   }
 
   static func source(
-    _ s: HasalaModels.CategorySource?, category: String, raw: String, rules: [HasalaModels.Rule], categorizer: Categorizer
+    _ s: HasalaModels.CategorySource?, ruleID: RuleID?, category: String, raw: String, rules: [HasalaModels.Rule], categorizer: Categorizer
   ) throws -> JSONValue {
     switch s {
     case .rule(let pattern)?:
-      let want = Canon.foldCase(pattern)
-      guard let r = rules.first(where: { $0.patterns.contains { Canon.foldCase($0) == want } }) ?? rules.first(where: { $0.matches(raw) })
-      else { throw ExportError.unsupported("rule \(pattern)") }
+      guard let r = rules.first(where: { $0.id == ruleID }) else { throw ExportError.unsupported("rule \(pattern)") }
       return .object(JSONObject([("kind", .string("rule")), ("rule_id", .string("@rule:\(r.id)"))]))
     case .dictionary?:
       let d = categorizer.decide(merchantRaw: raw, direction: .debit)

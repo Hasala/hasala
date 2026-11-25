@@ -240,7 +240,15 @@ Applies to: `ios/scripts/generate-project.sh`.
   `$TMPDIR` on macOS is deep.
 - The simulators run as processes of the host. Thus the test runner can read and write files
   under the temporary directory of the harness. The tests and the harness speak only through
-  these files (the captured mail, the account of E1, the wake requests).
+  these files (the captured mail, the account of E1, the wake requests, the op log
+  position).
+- `e2e-hasalad.sh` starts `hasalad serve` again for each live suite, on the same database,
+  and runs one suite for each `swift test` call. `hasalad` permits 12 calls at one time
+  from one address on the signup, sign-in and passkey routes (`PasskeyPerIP`), and then
+  one more each 5 s. The limiter is in the memory of the process. Each live suite makes
+  its account through these routes, and all suites come from 127.0.0.1, so one process
+  refuses the calls after the first two suites. The script fails when a suite does not
+  report one passed test run, so a suite that the filter did not find is not a pass.
 - The iOS 27 simulator refuses a push that has only `content-available` (UNErrorDomain 1401)
   and each push to an app without the notification permission (2003). Thus
   `e2e/wake.apns` has an alert together with `content-available`, and E1 permits

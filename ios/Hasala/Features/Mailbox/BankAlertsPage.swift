@@ -10,6 +10,7 @@ struct BankAlertsPage: View {
   @State private var signIn: MailConnectCoordinator?
   @State private var retrying = false
   @State private var successes = 0
+  @State private var transition = TransitionEnd()
   @State private var changingBanks = false
   @State private var requestingBank = false
   @State private var bankRequests: [RequestedBank] = []
@@ -64,6 +65,7 @@ struct BankAlertsPage: View {
       .hAnimation(.stateSwap, value: hero)
     }
     .background(HColor.surfaceSecondary)
+    .background(TransitionProbe(signal: transition))
     .navigationTitle("Bank alerts")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {
@@ -72,7 +74,10 @@ struct BankAlertsPage: View {
       takeMoment()
       if let arriving { land(arriving) }
     }
-    .onDisappear { visible = false }
+    .onDisappear {
+      visible = false
+      transition.left()
+    }
     .sheet(isPresented: $changingBanks) {
       ManageBanksSheet(current: lane?.chosenBanks() ?? []) { app.say("Banks updated") }
     }
@@ -381,12 +386,13 @@ struct BankAlertsPage: View {
 
   private func land(_ id: String) {
     let policy = motion
-    Task {
-      try? await Task.sleep(for: Self.popSettle(policy))
+    transition.afterArrival(immediately: policy.settled) {
       guard arriving == id else { return }
       withHMotion(.celebrate, policy) { arriving = nil }
-      try? await Task.sleep(for: policy.settleDelay(.celebrate))
-      successes += 1
+      Task {
+        try? await Task.sleep(for: policy.settleDelay(.celebrate))
+        successes += 1
+      }
     }
   }
 
@@ -399,18 +405,10 @@ struct BankAlertsPage: View {
         arriving = nil
       }
     case .signedInAgain?:
-      let policy = motion
-      Task {
-        try? await Task.sleep(for: Self.popSettle(policy))
-        successes += 1
-      }
+      transition.afterArrival(immediately: motion.settled) { successes += 1 }
     case nil:
       break
     }
-  }
-
-  static func popSettle(_ policy: MotionPolicy) -> Duration {
-    .milliseconds(policy.settled ? 0 : 200)
   }
 
   @ViewBuilder private var banksSection: some View {

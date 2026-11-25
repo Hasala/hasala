@@ -30,13 +30,13 @@ struct ReviewOrderTests {
     #expect(app.reviewCards.map(\.id) == Self.oldest.reversed())
   }
 
-  @Test func aRowStartsTheDeckAtItsCardAndReadsOnInTheChosenOrder() {
+  @Test func aRowStartsTheDeckAtItsCardAndReadsOnInTheChosenOrder() throws {
     let app = AppModel(store: InMemoryLedger())
-    ReviewEntry.open(app, at: "lulu")
-    #expect(ReviewViewModel(app: app).cards.map(\.id) == ["lulu", "apple", "transfer-in", "atm", "steam", "dubai-taxi"])
+    app.startReview(at: "lulu")
+    #expect(try #require(app.cover).session(for: app).cards.map(\.id) == ["lulu", "apple", "transfer-in", "atm", "steam", "dubai-taxi"])
     app.reviewOrder = .oldestFirst
-    ReviewEntry.open(app, at: "lulu")
-    #expect(ReviewViewModel(app: app).cards.map(\.id) == ["lulu", "dubai-taxi", "steam", "atm", "transfer-in", "apple"])
+    app.startReview(at: "lulu")
+    #expect(try #require(app.cover).session(for: app).cards.map(\.id) == ["lulu", "dubai-taxi", "steam", "atm", "transfer-in", "apple"])
   }
 
   @Test func theChoiceStaysOnThisIPhoneAcrossLaunches() throws {

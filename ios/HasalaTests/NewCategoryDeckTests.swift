@@ -41,8 +41,7 @@ struct NewCategoryDeckTests {
       try ledger.apply(.addCategory(CategoryDraft(name: "Cap \(i)", parent: "dining")))
     }
     let app = AppModel(store: ledger)
-    ReviewEntry.request(app, at: "bl-alnoor-t-2")
-    let deck = ReviewViewModel(app: app)
+    let deck = ReviewViewModel(app: app, start: "bl-alnoor-t-2")
     #expect(deck.newCategory(for: .need, card: "bl-alnoor-t-2") == nil)
     let before = ledger.state
     #expect(deck.newCategoryRefusal("bl-alnoor-t-2", .need, name: "Corner shop", glyph: .groceries) == CategoryLimits.atCap)
@@ -145,8 +144,7 @@ struct NewCategoryDeckTests {
     let txn = try #require(l.ids["com"]?.first)
     let refund = try #require(l.ids["refund"]?.first)
     let app = AppModel(store: l.store)
-    ReviewEntry.request(app, at: txn)
-    let deck = ReviewViewModel(app: app)
+    let deck = ReviewViewModel(app: app, start: txn)
     let offer = try #require(deck.newCategory(for: .want, card: txn))
     #expect(offer.bucket == .wants)
     #expect(deck.newCategory(for: .want, card: refund) == nil)
@@ -198,8 +196,7 @@ struct NewCategoryDeckTests {
     store.onWriteFailed = { failed = true }
     #expect(store.state.txn(copy)?.isHeldCopy == true)
     let app = AppModel(store: store)
-    ReviewEntry.request(app, at: copy)
-    let deck = ReviewViewModel(app: app)
+    let deck = ReviewViewModel(app: app, start: copy)
     #expect(deck.newCategory(for: .want, card: copy) != nil)
     let pending = try a.context.store.pendingCount()
     let shown = store.state

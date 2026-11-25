@@ -657,18 +657,6 @@ public struct Rule: Sendable, Hashable, Identifiable, Codable {
     self.enabled = enabled
     self.learnedToday = learnedToday
   }
-
-  public func matches(_ merchant: String) -> Bool {
-    let m = merchant.lowercased()
-    return patterns.contains { p in
-      let p = p.lowercased()
-      switch match {
-      case .contains: return m.contains(p)
-      case .startsWith: return m.hasPrefix(p)
-      case .exact: return m == p
-      }
-    }
-  }
 }
 
 public struct PlanState: Sendable, Hashable, Codable {

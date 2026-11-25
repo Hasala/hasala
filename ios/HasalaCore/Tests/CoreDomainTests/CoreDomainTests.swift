@@ -128,6 +128,58 @@ struct CoreDomainTests {
     #expect(e2.income(CivilMonth(year: 2026, month: 9)!).total == 2_500_000)
   }
 
+  @Test("a last-working-day payday is each month's own last weekday, Saturday and Sunday left out")
+  func lastWorkingDayPayday() throws {
+    func month(_ y: Int, _ m: Int) -> CivilMonth { CivilMonth(year: y, month: m)! }
+    #expect(month(2026, 10).lastWorkingDay == CivilDate(year: 2026, month: 10, day: 30))
+    #expect(month(2026, 11).lastWorkingDay == CivilDate(year: 2026, month: 11, day: 30))
+    #expect(month(2026, 12).lastWorkingDay == CivilDate(year: 2026, month: 12, day: 31))
+    #expect(month(2027, 1).lastWorkingDay == CivilDate(year: 2027, month: 1, day: 29))
+    #expect(month(2027, 2).lastWorkingDay == CivilDate(year: 2027, month: 2, day: 26))
+    var source = IncomeSource(
+      id: "s", name: "Salary", categoryID: "salary", amountMinor: 2_500_000, payday: 30, paydayLastWorkingDay: true, active: true,
+      write: PlanWrite(opID: "", writerID: "", atMs: 0))
+    #expect(source.payday(in: month(2027, 1)) == CivilDate(year: 2027, month: 1, day: 29))
+    #expect(source.payday(in: month(2027, 2)) == CivilDate(year: 2027, month: 2, day: 26))
+    var plan = PlanState()
+    plan.incomeSources["s"] = source
+    let early = MoneyLine(
+      txnID: "t", category: "salary", direction: "credit", localDate: CivilDate(year: 2027, month: 2, day: 26)!, signedHome: 2_500_000,
+      flow: .income, confirmed: true)
+    let today = CivilDate(year: 2027, month: 3, day: 10)!
+    let e = PlanEngine(plan: plan, taxonomy: TaxonomyView(TaxonomyV1.builtins), lines: [early], today: today)
+    #expect(e.attributedMonth(early) == month(2027, 2))
+    source.paydayLastWorkingDay = false
+    plan.incomeSources["s"] = source
+    #expect(source.payday(in: month(2027, 2)) == CivilDate(year: 2027, month: 2, day: 28))
+    let fixed = PlanEngine(plan: plan, taxonomy: TaxonomyView(TaxonomyV1.builtins), lines: [early], today: today)
+    #expect(fixed.attributedMonth(early) == month(2027, 2))
+    let first = MoneyLine(
+      txnID: "u", category: "salary", direction: "credit", localDate: CivilDate(year: 2027, month: 2, day: 1)!, signedHome: 2_500_000,
+      flow: .income, confirmed: true)
+    source.paydayLastWorkingDay = true
+    plan.incomeSources["s"] = source
+    let late = PlanEngine(plan: plan, taxonomy: TaxonomyView(TaxonomyV1.builtins), lines: [first], today: today)
+    #expect(late.attributedMonth(first) == month(2027, 1))
+    source.paydayLastWorkingDay = false
+    plan.incomeSources["s"] = source
+    let lateFixed = PlanEngine(plan: plan, taxonomy: TaxonomyView(TaxonomyV1.builtins), lines: [first], today: today)
+    #expect(lateFixed.attributedMonth(first) == month(2027, 1))
+  }
+
+  @Test("setIncomeSource writes payday_last_working_day only when the caller states the choice")
+  func incomeSourceKey() throws {
+    func payload(_ last: Bool?) throws -> JSONValue {
+      var a = OpAuthor(ctx())
+      a.setIncomeSource(id: "salary", name: "Salary", amountMinor: 2_500_000, payday: 30, lastWorkingDay: last)
+      return try #require(try a.build().ops.first).payload
+    }
+    #expect(try payload(nil)["payday_last_working_day"] == nil)
+    #expect(try payload(true)["payday_last_working_day"]?.boolValue == true)
+    #expect(try payload(false)["payday_last_working_day"]?.boolValue == false)
+    #expect(try payload(true)["payday"]?.numberValue?.int64Value == 30)
+  }
+
   @Test("an inactive source keeps its payday for paychecks dated on or before the write that turned it off")
   func inactivePayday() {
     let off: Int64 = 1_793_433_600_000

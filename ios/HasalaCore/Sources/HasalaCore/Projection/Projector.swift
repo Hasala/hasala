@@ -283,9 +283,12 @@ public enum Projector {
         arguments: StatementArguments(args))
     }
     for s in p.incomeSources.values {
-      let args: [(any DatabaseValueConvertible)?] = [s.id, s.name, s.categoryID, s.amountMinor, s.payday, s.active, s.write.atMs]
+      let args: [(any DatabaseValueConvertible)?] = [
+        s.id, s.name, s.categoryID, s.amountMinor, s.payday, s.paydayLastWorkingDay, s.active, s.write.atMs,
+      ]
       try db.execute(
-        sql: "INSERT INTO income_source (id, name, category_id, amount_minor, payday, active, written_ms) VALUES (?,?,?,?,?,?,?)",
+        sql:
+          "INSERT INTO income_source (id, name, category_id, amount_minor, payday, payday_last_working_day, active, written_ms) VALUES (?,?,?,?,?,?,?,?)",
         arguments: StatementArguments(args))
     }
     for (c, r) in p.roles {

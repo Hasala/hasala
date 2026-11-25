@@ -515,12 +515,15 @@ public struct IncomeSource: Sendable, Equatable, Codable {
   public var categoryID: String
   public var amountMinor: Int64
   public var payday: Int64
+  public var paydayLastWorkingDay: Bool
   public var active: Bool
   public var write: PlanWrite
 
   public init(
-    id: String, name: String, categoryID: String, amountMinor: Int64, payday: Int64, active: Bool, write: PlanWrite
+    id: String, name: String, categoryID: String, amountMinor: Int64, payday: Int64, paydayLastWorkingDay: Bool = false,
+    active: Bool, write: PlanWrite
   ) {
+    self.paydayLastWorkingDay = paydayLastWorkingDay
     self.id = id
     self.name = name
     self.categoryID = categoryID

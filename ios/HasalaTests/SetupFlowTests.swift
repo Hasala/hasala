@@ -335,6 +335,13 @@ struct SetupFlowTests: AccountSuite {
     #expect(PaydayChoice.lastWorkingDay.next(onOrAfter: today) == LocalDate(2026, 10, 30))
     #expect(PaydayChoice.lastWorkingDay.opDay(today: today) == 30)
     #expect(PaydayChoice.day(31).opDay(today: today) == 31)
+    #expect(PaydayChoice.lastWorkingDay.next(onOrAfter: LocalDate(2026, 10, 31)) == LocalDate(2026, 11, 30))
+    #expect(PaydayChoice.lastWorkingDay.date(in: YearMonth(2027, 1)) == LocalDate(2027, 1, 29))
+    #expect(PaydayChoice(day: 30, lastWorkingDay: true) == .lastWorkingDay && PaydayChoice(day: 30, lastWorkingDay: false) == .day(30))
+    #expect(PaydayChoice.lastWorkingDay.opDay(today: LocalDate(2026, 12, 10), saved: .lastWorkingDay, savedDay: 30) == 30)
+    #expect(PaydayChoice.lastWorkingDay.opDay(today: LocalDate(2026, 12, 10), saved: .day(30), savedDay: 30) == 31)
+    #expect(SetupReadBack(incomeMinor: 1, payday: 30, paydayLastWorkingDay: true).paydayChoice == .lastWorkingDay)
+    #expect(SetupReadBack(incomeMinor: 1, payday: 30).paydayChoice == .day(30) && SetupReadBack().paydayChoice == nil)
     #expect(PaydayChoice.all.count == 32 && PaydayChoice.all.last == .lastWorkingDay)
     #expect(PaydayChoice.all.allSatisfy { PaydayChoice.all[$0.index] == $0 })
     #expect(["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "23rd", "31st"]

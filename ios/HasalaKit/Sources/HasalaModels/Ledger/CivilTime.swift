@@ -20,6 +20,12 @@ public struct YearMonth: Sendable, Hashable, Comparable, Codable, CustomStringCo
 
   public var previous: YearMonth { month == 1 ? YearMonth(year - 1, 12) : YearMonth(year, month - 1) }
   public var next: YearMonth { month == 12 ? YearMonth(year + 1, 1) : YearMonth(year, month + 1) }
+
+  public var lastWorkingDay: LocalDate {
+    var date = LocalDate(year, month, days)
+    while date.weekday >= 5 { date = date.adding(days: -1) }
+    return date
+  }
 }
 
 public struct LocalDate: Sendable, Hashable, Comparable, Codable {

@@ -25,7 +25,7 @@ final class MonthlyPlanModel: Identifiable {
     let readBack = setup.readBack()
     saved = readBack
     entry = Self.entry(readBack)
-    payday = readBack.payday.map { .day($0) }
+    payday = readBack.paydayChoice
     split = readBack.split
   }
 
@@ -38,7 +38,7 @@ final class MonthlyPlanModel: Identifiable {
     path = []
     let latest = setup.readBack()
     if latest.incomeMinor != saved.incomeMinor { entry = Self.entry(latest) }
-    if latest.payday != saved.payday { payday = latest.payday.map { .day($0) } }
+    if latest.paydayChoice != saved.paydayChoice { payday = latest.paydayChoice }
     if latest.split != saved.split { split = latest.split }
     saved = latest
   }
@@ -88,14 +88,17 @@ final class MonthlyPlanModel: Identifiable {
   func savePlan(skip: Bool = false) async {
     guard !busy else { return }
     let income = savedIncomeMinor
+    let day = paydayChoice.opDay(today: today, saved: saved.paydayChoice, savedDay: saved.payday)
     let values = SetupReadBack(
-      incomeMinor: income, payday: income == nil ? nil : paydayChoice.opDay(today: today), split: skip ? nil : plan)
+      incomeMinor: income, payday: income == nil ? nil : day, split: skip ? nil : plan,
+      paydayLastWorkingDay: income != nil && paydayChoice.isLastWorkingDay)
     guard values != SetupReadBack() else { return done(nil) }
     if values != saved {
       busy = true
       defer { busy = false }
       do {
-        try await setup.savePlan(income: values.incomeMinor, payday: values.payday, plan: values.split)
+        try await setup.savePlan(
+          income: values.incomeMinor, payday: values.payday, lastWorkingDay: values.paydayLastWorkingDay, plan: values.split)
       } catch {
         failure = error
         return

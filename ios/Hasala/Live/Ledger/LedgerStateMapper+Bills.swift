@@ -409,9 +409,12 @@ nonisolated extension LedgerStateMapper {
   }
 
   static func income(_ s: IncomeSource, today: LocalDate, taxonomy: TaxonomyView) -> HasalaModels.Bill {
-    HasalaModels.Bill(
+    var bill = HasalaModels.Bill(
       id: LedgerEditAuthor.incomePrefix + s.id, name: s.name, kind: taxonomy.info(s.categoryID)?.name ?? "Income",
-      categoryID: s.categoryID, amount: .aed(s.amountMinor), isIncome: true, usualDay: Int(s.payday),
-      nextDue: nextPayday(Int(s.payday), after: today), state: s.active ? .tracked : .ended)
+      categoryID: s.categoryID, amount: .aed(s.amountMinor), isIncome: true, usualDay: Int(s.payday), nextDue: today,
+      state: s.active ? .tracked : .ended, usualLastWorkingDay: s.paydayLastWorkingDay)
+    let this = bill.usualDate(in: today.yearMonth)
+    bill.nextDue = this >= today ? this : bill.usualDate(in: today.yearMonth.next)
+    return bill
   }
 }

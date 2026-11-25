@@ -365,12 +365,60 @@ struct CoreReplayV4Tests {
   }
 }
 
+@Suite("CoreReplay income source payday")
+struct IncomePaydayTests {
+  static let id = "5b0f6c1e-4f8e-4a53-9a3e-2f6b8d1c7e10"
+
+  static func source(_ n: Int, payday: Int = 30, amount: String = "2500000", _ extra: String = "") -> String {
+    op(
+      "income_source_set",
+      #"{"id":"\#(id)","name":"Salary","category_id":"salary","amount_minor":"\#(amount)","payday":\#(payday),"active":true\#(extra)}"#, id: n)
+  }
+
+  @Test("payday_last_working_day is read when present, and an absent key keeps it only while the day number stays")
+  func lastWorkingDay() throws {
+    var log = Log()
+    try log.blob(Self.source(1))
+    #expect(log.state.plan.incomeSources[Self.id]?.paydayLastWorkingDay == false)
+    #expect(!String(decoding: log.state.serialized(), as: UTF8.self).contains("payday_last_working_day"))
+    try log.blob(Self.source(2, #","payday_last_working_day":true"#))
+    #expect(log.state.plan.incomeSources[Self.id]?.paydayLastWorkingDay == true)
+    #expect(String(decoding: log.state.serialized(), as: UTF8.self).contains(#""payday_last_working_day":true"#))
+    try log.blob(Self.source(3, amount: "2600000"))
+    #expect(log.state.plan.incomeSources[Self.id]?.paydayLastWorkingDay == true)
+    #expect(log.state.plan.incomeSources[Self.id]?.amountMinor == 2_600_000)
+    try log.blob(Self.source(4, #","payday_last_working_day":null"#))
+    #expect(log.state.plan.incomeSources[Self.id]?.paydayLastWorkingDay == true)
+    try log.blob(Self.source(5, payday: 15))
+    #expect(log.state.plan.incomeSources[Self.id]?.paydayLastWorkingDay == false)
+    #expect(log.state.plan.incomeSources[Self.id]?.payday == 15)
+    try log.blob(Self.source(6, payday: 15, #","payday_last_working_day":true"#))
+    try log.blob(Self.source(7, payday: 15, #","payday_last_working_day":false"#))
+    #expect(log.state.plan.incomeSources[Self.id]?.paydayLastWorkingDay == false)
+    #expect(log.kinds.isEmpty)
+  }
+
+  @Test("a payday_last_working_day that is not a boolean refuses the op and keeps the record")
+  func refusal() throws {
+    var log = Log()
+    try log.blob(Self.source(1, #","payday_last_working_day":true"#))
+    try log.blob(Self.source(2, amount: "1", #","payday_last_working_day":"yes""#))
+    try log.blob(Self.source(3, amount: "1", #","payday_last_working_day":1"#))
+    #expect(log.kinds == ["invalid_payload", "invalid_payload"])
+    #expect(log.state.plan.incomeSources[Self.id]?.paydayLastWorkingDay == true)
+    #expect(log.state.plan.incomeSources[Self.id]?.amountMinor == 2_500_000)
+  }
+}
+
 @Suite("CoreReplay snapshot and canary")
 struct SnapshotTests {
   @Test("the canary folds with only its intended notices")
   func canary() {
     let s = FoldCanary.state()
-    #expect(s.cursors.hot == 74)
+    #expect(s.cursors.hot == 76)
+    let stipend = s.plan.incomeSources["5b0f6c1e-4f8e-4a53-9a3e-2f6b8d1c7e11"]
+    #expect(stipend?.paydayLastWorkingDay == true && stipend?.amountMinor == 450_000 && stipend?.payday == 30)
+    #expect(s.plan.incomeSources["5b0f6c1e-4f8e-4a53-9a3e-2f6b8d1c7e10"]?.paydayLastWorkingDay == false)
     let text = s.txns["01JC0000000000000000000016"]
     #expect(text?.channel == "sms" && text?.receivedAt == "2026-06-05T08:00:00.000Z" && text?.isText == true)
     #expect(text?.needsReview == false && text?.verifiedSender == false && text?.copyOf == nil)

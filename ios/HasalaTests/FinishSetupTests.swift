@@ -319,6 +319,27 @@ struct FinishSetupTests: AccountSuite {
     #expect(setup.planSaved && setup.income == nil && setup.payday == nil && setup.plan == StartingPlan())
   }
 
+  @Test func aLastWorkDayPaydayIsSavedAsTheChoiceAndReadBack() async {
+    let setup = MockSetupAuthoring()
+    var outcome: SetupReadBack?
+    let flow = MonthlyPlanModel(setup: setup) { outcome = $0 }
+    flow.incomeEntry = AmountEntry(typing: "25000")
+    flow.paydayChoice = .lastWorkingDay
+    flow.continueWithIncome()
+    await flow.savePlan()
+    #expect(setup.savePlanCalls == 1 && setup.payday == 30 && setup.paydayLastWorkingDay)
+    #expect(outcome?.paydayChoice == .lastWorkingDay)
+    setup.day = LocalDate(2026, 12, 10)
+    let later = MonthlyPlanModel(setup: setup) { outcome = $0 }
+    #expect(later.paydayChoice == .lastWorkingDay && later.nextPayday == LocalDate(2026, 12, 31))
+    later.continueWithIncome()
+    await later.savePlan()
+    #expect(setup.savePlanCalls == 1 && setup.payday == 30 && setup.paydayLastWorkingDay)
+    later.paydayChoice = .day(30)
+    await later.savePlan()
+    #expect(setup.savePlanCalls == 2 && setup.payday == 30 && !setup.paydayLastWorkingDay)
+  }
+
   @Test func theSavedPlanIsReadBackAndNotSentAgain() async {
     let saved = SetupReadBack(incomeMinor: 2_500_050, payday: 25,
                               split: StartingPlan(needsPercent: 60, wantsPercent: 20, savingsPercent: 20))

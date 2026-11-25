@@ -235,6 +235,26 @@ payment). The matcher never writes it.
     payday, active). Past months use received income, so an edit never changes history;
     it applies from the current month on. A dated raise is not built.
 
+    **Last work day (owner, 2026-11-25).** The payday is a day of the month or "Last work
+    day". `income_source_set` carries that choice in an optional boolean key,
+    `payday_last_working_day`; there is no new op type and no schema bump. The last work
+    day of a month is its last day that is not a Saturday or a Sunday; public holidays are
+    not known. Each month computes its own date, in the plan, on Recurring and in the
+    salary notices.
+    - `payday` stays a day number, 1 to 31, on every op. With the choice it is the day the
+      next last work day fell on when the choice was made, and it does not change while the
+      choice stays. A build without the key ignores the key and shows that day.
+    - A build without the key writes no key. The fold reads an absent (or `null`) key as:
+      keep the record's choice when `payday` is the same number as the record's, else a day
+      of the month. So an old build's amount edit keeps the choice, and an old build's
+      payday edit replaces it. A create with no key is a day of the month.
+    - A present key replaces the choice. The app always writes it, `true` or `false`, from
+      setup, the salary sheet and their undo. The sample seed writes no key.
+    - A key that is not a boolean refuses the op (`invalid_payload`); the record stays.
+    - The witness holds `payday_last_working_day` only when it is true, so a state with no
+      such source hashes as before.
+    - The salary sheet's stepper has "last work day" after the 31st, as the setup strip has.
+
 ### Privacy
 
 31. Nothing new leaves the device. Detection and matching run on the device. Cloud

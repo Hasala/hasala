@@ -42,7 +42,7 @@ public enum LedgerEdit: Sendable, Hashable {
   case linkBillPayments(BillID, [TxnID])
   case reapplyBill(BillID)
   case dismissBillNotice(BillID, noticeID: String)
-  case editIncome(id: String, amount: Money, payday: Int, active: Bool)
+  case editIncome(id: String, amount: Money, payday: Int, lastWorkingDay: Bool = false, active: Bool)
 
   case setRuleEnabled(RuleID, Bool)
 

@@ -108,4 +108,32 @@ struct MailboxLaneWorkTests {
     #expect(trustOps.count == domains.count)
     await rt.close()
   }
+
+  @MainActor @Test func aLastWorkDayPaydayIsWrittenToTheIncomeOpAndReadBackAsTheChoice() async throws {
+    let server = MiniHasalad(invite: LiveAccountServiceTests.invite)
+    let env = LiveAccountServiceTests.phone(server)
+    let (account, _) = try await LiveAccountServiceTests.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let facts = BankTextsFacts(
+      directory: FileManager.default.temporaryDirectory.appendingPathComponent("facts-\(UUID().uuidString)"))
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: account.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
+      bankTextFacts: facts)
+    server.offline = true
+    await rt.lane?.close()
+    let setup = LiveSetupAuthoring(runtime: { rt })
+
+    try await setup.savePlan(income: 2_500_000, payday: 30, lastWorkingDay: true, plan: nil)
+
+    let written = try #require(try rt.context.store.pendingOps().last { $0.opType == "income_source_set" })
+    #expect(String(decoding: written.opJSON, as: UTF8.self).contains(#""payday":30,"active":true,"payday_last_working_day":true"#))
+    #expect(setup.readBack() == SetupReadBack(incomeMinor: 2_500_000, payday: 30, paydayLastWorkingDay: true))
+    #expect(setup.readBack().paydayChoice == .lastWorkingDay)
+
+    try await setup.savePlan(income: 2_500_000, payday: 30, lastWorkingDay: false, plan: nil)
+
+    #expect(setup.readBack() == SetupReadBack(incomeMinor: 2_500_000, payday: 30))
+    await rt.close()
+  }
 }

@@ -3,6 +3,13 @@ import CoreReplay
 import CoreTime
 import HasalaText
 
+extension IncomeSource {
+  public func payday(in month: CivilMonth) -> CivilDate {
+    if paydayLastWorkingDay { return month.lastWorkingDay }
+    return CivilDate(year: month.year, month: month.month, day: min(max(1, Int(payday)), month.daysInMonth))!
+  }
+}
+
 private func planAdd(_ a: Int64, _ b: Int64) -> Int64 { Int64(clamping: Int128(a) + Int128(b)) }
 
 private func planSub(_ a: Int64, _ b: Int64) -> Int64 { Int64(clamping: Int128(a) - Int128(b)) }
@@ -240,7 +247,7 @@ public struct PlanEngine: Sendable {
     for s in plan.incomeSources.values where (s.active || l.postedMs <= s.write.atMs) && utf8Equal(s.categoryID, l.category ?? "") {
       for off in [-1, 0, 1] {
         guard let y = xm.adding(months: off) else { continue }
-        let day = CivilDate(year: y.year, month: y.month, day: min(Int(s.payday), y.daysInMonth))!
+        let day = s.payday(in: y)
         let dist = abs(day.daysSinceEpoch - x.daysSinceEpoch)
         let better: Bool
         if let b = best {

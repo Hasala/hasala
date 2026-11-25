@@ -162,7 +162,7 @@ struct BudgetEditSheet: View {
     GrowingChipRows(spacing: 8, lineSpacing: 8 - 2 * QuickChip.reach) {
       QuickChip(title: "+ 200", hidden: model.hidden, titleIsFigure: true) { step(200_00) }
         .accessibilityLabel("Add 200")
-      if BuildSurface.showsUnfinished, let last = model.lastMonth {
+      if let last = model.lastMonth {
         QuickChip(title: "Match \(last.name)", figure: MoneyPhrase([.amount(last.spent, .rounded, hidden: 3)]),
                   hidden: model.hidden) { set(last.spent.minor.plus(50) / 100 * 100) }
       }

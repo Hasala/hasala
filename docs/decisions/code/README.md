@@ -9,7 +9,7 @@ The decisions of record of each area are one level up, in `docs/decisions/`.
 
 | Document | Sections |
 | --- | --- |
-| [CI, the flake, the QA module and the app shell](github-to-ios.md) | 29 |
+| [CI, the flake, the QA module and the app shell](github-to-ios.md) | 30 |
 | [iOS crypto core](ios-crypto.md) | 16 |
 | [iOS core, Domain to Mail](ios-domain-to-mail.md) | 18 |
 | [iOS account, accounts, activity and bills screens](ios-hasala-features-account-to-bills.md) | 14 |

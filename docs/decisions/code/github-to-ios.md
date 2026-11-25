@@ -348,6 +348,36 @@ the socket, the auth files and each `log_*` key.
 
 Applies to: `infra/qa/nix/postgresql.nix` (`forbiddenSetting`, the settings).
 
+## Probe P7 reads the token pages as the website's live check does
+
+`hasala-health` runs probe P7 of spec 05 §5.9.3. P7 gets `/i/test`, `/freeze` and
+`/waitlist/confirm` from `monitoring.healthCheck.tokenPagesUrl` and makes the checks that
+`web/scripts/verify-live.sh` makes on these three pages:
+
+- Each page answers 200. P7 does not follow a redirect.
+- Each page has exactly one `content-security-policy` header. It has `script-src`,
+  `connect-src` and `frame-ancestors 'none'`, and it does not name `cloudflareinsights`.
+- `/i/test` has `cache-control: no-store` and exactly one `referrer-policy: no-referrer`.
+
+P7 compares the header names and values in lower case, as the script does. When the two
+sets of checks are different, a change to the website passes one and fails the other.
+Change them together.
+
+P7 does not use the retries of the script (`--retry 3`). Each probe alerts on its second
+consecutive failing run only, and that is the retry of `hasala-health`.
+
+The default of `tokenPagesUrl` is `https://hasala.app` when `tunnel.enable` is set, and
+null when it is not. A host that is not public yet thus gets no P7, the same as P5. A host
+can set the address to get P7 without the tunnel (the VM check does this, with a stand-in
+on loopback), or set null to switch P7 off. When P7 is off, it is in `healthProbesOff`, and
+its failure count and its recovery notice are removed.
+
+P6 (the mail metrics) does not exist yet. It needs the metrics listener of `hasalad serve`
+(issue #305).
+
+Applies to: `infra/qa/nix/module.nix` (`healthProbes`, `healthProbesOff`, `healthText`,
+`tokenPagesBase`, `monitoring.healthCheck.tokenPagesUrl`), `web/scripts/verify-live.sh`.
+
 ## Warnings become errors through a build setting, not the command line
 
 A build makes warnings errors for the app targets with `HASALA_WARNINGS_AS_ERRORS=YES`

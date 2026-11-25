@@ -4,6 +4,7 @@ let
   apiPort = 8471;
   consolePort = 8472;
   consoleMetricsPort = 9473;
+  tokenPagesPort = 8479;
   consoleHost = "console.vm.test";
   consoleLogin = "tester@example";
   consoleTailnet = "vm-test.ts.net";
@@ -54,6 +55,7 @@ in
           tailnet = consoleTailnet;
         };
         monitoring.healthCheck.enable = true;
+        monitoring.healthCheck.tokenPagesUrl = "http://127.0.0.1:${toString tokenPagesPort}";
         monitoring.onFailure = [ "hasala-vm-alert@%n.service" ];
         hardening.inaccessiblePaths = [
           "-/var/lib/postgresql"
@@ -129,6 +131,42 @@ in
             print(f"tcp=errno{e.errno}")
       '';
 
+      environment.etc."hasala-vm/token-pages.py".text = ''
+        import os
+        import sys
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        CSP = "default-src 'none'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'"
+
+
+        class Pages(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path not in ("/i/test", "/freeze", "/waitlist/confirm"):
+                    self.send_error(404)
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Security-Policy", CSP)
+                if self.path == "/i/test":
+                    if not os.path.exists("/run/hasala-vm-token-pages-cached"):
+                        self.send_header("Cache-Control", "no-store")
+                    self.send_header("Referrer-Policy", "no-referrer")
+                self.end_headers()
+                self.wfile.write(b"<!doctype html>")
+
+
+        HTTPServer(("127.0.0.1", int(sys.argv[1])), Pages).serve_forever()
+      '';
+
+      systemd.services.hasala-vm-token-pages = {
+        description = "Stand-in for the website's token pages, which probe P7 reads";
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          DynamicUser = true;
+          ExecStart = "${pkgs.python3}/bin/python3 /etc/hasala-vm/token-pages.py ${toString tokenPagesPort}";
+        };
+      };
+
       users.users.nginx = {
         isSystemUser = true;
         group = "nginx";
@@ -166,6 +204,7 @@ in
       API = "http://127.0.0.1:${toString apiPort}"
       CONSOLE_PORT = ${toString consolePort}
       CONSOLE_METRICS_PORT = ${toString consoleMetricsPort}
+      TOKEN_PAGES = "http://127.0.0.1:${toString tokenPagesPort}"
       HASALAD = "${hasalad}"
       PSQL = "psql --no-psqlrc -h /run/hasala-postgresql -d hasala -Atc"
       BACKUP_DIR = "/var/lib/hasala-backup/dumps"
@@ -571,9 +610,17 @@ in
               machine.succeed("sleep 1")
               return machine.succeed(f"journalctl -u hasala-health -o cat --since @{since}")
 
+          machine.wait_until_succeeds(f"curl -sf -o /dev/null {TOKEN_PAGES}/i/test")
           out = health_run()
           print(out)
           assert "P10" not in out, out
+          assert "P7" not in out, out
+          machine.succeed("touch /run/hasala-vm-token-pages-cached")
+          out = health_run()
+          print(out)
+          assert "hasala-health: P7 /i/test: no cache-control: no-store" in out, out
+          assert "P7 /freeze" not in out and "P7 /waitlist" not in out, out
+          machine.succeed("rm /run/hasala-vm-token-pages-cached")
           machine.succeed(f"iptables -w -D OUTPUT -o lo -p tcp -d 127.0.0.1 --dport {CONSOLE_PORT} -j hasala-console-out")
           out = health_run()
           print(out)

@@ -415,6 +415,11 @@ let
     fi
   '';
 
+  tokenPagesBase =
+    if cfg.monitoring.healthCheck.tokenPagesUrl == null then
+      null
+    else
+      lib.removeSuffix "/" cfg.monitoring.healthCheck.tokenPagesUrl;
   healthProbes = [
     "P1"
   ]
@@ -424,6 +429,7 @@ let
     "P5"
     "P9"
   ]
+  ++ optionals (tokenPagesBase != null) [ "P7" ]
   ++ optionals cfg.console.enable [
     "P8"
     "P10"
@@ -433,6 +439,7 @@ let
     "P2"
     "P3"
     "P5"
+    "P7"
     "P8"
     "P9"
     "P10"
@@ -462,6 +469,26 @@ let
         "$RUNTIME_DIRECTORY/body" >/dev/null 2>&1; then
         note P5 "AASA body does not claim exactly webcredentials and /i/*"
       fi
+    ''}
+    ${optionalString (tokenPagesBase != null) ''
+      for p in i/test freeze waitlist/confirm; do
+        c=$(code ${lib.escapeShellArg "${tokenPagesBase}/"}"$p")
+        if [ "$c" != 200 ]; then
+          note P7 "/$p answered $c"
+          continue
+        fi
+        h=$(tr -d '\r' < "$RUNTIME_DIRECTORY/headers" | tr '[:upper:]' '[:lower:]')
+        csp=$(grep '^content-security-policy:' <<<"$h" || true)
+        if [[ "$(grep -c . <<<"$csp" || true)" != 1 || "$csp" != *script-src* || "$csp" != *connect-src* \
+          || "$csp" != *"frame-ancestors 'none'"* || "$csp" == *cloudflareinsights* ]]; then
+          note P7 "/$p: want one content-security-policy header with script-src, connect-src and frame-ancestors 'none' and no cloudflareinsights"
+        fi
+        if [ "$p" = i/test ]; then
+          grep -q '^cache-control: no-store' <<<"$h" || note P7 "/$p: no cache-control: no-store"
+          n=$(grep -c '^referrer-policy: no-referrer$' <<<"$h" || true)
+          [ "$n" = 1 ] || note P7 "/$p: $n referrer-policy: no-referrer headers, want 1"
+        fi
+      done
     ''}
     ${optionalString cfg.console.enable ''
       c=$(code ${lib.escapeShellArg "http://${loopback cfg.console.metricsPort}/healthz"})
@@ -1002,6 +1029,12 @@ in
         type = types.str;
         default = "https://hasala.app/.well-known/apple-app-site-association";
         description = "The AASA URL probe P5 reads.";
+      };
+      healthCheck.tokenPagesUrl = mkOption {
+        type = types.nullOr types.str;
+        default = if cfg.tunnel.enable then "https://hasala.app" else null;
+        defaultText = lib.literalExpression ''if config.services.hasala.tunnel.enable then "https://hasala.app" else null'';
+        description = "The base URL of the website's token pages (/i, /freeze, /waitlist), which probe P7 reads as web/scripts/verify-live.sh does. null = no probe P7.";
       };
     };
 

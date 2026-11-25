@@ -228,11 +228,14 @@ The two checks do not stop a GET or a HEAD. This is the purpose, not a weakness.
 HEAD counts as a read: it is a GET with no body, and `net/http` answers it from the GET
 handler.
 
-If the status row of an account cannot be read, the answer is a 500, not "not
-suspended". A status that cannot be read does not show a permission.
+`auth.Sessions.Info` reads the status and the freeze of the account in the same query
+as the session, so the gate costs no second round trip. If the status row of an
+account cannot be read, the answer is a 500, not "not suspended". A status that cannot
+be read does not show a permission.
 
-Applies to: `server/internal/api/guards.go` (`isRead`, `accountStatus`,
-`headroomGate`), `server/internal/api/api.go` (`sessionGate`).
+Applies to: `server/internal/api/guards.go` (`isRead`, `headroomGate`),
+`server/internal/api/api.go` (`sessionGate`), `server/internal/auth/session.go`
+(`Sessions.Info`).
 
 ## The headroom fuse wraps the whole router
 

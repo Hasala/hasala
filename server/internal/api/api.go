@@ -341,12 +341,7 @@ func (s *Server) sessionGate(h authedHandler, frozenOK, suspendedOK bool) http.H
 			return
 		}
 		userID := info.UserID
-		st, err := s.accountStatus(r.Context(), userID)
-		if err != nil {
-			s.logf("api: %s: account status for %s: %v", route(r), userID, err)
-			writeErr(w, http.StatusInternalServerError, "internal", "")
-			return
-		}
+		st := info.Account
 		if !frozenOK && (st.Frozen || info.Restricted) {
 			s.logf("api: %s: refused, the account is frozen", route(r))
 			writeErr(w, http.StatusForbidden, "account_frozen", "")

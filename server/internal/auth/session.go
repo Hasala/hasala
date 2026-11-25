@@ -200,6 +200,7 @@ type SessionInfo struct {
 	LastUsedAt   time.Time
 	ExpiresAt    time.Time
 	IdleExpires  time.Time
+	Account      AccountStatus
 }
 
 func (s *Sessions) CredentialForSession(ctx context.Context, token string) ([]byte, error) {
@@ -243,13 +244,16 @@ func (s *Sessions) Info(ctx context.Context, token string) (SessionInfo, error) 
 		stored  []byte
 		writer  *string
 		revoked *time.Time
+		status  *string
+		frozen  *bool
 	)
 	err := s.Pool.QueryRow(ctx,
-		`SELECT token_hash, user_id, writer_id, credential_id, minted_by, restricted, created_at, last_used_at,
-		        expires_at, revoked_at
-		   FROM sessions WHERE token_hash = $1`, want).
+		`SELECT s.token_hash, s.user_id, s.writer_id, s.credential_id, s.minted_by, s.restricted, s.created_at,
+		        s.last_used_at, s.expires_at, s.revoked_at, u.status, u.frozen_at IS NOT NULL
+		   FROM sessions s LEFT JOIN users u ON u.id = s.user_id
+		  WHERE s.token_hash = $1`, want).
 		Scan(&stored, &i.UserID, &writer, &i.CredentialID, &i.MintedBy, &i.Restricted, &i.CreatedAt,
-			&i.LastUsedAt, &i.ExpiresAt, &revoked)
+			&i.LastUsedAt, &i.ExpiresAt, &revoked, &status, &frozen)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return SessionInfo{}, s.deletedOrUnknown(ctx, want)
 	}
@@ -269,6 +273,10 @@ func (s *Sessions) Info(ctx context.Context, token string) (SessionInfo, error) 
 	if !i.LastUsedAt.Add(s.TTL).After(now) {
 		return SessionInfo{}, ErrSessionIdle
 	}
+	if status == nil || frozen == nil {
+		return SessionInfo{}, errors.New("auth: no users row for a session that resolved")
+	}
+	i.Account = AccountStatus{Suspended: *status == accountSuspended, Frozen: *frozen}
 	if writer != nil {
 		i.WriterID = *writer
 	}

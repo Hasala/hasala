@@ -64,6 +64,69 @@ struct AccountTests {
     #expect(try a.binding?.writer_id == account.writerID.string)
   }
 
+  func signupWithoutPRFAtCreation(_ w: World, _ a: Phone, beforeBootstrap: () -> Void) async throws -> (
+    EnrolledAccount, [String]
+  ) {
+    a.passkeys.setPRFSupported(false)
+    let signup = try await AccountCreation.beginSignup(
+      a.env, inviteCode: invite, email: "maya@example.com", displayName: "Maya", inviteLinkKey: nil)
+    try await AccountCreation.verifySignup(a.env, signup, code: try #require(w.server.lastCode))
+    let keys = try NewAccountKeys.generate(random: a.env.random)
+    let words = try keys.words()
+    let reg = try await AccountCreation.registerPasskey(a.env, signup: signup, keys: keys)
+    #expect(reg.prf == nil)
+    beforeBootstrap()
+    let account = try await AccountCreation.bootstrapPasskey(a.env, registered: reg, keys: keys)
+    #expect(keys.entropy.withUnsafeBytes { $0.allSatisfy { $0 == 0 } })
+    #expect(try a.binding?.writer_id == account.writerID.string)
+    return (account, words)
+  }
+
+  @Test("C1 step 16: a passkey with no PRF output at creation gets its PRF wrap from a step-up, and a new iPhone unlocks with it")
+  func passkeyCreationWrapsAfterBootstrap() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (account, _) = try await signupWithoutPRFAtCreation(w, a) { a.passkeys.setPRFSupported(true) }
+    #expect(a.passkeys.credentials.first?.signCount == 1)
+    let token = try #require(try a.env.secrets.session()).token
+    let wraps = try await a.env.client.keyWraps(bearer: token).wraps
+    #expect(wraps.map(\.credential_id) == [Base64.encodeURL(try #require(a.passkeys.credentials.first).id)])
+
+    let b = w.phone("b", passkeys: a.passkeys)
+    let r = try await AccountSignIn.withPasskey(b.env, bound: nil, wantPRF: true)
+    let assertion = try #require(r.assertion)
+    let body = try await Enrolment.unlockWithPRF(
+      b.env, userID: account.userID, credentialID: assertion.credentialID, prf: assertion.prfFirst)
+    #expect(try body.authorityPublicKey() == (try Base64.decode(try await a.env.client.keys(bearer: token).authority_pubkey)))
+    body.wipe()
+  }
+
+  @Test("C1 step 16: no PRF output again, a cancelled prompt or a refused put leaves a phrase-only account, and signup succeeds")
+  func passkeyCreationWithoutAWrapStillSucceeds() async throws {
+    for failure in ["no prf", "cancelled", "refused"] {
+      let w = World()
+      let a = w.phone("a")
+      let (account, words) = try await signupWithoutPRFAtCreation(w, a) {
+        switch failure {
+        case "cancelled":
+          a.passkeys.setPRFSupported(true)
+          a.passkeys.failNext(.cancelled)
+        case "refused":
+          a.passkeys.setPRFSupported(true)
+          w.server.refuseNext("POST /api/v1/keys/wraps", status: 503, code: "unavailable")
+        default: break
+        }
+      }
+      let token = try #require(try a.env.secrets.session()).token
+      #expect(try await a.env.client.keyWraps(bearer: token).wraps.isEmpty)
+      #expect(try await a.env.client.account(bearer: token).has_keys == true)
+      let b = w.phone("b", passkeys: a.passkeys)
+      _ = try await AccountSignIn.withPasskey(b.env, bound: nil, wantPRF: false)
+      let body = try await Enrolment.unlockWithPhrase(b.env, userID: account.userID, typed: words.joined(separator: " "))
+      body.wipe()
+    }
+  }
+
   @Test("C1 with the words later: a synced passkey only; an older server's 400 leaves the same passkey and keys to publish")
   func passkeyCreationWithoutTheWords() async throws {
     for (synced, olderServer) in [(false, false), (true, false), (true, true)] {

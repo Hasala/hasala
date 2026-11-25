@@ -61,6 +61,37 @@ the same.
 Applies to: `ios/HasalaKit/Sources/HasalaModels/Engines/HomeEngine.swift` (`hero`),
 `ios/HasalaKit/Sources/HasalaModels/Home.swift` (`Verdict.label`).
 
+## The screens and CoreDomain each have a pace engine, and a test keeps them equal
+
+The pace arithmetic exists two times. `Pace` in HasalaModels gives Home, Plan, Activity
+and the transaction sheet their projection and their verdict. `PlanEngine` in CoreDomain
+has `projected`, `pace`, `paceMinDay` and `paceMarginPercent`. HasalaKit does not depend
+on HasalaCore, so the screens cannot call the core engine without a package change
+(spec 04 §15.2, 03a §6).
+
+`ios/HasalaTests/PaceParityTests.swift` runs the same inputs through the two (AT-REV-3)
+and fails when they differ. It compares:
+
+- the two thresholds (the first day that shows a projection, and the margin);
+- the projection, for a budget above zero and a spend from 1 to the budget, on each day
+  of a month of 28 to 31 days, with a largest single spend from none to all of the spend;
+- the verdict of a paced (everyday) category in the current month for the same inputs;
+- the verdict when the spend is above the budget, and when there is a spend and no budget.
+
+Outside these inputs the two differ on purpose, because the verdict sets are not the same:
+
+- No spend and no budget: the screens say `onTrack`, the core says `noBudget`.
+- A past month within budget: the core says `underBudget`. `Pace` has no phase.
+- A category that is not paced: the screens say `done` at the full budget. The core's
+  `bills` kind says `onTrack` and its `saving` kind has `done`, `short` and `inProgress`.
+- A spend of zero or less: the core's projection is never below zero.
+
+A change to one engine inside the compared inputs must be made in the other also.
+
+Applies to: `ios/HasalaKit/Sources/HasalaModels/Engines/Pace.swift` (`Pace`),
+`ios/HasalaCore/Sources/HasalaCore/Domain/Plan/PlanEngine.swift` (`projected`, `pace`),
+`ios/HasalaTests/PaceParityTests.swift`.
+
 ## Home's tick counts the bills charged so far
 
 The tick on the Home bar is the planned spend by today (page 06 §6.4):

@@ -227,7 +227,9 @@ struct BillsView: View {
       hue: isLate ? .rose : .sand, glyph: Self.posterGlyph(item), name: item.name, pill: item.pill,
       amount: item.amount, message: item.body, hidden: model.hidden,
       primary: isLate
-        ? .init(title: "I paid it", id: "bills.paid.\(item.billID)") { sheet = RecurringSheet.find(item.billID, in: app.store.state) }
+        ? .init(title: "I paid it", id: "bills.paid.\(item.billID)") {
+          sheet = RecurringSheet.find(item.billID, in: app.store.state)
+        }
         : .init(title: "Accept new amount", id: "bills.accept.\(item.billID)") { model.acceptAmount(item.billID) },
       secondary: secondary, id: "bills.attention.\(item.id)")
   }

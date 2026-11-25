@@ -39,7 +39,7 @@ The decisions of record of each area are one level up, in `docs/decisions/`.
 | [Passkeys, passwords, sessions and recovery (auth)](server-auth-2.md) | 20 |
 | [Server step-up, writers, server keys, blob framing and storage budget](server-auth-to-budget.md) | 20 |
 | [Server auth (accounts, codes, freeze, invites, passkeys)](server-auth.md) | 21 |
-| [Server config, console, crypto reference, dictionary and Gmail push](server-config-to-gmailpush.md) | 18 |
+| [Server config, console, crypto reference, dictionary and Gmail push](server-config-to-gmailpush.md) | 19 |
 | [Google tokens, the disk fuse and invites](server-googlejwt-to-invites.md) | 19 |
 | [Server key protocol, outbound mail and the Microsoft token verifier](server-keyproto-to-msjwt.md) | 17 |
 | [Go normalizer (norm)](server-norm.md) | 9 |

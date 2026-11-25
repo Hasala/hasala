@@ -81,8 +81,7 @@ func TestEveryKeyHasAnEnvironmentName(t *testing.T) {
 	key := secretFile(t, 0o600)
 	c := mustLoad(t, env{
 		"HASALA_PG_DSN": "host=/run/x dbname=hasala user=hasala_runtime", "HASALA_MIGRATE_DSN": "m",
-		"HASALA_HTTP_LISTEN": "127.0.0.1:8471", "HASALA_METRICS_LISTEN": "127.0.0.1:9471",
-		"HASALA_MIN_IOS_BUILD": "42", "HASALA_LOG_LEVEL": "warn",
+		"HASALA_HTTP_LISTEN": "127.0.0.1:8471", "HASALA_MIN_IOS_BUILD": "42", "HASALA_LOG_LEVEL": "warn",
 		"HASALA_RP_ID": "hasala.app", "HASALA_RP_ORIGINS": "https://hasala.app, https://www.hasala.app",
 		"HASALA_SESSION_IDLE": "24h", "HASALA_SESSION_MAX": "48h", "HASALA_INVITE_TTL": "24h",
 		"HASALA_PASSWORD_HASH_CONCURRENCY": "2", "HASALA_AUTH_KEY_FILE": key, "HASALA_SALT_KEY_FILE": key,
@@ -116,6 +115,7 @@ func TestATOMLFileIsReadAndUnknownKeysAreRefused(t *testing.T) {
 		"a secret":      "[auth]\nauth_key_file = \"/x\"\n",
 		"a typo":        "[server]\nhttp_lisen = \"127.0.0.1:1\"\n",
 		"a retired key": "[mail]\ndomain = \"example.test\"\n",
+		"serve metrics": "[server]\nmetrics_listen = \"127.0.0.1:9471\"\n",
 		"the dsn":       "[server]\ndsn = \"postgres://x\"\n",
 	} {
 		p := filepath.Join(dir, strings.ReplaceAll(name, " ", "_")+".toml")
@@ -135,8 +135,6 @@ func TestTheListenerIsLoopbackOnly(t *testing.T) {
 	for _, addr := range []string{"127.0.0.1:8471", "[::1]:8471", "localhost:8471"} {
 		mustLoad(t, env{"HASALA_HTTP_LISTEN": addr})
 	}
-	wantErr(t, env{"HASALA_METRICS_LISTEN": "0.0.0.0:9471"}, "loopback")
-	wantErr(t, env{"HASALA_METRICS_LISTEN": "127.0.0.1:8443"}, "different ports")
 }
 
 func TestValuesAreValidated(t *testing.T) {
@@ -577,8 +575,9 @@ func TestTurnstile(t *testing.T) {
 func TestUnknownEnvironment(t *testing.T) {
 	got := UnknownEnvironment([]string{"HASALA_PG_DSN=x", "HASALA_TURNSTILE_REQUIRED=true", "HASALA_CONFIG=x",
 		"HASALA_ADMIN_ACTOR=x", "HASALA_CONSOLE_LISTEN=x", "PATH=/bin", "HASALA_TURNSTYLE_REQUIRED=true",
-		"HASALA_PURGE_LEDGER_PATH=x", "HASALA_PURGE_LEDGER=x", "HASALA_TURNSTYLE_REQUIRED=false"})
-	if strings.Join(got, ",") != "HASALA_PURGE_LEDGER,HASALA_TURNSTYLE_REQUIRED" {
+		"HASALA_PURGE_LEDGER_PATH=x", "HASALA_PURGE_LEDGER=x", "HASALA_TURNSTYLE_REQUIRED=false",
+		"HASALA_METRICS_LISTEN=127.0.0.1:9471", "HASALA_CONSOLE_METRICS_LISTEN=x"})
+	if strings.Join(got, ",") != "HASALA_METRICS_LISTEN,HASALA_PURGE_LEDGER,HASALA_TURNSTYLE_REQUIRED" {
 		t.Fatalf("unknown: %v", got)
 	}
 }

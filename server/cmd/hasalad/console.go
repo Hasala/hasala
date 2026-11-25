@@ -50,7 +50,7 @@ func runConsole(env *runEnv, args []string) error {
 		servers = append(servers, struct {
 			addr, what string
 			h          http.Handler
-		}{cfg.Console.MetricsListen, "healthz listening", c.HealthHandler()})
+		}{cfg.Console.MetricsListen, "healthz and metrics listening", c.HealthHandler()})
 	}
 	var running []*http.Server
 	errc := make(chan error, len(servers))

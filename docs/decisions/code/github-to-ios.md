@@ -205,7 +205,7 @@ port on the literal loopback address. cloudflared answers 404 to all other reque
   cloudflared compares the regex with the URL path only, not with the query. There is no
   bare `/healthz`: the health route is `/api/v1/healthz`.
 - The console (spec 07, M16) and each metrics port must not be reachable through the
-  tunnel. The lint refuses a service on these ports: 9471 (hasalad metrics), 9472
+  tunnel. The lint refuses a service on these ports: 9471 (kept for a metrics listener of `hasalad serve`, which does not exist yet), 9472
   (cloudflared metrics), 8472 and 9473 (the console and its metrics), and the ports of
   known neighbours: 5432 (Postgres), 9090 (Prometheus), 3000 (Grafana), 2586 (ntfy).
 - The log level is `info`. At `debug`, cloudflared logs request paths, and the paths carry

@@ -11,7 +11,6 @@
 		151E619D211EDCF6599F04C5 /* HasalaWidgetData in Frameworks */ = {isa = PBXBuildFile; productRef = 5C148129523DB4C0775F292E /* HasalaWidgetData */; };
 		16124AD3AD8C4E6EB70A7E12 /* CoreResources in Frameworks */ = {isa = PBXBuildFile; productRef = D0720C28099C287DD50E4D4F /* CoreResources */; };
 		1AEB18F899CBEE64D5AA7220 /* HasalaModels in Frameworks */ = {isa = PBXBuildFile; productRef = 34C3DF8F9E664D62F761D750 /* HasalaModels */; };
-		212BB1936AAAFEA531EEBC99 /* HasalaKeychain in Frameworks */ = {isa = PBXBuildFile; productRef = 50E928D93AED96B5E3CEC2DC /* HasalaKeychain */; };
 		233C4F4AF054981975026771 /* HasalaDesign in Frameworks */ = {isa = PBXBuildFile; productRef = 9DD2CC7B388FF9B56F75BA2A /* HasalaDesign */; };
 		40AACB4CA42181553FE6F16C /* HasalaMocks in Frameworks */ = {isa = PBXBuildFile; productRef = D4E305223EA1101548600E38 /* HasalaMocks */; };
 		48ECBA5913A97D89BE69BE07 /* CoreWire in Frameworks */ = {isa = PBXBuildFile; productRef = 4BE956E3E549FCEE1846BBAA /* CoreWire */; };
@@ -21,7 +20,7 @@
 		680B3D193DEFB000EA061266 /* CoreTime in Frameworks */ = {isa = PBXBuildFile; productRef = 8E82DC53338247FECBCD6200 /* CoreTime */; };
 		68D5EDD4F6B63B6207A85D72 /* CoreStore in Frameworks */ = {isa = PBXBuildFile; productRef = 23F8A9B69DCB7E373A86DBD7 /* CoreStore */; };
 		7355846430AA1B5EA2B00D4D /* CoreCrypto in Frameworks */ = {isa = PBXBuildFile; productRef = 39F59297A15B967DDD100B2C /* CoreCrypto */; };
-		77D66838212616C2A1D6DA8A /* HasalaCloud in Frameworks */ = {isa = PBXBuildFile; productRef = 4E9FC2D03E5BE15F2A82A291 /* HasalaCloud */; };
+		77D66838212616C2A1D6DA8A /* HasalaKeychain in Frameworks */ = {isa = PBXBuildFile; productRef = 50E928D93AED96B5E3CEC2DC /* HasalaKeychain */; };
 		7FEF66F6454BE2D2CFD03A5F /* HasalaMocks in Frameworks */ = {isa = PBXBuildFile; productRef = 12B9E1D508DEC131A3017ADB /* HasalaMocks */; };
 		8F5D9B249986A4036726DDF0 /* CoreProjection in Frameworks */ = {isa = PBXBuildFile; productRef = C8868BA7E624F3C4B16DA9D6 /* CoreProjection */; };
 		96D71AD369BD2ECBCBA15D3D /* CoreOutbox in Frameworks */ = {isa = PBXBuildFile; productRef = 34F6670EB9282B53E16EF030 /* CoreOutbox */; };
@@ -31,8 +30,8 @@
 		AB63E7AB4C79DA8457316560 /* CoreMailbox in Frameworks */ = {isa = PBXBuildFile; productRef = 5FFFFB8563C6C1FB0D12283D /* CoreMailbox */; };
 		AD087BBDE38B821FB8714365 /* CoreInvariants in Frameworks */ = {isa = PBXBuildFile; productRef = 032952CF5F61D4CFFE18294F /* CoreInvariants */; };
 		B08BB10F61A6E5B2A5EF33A5 /* CoreDomain in Frameworks */ = {isa = PBXBuildFile; productRef = 77A4DB49FDFF3B7572CCF01C /* CoreDomain */; };
-		B325B9632C552538DBCF736E /* CoreSignals in Frameworks */ = {isa = PBXBuildFile; productRef = 798F6F830FD04FCB8597E231 /* CoreSignals */; };
-		B358B9E85A2EB0EAFFBBB4EF /* HasalaModel in Frameworks */ = {isa = PBXBuildFile; productRef = 0EF73753E3DB56E3DCD93D57 /* HasalaModel */; };
+		B325B9632C552538DBCF736E /* HasalaModel in Frameworks */ = {isa = PBXBuildFile; productRef = 0EF73753E3DB56E3DCD93D57 /* HasalaModel */; };
+		B358B9E85A2EB0EAFFBBB4EF /* HasalaCloud in Frameworks */ = {isa = PBXBuildFile; productRef = 4E9FC2D03E5BE15F2A82A291 /* HasalaCloud */; };
 		BF2FD14D0D2B58D2F66E624B /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 45B6D780313B22149200C4D5 /* WidgetKit.framework */; };
 		CCE98AD022B74F8DBAF80415 /* CorePrimitives in Frameworks */ = {isa = PBXBuildFile; productRef = 5D20E694BCA96316109A440F /* CorePrimitives */; };
 		D6AB708455FA65C8C73B9A73 /* HasalaModels in Frameworks */ = {isa = PBXBuildFile; productRef = 755DEEE09731048ACCDEF0A3 /* HasalaModels */; };
@@ -206,10 +205,9 @@
 				A58AC79BCDB34E84004E537A /* CoreSync in Frameworks */,
 				96D71AD369BD2ECBCBA15D3D /* CoreOutbox in Frameworks */,
 				AB63E7AB4C79DA8457316560 /* CoreMailbox in Frameworks */,
-				B325B9632C552538DBCF736E /* CoreSignals in Frameworks */,
-				B358B9E85A2EB0EAFFBBB4EF /* HasalaModel in Frameworks */,
-				77D66838212616C2A1D6DA8A /* HasalaCloud in Frameworks */,
-				212BB1936AAAFEA531EEBC99 /* HasalaKeychain in Frameworks */,
+				B325B9632C552538DBCF736E /* HasalaModel in Frameworks */,
+				B358B9E85A2EB0EAFFBBB4EF /* HasalaCloud in Frameworks */,
+				77D66838212616C2A1D6DA8A /* HasalaKeychain in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -339,7 +337,6 @@
 				BC929A60A8109BCB6AF125DC /* CoreSync */,
 				34F6670EB9282B53E16EF030 /* CoreOutbox */,
 				5FFFFB8563C6C1FB0D12283D /* CoreMailbox */,
-				798F6F830FD04FCB8597E231 /* CoreSignals */,
 				0EF73753E3DB56E3DCD93D57 /* HasalaModel */,
 				4E9FC2D03E5BE15F2A82A291 /* HasalaCloud */,
 				50E928D93AED96B5E3CEC2DC /* HasalaKeychain */,
@@ -918,10 +915,6 @@
 		77A4DB49FDFF3B7572CCF01C /* CoreDomain */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CoreDomain;
-		};
-		798F6F830FD04FCB8597E231 /* CoreSignals */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = CoreSignals;
 		};
 		889A5A1A5B3CE0115C3ED09D /* CoreJSON */ = {
 			isa = XCSwiftPackageProductDependency;

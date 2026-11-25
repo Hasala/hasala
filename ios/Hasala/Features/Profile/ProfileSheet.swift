@@ -183,11 +183,6 @@ struct ProfileSheet: View {
             SettingRow(icon: .bell, title: "Notifications", trailing: .value(snap.prefs.notifications.label))
           }
         }
-        if unfinished {
-          SettingRow(icon: .appearance, title: "Appearance", trailing: .value("Light"), chevron: false)
-          SettingRow(icon: .swipe, title: "Swipe directions",
-                     trailing: .value(snap.swipeSummary, spoken: snap.swipeSpoken), chevron: false)
-        }
         ShareLink(item: CSVFile(rows: model.exportRows, name: CSVExport.fileName(model.today)),
                   preview: SharePreview(CSVExport.fileName(model.today))) {
           SettingRow(icon: .download, title: "Export your data", trailing: .value("CSV"))
@@ -278,7 +273,7 @@ private struct ProfilePage: View {
   var body: some View {
     switch route {
     case .bills:
-      BillsScreen(app: app, showsToast: false)
+      BillsScreen(app: app)
     case .bill(let id):
       BillDetailView(app: app, bill: id)
     case .project(let id):

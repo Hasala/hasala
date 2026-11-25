@@ -25,7 +25,7 @@ struct CategoryDetailView: View {
         CategoryHero(detail: d, hidden: model.hidden)
         ChartCard(chart: d.chart, name: d.name, hue: d.hue, bucket: d.bucket, hidden: model.hidden)
         if !d.transactions.isEmpty { ThisMonth(detail: d, model: model) }
-        if !d.rules.isEmpty || BuildSurface.showsUnfinished { Rules(detail: d, model: model) }
+        if !d.rules.isEmpty { Rules(detail: d, model: model) }
         actions
       }
     } else {
@@ -206,13 +206,6 @@ private struct Rules: View {
           }
           .buttonStyle(HRowPressStyle())
           .accessibilityIdentifier("plan.rule.\(rule.id)")
-        }
-        if BuildSurface.showsUnfinished {
-          Button { model.addRule() } label: {
-            SettingsRow(icon: .add, title: "Add a rule", accessory: .none, role: .action)
-          }
-          .buttonStyle(HRowPressStyle())
-          .accessibilityIdentifier("plan.addRule")
         }
       }
     }

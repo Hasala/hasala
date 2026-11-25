@@ -84,9 +84,8 @@ func ApproveEntry(ctx context.Context, tx pgx.Tx, q *mailq.Queue, entry uuid.UUI
 }
 
 type Renderer struct {
-	WebBase          string
-	ManualTestFlight bool
-	Minter           Minter
+	WebBase string
+	Minter  Minter
 }
 
 type Minter interface {
@@ -154,7 +153,7 @@ func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Me
 		}
 	}
 	c := mailq.Content{Email: row.Recipient, Code: Display(code), InviteURL: Link(r.WebBase, code, linkKey),
-		FallbackText: FallbackText(r.WebBase, code), Until: mailq.Date(*expires), ManualTestFlight: r.ManualTestFlight}
+		FallbackText: FallbackText(r.WebBase, code), Until: mailq.Date(*expires)}
 	var leave waitlist.Leave
 	if entry != nil {
 		var err error

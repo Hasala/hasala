@@ -1134,7 +1134,9 @@ the approval of the owner for that deployment.
 - **Recurring items (2026-10-21)**: a recurring item is a `bill` in the code.
   There is no new op type: `bill_set` gains optional keys that older builds
   ignore. Matching and detection are computed from the log on each device and
-  are not written as ops. Refer to `docs/decisions/recurring-items.md`.
+  are not written as ops. Salary's "Last work day" payday (2026-11-25) is an optional
+  key of `income_source_set`, `payday_last_working_day`. Refer to
+  `docs/decisions/recurring-items.md`.
 - **Op version ceiling (2026-10-31)**: a next-version row stops sync only when
   `/meta` reports that a shipped build writes that version. Raise
   `OpVersionCeiling` and deploy `hasalad` before a build that writes a new
@@ -1144,6 +1146,10 @@ the approval of the owner for that deployment.
   chain it reads. Checkpoints come later, with a written rule for the cadence
   and for what a mismatch does. Refer to
   `docs/decisions/sync-writer-checkpoints.md`.
+- **TestFlight invitations (2026-11-25)**: the operator adds each invited
+  tester to the TestFlight beta by hand. The server has no App Store Connect
+  automation, no `HASALA_TESTFLIGHT_MODE` and no `services.hasala.asc`
+  options. Refer to `docs/decisions/testflight-manual.md`.
 - **Outbound mail**: Cloudflare Email Service.
 - **Hosting (QA)**: the QA host, behind Cloudflare Tunnel. hasalad listens
   only on loopback. It has no TLS code.

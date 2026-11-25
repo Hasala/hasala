@@ -9,37 +9,13 @@ import Testing
 
 extension Live {
   static func twoRuntimes(clock: FakeClock) async throws -> (Runtime, Runtime) {
-    let random = SystemRandom()
-    let user = try #require(UserID(try random.uuidV4()))
-    let email = "e2e-\(Hex.encode(try random.bytes(4)))@example.com"
-    func phone(_ name: String) -> Phone {
-      Phone(transport: URLSessionTransport(baseURL: url!, clientHeader: "ios/0.0.0/1"), clock: clock, seed: "\(name)-\(user.string)")
-    }
+    let email = try newEmail()
+    let a = phone("live-a-\(email)", clock: clock)
+    let made = try await passwordAccount(a, email: email)
+    let b = phone("live-b-\(email)", clock: clock)
+    let accountB = try await secondPhone(b, email: email, words: made.words)
 
-    let a = phone("live-a")
-    let keys = try NewAccountKeys.generate(random: random)
-    let words = try keys.words()
-    let attestation = try random.bytes(64)
-    try seedUser(user, email: email, aak: try keys.authorityPublicKey(), attestationHash: sha256(attestation), random: random)
-    try signIn(a, user: user)
-    let bearer = try #require(try a.env.secrets.session()).token
-    let device = try await NewDevice.mint(a.env, userID: user)
-    let challenge = try await a.env.client.writerChallenge(bearer: bearer)
-    let body = try AccountCreation.buildBootstrap(
-      a.env, userID: user, emailNorm: email, keys: keys, device: device, authKind: .passkey, authHash: sha256(attestation),
-      prfWrap: nil, nonce: try Base64.decode(challenge.nonce))
-    _ = try await a.env.client.bootstrap(body, bearer: bearer)
-    let accountA = try await Enrolment.persist(
-      a.env, userID: user, device: device, epochKey: try keys.body.epochKey1(userID: user), emailNorm: email,
-      serverSalt: Data(count: 32), displayName: "E2E", authorityPublicKey: try keys.authorityPublicKey())
-
-    let b = phone("live-b")
-    try signIn(b, user: user)
-    let bodyB = try await Enrolment.unlockWithPhrase(b.env, userID: user, typed: words.joined(separator: " "))
-    let accountB = try await Enrolment.enrolWriter(
-      b.env, userID: user, body: bodyB, emailNorm: email, serverSalt: Data(count: 32), displayName: "E2E")
-
-    let ra = try Runtime(Enrolment.context(a.env, account: accountA))
+    let ra = try Runtime(Enrolment.context(a.env, account: made.enrolled))
     let rb = try Runtime(Enrolment.context(b.env, account: accountB))
     try await ra.observer.open()
     try await rb.observer.open()
@@ -54,21 +30,9 @@ struct LiveSampleSeedTests {
     let (a, b) = try await Live.twoRuntimes(clock: FakeClock(ms: Scenarios.anchor))
     try await Scenarios.sampleOnSecondDevice(a, b) { review in
       let bearer = try #require(try a.context.secrets.session()).token
-      do {
-        if review { _ = try Live.sql("UPDATE users SET review_account = true WHERE id = '\(a.context.userID.string)'") }
-        return try await a.context.client.account(bearer: bearer)
-      } catch {
-        guard (error as? Live.LiveError) != nil || (error as? APIError).map(Self.notMounted) == true else { throw error }
-        return AccountInfo(user_id: a.context.userID.string, review_account: review ? true : nil)
-      }
+      if review { _ = try Live.sql("UPDATE users SET review_account = true WHERE id = '\(a.context.userID.string)'") }
+      return try await a.context.client.account(bearer: bearer)
     }
-  }
-}
-
-extension LiveSampleSeedTests {
-  static func notMounted(_ e: APIError) -> Bool {
-    if case .refused(let f) = e { return f.status == 404 }
-    return false
   }
 }
 

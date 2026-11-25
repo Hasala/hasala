@@ -26,7 +26,7 @@ import Testing
   }
 
   @Test func anInactiveSourceKeepsItsPaydayForPaychecksUpToTheWriteThatTurnedItOff() throws {
-    #expect(ProjectionSchema.version == 13)
+    #expect(ProjectionSchema.version == 14)
     var s = State()
     try Self.blob(
       1, #"{"v":4,"type":"home_currency_set","op_id":"h","authored_at":"2026-09-01T08:00:00.000Z","parent_version":null,"payload":{"currency":"AED"}}"#,
@@ -45,5 +45,20 @@ import Testing
     #expect(e.received(CivilMonth(year: 2026, month: 10)!, "salary") == 0)
     #expect(e.received(november, "salary") == 7_500_000)
     #expect(e.received(CivilMonth(year: 2026, month: 12)!, "salary") == 0)
+  }
+
+  @Test func aLastWorkingDayPaydayIsProjectedAndReadBack() throws {
+    var s = State()
+    let source =
+      #"{"v":4,"type":"income_source_set","op_id":"s-last","authored_at":"2026-09-01T08:00:00.000Z","parent_version":null,"payload":{"id":"salary-1","name":"Salary","category_id":"salary","amount_minor":"2500000","payday":30,"active":true,"payday_last_working_day":true}}"#
+    try Self.blob(1, source, into: &s)
+    try Self.blob(2, Self.paycheck(1, "2027-01-29T08:00:00.000Z"), into: &s)
+    #expect(s.anomalies.isEmpty)
+    let db = try Projector.open(path: nil)
+    try Projector.project(s, dictionary: try MerchantDictionary.bundled().get(), projectedAtMs: 0, into: db)
+    let r = LedgerReader(db)
+    let read = try #require(try r.incomeSources().first)
+    #expect(read.paydayLastWorkingDay && read.payday == 30)
+    #expect(read.payday(in: CivilMonth(year: 2027, month: 2)!) == CivilDate(year: 2027, month: 2, day: 26))
   }
 }

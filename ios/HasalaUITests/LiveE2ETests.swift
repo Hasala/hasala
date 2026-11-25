@@ -93,6 +93,7 @@ final class LiveE2ETests: LiveE2ECase {
     XCTAssertTrue(waitForLabel(position, containing: "1 of 6", timeout: 15),
                   "the deck reads '\(position.exists ? position.label : "nothing")'")
     tap(app, "review.pill.transfer")
+    let uploaded = try oplogPosition()
     tap(app, "pick.transfer")
     XCTAssertTrue(waitForLabel(position, containing: "2 of 6", timeout: 15), "the card was not sorted")
     attach(app, "Review · one sorted")
@@ -100,7 +101,7 @@ final class LiveE2ETests: LiveE2ECase {
     XCTAssertTrue(waitForLabel(el(app, "review.tab.count"), containing: MayaSample.afterOneSorted, timeout: 15),
                   "the Review tab does not say '\(MayaSample.afterOneSorted)'")
 
-    RunLoop.current.run(until: Date().addingTimeInterval(10))
+    XCTAssertTrue(try waitForUpload(after: uploaded), "B's sort was not uploaded")
   }
 
   @MainActor

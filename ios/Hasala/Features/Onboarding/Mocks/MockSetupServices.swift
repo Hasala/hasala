@@ -9,6 +9,7 @@
     private(set) var requestedBanks: [String] = []
     private(set) var income: Int64?
     private(set) var payday: Int?
+    private(set) var paydayLastWorkingDay = false
     private(set) var plan: StartingPlan?
     private(set) var planSaved = false
     private(set) var chooseBanksCalls = 0
@@ -20,10 +21,13 @@
     init(saved: SetupReadBack = SetupReadBack()) {
       income = saved.incomeMinor
       payday = saved.payday
+      paydayLastWorkingDay = saved.paydayLastWorkingDay
       plan = saved.split
     }
 
-    func readBack() -> SetupReadBack { SetupReadBack(incomeMinor: income, payday: payday, split: plan) }
+    func readBack() -> SetupReadBack {
+      SetupReadBack(incomeMinor: income, payday: payday, split: plan, paydayLastWorkingDay: paydayLastWorkingDay)
+    }
 
     func today() -> LocalDate { day }
 
@@ -72,10 +76,11 @@
         catalog: BankCandidate.all.map { BankCatalogChoice(slug: $0.slug, name: $0.name, state: .requested) })
     }
 
-    func savePlan(income: Int64?, payday: Int?, plan: StartingPlan?) async throws(SetupFailure) {
+    func savePlan(income: Int64?, payday: Int?, lastWorkingDay: Bool, plan: StartingPlan?) async throws(SetupFailure) {
       savePlanCalls += 1
       self.income = income
       self.payday = payday
+      paydayLastWorkingDay = lastWorkingDay
       self.plan = plan
       planSaved = true
     }

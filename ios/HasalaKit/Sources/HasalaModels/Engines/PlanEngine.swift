@@ -211,7 +211,8 @@ public enum PlanEngine {
   }
 
   public static func payday(_ s: LedgerState, month: YearMonth) -> LocalDate {
-    LocalDate(month.year, month.month, min(max(1, s.plan.payday), month.days))
+    s.plan.paydayLastWorkingDay
+      ? month.lastWorkingDay : LocalDate(month.year, month.month, min(max(1, s.plan.payday), month.days))
   }
 
   static func incomeState(_ s: LedgerState, month: YearMonth, today: LocalDate) -> (PlanSnapshot.IncomeState, Money) {

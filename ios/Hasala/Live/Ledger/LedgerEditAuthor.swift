@@ -87,7 +87,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case copyUnmerged(txn: String, other: String)
     case bill(id: String, draft: OpAuthor.BillDraft)
     case resolution(bill: String, due: String, resolution: String, txn: String?, until: String?)
-    case income(id: String, name: String, category: String, amountMinor: Int64, payday: Int64, active: Bool)
+    case income(id: String, name: String, category: String, amountMinor: Int64, payday: Int64, lastWorkingDay: Bool, active: Bool)
     case refile(
       txn: String, writtenVersion: Int64, category: String?, needsReview: Bool, source: CoreReplay.CategorySource, categorizedMs: Int64?)
     case prior(txn: String, prior: SortMemory.Prior)
@@ -272,8 +272,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
       return try await candidate(id, track: true, today: today)
     case .dismissCandidate(let id):
       return try await candidate(id, track: false, today: today)
-    case .editIncome(let id, let amount, let payday, let active):
-      return try await editIncome(id, amount: amount, payday: payday, active: active)
+    case .editIncome(let id, let amount, let payday, let lastWorkingDay, let active):
+      return try await editIncome(id, amount: amount, payday: payday, lastWorkingDay: lastWorkingDay, active: active)
     case .setRate(let currency, let micro):
       try await build { a throws(AuthorError) in try a.setRate(currency: currency, rateMicro: micro) }
     case .unsetRate(let currency):
@@ -526,8 +526,10 @@ nonisolated struct LedgerEditAuthor: Sendable {
         case .resolution(let bill, let due, let resolution, let txn, let until):
           guard let d = CivilDate(wire: due) else { continue }
           a.setBillOccurrence(bill: bill, due: d, Self.occurrence(resolution, txn: txn, until: until))
-        case .income(let id, let name, let category, let amount, let payday, let active):
-          a.setIncomeSource(id: id, name: name, category: category, amountMinor: amount, payday: payday, active: active)
+        case .income(let id, let name, let category, let amount, let payday, let lastWorkingDay, let active):
+          a.setIncomeSource(
+            id: id, name: name, category: category, amountMinor: amount, payday: payday, lastWorkingDay: lastWorkingDay,
+            active: active)
         case .projectState(let id, let status, let completedOn, let countInPlan):
           guard let p = projects[id] else { continue }
           var d = Self.projectDraft(p)
@@ -822,7 +824,9 @@ nonisolated struct LedgerEditAuthor: Sendable {
 
   static let incomePrefix = "income."
 
-  private func editIncome(_ billID: String, amount: Money, payday: Int, active: Bool) async throws -> [Inverse] {
+  private func editIncome(
+    _ billID: String, amount: Money, payday: Int, lastWorkingDay: Bool, active: Bool
+  ) async throws -> [Inverse] {
     guard billID.hasPrefix(Self.incomePrefix) else { throw Failure.notFound }
     let id = String(billID.dropFirst(Self.incomePrefix.count))
     guard let s = try reader.incomeSources().first(where: { $0.id == id }) else { throw Failure.notFound }
@@ -830,10 +834,13 @@ nonisolated struct LedgerEditAuthor: Sendable {
     guard (1...31).contains(payday) else { throw Failure.refused("payday") }
     try await build { a throws(AuthorError) in
       a.setIncomeSource(
-        id: id, name: s.name, category: s.categoryID, amountMinor: amount.minor, payday: Int64(payday), active: active)
+        id: id, name: s.name, category: s.categoryID, amountMinor: amount.minor, payday: Int64(payday),
+        lastWorkingDay: lastWorkingDay, active: active)
     }
     return [
-      .income(id: id, name: s.name, category: s.categoryID, amountMinor: s.amountMinor, payday: s.payday, active: s.active)
+      .income(
+        id: id, name: s.name, category: s.categoryID, amountMinor: s.amountMinor, payday: s.payday,
+        lastWorkingDay: s.paydayLastWorkingDay, active: s.active)
     ]
   }
 

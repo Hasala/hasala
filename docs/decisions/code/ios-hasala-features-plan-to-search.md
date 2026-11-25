@@ -190,6 +190,27 @@ reading their email, and that control must be easy to find.
 
 Applies to: `ios/Hasala/Features/Profile/ProfileSheet.swift`.
 
+## The review cover's route carries the start card, and its id is constant
+
+The card where a review session starts is the payload of the route
+(`CoverRoute.review(start:)`). The cover makes its session from the route
+(`CoverRoute.session(for:)`). Do not keep the start card in static state or in the
+model: the request then outlives the navigation state that made it (issue #322).
+
+All review routes have the same `id`. SwiftUI closes and presents a
+`fullScreenCover(item:)` again when the id of its item changes. A start that arrives
+while the deck is open (a widget link, a second tap) must not do that, so the payload
+is not part of the id. The open deck keeps the session it has.
+
+A Debug screen that drives the deck uses `CoverRoute.scriptedReview`. Its `ReviewScript`
+runs one time, on the first session that the route makes. SwiftUI can build the cover's
+view more than one time, and the steps write to the ledger.
+
+Applies to: `ios/Hasala/App/Routes.swift` (`CoverRoute`),
+`ios/Hasala/Features/Review/ReviewModel.swift` (`CoverRoute.session(for:)`, `ReviewScript`),
+`ios/Hasala/Features/Shell/MainView.swift` (`ReviewCover`),
+`ios/Hasala/App/Debug/ScreenLaunch+Activity.swift` (`startDeck`).
+
 ## Accepted differences from the Paper design
 
 The app must agree with the Paper design. These differences are accepted:

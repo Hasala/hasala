@@ -64,6 +64,13 @@ enum EdgeGoldens {
       id: id, entity: ("bill", entity), parent: parent, at: at)
   }
 
+  static func income(_ id: String, _ amount: String, _ payday: Int, _ extra: String, id op: String) -> String {
+    G.op(
+      "income_source_set",
+      #"{"id":"\#(id)","name":"Salary","category_id":"salary","amount_minor":"\#(amount)","payday":\#(payday),"active":true\#(extra)}"#,
+      id: op)
+  }
+
   static let lists =
     #","changes":[{"from":"2026-06-30","amount_mode":"fixed","amount_minor":"6300","tolerance_bp":200}],"pauses":[{"from":"2026-08-01","until":null}]"#
   static let lateChange =
@@ -95,7 +102,7 @@ enum EdgeGoldens {
   static let set = FoldGoldenSet(
     file: "fold-v4-edges.json",
     note:
-      "Edge cases of the v4 fold that the ledgerd TypeScript fold (schema 3, removed) could not express: held copies, the Undo pairs the app writes (a budget move, a budget edit, a same-purchase confirmation, a reopened copy), archived and held rows around same-purchase pairing, a declined same-purchase pair across a merge and a remove, and money at the Int64 limits where the v4 fold records money_overflow or refuses the amount instead of carrying an unbounded number. Bills carry dated price changes and pause ranges as optional lists: on a create, absent, null and [] are the same record; on an edit, an absent key keeps the head's list and a present one replaces it, and the merged record must pass the grammar. A refused list consumes no version, created_at stays the create's, and a second create of a bill is a fork (or nothing, when it is the same record). Written by the Swift executor; a case listed in HasalaCoreConformanceTests EdgeGoldens.pairs also pins SamePurchase.pairs over its folded state.",
+      "Edge cases of the v4 fold that the ledgerd TypeScript fold (schema 3, removed) could not express: held copies, the Undo pairs the app writes (a budget move, a budget edit, a same-purchase confirmation, a reopened copy), archived and held rows around same-purchase pairing, a declined same-purchase pair across a merge and a remove, and money at the Int64 limits where the v4 fold records money_overflow or refuses the amount instead of carrying an unbounded number. Bills carry dated price changes and pause ranges as optional lists: on a create, absent, null and [] are the same record; on an edit, an absent key keeps the head's list and a present one replaces it, and the merged record must pass the grammar. A refused list consumes no version, created_at stays the create's, and a second create of a bill is a fork (or nothing, when it is the same record). An income source carries its last-working-day payday as an optional boolean that an edit without the key keeps only while its payday number is the same. Written by the Swift executor; a case listed in HasalaCoreConformanceTests EdgeGoldens.pairs also pins SamePurchase.pairs over its folded state.",
     cases: [
       FoldGoldenCase(
         name: "held-copy-at-the-int64-ceiling",
@@ -343,6 +350,18 @@ enum EdgeGoldens {
         blobs: [
           (1, G.w1, [bill("", id: "op-track-a", at: "2026-10-01T08:00:00.000Z", entity: detected, source: "detected")]),
           (2, G.w2, [bill("", id: "op-track-b", at: "2026-10-01T08:00:05.000Z", entity: detected, source: "detected")]),
+        ]),
+      FoldGoldenCase(
+        name: "income-source-last-working-day",
+        note: "payday_last_working_day is an optional key of income_source_set. A build without it writes no key: such an edit keeps the choice while its payday number is the head's (salary), and drops it when the number changes (stipend). A present key replaces the choice, and one that is not a boolean refuses the op.",
+        blobs: [
+          (1, G.w1, [income("salary", "2500000", 30, #","payday_last_working_day":true"#, id: "op-salary-1")]),
+          (2, G.w2, [income("salary", "2600000", 30, "", id: "op-salary-old")]),
+          (3, G.w1, [income("stipend", "400000", 30, #","payday_last_working_day":true"#, id: "op-stipend-1")]),
+          (4, G.w2, [income("stipend", "400000", 15, "", id: "op-stipend-old")]),
+          (5, G.w1, [income("bonus", "100000", 30, #","payday_last_working_day":true"#, id: "op-bonus-1")]),
+          (6, G.w1, [income("bonus", "100000", 30, #","payday_last_working_day":false"#, id: "op-bonus-2")]),
+          (7, G.w1, [income("bonus", "999", 30, #","payday_last_working_day":"yes""#, id: "op-bonus-bad")]),
         ]),
     ])
 }

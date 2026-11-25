@@ -136,7 +136,7 @@ nonisolated enum LedgerStateMapper {
       income: .aed(Fils.sum(sources.map(\.amountMinor))), payday: Int(sources.first?.payday ?? 28),
       startingSplit: split.map { [Int($0.need), Int($0.want), Int($0.saving)] } ?? [50, 30, 20], budgets: budgets,
       incomeByMonth: incomeByMonth, incomeExpectedByMonth: expectedByMonth, incomeReceivedByMonth: receivedByMonth,
-      zeroSet: zeroSet, expiredMoves: expiredMoves)
+      zeroSet: zeroSet, expiredMoves: expiredMoves, paydayLastWorkingDay: sources.first?.paydayLastWorkingDay ?? false)
 
     let bills = try liveBills(feed, r: r, context: c, txns: txns, income: engine.plan.incomeSources.values)
 
@@ -447,13 +447,6 @@ nonisolated enum LedgerStateMapper {
 
   static func clamp(_ year: Int, _ month: Int, _ day: Int) -> LocalDate {
     LocalDate(year, month, min(day, CivilCalendar.daysIn(year: year, month: month)))
-  }
-
-  static func nextPayday(_ day: Int, after: LocalDate) -> LocalDate {
-    let this = clamp(after.year, after.month, day)
-    if this >= after { return this }
-    let n = after.yearMonth.next
-    return clamp(n.year, n.month, day)
   }
 
   static func health(_ st: MailboxStatus, nowMs: Int64) -> MailboxHealth {

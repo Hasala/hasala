@@ -8,6 +8,7 @@ enum RecurringSheet: Identifiable, Hashable {
   case pause(BillID)
   case end(BillID)
   case link(BillID)
+  case findPayment(BillID, due: LocalDate)
   case salary(BillID)
 
   var id: String {
@@ -17,6 +18,7 @@ enum RecurringSheet: Identifiable, Hashable {
     case .pause(let id): "pause.\(id)"
     case .end(let id): "end.\(id)"
     case .link(let id): "link.\(id)"
+    case .findPayment(let id, _): "find.\(id)"
     case .salary(let id): "salary.\(id)"
     }
   }
@@ -24,8 +26,12 @@ enum RecurringSheet: Identifiable, Hashable {
   var fitted: Bool {
     switch self {
     case .pause, .end: true
-    case .add, .editAmount, .link, .salary: false
+    case .add, .editAmount, .link, .findPayment, .salary: false
     }
+  }
+
+  static func find(_ bill: BillID, in s: LedgerState) -> RecurringSheet? {
+    s.bill(bill).map { .findPayment(bill, due: $0.nextDue) }
   }
 }
 
@@ -53,6 +59,7 @@ struct RecurringSheetHost: View {
       case .pause(let id): PauseBillSheet(app: app, bill: id)
       case .end(let id): EndBillSheet(app: app, bill: id)
       case .link(let id): LinkPaymentsSheet(app: app, bill: id)
+      case .findPayment(let id, let due): FindPaymentSheet(app: app, bill: id, due: due)
       case .salary(let id): SalaryEditSheet(app: app, bill: id)
       }
     }
@@ -965,6 +972,67 @@ struct LinkPaymentsSheet: View {
       .pillHeight()
       .disabled(linkable.isEmpty)
       .accessibilityIdentifier("bills.link.save")
+    }
+  }
+}
+
+struct FindPaymentSheet: View {
+  let app: AppModel
+  let bill: BillID
+  let due: LocalDate
+  @State private var picked: TxnID?
+  @Environment(\.dismiss) private var dismiss
+
+  static func pick(_ held: TxnID?, from ticked: Set<TxnID>) -> TxnID? {
+    ticked.first { $0 != held } ?? held.flatMap { ticked.contains($0) ? $0 : nil }
+  }
+
+  static func waiting(_ s: LedgerState, bill: BillID, due: LocalDate) -> Bool {
+    s.bill(bill).map { $0.state == .tracked && $0.nextDue == due } ?? false
+  }
+
+  static func candidates(_ s: LedgerState, bill: BillID, due: LocalDate) -> [PastPayment] {
+    guard waiting(s, bill: bill, due: due), let b = s.bill(bill) else { return [] }
+    return BillsEngine.paymentsNear(s, for: b, due: due)
+  }
+
+  var waiting: Bool { Self.waiting(app.store.state, bill: bill, due: due) }
+  var payments: [PastPayment] { Self.candidates(app.store.state, bill: bill, due: due) }
+
+  var body: some View {
+    let b = app.store.state.bill(bill)
+    let payments = self.payments
+    let chosen = payments.first { $0.id == picked }?.id
+    let ticked = Binding<Set<TxnID>>(
+      get: { chosen.map { [$0] } ?? [] }, set: { picked = Self.pick(chosen, from: $0) })
+    RecurringForm(title: "Find the payment", closeID: "bills.find.close", isDirty: chosen != nil) {
+      if payments.isEmpty {
+        EmptyNote(systemImage: "magnifyingglass",
+                  message: "No payment near \(due.short) is free to link.")
+          .accessibilityIdentifier("bills.find.empty")
+      } else {
+        Text("Pick the payment that paid \(b?.name ?? "it").")
+          .hType(.subheadline).foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.horizontal, 4)
+        PastPaymentsList(payments: payments, ticked: ticked, hidden: app.amountsHidden)
+      }
+    } dock: {
+      Button("Link payment") {
+        guard let chosen else { return }
+        if app.perform(.linkBillPayments(bill, [chosen])) { dismiss() }
+      }
+      .buttonStyle(.pill(.primary, fill: true))
+      .pillHeight()
+      .disabled(chosen == nil)
+      .accessibilityIdentifier("bills.find.save")
+      Button("It's not in the list") {
+        if app.perform(.markBillPaid(bill)) { dismiss() }
+      }
+      .buttonStyle(.pill(.secondary, fill: true))
+      .pillHeight()
+      .disabled(!waiting)
+      .accessibilityIdentifier("bills.find.notListed")
     }
   }
 }

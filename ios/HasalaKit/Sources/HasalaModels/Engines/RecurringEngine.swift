@@ -13,7 +13,8 @@ public enum BillDueDates {
   }
 
   public static func shift(_ b: Bill, from base: LocalDate, by n: Int) -> LocalDate {
-    shift(base, day: b.usualDay, cadence: b.cadence, every: max(1, b.every), by: n)
+    let shifted = shift(base, day: b.usualDay, cadence: b.cadence, every: max(1, b.every), by: n)
+    return b.usualLastWorkingDay && b.cadence != .weekly ? shifted.yearMonth.lastWorkingDay : shifted
   }
 
   public static func nearest(_ b: Bill, to date: LocalDate) -> LocalDate {
@@ -85,9 +86,11 @@ public struct SalaryTerms: Sendable, Hashable {
   public var name: String
   public var amount: Money
   public var payday: Int
+  public var lastWorkingDay: Bool
   public var active: Bool
 
-  public init(id: BillID, name: String, amount: Money, payday: Int, active: Bool) {
+  public init(id: BillID, name: String, amount: Money, payday: Int, lastWorkingDay: Bool = false, active: Bool) {
+    self.lastWorkingDay = lastWorkingDay
     self.id = id
     self.name = name
     self.amount = amount
@@ -124,6 +127,29 @@ extension BillsEngine {
     }
     let kept = Set(nearest.values.map(\.id))
     return Array(found.filter { kept.contains($0.id) }.prefix(limit))
+  }
+
+  public static func paymentsNear(_ s: LedgerState, for b: Bill, due: LocalDate, limit: Int = pastPaymentLimit)
+    -> [PastPayment]
+  {
+    guard limit > 0 else { return [] }
+    let keys = Set(b.keys.map { $0.trimmedSpaces.lowercased() }.filter { !$0.isEmpty })
+    let before = BillDueDates.shift(b, from: due, by: -1)
+    let after = BillDueDates.shift(b, from: due, by: 1)
+    let terms = amount(b, on: due)
+    var found: [(known: Int, gap: UInt64, days: Int, p: PastPayment)] = []
+    for t in s.txns {
+      let day = t.postedAt.date
+      guard eligible(t), t.billID == nil, day > before, day < after, BillDueDates.nearest(b, to: day) == due else {
+        continue
+      }
+      let gap = comparable(t, currency: terms.currency).map { ($0 - terms.minor).magnitude } ?? .max
+      let p = PastPayment(id: t.id, merchant: t.merchant, date: day, amount: t.amount, due: due,
+                          account: s.account(t.accountID)?.shortName)
+      found.append((keys.contains(key(t)) ? 0 : 1, gap, abs(day.days(until: due)), p))
+    }
+    found.sort { ($0.known, $0.gap, $0.days, $0.p.id) < ($1.known, $1.gap, $1.days, $1.p.id) }
+    return found.prefix(limit).map(\.p)
   }
 
   static func rank(_ p: PastPayment) -> (Int, LocalDate, TxnID) {
@@ -220,7 +246,7 @@ extension BillsEngine {
   public static func salary(_ s: LedgerState, bill id: BillID) -> SalaryTerms? {
     guard let b = s.bill(id), b.isIncome, b.state != .dismissed else { return nil }
     return SalaryTerms(id: b.id, name: b.name, amount: b.amount, payday: b.usualDay,
-                       active: b.state == .tracked || b.state == .paused)
+                       lastWorkingDay: b.usualLastWorkingDay, active: b.state == .tracked || b.state == .paused)
   }
 
   static func amount(_ b: Bill, on due: LocalDate) -> Money {

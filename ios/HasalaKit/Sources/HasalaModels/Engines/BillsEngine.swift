@@ -327,7 +327,7 @@ public enum BillsEngine {
   static func upcomingRow(_ b: Bill, _ s: LedgerState, today: LocalDate) -> BillRowModel {
     let detail: [PlanDetailPart]
     if b.nextDue < today {
-      detail = [.status("Expected the \(PlanEngine.ordinal(b.usualDay))", .error)]
+      detail = [.status("Expected the \(b.usualDayPhrase)", .error)]
     } else {
       detail = [.text(MoneyPhrase(stringLiteral:
         "\(b.nextDue.short) · \(ActivityEngine.inDays(today.days(until: b.nextDue)))"))]
@@ -359,7 +359,7 @@ public enum BillsEngine {
   public static func detail(_ s: LedgerState, now: LocalDateTime, bill id: BillID) -> BillDetail? {
     guard let b = s.bill(id), b.state != .dismissed else { return nil }
     let today = now.date
-    let usualDay = PlanEngine.ordinal(b.usualDay)
+    let usualDay = b.usualDayPhrase
     let untilDue = today.days(until: b.nextDue)
 
     let state: BillDetail.State
@@ -529,7 +529,7 @@ public enum BillsEngine {
   static func lateNotice(_ b: Bill) -> String {
     let order = arrivals(b).sorted { ($0.offset, $0.date.day) < ($1.offset, $1.date.day) }
     guard let low = order.first?.date.day, let high = order.last?.date.day else {
-      return "It usually arrives on the \(PlanEngine.ordinal(b.usualDay))."
+      return "It usually arrives on the \(b.usualDayPhrase)."
     }
     let count = order.count
     let subject = count == 1 ? "Your last payment" : "Your last \(count) payments"

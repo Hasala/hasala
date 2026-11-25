@@ -228,7 +228,8 @@ final class AccountRuntime {
     env: AccountEnvironment, binding: AccountBinding, enrolled: EnrolledAccount?, build: BuildInfo,
     profile: ProfileInfo, usesPasskey: @escaping @Sendable () async -> Bool,
     stopped: @escaping @Sendable (SyncStop) async -> Void, bankTextFacts: BankTextsFacts = .shared,
-    mailHTTP: (any HTTPExchange)? = nil, providerDefaults: UserDefaults = .standard
+    mailHTTP: (any HTTPExchange)? = nil, providerDefaults: UserDefaults = .standard,
+    askPassword: @escaping @Sendable (_ reason: String) async -> String? = { await StepUpPrompt.password($0) }
   ) async throws -> AccountRuntime {
     let context: SyncContext
     if let enrolled, enrolled.userID.string == binding.user_id {
@@ -255,7 +256,7 @@ final class AccountRuntime {
       http: SessionHTTPExchange(transport: env.client.api.transport, secrets: env.secrets), base: env.apiBase)
     let persistence = LedgerMailboxPersistence(
       store: context.store, authoring: authoring, nowMs: { context.clock.nowMs() })
-    let stepUp = LiveStepUp(env: env, usesPasskey: usesPasskey, askPassword: { await StepUpPrompt.password($0) })
+    let stepUp = LiveStepUp(env: env, usesPasskey: usesPasskey, askPassword: askPassword)
     let categorizer = PipelineCategorizer(projection: projection, dictionary: dictionary)
     var lanes: [MailboxProvider: MailboxLane] = [:]
     for p in MailboxProvider.allCases {

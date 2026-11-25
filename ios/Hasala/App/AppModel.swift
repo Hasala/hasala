@@ -181,7 +181,7 @@ final class AppModel {
   }
 
   var reviewPeriod: Period {
-    guard router.cover == .review, let reviewPeriodOverride else { return period }
+    guard router.cover != nil, let reviewPeriodOverride else { return period }
     return shown(reviewPeriodOverride)
   }
 
@@ -333,16 +333,15 @@ final class AppModel {
 
   func open(_ txn: TxnID) { router.open(.transaction(txn)) }
 
-  func startReview(afterSheetCloses: Bool = false) {
-    ReviewEntry.forget(self)
+  func startReview(at card: TxnID? = nil, afterSheetCloses: Bool = false) {
     reviewPeriodOverride = nil
-    if afterSheetCloses { router.nextCover = .review } else { cover = .review }
+    let route = CoverRoute.review(start: card)
+    if afterSheetCloses { router.nextCover = route } else { cover = route }
   }
 
   func startReview(over preset: PeriodPreset) {
-    ReviewEntry.forget(self)
     reviewPeriodOverride = preset.period(today: store.now.date.yearMonth, earliest: earliestMonth)
-    cover = .review
+    cover = .review()
   }
 
   static func message(for error: ActionError) -> String {

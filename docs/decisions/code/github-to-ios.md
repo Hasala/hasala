@@ -268,9 +268,11 @@ Applies to: `infra/qa/nix/module.nix` (`secretPath`, `hardening`, `fixedEnv`).
 
 `hasalad serve` and `hasalad console` are two units with two OS users (spec 05 §5.13,
 spec 07 §14.1, fence F7-4, M20). The console gets none of the secrets of `serve` (the auth
-key, the email token, the APNs key, the route key, the Turnstile secret). `serve` gets none
-of the secrets of the console (the App Store Connect key). Each unit also has the
-credentials directory of the other in `InaccessiblePaths`.
+key, the email token, the APNs key, the route key, the Turnstile secret). The console has
+no secret of its own now: the App Store Connect key that spec 07 planned for it is not
+built (`docs/decisions/testflight-manual.md`). `serve` still gets no console, App Store
+Connect or TestFlight variable (M20). Each unit also has the credentials directory of the
+other in `InaccessiblePaths`.
 
 The console gets `HASALA_RP_ORIGINS`, although the table of spec 07 §14.1 does not have
 it. The shared configuration check of the server refuses `HASALA_RP_ID` without

@@ -95,6 +95,12 @@ public struct CivilMonth: Sendable, Hashable, Comparable, CustomStringConvertibl
   public var firstDay: CivilDate { CivilDate(year: year, month: month, day: 1)! }
   public var lastDay: CivilDate { CivilDate(year: year, month: month, day: daysInMonth)! }
 
+  public var lastWorkingDay: CivilDate {
+    var d = lastDay
+    while d.isoWeekday >= 6, let earlier = d.adding(days: -1), earlier.yearMonth == self { d = earlier }
+    return d
+  }
+
   public var wire: String { "\(Civil.pad(year, 4))-\(Civil.pad2(month))" }
   public var description: String { wire }
 

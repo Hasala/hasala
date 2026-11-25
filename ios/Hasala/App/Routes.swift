@@ -97,8 +97,13 @@ enum SheetRoute: Hashable, Identifiable {
 }
 
 enum CoverRoute: Hashable, Identifiable {
-  case review
-  var id: Self { self }
+  case review(start: TxnID? = nil)
+  #if HASALA_MOCKS
+    case scriptedReview(start: TxnID, script: ReviewScript)
+  #endif
+
+  enum Kind { case review }
+  var id: Kind { .review }
 }
 
 struct ProjectStarter: Hashable {

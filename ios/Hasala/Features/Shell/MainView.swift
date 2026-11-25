@@ -118,9 +118,7 @@ struct MainView: View {
       }
     }
     .fullScreenCover(item: Bindable(app.router).cover) { cover in
-      switch cover {
-      case .review: ReviewCover(app: app)
-      }
+      ReviewCover(app: app, route: cover)
     }
   }
 
@@ -199,9 +197,9 @@ private struct ReviewCover: View {
   @Bindable var app: AppModel
   @State private var model: ReviewViewModel
 
-  init(app: AppModel) {
+  init(app: AppModel, route: CoverRoute) {
     self.app = app
-    _model = State(initialValue: ReviewViewModel(app: app))
+    _model = State(initialValue: route.session(for: app))
   }
 
   var body: some View { ReviewDeckView(app: app, model: model) }

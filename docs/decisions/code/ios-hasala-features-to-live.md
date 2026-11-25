@@ -337,3 +337,40 @@ Do not tell the person that Hasala removed its access to an Outlook mailbox. It 
 Applies to: `ios/Hasala/Live/Mailbox/MailboxLane.swift` (`endGrant`,
 `endGrantThenWipe`), `ios/Hasala/Live/Runtime/BootController.swift` (`stopped`),
 `ios/Hasala/Live/Runtime/AppEnvironment.swift` (`eraseLocalData`).
+
+## The live net worth history comes from the check-ins (2026-11-25)
+
+The projection keeps each check-in of an account with its time (`checkin`, `as_of_ms`). The
+live mapper makes the net worth history from them (issue 310; the owner decided on
+2026-11-25 to build this part alone, before Add an account and the check-in sheet).
+
+- The balance of an account at a time is its latest check-in before that time that is not
+  void. This is the rule that already gives the balance of today. A check-in whose date
+  cannot be read is not used.
+- A month ends when the next month starts in UAE time (`LocalClock`). A check-in at
+  00:00 on the first day belongs to the new month.
+- The net worth at a time is known only when each account that has a check-in has one
+  before that time. An account with no check-in counts as zero at each time, as it does in
+  the net worth of today, so it does not hide the history. Only active accounts count, as
+  in the net worth of today.
+- The change this month is the net worth of today minus the net worth at the start of this
+  month. It is absent (`NetWorthHistory.monthChange` is nil) when the start of this month
+  is not known. Hasala does not show a first check-in as money that came in this month.
+- The chart has 12 points: the ends of the 11 months before this one, then today. It is
+  absent (`spark` is empty) when one of these month ends is not known. So the change can
+  show before the chart does. The mapper gives each point as a part of 1000 between the
+  lowest and the highest point, and 500 for each when all are equal, because the Home
+  sparkline draws the value as it is.
+- Each point uses the rates of today (`Money.homeTotal`), as the net worth of today does.
+  The ledger keeps no rate history. A balance in a currency with no rate is left out of
+  each point.
+
+The Home widget and the Insights report still read an absent change as zero. Their copy
+for that state is not decided.
+
+Applies to: `ios/Hasala/Live/Ledger/LedgerStateMapper+NetWorth.swift`
+(`netWorthHistory`, `permille`),
+`ios/HasalaKit/Sources/HasalaModels/Ledger/LedgerState.swift` (`NetWorthHistory`),
+`ios/HasalaKit/Sources/HasalaModels/Engines/AccountsEngine.swift` (`snapshot`),
+`ios/HasalaKit/Sources/HasalaModels/Engines/HomeEngine.swift` (`netWorthWidget`),
+`ios/HasalaKit/Sources/HasalaModels/Engines/InsightsEngine.swift` (`reports`).

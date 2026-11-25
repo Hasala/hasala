@@ -429,7 +429,7 @@ public enum InsightsEngine {
       let home = s.homeTotal(s.accounts.map(\.balance))
       let total = home.minor
       let left = home.mark?.caption.map { " · \($0)" } ?? ""
-      let change = s.netWorth.monthChange.minor
+      let change = s.netWorth.monthChange?.minor ?? 0
       if ctx.isCurrent {
         let caption: String
         let delta = InsightsDelta.between(total, total.minus(change))

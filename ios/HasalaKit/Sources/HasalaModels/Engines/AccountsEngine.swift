@@ -35,14 +35,14 @@ public enum AccountsEngine {
     let rows = s.accounts.map(row)
     let everyday = zip(s.accounts, rows).filter { $0.0.inPlan }.map(\.1)
     let tracking = zip(s.accounts, rows).filter { !$0.0.inPlan }.map(\.1)
-    let history = s.netWorth.spark.isEmpty ? nil : s.netWorth
     let netWorth = s.homeTotal(s.accounts.map(\.balance))
     let everydayTotal = s.homeTotal(s.accounts.filter(\.inPlan).map(\.balance))
     return AccountsSnapshot(
       netWorth: netWorth.money,
       netWorthMark: netWorth.mark,
-      monthChange: history?.monthChange,
-      chart: history.map { NetWorthChart(points: Array($0.spark.suffix(12)), months: months(ending: now.date.yearMonth)) },
+      monthChange: s.netWorth.monthChange,
+      chart: s.netWorth.spark.isEmpty
+        ? nil : NetWorthChart(points: Array(s.netWorth.spark.suffix(12)), months: months(ending: now.date.yearMonth)),
       everyday: everyday,
       everydayTotal: everydayTotal.money,
       everydayMark: everydayTotal.mark,

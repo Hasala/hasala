@@ -72,7 +72,6 @@ protocol CategoryDetailModel: AnyObject, Observable {
   func moveMoneyIn()
   func open(_ txn: TxnID)
   func openRules()
-  func addRule()
 }
 
 @MainActor
@@ -99,8 +98,6 @@ final class CategoryDetailViewModel: CategoryDetailModel {
   func openRules() {
     if app.showingProfile { app.router.profile.append(.rules) } else { app.router.open(.profile, profile: [.rules]) }
   }
-
-  func addRule() { app.say("Adding rules isn't in this build yet", icon: .wand) }
 }
 
 @MainActor

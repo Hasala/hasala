@@ -318,6 +318,35 @@ class LiveE2ECase: XCTestCase {
     throw LiveE2EError("the harness sent no push within \(Int(timeout)) s (is ios/scripts/e2e-app.sh running?)")
   }
 
+  func oplogPosition(timeout: TimeInterval = 30) throws -> Int {
+    let answer = e2e.stateDir.appendingPathComponent("oplog-position")
+    let failed = e2e.stateDir.appendingPathComponent("oplog-failed")
+    try? FileManager.default.removeItem(at: answer)
+    try? FileManager.default.removeItem(at: failed)
+    try Data("oplog\n".utf8).write(to: e2e.stateDir.appendingPathComponent("oplog-request"), options: .atomic)
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+      if let text = try? String(contentsOf: answer, encoding: .utf8),
+        let position = Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
+      {
+        return position
+      }
+      if let why = try? String(contentsOf: failed, encoding: .utf8) {
+        throw LiveE2EError("the harness could not read the op log: \(why.trimmingCharacters(in: .whitespacesAndNewlines))")
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+    } while Date() < deadline
+    throw LiveE2EError("the harness reported no op log position within \(Int(timeout)) s (is ios/scripts/e2e-app.sh running?)")
+  }
+
+  func waitForUpload(after position: Int, timeout: TimeInterval = 60) throws -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+      if try oplogPosition() > position { return true }
+    } while Date() < deadline
+    return false
+  }
+
   var notificationsAllowed: Bool { FileManager.default.fileExists(atPath: notificationsMarker.path) }
 
   func recordNotificationsAllowed(_ on: Bool) throws {

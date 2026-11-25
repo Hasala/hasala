@@ -19,9 +19,9 @@ public enum MayaHistory {
       Txn(id: "fd-spinneys", merchant: "Spinneys", amount: .aed(338_50), postedAt: LocalDateTime(2026, 10, 2, 18, 10),
           accountID: "enbd", categoryID: "groceries", categorySource: .dictionary),
       Txn(id: "fd-careem", merchant: "Careem", amount: .aed(74_00), postedAt: LocalDateTime(2026, 10, 2, 8, 40),
-          accountID: "dib", categoryID: "transport", categorySource: .rule(pattern: "careem")),
+          accountID: "dib", categoryID: "transport", categorySource: .rule(pattern: "careem"), ruleID: "r-careem"),
       Txn(id: "fd-talabat", merchant: "Talabat", amount: .aed(74_25), postedAt: LocalDateTime(2026, 10, 3, 10, 5),
-          accountID: "dib", categoryID: "dining", categorySource: .rule(pattern: "talabat")),
+          accountID: "dib", categoryID: "dining", categorySource: .rule(pattern: "talabat"), ruleID: "r-talabat"),
     ]
     return s
   }

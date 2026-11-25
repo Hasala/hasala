@@ -61,6 +61,37 @@ the same.
 Applies to: `ios/HasalaKit/Sources/HasalaModels/Engines/HomeEngine.swift` (`hero`),
 `ios/HasalaKit/Sources/HasalaModels/Home.swift` (`Verdict.label`).
 
+## The screens and CoreDomain each have a pace engine, and a test keeps them equal
+
+The pace arithmetic exists two times. `Pace` in HasalaModels gives Home, Plan, Activity
+and the transaction sheet their projection and their verdict. `PlanEngine` in CoreDomain
+has `projected`, `pace`, `paceMinDay` and `paceMarginPercent`. HasalaKit does not depend
+on HasalaCore, so the screens cannot call the core engine without a package change
+(spec 04 §15.2, 03a §6).
+
+`ios/HasalaTests/PaceParityTests.swift` runs the same inputs through the two (AT-REV-3)
+and fails when they differ. It compares:
+
+- the two thresholds (the first day that shows a projection, and the margin);
+- the projection, for a budget above zero and a spend from 1 to the budget, on each day
+  of a month of 28 to 31 days, with a largest single spend from none to all of the spend;
+- the verdict of a paced (everyday) category in the current month for the same inputs;
+- the verdict when the spend is above the budget, and when there is a spend and no budget.
+
+Outside these inputs the two differ on purpose, because the verdict sets are not the same:
+
+- No spend and no budget: the screens say `onTrack`, the core says `noBudget`.
+- A past month within budget: the core says `underBudget`. `Pace` has no phase.
+- A category that is not paced: the screens say `done` at the full budget. The core's
+  `bills` kind says `onTrack` and its `saving` kind has `done`, `short` and `inProgress`.
+- A spend of zero or less: the core's projection is never below zero.
+
+A change to one engine inside the compared inputs must be made in the other also.
+
+Applies to: `ios/HasalaKit/Sources/HasalaModels/Engines/Pace.swift` (`Pace`),
+`ios/HasalaCore/Sources/HasalaCore/Domain/Plan/PlanEngine.swift` (`projected`, `pace`),
+`ios/HasalaTests/PaceParityTests.swift`.
+
 ## Home's tick counts the bills charged so far
 
 The tick on the Home bar is the planned spend by today (page 06 §6.4):
@@ -92,3 +123,30 @@ The percent label of a goal is the whole percent, rounded down. A goal at 99.9% 
 tells the person that a goal is done while money is still missing.
 
 Applies to: `ios/HasalaKit/Sources/HasalaModels/Home.swift` (`GoalWidget.percentLabel`).
+
+## The match count of a rule is the payments that the rule filed
+
+The rules page, the rules of a category and Search show "N matches" for a rule. N is the
+number of payments that the rule filed and that are not archived: the rows whose `ruleID` is
+the rule. This is the `match_count` of the view `rule_stats` in the projection.
+
+The read model does not run the patterns of a rule against merchant names. Only
+CoreCategorize's `Matcher` decides if a pattern matches a merchant (spec 03c §5.2), and
+HasalaKit cannot import HasalaCore. A second matcher in HasalaModels gave a count that
+differed from the rows that the rule sorted (issue #339). Do not add one.
+
+Two results follow:
+
+- A payment that the person filed by hand does not count, also when a pattern matches its
+  merchant. A rule that was learned from one payment shows "0 matches" until it files a row.
+- A payment that a rule with a higher priority filed counts for that rule only.
+
+The mock ledger obeys the same rule. A seeded row that a rule filed has the `ruleID` of the
+rule (`MayaLedger.keyed` fills it from the pattern that the row names), and `InMemoryLedger`
+applies a learned rule with `GroupRule.reaches`.
+
+Applies to: `ios/HasalaKit/Sources/HasalaModels/Engines/ProfileEngine.swift`
+(`matchCounts`, `rules`), `ios/HasalaKit/Sources/HasalaModels/Engines/PlanEngine.swift`
+(`rules`), `ios/Hasala/Features/Search/SearchView.swift` (`SearchResults`),
+`ios/HasalaKit/Sources/HasalaMocks/MayaLedger.swift` (`keyed`),
+`ios/HasalaKit/Sources/HasalaMocks/InMemoryLedger.swift` (`reachBack`).

@@ -84,7 +84,7 @@ public final class InMemoryLedger: LedgerStore {
     func reachBack(_ rule: Rule, group ref: MerchantGroupRef?, except: Set<TxnID>) throws(ActionError) -> [TxnID] {
       guard let ref else { return [] }
       let hits = s.txns.filter { t in
-        t.ruled && !t.settled(in: rule.categoryID) && t.groupRef == ref && !except.contains(t.id) && rule.matches(GroupRule.pattern(t.spelling) ?? t.spelling)
+        t.ruled && !t.settled(in: rule.categoryID) && t.groupRef == ref && !except.contains(t.id) && GroupRule.reaches(t, rule.patterns)
       }.map(\.id)
       for id in hits {
         try editTxn(id) { t in
@@ -201,8 +201,7 @@ public final class InMemoryLedger: LedgerStore {
       touchedRules = true
       let rule = s.rules.remove(at: i)
       let byRule = s.txns.filter { $0.ruleID == id }
-      let hit = byRule.isEmpty ? s.txns.filter { rule.matches($0.spelling) || rule.matches($0.merchant) } : byRule
-      let merchant = hit.isEmpty ? rule.patterns.first ?? "" : ReviewEngine.displayName(hit)
+      let merchant = byRule.isEmpty ? rule.patterns.first ?? "" : ReviewEngine.displayName(byRule)
       title = "Stopped sorting \(merchant) as \(categoryName(rule.categoryID))"
     case .markTransfer(let id):
       let undo = s.txn(id)?.isTransfer == true

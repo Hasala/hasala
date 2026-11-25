@@ -73,17 +73,13 @@ final class ReviewViewModel: ReviewDeckModel {
     let today: LocalDate
   }
 
-  init(app: AppModel) {
+  init(app: AppModel, start: TxnID? = nil) {
     self.app = app
-    let start = ReviewEntry.take(for: app)
     let window = app.reviewWindow
     self.window = window
     let queue = ReviewEngine.queue(app.store.state, in: window, order: app.reviewOrder).map(\.id)
     total = queue.count
     order = ReviewEngine.order(queue, startingAt: start)
-    #if HASALA_MOCKS
-      ReviewEntry.takeScript(for: app)?(self)
-    #endif
   }
 
   var cards: [ReviewCardModel] {
@@ -372,53 +368,39 @@ extension ReviewDeckModel {
   }
 }
 
-@MainActor
-enum ReviewEntry {
-  private static weak var requester: AppModel?
-  private static var start: TxnID?
-
-  static func open(_ app: AppModel, at card: TxnID?) {
-    app.startReview()
-    request(app, at: card)
-  }
-
-  static func request(_ app: AppModel, at card: TxnID?) {
-    requester = app
-    start = card
-  }
-
-  static func forget(_ app: AppModel) {
-    guard requester === app else { return }
-    requester = nil
-    start = nil
-  }
-
-  static func take(for app: AppModel) -> TxnID? {
-    defer {
-      requester = nil
-      start = nil
+extension CoverRoute {
+  @MainActor
+  func session(for app: AppModel) -> ReviewViewModel {
+    switch self {
+    case .review(let start):
+      return ReviewViewModel(app: app, start: start)
+    #if HASALA_MOCKS
+      case .scriptedReview(let start, let script):
+        let deck = ReviewViewModel(app: app, start: start)
+        script.run(on: deck)
+        return deck
+    #endif
     }
-    return requester === app ? start : nil
   }
-
-  #if HASALA_MOCKS
-    private static var script: ((ReviewViewModel) -> Void)?
-    private static weak var scriptOwner: AppModel?
-
-    static func onNextSession(of app: AppModel, _ steps: @escaping (ReviewViewModel) -> Void) {
-      scriptOwner = app
-      script = steps
-    }
-
-    static func takeScript(for app: AppModel) -> ((ReviewViewModel) -> Void)? {
-      defer {
-        script = nil
-        scriptOwner = nil
-      }
-      return scriptOwner === app ? script : nil
-    }
-  #endif
 }
+
+#if HASALA_MOCKS
+  final class ReviewScript: Hashable {
+    private var steps: (@MainActor (ReviewViewModel) -> Void)?
+
+    init(_ steps: @escaping @MainActor (ReviewViewModel) -> Void) { self.steps = steps }
+
+    @MainActor
+    func run(on deck: ReviewViewModel) {
+      let steps = steps
+      self.steps = nil
+      steps?(deck)
+    }
+
+    static func == (a: ReviewScript, b: ReviewScript) -> Bool { a === b }
+    func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(self)) }
+  }
+#endif
 
 extension ReviewChoice {
   func label(isIncome: Bool) -> String {

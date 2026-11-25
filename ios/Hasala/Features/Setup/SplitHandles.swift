@@ -30,6 +30,8 @@ struct SplitHandles: View {
         .gesture(drag(track: track))
       }
       .frame(height: 44)
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("plan.split.bar")
       .padding(.vertical, -6)
       labels
     }

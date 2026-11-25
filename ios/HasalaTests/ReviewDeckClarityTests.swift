@@ -10,8 +10,7 @@ import Testing
 struct ReviewDeckClarityTests {
   static func deck(at card: TxnID, _ state: LedgerState) -> (AppModel, ReviewViewModel) {
     let app = AppModel(store: InMemoryLedger(state: state))
-    ReviewEntry.request(app, at: card)
-    return (app, ReviewViewModel(app: app))
+    return (app, ReviewViewModel(app: app, start: card))
   }
 
   @Test func sortingACopyCardSaysItKeptBoth() throws {
@@ -35,8 +34,7 @@ struct ReviewDeckClarityTests {
     let card = try #require(deck.cards.first)
     deck.keepText(card.id)
     #expect(!deck.repeatAnswers.asks(card))
-    ReviewEntry.request(app, at: card.id)
-    let reopened = ReviewViewModel(app: app)
+    let reopened = ReviewViewModel(app: app, start: card.id)
     #expect(reopened.cards.first?.id == card.id)
     #expect(!reopened.repeatAnswers.asks(card) && reopened.repeatAnswers.allowsUse(card))
   }

@@ -688,11 +688,12 @@ struct SearchResults {
     }
     categories = s.categories.filter { !$0.archived && $0.kind == .spending && SearchText.contains($0.name, q) }
       .map(CategoryOption.init)
+    let counts = ProfileEngine.matchCounts(s)
     rules = s.rules.compactMap { r in
       guard let p = r.patterns.first(where: { SearchText.contains($0, q) }),
             let c = s.category(r.categoryID) else { return nil }
       return RuleMatch(id: r.id, pattern: p.lowercased(), category: c.name,
-                       matches: s.txns.count { r.matches($0.merchant) })
+                       matches: counts[r.id] ?? 0)
     }
   }
 

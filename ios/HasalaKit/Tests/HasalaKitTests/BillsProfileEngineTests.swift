@@ -203,11 +203,22 @@ struct BillsProfileEngineParityTests {
     #expect(ProfileEngine.snapshot(one, now: now).accounts.rendered(hidden: false) == "1 account · net worth 0")
   }
 
-  @Test func ruleMatchCountsAgreeWithOneRuleAtATime() {
-    let counts = ProfileEngine.matchCounts(s)
+  @Test func aRuleCountsThePaymentsItFiled() throws {
+    let rows = ProfileEngine.rules(s)
     for r in s.rules {
-      #expect(counts[r.id] == ProfileEngine.matchCount(r, s))
+      #expect(rows.first { $0.id == r.id }?.matches == s.txns.filter { $0.ruleID == r.id }.count)
     }
+    #expect(rows.first { $0.id == "r-carrefour" }?.matchesLabel == "3 matches")
+    #expect(rows.first { $0.id == "r-dewa" }?.matchesLabel == "0 matches")
+
+    var edited = s
+    let byHand = try #require(edited.txns.firstIndex { $0.id == "carrefour" })
+    edited.txns[byHand].categorySource = .user
+    edited.txns[byHand].ruleID = nil
+    let archived = try #require(edited.txns.firstIndex { $0.id == "carrefour-sep26" })
+    edited.txns[archived].archived = true
+    #expect(edited.txns[byHand].merchant == "Carrefour")
+    #expect(ProfileEngine.rules(edited).first { $0.id == "r-carrefour" }?.matchesLabel == "1 match")
   }
 
   @Test func patternLineShowsTheRestAsMore() throws {

@@ -16,8 +16,6 @@ struct RulesPage: View {
     _segment = State(initialValue: segment)
   }
 
-  private var unfinished: Bool { BuildSurface.showsUnfinished }
-
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
@@ -26,18 +24,6 @@ struct RulesPage: View {
         switch segment {
         case .rules: rules
         case .categories: CategoriesList(app: app)
-        }
-        if unfinished && segment == .rules {
-          Button { app.say("Coming in a later build", icon: .rule) } label: {
-            HStack(spacing: 6) {
-              HIconView(.add, size: HSpacing.iconInline, color: HColor.textLink, strokeWidth: 2.4)
-              Text("Add a rule").hType(.button).foregroundStyle(HColor.textLink)
-            }
-            .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum)
-            .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-          .accessibilityIdentifier("rules.add")
         }
       }
       .padding(.horizontal, HSpacing.sheetPadding)

@@ -10,7 +10,9 @@ import Testing
 enum Live {
   static let env = ProcessInfo.processInfo.environment
   static var url: URL? { env["HASALA_E2E_URL"].flatMap(URL.init(string:)) }
-  static var enabled: Bool { url != nil && env["HASALA_E2E_PSQL"] != nil && env["HASALA_E2E_DSN"] != nil }
+  static var enabled: Bool {
+    url != nil && env["HASALA_E2E_PSQL"] != nil && env["HASALA_E2E_DSN"] != nil && env["HASALA_E2E_AUTH_KEY_FILE"] != nil
+  }
 
   static func sql(_ statement: String) throws -> String {
     let p = Process()
@@ -30,40 +32,71 @@ enum Live {
 
   static func hex(_ d: Data) -> String { "'\\x" + Hex.encode(d) + "'" }
 
-  static func seedUser(_ user: UserID, email: String, aak: Data, attestationHash: Data, random: some RandomSource) throws {
-    let handle = hex(try random.bytes(32))
+  static let password = "copper lantern quietly 42"
+
+  static func phone(_ seed: String, clock: FakeClock = FakeClock(), passkeys: SoftPasskey = SoftPasskey()) -> Phone {
+    Phone(
+      transport: URLSessionTransport(baseURL: url!, clientHeader: "ios/0.0.0/1"), clock: clock, seed: seed, passkeys: passkeys)
+  }
+
+  static func newEmail() throws -> String { "e2e-\(Hex.encode(try SystemRandom().bytes(4)))@example.com" }
+
+  static func setCode(_ code: String, purpose: String, ceremonyID: String) throws {
+    let path = try #require(env["HASALA_E2E_AUTH_KEY_FILE"])
+    let keyHex = try String(contentsOfFile: path, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+    let authKey = try Hex.decode(keyHex)
+    let row = try sql(
+      """
+      SELECT code_id, encode(email_tag, 'hex') FROM email_codes
+        WHERE purpose = '\(purpose)' AND ceremony_id = '\(ceremonyID)' ORDER BY created_at DESC LIMIT 1;
+      """
+    ).trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "|").map(String.init)
+    try #require(row.count == 2)
+    let codeID = try #require(UUID(uuidString: row[0]))
+    let tag = try Hex.decode(row[1])
+    let kCode = try hkdfSHA256(
+      inputKeyMaterial: authKey, salt: Data(count: 32), info: Data("hasala/v1/server/email-code".utf8), outputByteCount: 32)
+    let u = codeID.uuid
+    let raw = Data([u.0, u.1, u.2, u.3, u.4, u.5, u.6, u.7, u.8, u.9, u.10, u.11, u.12, u.13, u.14, u.15])
+    let mac = hmacSHA256(key: kCode, message: Data(purpose.utf8) + [0] + raw + tag + Data(code.utf8))
+    _ = try sql("UPDATE email_codes SET code_mac = \(hex(mac)) WHERE code_id = '\(row[0])';")
+  }
+
+  static func signUp(_ phone: Phone, email: String, displayName: String = "Maya Live") async throws -> Signup {
+    let invite = Base32.encode(try SystemRandom().bytes(15))
     _ = try sql(
       """
-      BEGIN;
-      INSERT INTO users (id, user_handle, created_at, email_norm, email_verified_at, display_name, authority_pubkey_pending)
-        VALUES ('\(user.string)', \(handle), now(), '\(email)', now(), 'Live Test', \(hex(aak)));
-      INSERT INTO webauthn_credentials (credential_id, user_id, user_handle, public_key, backup_eligible, backup_state,
-                                        created_at, attestation_sha256)
-        VALUES (\(hex(try random.bytes(16))), '\(user.string)', \(handle), '\\x00', false, false,
-                now(), \(hex(attestationHash)));
-      INSERT INTO oplog_seq (user_id) VALUES ('\(user.string)');
-      INSERT INTO account_usage (user_id, resource, amount) VALUES ('\(user.string)', 'oplog_hot_bytes', 0);
-      COMMIT;
+      INSERT INTO invite_codes (code_hash, origin, state, created_at, minted_at, expires_at, mint_count)
+        VALUES (\(hex(sha256(Data(invite.utf8)))), 'cli', 'active', now(), now(), now() + interval '1 day', 1);
       """)
+    let signup = try await AccountCreation.beginSignup(
+      phone.env, inviteCode: invite, email: email, displayName: displayName, inviteLinkKey: nil)
+    try setCode("135790", purpose: "signup", ceremonyID: signup.id)
+    try await AccountCreation.verifySignup(phone.env, signup, code: "135790")
+    return signup
   }
 
-  static func seedSession(_ user: UserID, random: some RandomSource) throws -> String {
-    let token = Base64.encodeURL(try random.bytes(32))
-    _ = try sql(
-      """
-      INSERT INTO sessions (token_hash, user_id, minted_by, created_at, last_used_at, expires_at)
-        VALUES (\(hex(sha256(Data(token.utf8)))), '\(user.string)', 'register', now(), now(), now() + interval '1 day');
-      """)
-    return token
+  struct Account {
+    let enrolled: EnrolledAccount
+    let words: String
+    let authorityPublicKey: Data
   }
 
-  static func phone(_ seed: String) -> Phone {
-    Phone(transport: URLSessionTransport(baseURL: url!, clientHeader: "ios/0.0.0/1"), clock: FakeClock(), seed: seed)
+  static func passwordAccount(_ phone: Phone, email: String, displayName: String = "Maya Live") async throws -> Account {
+    let signup = try await signUp(phone, email: email, displayName: displayName)
+    let keys = try NewAccountKeys.generate(random: SystemRandom())
+    let words = try keys.words().joined(separator: " ")
+    let aak = try keys.authorityPublicKey()
+    let enrolled = try await AccountCreation.createWithPassword(phone.env, signup: signup, password: password, keys: keys)
+    return Account(enrolled: enrolled, words: words, authorityPublicKey: aak)
   }
 
-  static func signIn(_ phone: Phone, user: UserID) throws {
-    let token = try seedSession(user, random: SystemRandom())
-    try phone.env.secrets.writeSession(SessionRecord(token: token, userID: user.string, expiresAt: 4_000_000_000, tag: "0000000000000000"))
+  static func secondPhone(_ phone: Phone, email: String, words: String) async throws -> EnrolledAccount {
+    let r = try await AccountSignIn.withPassword(phone.env, email: email, password: password, bound: nil)
+    let user = try #require(r.userID)
+    #expect(r.hasKeys && r.boundWriter == nil)
+    let body = try await Enrolment.unlockWithPhrase(phone.env, userID: user, typed: words)
+    return try await Enrolment.enrolWriter(phone.env, userID: user, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
   }
 }
 
@@ -85,37 +118,23 @@ final class LosingTransport: Transport, @unchecked Sendable {
 struct LiveHasaladTests {
   @Test("bootstrap, a second writer, upload with signed heads, pull, replay of a lost answer, refusals")
   func everything() async throws {
-    let random = SystemRandom()
-    let user = try #require(UserID(try random.uuidV4()))
-    let email = "e2e-\(Hex.encode(try random.bytes(4)))@example.com"
+    let email = try Live.newEmail()
 
-    let a = Live.phone("live-a-\(user.string)")
-    let keys = try NewAccountKeys.generate(random: random)
-    let words = try keys.words()
-    let attestation = try random.bytes(64)
-    try Live.seedUser(user, email: email, aak: try keys.authorityPublicKey(), attestationHash: sha256(attestation), random: random)
-    try Live.signIn(a, user: user)
+    let a = Live.phone("live-a-\(email)")
+    let made = try await Live.passwordAccount(a, email: email)
+    let accountA = made.enrolled
     let bearer = try #require(try a.env.secrets.session()).token
-    let device = try await NewDevice.mint(a.env, userID: user)
-    let challenge = try await a.env.client.writerChallenge(bearer: bearer)
-    let body = try AccountCreation.buildBootstrap(
-      a.env, userID: user, emailNorm: email, keys: keys, device: device, authKind: .passkey,
-      authHash: sha256(attestation), prfWrap: nil, nonce: try Base64.decode(challenge.nonce))
-    let boot = try await a.env.client.bootstrap(body, bearer: bearer)
-    #expect(boot.writer_id == device.writerID.string && boot.current_epoch == 1)
-    let k1 = try keys.body.epochKey1(userID: user)
-    let accountA = try await Enrolment.persist(
-      a.env, userID: user, device: device, epochKey: k1, emailNorm: email, serverSalt: Data(count: 32),
-      displayName: "E2E", authorityPublicKey: try keys.authorityPublicKey())
     let k = try await a.env.client.keys(bearer: bearer)
-    #expect(k.authority_pubkey == body.authority_pubkey && k.recovery_wrap == body.recovery_wrap)
+    #expect(k.authority_pubkey == Base64.encode(made.authorityPublicKey))
+    let info = try await a.env.client.account(bearer: bearer)
+    #expect(info.email == email && info.has_keys == true && info.has_password == true && info.has_passkey == false)
+    #expect(a.binding?.writer_id == accountA.writerID.string)
     let ctxA = Enrolment.context(a.env, account: accountA)
 
-    let b = Live.phone("live-b-\(user.string)")
-    try Live.signIn(b, user: user)
-    let bodyB = try await Enrolment.unlockWithPhrase(b.env, userID: user, typed: words.joined(separator: " "))
-    let accountB = try await Enrolment.enrolWriter(
-      b.env, userID: user, body: bodyB, emailNorm: email, serverSalt: Data(count: 32), displayName: "E2E")
+    let b = Live.phone("live-b-\(email)")
+    let accountB = try await Live.secondPhone(b, email: email, words: made.words)
+    #expect(accountB.userID == accountA.userID && accountB.writerID != accountA.writerID)
+    #expect(b.binding?.email_norm == email && b.binding?.display_name == "Maya Live")
     let ctxB = Enrolment.context(b.env, account: accountB)
 
     try enqueue(ctxA, (1...3).map { op($0) })
@@ -153,5 +172,46 @@ struct LiveHasaladTests {
     #expect(await engine.status.latch == .hardStop)
     #expect(await engine.status.integrityAlarms == 1)
     #expect(await engine.status.rowAlarms == 0)
+  }
+}
+
+@Suite("LivePasskeyTests", .enabled(if: Live.enabled), .serialized)
+struct LivePasskeyTests {
+  @Test("a passkey signs up, signs in on its own iPhone and on a second one, and the two sync")
+  func passkey() async throws {
+    let email = try Live.newEmail()
+    let shared = SoftPasskey()
+
+    let a = Live.phone("live-passkey-a-\(email)", passkeys: shared)
+    let signup = try await Live.signUp(a, email: email)
+    let keys = try NewAccountKeys.generate(random: SystemRandom())
+    let reg = try await AccountCreation.registerPasskey(a.env, signup: signup, keys: keys)
+    let accountA = try await AccountCreation.bootstrapPasskey(a.env, registered: reg, keys: keys)
+    #expect(shared.credentials.count == 1)
+    let bearer = try #require(try a.env.secrets.session()).token
+    let info = try await a.env.client.account(bearer: bearer)
+    #expect(info.email == email && info.has_keys == true && info.has_passkey == true && info.has_password == false)
+    #expect(try await a.env.client.keyWraps(bearer: bearer).wraps.map(\.credential_id) == [Base64.encodeURL(reg.credentialID)])
+
+    let again = try await AccountSignIn.withPasskey(a.env, bound: a.binding, wantPRF: false)
+    #expect(again.boundWriter == accountA.writerID)
+
+    let b = Live.phone("live-passkey-b-\(email)", passkeys: shared)
+    let r = try await AccountSignIn.withPasskey(b.env, bound: nil, wantPRF: true)
+    #expect(r.userID == accountA.userID && r.boundWriter == nil && r.hasKeys)
+    let assertion = try #require(r.assertion)
+    let body = try await Enrolment.unlockWithPRF(
+      b.env, userID: accountA.userID, credentialID: assertion.credentialID, prf: assertion.prfFirst)
+    let accountB = try await Enrolment.enrolWriter(b.env, userID: accountA.userID, body: body, emailNorm: nil, serverSalt: nil)
+    #expect(accountB.writerID != accountA.writerID)
+    #expect(b.binding?.email_norm == email)
+
+    let ctxA = Enrolment.context(a.env, account: accountA)
+    let ctxB = Enrolment.context(b.env, account: accountB)
+    try enqueue(ctxA, (1...3).map { op($0) })
+    let outA = await SyncEngine(context: ctxA).run(.authored)
+    #expect(outA.stop == nil && outA.pushed.opsAcknowledged == 3)
+    #expect(await SyncEngine(context: ctxB).run(.launch).stop == nil)
+    #expect(try storedOps(ctxB).map(\.opID) == (1...3).map { op($0).opID })
   }
 }

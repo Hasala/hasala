@@ -226,6 +226,11 @@ blob.
 Then all the ops become `pending_ops` rows in one transaction. They are durable when
 `enqueue` returns. A debounced trigger (1.5 s) then asks for a sync run.
 
+The wait of the debounce is the `sleep` closure of `Outbox.init`. Its default is the real
+`Task.sleep`. The tests give a sleep that they release themselves, so they do not depend on
+real time. The injected `CoreTime.Clock` gives only the time of day (`nowMs`), so it cannot
+drive the wait. Do not call `Task.sleep` directly in `scheduleTrigger`.
+
 While the outbox is latched, `enqueue` still succeeds and the flush does nothing. The app
 shows the latch banner. The reason: local work is never lost. Do not make `enqueue` fail
 because of the latch.
@@ -233,7 +238,8 @@ because of the latch.
 Only HasalaCore code can make an `Op` (its initializer is `package`, R5). `OpAuthor` in
 CoreDomain is the author.
 
-Applies to: `ios/HasalaCore/Sources/HasalaCore/Outbox/Outbox.swift` (`Outbox.enqueue`).
+Applies to: `ios/HasalaCore/Sources/HasalaCore/Outbox/Outbox.swift` (`Outbox.enqueue`,
+`Outbox.scheduleTrigger`).
 
 ## AES-GCM takes only a 32-byte key and a 12-byte nonce, and open gives one error
 

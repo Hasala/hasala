@@ -109,7 +109,7 @@ final class OnboardingJourneyUITests: XCTestCase {
     tap(app, "income.continue")
     let handle = el(app, "plan.split.handle.0")
     XCTAssertTrue(handle.waitForExistence(timeout: uiWait))
-    nudge(handle, steps: 1)
+    nudge(app, handle, steps: 1)
     XCTAssertTrue(handle.waitForValue("55%, Wants 25%"), "the needs handle reads \(handle.value ?? "nothing")")
     back(app)
     XCTAssertTrue(el(app, "keypad.1").waitForExistence(timeout: uiWait))

@@ -143,6 +143,24 @@ helper simpler to save time.
 Applies to: `ios/HasalaUITests/UITestSupport.swift` (`uiWait`, `tap`, `type`,
 `dragUntilHittable`, `scroll`, `reveal`, `assertMailboxAdded`).
 
+## A split handle is dragged by a step that comes from the width of the bar
+
+`nudge` drags a handle of the starting split sideways, as a finger does. One step is 5%.
+The app computes the track as the width of the bar minus the two 20 pt handle slots
+(`SplitHandles.slot`, `splitHandleSlot` in the tests) and snaps the handle to the nearest
+5%, so one step is a twentieth of the track. `nudge` reads the width of the bar
+(`plan.split.bar`) from the hierarchy and drags by exactly that step, to the middle of the
+range that snaps to it. The drag does not depend on the width of the screen or on the
+margins of the bar. A fixed 17 pt for each step was correct only for a 322 pt track, on a
+screen 402 pt wide.
+
+The bar is an accessibility container (`children: .contain`), so its identifier names the
+bar and does not replace the identifiers of the handles (`plan.split.handle.0`,
+`plan.split.handle.1`).
+
+Applies to: `ios/HasalaUITests/UITestSupport.swift` (`nudge`, `splitHandleSlot`),
+`ios/Hasala/Features/Setup/SplitHandles.swift` (`SplitHandles`).
+
 ## Live end-to-end tests: the harness contract, the order and the scope
 
 `LiveE2ETests` run the Debug app against a local `hasalad`, on two simulators, A and B.

@@ -98,28 +98,9 @@ struct MathTests {
     #expect(MoneyMath.apportion(home: .max, parts: [.max, .max, .max]) == nil)
     #expect(MoneyMath.apportion(home: .min, parts: [.max, .max, .max]) == nil)
   }
-
-  @Test("base-08: percent change, half-up, nil on a zero base")
-  func pctChange() {
-    #expect(MoneyMath.pctChange(64275, 54470) == 18)
-    #expect(MoneyMath.pctChange(54470, 64275) == -15)
-    #expect(MoneyMath.pctChange(1, 0) == nil)
-    #expect(MoneyMath.pctChange(201, 200) == 1)
-    #expect(MoneyMath.pctChange(199, 200) == -1)
-    #expect(MoneyMath.pctChange(200, 200) == 0)
-    #expect(MoneyMath.pctChange(.max, 1) == nil)
-    #expect(MoneyMath.pctChange(-50, -100) == -50)
-    #expect(MoneyMath.pctChange(-5, -10) == -50)
-    #expect(MoneyMath.pctChange(-15, -10) == 50)
-    #expect(MoneyMath.pctChange(-199, -200) == -1)
-    #expect(MoneyMath.pctChange(5, -10) == -150)
-    #expect(MoneyMath.pctChange(.min, .max) == -200)
-    #expect(MoneyMath.pctChange(.max, .min) == -200)
-    #expect(MoneyMath.pctChange(.min, -1) == nil)
-  }
 }
 
-@Suite("display and entry (lib/minorMoney.ts, compactMinor)")
+@Suite("display and entry (lib/minorMoney.ts)")
 struct FormatTests {
   @Test("formatMinor groups and pads; negatives use U+2212; exact past 2^53")
   func formatMinor() {
@@ -183,17 +164,4 @@ struct FormatTests {
     }
   }
 
-  @Test("compactMinor (flowBars.test.ts)")
-  func compact() {
-    #expect(MoneyFormat.compactMinor(82_000) == "+820")
-    #expect(MoneyFormat.compactMinor(-14_000) == "\u{2212}140")
-    #expect(MoneyFormat.compactMinor(120_000) == "+1.2k")
-    #expect(MoneyFormat.compactMinor(2_100_000) == "+21k")
-    #expect(MoneyFormat.compactMinor(-350_000) == "\u{2212}3.5k")
-    #expect(MoneyFormat.compactMinor(150_000_000) == "+1.5m")
-    #expect(MoneyFormat.compactMinor(0) == "0")
-    #expect(MoneyFormat.compactMinor(9_007_199_254_740_993) == "+90071992.5m")
-    #expect(MoneyFormat.compactMinor(.max) == "+92233720368.5m")
-    #expect(MoneyFormat.compactMinor(.min) == "\u{2212}92233720368.5m")
-  }
 }

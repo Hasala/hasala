@@ -273,6 +273,15 @@ fi
 			fi
 			cat "$TMP/wake.out" >>"$TMP/wake.log"
 		fi
+		if [[ -f "$STATE/oplog-request" ]]; then
+			rm -f "$STATE/oplog-request"
+			if psql "host=$TMP user=postgres dbname=hasala" -v ON_ERROR_STOP=1 -At -c 'SELECT count(*) FROM op_log' \
+				>"$TMP/oplog.out" 2>>"$TMP/oplog.log"; then
+				mv "$TMP/oplog.out" "$STATE/oplog-position"
+			else
+				cp "$TMP/oplog.log" "$STATE/oplog-failed"
+			fi
+		fi
 		sleep 0.5
 	done
 ) &
@@ -284,7 +293,7 @@ for t in "${TESTS[@]}"; do
 	which="$(sim_for "$t")"
 	if [[ "$which" == B ]]; then sim="$SIM_B"; else sim="$SIM_A"; fi
 	echo "$sim" >"$STATE/current-sim"
-	rm -f "$STATE/wake-sent" "$STATE/wake-failed"
+	rm -f "$STATE/wake-sent" "$STATE/wake-failed" "$STATE/oplog-position" "$STATE/oplog-failed"
 	log "run $t on $which"
 	status=0
 	TEST_RUNNER_HASALA_E2E_API="$API" \

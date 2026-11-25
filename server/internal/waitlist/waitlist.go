@@ -452,16 +452,13 @@ func (s *Service) Register(q *mailq.Queue) {
 		return withLeave(row, r, leave), err
 	}))
 	q.Register("waitlist_has_account", mailq.RenderFunc(func(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Message, error) {
-		var name *string
-		err := tx.QueryRow(ctx, `SELECT to_jsonb(u) ->> 'display_name' FROM users u WHERE email_norm = $1`,
+		var name string
+		err := tx.QueryRow(ctx, `SELECT display_name FROM users WHERE email_norm = $1`,
 			row.Recipient).Scan(&name)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return mail.Message{}, err
 		}
-		greeting := "Hi,"
-		if err == nil && name != nil {
-			greeting = mail.Greeting(*name)
-		}
+		greeting := mail.Greeting(name)
 		r, err := mailq.RenderTemplate("waitlist_has_account", mailq.Content{Greeting: greeting, Email: row.Recipient,
 			Why: inviteWhy})
 		return toMessage(row, r), err

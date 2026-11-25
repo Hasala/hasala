@@ -2,7 +2,9 @@ package mail
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -48,13 +50,26 @@ const (
 	whyDeleted = "You're getting this because the Hasala account for this address was deleted. We won't email you again."
 )
 
-func compose(to, subject, name string, p page, lines ...string) Message {
+func compose(kind, to, subject, name string, p page, lines ...string) Message {
 	p.Title, p.Greeting = subject, Greeting(name)
 	if p.Lead == nil && p.Paras == nil {
 		p.Lead = lines
 	}
-	html, _ := p.render()
+	html, err := p.render()
+	if err != nil {
+		reportRenderFault(kind, err)
+	}
 	return Message{To: to, Subject: subject, Text: body(name, lines...), HTML: html}
+}
+
+var renderFaults sync.Map
+
+func reportRenderFault(kind string, err error) {
+	if _, seen := renderFaults.LoadOrStore(kind, struct{}{}); seen {
+		return
+	}
+	slog.Error("mail: the HTML part of an account email did not render, so it goes as text only",
+		"mail_kind", kind, "err", err.Error())
 }
 
 var codePurposeLines = map[string]string{
@@ -101,12 +116,12 @@ func Code(to, purpose, code, name string) (Message, error) {
 	}
 	const never = "Only type it into the Hasala app. Hasala will never ask you for it by phone, by email or on a website."
 	p := page{Heading: heading, Why: whyCode, Lead: []string{line}, Code: code, Paras: []string{never}}
-	return compose(to, "Your Hasala code", name, p,
+	return compose("code", to, "Your Hasala code", name, p,
 		line, "Your Hasala code is "+code+". It works for 10 minutes. "+never), nil
 }
 
 func AddressInUse(to string) Message {
-	return compose(to, "Your Hasala email address", "",
+	return compose("address_in_use", to, "Your Hasala email address", "",
 		page{Heading: "This address already has an account", Why: whyCode},
 		"Someone tried to use this email address for a new Hasala account. It already belongs to a "+
 			"Hasala account, so nothing has changed. If this was you, sign in to Hasala instead.")
@@ -132,14 +147,14 @@ func Alert(to, subkind string, at time.Time, name, freezeLink string) (Message, 
 		return Message{}, fmt.Errorf("mail: alert %s needs a freeze link", subkind)
 	}
 	alert := func(subject, heading string, lines ...string) (Message, error) {
-		return compose(to, subject, name, page{Heading: heading, Why: whyAlert}, lines...), nil
+		return compose("alert_"+subkind, to, subject, name, page{Heading: heading, Why: whyAlert}, lines...), nil
 	}
 	withFreeze := func(subject, heading string, lines ...string) (Message, error) {
 		text := append(lines,
 			"If it wasn't, freeze your account now. Everyone will be signed out until you confirm it's you: "+freezeLink,
 			"This link works for 7 days and can only freeze your account.")
 		p := page{Heading: heading, Why: whyAlert, Lead: lines, Freeze: freezeLink}
-		return compose(to, subject, name, p, text...), nil
+		return compose("alert_"+subkind, to, subject, name, p, text...), nil
 	}
 	switch subkind {
 	case "new_sign_in_passkey", "new_sign_in_password":
@@ -195,7 +210,7 @@ func Deleted(to string, at time.Time) Message {
 		Rows: []Row{{"Budget, plan, rules", "Erased"},
 			{"Sealed backup", "Gone from backups by " + at.Add(30*24*time.Hour).In(uae).Format("2 Jan")}},
 		Paras: []string{passkey}, Small: notMe}
-	return compose(to, "Your Hasala account was deleted", "", p,
+	return compose("deleted", to, "Your Hasala account was deleted", "", p,
 		"Your Hasala account and its data were deleted from our server on "+When(at)+
 			". Encrypted backups expire within 30 days.", passkey, notMe)
 }

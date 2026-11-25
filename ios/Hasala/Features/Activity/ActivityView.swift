@@ -24,11 +24,11 @@ struct ActivityView: View {
       }
     }
     .onAppear(perform: takeRequest)
-    .onChange(of: ActivityRequests.shared.pending?.filter) { takeRequest() }
+    .onChange(of: app.router.pendingActivityFilter) { takeRequest() }
   }
 
   private func takeRequest() {
-    if let filter = ActivityRequests.shared.take(for: app) { model.apply(filter) }
+    if let filter = app.router.takeActivityFilter() { model.apply(filter) }
   }
 }
 

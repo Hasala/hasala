@@ -25,10 +25,11 @@ stops. The owner merges.
 - **The console is not built yet** (spec 07 §8, WS-19). `hasalad console`
   validates its environment and exits 2. PR C below waits until a hasala
   release has a console that serves.
-- **The metrics listener is not served yet.** `HASALA_METRICS_LISTEN` is
-  validated but nothing listens, so the `hasala` Prometheus job will show the
-  target down until WS-5's metrics land in the server. `hasala-health` does not
-  probe it (P6 is left out for that reason).
+- **`hasalad serve` has no metrics listener.** The module has no
+  `metrics.port` option and no `hasala` Prometheus job, and it does not set
+  `HASALA_METRICS_LISTEN`. Port 9471 stays unused. `hasala-health` has no
+  probe P6 for that reason. The console serves `/metrics` beside `/healthz`
+  on `console.metricsPort`.
 - **`trusted_proxy = cloudflare` needs a release with spec 02 §16.1's
   client-IP code** (`internal/api/clientip.go`). Before it, every request
   arrives from loopback through the tunnel and each per-IP limit is one global
@@ -45,7 +46,7 @@ stops. The owner merges.
 | `hosts/<host>/default.nix` | Import `../../modules/services/hasala.nix` |
 | `modules/sops.nix` | The six secrets below |
 | `secrets/hasala.yaml` | New; the owner fills the six keys with `sops` (agents never see them) |
-| `<the host's taken-ports list>` | Add `8471`, `9471` and `9472` |
+| `<the host's taken-ports list>` | Add `8471` and `9472` |
 | `CLAUDE.md` | An architecture bullet for `modules/services/hasala.nix`, and the "no public ingress" paragraph becomes: the host's only public ingress is Hasala's own tunnel (`cloudflared-hasala.service`, outbound only), `api.hasala.app` with a path allowlist to `127.0.0.1:8471`, everything else 404; no other app may be added to that tunnel |
 
 ### `flake.nix` input
@@ -77,7 +78,7 @@ stops. The owner merges.
 #           (29 days) → off-site bucket; no decryption key is on this host.
 # Admin:    `sudo hasala-admin <mode>` over SSH.
 # Secrets:  secrets/hasala.yaml (modules/sops.nix), all through LoadCredential.
-# Ports:    127.0.0.1 only: API 8471, metrics 9471, cloudflared metrics 9472.
+# Ports:    127.0.0.1 only: API 8471, cloudflared metrics 9472.
 { config, lib, ... }:
 let
   cfg = config.services.hasala;
@@ -165,7 +166,6 @@ in
     {
       assertion = lib.all (p: !(lib.elem p taken)) [
         cfg.listen.port
-        cfg.metrics.port
         cfg.tunnel.metricsPort
       ];
       message = "hasala: a port collides with one this host already uses.";
@@ -264,7 +264,7 @@ systemctl is-active hasala.target hasala-postgresql hasalad cloudflared-hasala
 systemctl show -P Result hasala-migrate                      # success
 sudo curl -s http://127.0.0.1:8471/api/v1/healthz                 # {"status":"ok","db":"ok"}
 curl -s --max-time 5 http://127.0.0.1:8471/api/v1/healthz     # as your own user: no answer (the kernel rule resets it)
-ss -ltnH | grep -E ':(8471|9471|9472)\b'                     # 127.0.0.1 only
+ss -ltnH | grep -E ':(8471|9472)\b'                          # 127.0.0.1 only
 ss -ltnpH | grep postgres                                    # nothing: no TCP
 sudo hasala-admin version
 sudo systemctl start hasala-backup && ls -l <backup dir>     # a .dump.age, .sha256 and ledger .tar.age

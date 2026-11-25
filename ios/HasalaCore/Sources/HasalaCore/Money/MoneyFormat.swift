@@ -26,20 +26,6 @@ public enum MoneyFormat {
     }
   }
 
-  public static func compactMinor(_ minor: Int64) -> String {
-    let sign = minor > 0 ? "+" : (minor < 0 ? minus : "")
-    let a = Int128(minor.magnitude)
-    let body: String
-    if a < 100_000 {
-      body = String((a + 50) / 100)
-    } else if a < 100_000_000 {
-      body = tenths((a + 5_000) / 10_000) + "k"
-    } else {
-      body = tenths((a + 5_000_000) / 10_000_000) + "m"
-    }
-    return sign + body
-  }
-
   public static func minorToDraft(_ minor: Int64?, exponent: Int = 2) -> String {
     guard let minor else { return "" }
     let body = plainBody(minor.magnitude, exponent: exponent)
@@ -115,11 +101,5 @@ public enum MoneyFormat {
       out.append(d)
     }
     return String(decoding: out, as: UTF8.self)
-  }
-
-  private static func tenths(_ t: Int128) -> String {
-    let whole = t / 10
-    let f = t % 10
-    return f == 0 ? String(whole) : "\(whole).\(f)"
   }
 }

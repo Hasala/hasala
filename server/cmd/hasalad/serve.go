@@ -219,14 +219,8 @@ func logGroups(cfg config.Config) {
 	if cfg.Ops.Enabled() {
 		on = append(on, "ops-ntfy")
 	}
-	if cfg.Server.MetricsListen != "" {
-		on = append(on, "metrics")
-	}
 	slog.Info("hasalad serve: optional groups", "enabled", strings.Join(on, ","),
 		"trusted_proxy", cfg.Server.TrustedProxy)
-	if cfg.Server.MetricsListen != "" {
-		slog.Warn("hasalad serve: metrics_listen is configured but not served by this build yet")
-	}
 }
 
 func startHeadroom(cfg config.Config, s *api.Server) *headroom.Fuse {

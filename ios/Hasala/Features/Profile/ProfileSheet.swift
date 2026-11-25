@@ -119,7 +119,7 @@ struct ProfileSheet: View {
                         detail: MoneyPhrase(stringLiteral: snap.categoriesAndRules), hidden: model.hidden)
         }
         if snap.archivedTxns > 0 {
-          Button { ActivityRequests.shared.show(TxnFilter(kind: .archived), in: app) } label: {
+          Button { app.router.showActivity(TxnFilter(kind: .archived)) } label: {
             MoneyThingRow(plate: Self.tile(.archive), title: "Archived transactions",
                           detail: MoneyPhrase(stringLiteral: Self.archivedLine(snap.archivedTxns)), hidden: model.hidden)
           }

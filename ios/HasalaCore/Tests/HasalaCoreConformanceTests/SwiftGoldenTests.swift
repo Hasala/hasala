@@ -21,6 +21,7 @@ struct SwiftGoldenTests {
     try Self.save(try Self.wraps(), "crypto-v3/wraps.json")
     try Self.save(try await Self.signatures(), "crypto-v3/signatures.json")
     try Self.save(try Self.passwords(), "crypto-v3/password.json")
+    try Self.save(try await SoftPasskeyGolden.build(), SoftPasskeyGolden.file)
     try Self.save(Self.manifest(), "manifest.json")
   }
 
@@ -44,7 +45,7 @@ struct SwiftGoldenTests {
         .array(
           ([
             "op-manifest-v4.json", "crypto-v3/frames.json", "crypto-v3/wraps.json", "crypto-v3/signatures.json",
-            "crypto-v3/password.json",
+            "crypto-v3/password.json", SoftPasskeyGolden.file,
           ] + FoldGoldens.sets.map(\.file)).map { JSONValue.string($0) })
       ),
     ])

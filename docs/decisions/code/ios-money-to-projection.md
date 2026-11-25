@@ -226,6 +226,11 @@ blob.
 Then all the ops become `pending_ops` rows in one transaction. They are durable when
 `enqueue` returns. A debounced trigger (1.5 s) then asks for a sync run.
 
+The wait of the debounce is the `sleep` closure of `Outbox.init`. Its default is the real
+`Task.sleep`. The tests give a sleep that they release themselves, so they do not depend on
+real time. The injected `CoreTime.Clock` gives only the time of day (`nowMs`), so it cannot
+drive the wait. Do not call `Task.sleep` directly in `scheduleTrigger`.
+
 While the outbox is latched, `enqueue` still succeeds and the flush does nothing. The app
 shows the latch banner. The reason: local work is never lost. Do not make `enqueue` fail
 because of the latch.
@@ -233,7 +238,8 @@ because of the latch.
 Only HasalaCore code can make an `Op` (its initializer is `package`, R5). `OpAuthor` in
 CoreDomain is the author.
 
-Applies to: `ios/HasalaCore/Sources/HasalaCore/Outbox/Outbox.swift` (`Outbox.enqueue`).
+Applies to: `ios/HasalaCore/Sources/HasalaCore/Outbox/Outbox.swift` (`Outbox.enqueue`,
+`Outbox.scheduleTrigger`).
 
 ## AES-GCM takes only a 32-byte key and a 12-byte nonce, and open gives one error
 
@@ -354,6 +360,21 @@ ids from predictable bytes, with no sign that it occurred.
 Applies to: `ios/HasalaCore/Sources/HasalaCore/Primitives/Random.swift` (`RandomSource`,
 `SystemRandom`), `ios/HasalaCore/Sources/HasalaCore/Primitives/Hashing.swift`
 (`PrimitivesError.randomUnavailable`).
+
+## RandomSource.bytes is built for two SDKs
+
+Before the Xcode 27 SDK, `Data.withUnsafeMutableBytes` rethrows only `any Error`. From the
+Xcode 27 SDK it has typed throws. The CI job `swift` builds HasalaCore with Xcode 26
+(Swift 6.3), and the app builds with Xcode 27. Thus `RandomSource.bytes` has the two forms
+behind `#if compiler(>=6.4)`: the new form throws the `PrimitivesError` of `fill` directly
+from the closure, and the old form keeps it in a local variable and throws it after the
+closure. This is the same split as `GenerationOptions.greedy` (`ios-mailbox-to-model.md`).
+
+Remove the `#else` branch when the job `swift` of `.github/workflows/ci.yml` moves from
+Xcode 26. Do not remove it before that.
+
+Applies to: `ios/HasalaCore/Sources/HasalaCore/Primitives/Random.swift`
+(`RandomSource.bytes`).
 
 ## Account ids and writer ids have one spelling
 

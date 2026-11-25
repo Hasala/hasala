@@ -165,10 +165,47 @@ public enum AccountCreation {
     let grant = SessionGrant(
       session_token: bearer, user_id: user.string, expires_at: nil, writer_id: r.writer_id, has_keys: true,
       restricted: false)
-    return try await persistAndCompare(
+    let account = try await persistAndCompare(
       env, grant: grant, userID: user, device: device, keys: keys, emailNorm: registered.signup.emailNorm,
       serverSalt: registered.signup.serverSalt, displayName: registered.signup.displayName,
-      recoveryWrap: body.recovery_wrap, recoveryPublicKey: body.recovery_pubkey, sessionAlreadyWritten: true)
+      recoveryWrap: body.recovery_wrap, recoveryPublicKey: body.recovery_pubkey, sessionAlreadyWritten: true,
+      wipeKeys: false)
+    defer { keys.wipe() }
+    if prfWrap == nil {
+      _ = try? await putPRFWrap(env, account: account, credentialID: registered.credentialID, body: keys.body)
+    }
+    return account
+  }
+
+  static func putPRFWrap(_ env: AccountEnvironment, account: EnrolledAccount, credentialID: Data, body: KeyBody)
+    async throws(CeremonyError)
+  {
+    let proof = try await StepUpHelper.prove(
+      env, params: .keysWrapPut(credentialID: credentialID), factor: .passkey, binding: nil,
+      reason: "Confirm it's you to finish setting up")
+    defer { proof.prf?.wipe() }
+    guard let prf = proof.prf, proof.credentialID == credentialID else { throw .noPRF }
+    guard let nonce = try? Base64.decodeURL(proof.stepUp.nonce) else { throw .badResponse("step-up nonce") }
+    let wrap = try cryptoStep("prf wrap") {
+      try Wrap.sealPRF(body: body, prfOutput: prf, userID: account.userID, credentialID: credentialID, random: env.random)
+    }
+    guard
+      let seed = try secretStep({ () throws(SecretStoreError) in
+        try env.secrets.writerSeed(userID: account.userID, writerID: account.writerID)
+      })
+    else { throw .noDeviceKey }
+    defer { seed.wipe() }
+    let sig = try cryptoStep("wrap put") {
+      try DWK.sign(seed: seed, message: try SigningMessage.wrapPut(nonce: nonce, credentialID: credentialID, wrap: wrap))
+    }
+    let bearer = try currentBearer(env)
+    try await apiStep { () async throws(APIError) in
+      try await env.client.putKeyWrap(
+        PutKeyWrapRequest(
+          credentialIDB64URL: Base64.encodeURL(credentialID), wrapB64: Base64.encode(wrap), dwkSigB64: Base64.encode(sig),
+          stepUp: proof.stepUp),
+        bearer: bearer)
+    }
   }
 
   static func buildBootstrap(
@@ -232,7 +269,7 @@ public enum AccountCreation {
   static func persistAndCompare(
     _ env: AccountEnvironment, grant: SessionGrant, userID: UserID, device: NewDevice, keys: NewAccountKeys,
     emailNorm: String, serverSalt: Data, displayName: String?, recoveryWrap: String, recoveryPublicKey: String,
-    sessionAlreadyWritten: Bool = false
+    sessionAlreadyWritten: Bool = false, wipeKeys: Bool = true
   ) async throws(CeremonyError) -> EnrolledAccount {
     if !sessionAlreadyWritten { try writeSession(env, grant, signupEmailNorm: emailNorm) }
     let k1 = try cryptoStep("K_1") { try keys.body.epochKey1(userID: userID) }
@@ -247,7 +284,7 @@ public enum AccountCreation {
           env, commit: commit, authorityPublicKey: aak, recoveryPublicKey: recoveryPublicKey,
           recoveryWrap: recoveryWrap, emailNorm: emailNorm)
       })
-    keys.wipe()
+    if wipeKeys { keys.wipe() }
     return account
   }
 

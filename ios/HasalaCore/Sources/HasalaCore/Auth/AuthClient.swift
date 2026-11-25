@@ -87,6 +87,10 @@ public struct AuthClient: Sendable {
     try await api.call(.get, "/api/v1/keys/wraps", bearer: bearer)
   }
 
+  public func putKeyWrap(_ r: PutKeyWrapRequest, bearer: String) async throws(APIError) {
+    let _: Empty = try await api.call(.post, "/api/v1/keys/wraps", json: r, bearer: bearer)
+  }
+
   public func writerChallenge(bearer: String) async throws(APIError) -> WriterChallengeResponse {
     try await api.call(.post, "/api/v1/writers/challenge", json: Empty(), bearer: bearer)
   }

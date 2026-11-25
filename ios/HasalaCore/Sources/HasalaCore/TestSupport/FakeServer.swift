@@ -326,6 +326,7 @@ public final class FakeServer: Transport, @unchecked Sendable {
       return Self.ok(k)
     case "GET /api/v1/keys/wraps":
       return Self.ok(KeyWrapsResponse(wraps: Array(user.wraps.values)))
+    case "POST /api/v1/keys/wraps": return putKeyWrap(r, token: token, sess: sess)
     case "POST /api/v1/account/bootstrap": return bootstrap(r, token: token, sess: sess)
     case "POST /api/v1/writers/challenge":
       let n = nonce()

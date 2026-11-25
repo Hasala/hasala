@@ -615,6 +615,22 @@ public struct PasskeyAddFinishRequest: Codable, Sendable, Hashable {
   }
 }
 
+public struct PutKeyWrapRequest: Codable, Sendable, Hashable {
+  public let credential_id: String
+  public let wrap: String
+  public let wrap_version: Int
+  public let dwk_sig: String
+  public let step_up: StepUpJSON
+
+  public init(credentialIDB64URL: String, wrapB64: String, dwkSigB64: String, stepUp: StepUpJSON) {
+    credential_id = credentialIDB64URL
+    wrap = wrapB64
+    wrap_version = 1
+    dwk_sig = dwkSigB64
+    step_up = stepUp
+  }
+}
+
 public struct PasskeyAddResponse: Codable, Sendable, Hashable {
   public let credential_id: String
 

@@ -322,6 +322,41 @@ Applies to: `ios/HasalaCore/Sources/HasalaCore/SoftAuth/SoftwareApprovalKey.swif
 `ios/HasalaCore/Sources/HasalaCore/SoftAuth/SoftPasskey.swift`,
 `ios/HasalaCore/imports.allow`.
 
+## The software passkey is pinned to the Go test authenticator by a shared fixture
+
+Spec 04 §19.3 asks for a line-by-line port of `server/internal/authtest/softauth.go`.
+That port was not made: the Go authenticator has no PRF and it writes the JSON of
+go-webauthn, and `SoftPasskey` was written from the WebAuthn specification before the Go
+file was there. The two stay apart, and `conformance/swift/soft-passkey.json` proves that
+they agree (issue #348).
+
+- `SoftPasskey.fixNext(privateScalar:credentialID:prfSecret:)` fixes the key, the
+  credential id and the PRF secret of the next registration only. With nothing fixed, a
+  registration draws them at random, as before.
+- `SoftPasskeyGoldenTests` owns the file. It runs `SoftPasskey` on the fixed inputs and
+  compares the client data, the attestation object, the authenticator data and the PRF
+  output with the file, byte for byte.
+- `server/internal/authtest/softauth_test.go` builds the attestation object, the two
+  authenticator data and the PRF output with `Authenticator` and `PRF` from the same
+  inputs and compares them with the file. Then go-webauthn, with the configuration of
+  `auth.NewPasskeys`, verifies the registration and the assertion that Swift wrote.
+- The client data JSON is not compared between the two. Go writes its keys in sorted
+  order and Swift writes them in the order of the WebAuthn specification. The server
+  reads both.
+- The ECDSA signature is random. Verify it; do not compare its bytes.
+- The server never computes a PRF output. `authtest.PRF` exists only to pin the Swift
+  bytes.
+
+When one of the two authenticators changes its bytes, change the other one too, then
+write the file again (`HASALA_WRITE_SWIFT_GOLDENS=1 swift test --filter SwiftGoldenTests`
+in `ios/HasalaCore`). That command also writes the random files of `crypto-v3/` again:
+restore them when they are not the subject.
+
+Applies to: `ios/HasalaCore/Sources/HasalaCore/SoftAuth/SoftPasskey.swift`,
+`server/internal/authtest/softauth.go`,
+`ios/HasalaCore/Tests/HasalaCoreConformanceTests/SoftPasskeyGoldenTests.swift`,
+`server/internal/authtest/softauth_test.go`, `conformance/swift/soft-passkey.json`.
+
 ## The account directory is protected and is not in a backup
 
 The directory `<Application Support>/accounts/<user_id>/` holds financial data in

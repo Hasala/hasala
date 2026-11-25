@@ -48,7 +48,6 @@ Projection    CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResource
 Sync          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreExtract CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection
 Outbox        CoreSync
 Mailbox       CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreExtract CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection CoreOutbox CoreSync
-Signals       CoreDomain CoreProjection OrderedCollections
 
 # A: the only FoundationModels importer.
 Model         CoreCategorize FoundationModels
@@ -57,5 +56,5 @@ Keychain      CorePrimitives CoreStore Security
 Cloud         CoreCategorize
 
 # T: test support, never linked by the app.
-TestSupport   CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreExtract CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection CoreSync CoreOutbox CoreMailbox CoreSignals CryptoKit
+TestSupport   CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreExtract CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection CoreSync CoreOutbox CoreMailbox CryptoKit
 SoftAuth      CorePrimitives CoreAuth CryptoKit

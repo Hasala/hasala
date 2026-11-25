@@ -89,7 +89,7 @@ func TestPasskeyManagementRequiresASession(t *testing.T) {
 	}
 }
 
-func TestListPasskeysCarriesFiveFieldsAndNoKeyMaterial(t *testing.T) {
+func TestListPasskeysCarriesFourFieldsAndNoKeyMaterial(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t).passkeys()
 	k := h.onboard(true)

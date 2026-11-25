@@ -312,7 +312,7 @@ struct AppModelTests {
     router.popToRoot(.home)
     #expect(router.home.isEmpty && router.plan == [.category("dining")])
     router.sheet = .profile
-    router.cover = .review
+    router.cover = .review()
     router.clearPresentation()
     #expect(router.sheet == nil && router.cover == nil)
   }

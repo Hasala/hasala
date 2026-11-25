@@ -108,7 +108,7 @@ struct HomeLayoutPersistenceTests {
     #expect(app.router.projects == [.project("japan")])
     #expect(home.widgetOpens("project.japan"))
     _ = home.openWidget("toReview")
-    #expect(app.cover == .review)
+    #expect(app.cover == .review())
   }
 
   @Test func theReleaseGalleryOffersOnlyWorkingKinds() {

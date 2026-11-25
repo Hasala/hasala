@@ -237,7 +237,7 @@ struct ReviewTabView: View {
         Spacer(minLength: 0)
         CardStackArt()
       }
-      Button("Start") { ReviewEntry.open(app, at: nil) }
+      Button("Start") { app.startReview() }
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("review.tab.start")
     }
@@ -278,7 +278,7 @@ struct ReviewTabView: View {
         }
         ForEach(month.cards) { card in
           let r = ReviewEngine.tabRow(card, app.store.state)
-          Button { ReviewEntry.open(app, at: r.id) } label: { row(r) }
+          Button { app.startReview(at: r.id) } label: { row(r) }
             .buttonStyle(HRowPressStyle())
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(r.spoken(hidden: app.amountsHidden))

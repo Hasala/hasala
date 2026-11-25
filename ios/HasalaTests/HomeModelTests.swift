@@ -189,12 +189,12 @@ struct HomeModelTests {
     #expect(app.cover == nil)
     #expect(app.period.isAllTime && app.period.title == "All time")
     after?()
-    #expect(app.cover == .review)
+    #expect(app.cover == .review())
     app.cover = nil
     app.period = .month(YearMonth(2026, 9))
     router.open(.notifications)
     home.openNotification(.review(nil))?()
-    #expect(app.cover == .review && app.period == .month(YearMonth(2026, 9)))
+    #expect(app.cover == .review() && app.period == .month(YearMonth(2026, 9)))
     app.cover = nil
     app.period = .month(MayaLedger.october)
 
@@ -248,7 +248,7 @@ struct HomeModelTests {
       case .review:
         #expect(router.tab == .review)
         after?()
-        #expect(app.cover == .review)
+        #expect(app.cover == .review())
         let deck = ReviewViewModel(app: app)
         #expect(item.title == "\(deck.total) transactions to sort")
         #expect(deck.cards.contains { $0.id == "jun-shop" })

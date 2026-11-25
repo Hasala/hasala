@@ -147,13 +147,12 @@
     private static func startDeck(
       _ graph: MockGraph, at card: TxnID, keepsToast: Bool = false, _ steps: @escaping (ReviewViewModel) -> Void
     ) {
-      shell(.review, cover: .review)(graph)
-      ReviewEntry.request(graph.app, at: card)
       let app = graph.app
-      ReviewEntry.onNextSession(of: app) { deck in
+      let script = ReviewScript { deck in
         steps(deck)
         if !keepsToast { app.dismissToast() }
       }
+      shell(.review, cover: .scriptedReview(start: card, script: script))(graph)
     }
   }
 #endif

@@ -134,6 +134,31 @@ Applies to: `ios/Hasala/Features/Mailbox/MailParts.swift` (`MotionPolicy.settleD
 `ios/Hasala/Features/Mailbox/BankAlertsPage.swift` (`land`, `signInAgain`),
 `ios/Hasala/Features/Mailbox/MailboxDetailPage.swift` (`signInAgain`).
 
+## Bank alerts lands the new row when the navigation transition ends
+
+When a connect page hands Bank alerts a new or repaired mailbox, SwiftUI calls
+`onAppear` at the start of the system push or pop, while the page still moves. The
+row and the success haptic wait for the real end of that transition, not for a timer
+(issue #317; the timer was a 200 ms guess).
+
+The end is `viewDidAppear` of a view controller in the background of the page
+(`TransitionProbe`). UIKit calls it only when the transition completes. For a
+swipe back that the person cancels, UIKit calls `viewWillAppear`, then
+`viewWillDisappear`, and no `viewDidAppear`, so nothing lands on a page that is
+not on screen. The work stays in the queue of `TransitionEnd` until the page is
+on screen.
+
+- When the page is on screen already, the work runs at once.
+- When the motion policy is `settled`, the work runs at once and does not wait
+  for the probe.
+- `viewWillDisappear` and the `onDisappear` of the page mark the page as off
+  screen. Do not remove one of them to simplify: a page-sheet over the page
+  calls neither, and that is the intent.
+
+Applies to: `ios/Hasala/Features/Shared/TransitionEnd.swift` (`TransitionEnd`,
+`TransitionProbe`), `ios/Hasala/Features/Mailbox/BankAlertsPage.swift` (`land`,
+`takeMoment`).
+
 ## The read-only card uses a 9 pt gap, not Paper's 10
 
 The rows of the "Hasala reads / Never" card have a 9 pt gap between the badge and the

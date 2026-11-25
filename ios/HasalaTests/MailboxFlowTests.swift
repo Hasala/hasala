@@ -648,8 +648,54 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MotionPolicy(reduceMotion: true).settleDelay(.celebrate) == .seconds(HMotion.reduceMotionFade))
     #expect(MotionPolicy(settled: true).settleDelay(.celebrate) == .zero)
     #expect(MotionPolicy().settleDelay(.stateSwap) == .seconds(HMotion.fade))
-    #expect(BankAlertsPage.popSettle(MotionPolicy(settled: true)) == .zero)
-    #expect(BankAlertsPage.popSettle(MotionPolicy()) == .milliseconds(200))
+  }
+
+  @Test func theRowLandsWhenTheTransitionEnds() {
+    let signal = TransitionEnd()
+    let probe = TransitionProbe.Controller()
+    probe.signal = signal
+    var events: [String] = []
+    signal.afterArrival { events.append("land") }
+    signal.afterArrival { events.append("haptic") }
+    #expect(events.isEmpty && !signal.onScreen)
+    probe.viewWillAppear(true)
+    #expect(events.isEmpty)
+    probe.viewDidAppear(true)
+    #expect(events == ["land", "haptic"] && signal.onScreen)
+    probe.viewDidAppear(true)
+    #expect(events == ["land", "haptic"])
+    signal.afterArrival { events.append("on screen") }
+    #expect(events == ["land", "haptic", "on screen"])
+  }
+
+  @Test func aCancelledSwipeBackLandsNothing() {
+    let signal = TransitionEnd()
+    let probe = TransitionProbe.Controller()
+    probe.signal = signal
+    var events: [String] = []
+    signal.afterArrival { events.append("land") }
+    probe.viewWillAppear(true)
+    probe.viewWillDisappear(true)
+    probe.viewDidDisappear(true)
+    #expect(events.isEmpty && !signal.onScreen)
+    probe.viewWillAppear(true)
+    probe.viewDidAppear(true)
+    #expect(events == ["land"])
+  }
+
+  @Test func aCoveredPageWaitsForItsReturn() {
+    let signal = TransitionEnd()
+    let probe = TransitionProbe.Controller()
+    probe.signal = signal
+    probe.viewDidAppear(true)
+    probe.viewWillDisappear(true)
+    var events: [String] = []
+    signal.afterArrival { events.append("haptic") }
+    #expect(events.isEmpty)
+    signal.afterArrival(immediately: true) { events.append("settled motion") }
+    #expect(events == ["settled motion"])
+    probe.viewDidAppear(true)
+    #expect(events == ["settled motion", "haptic"])
   }
 
   @Test func theHeroSaysItInAWord() {

@@ -1144,6 +1144,10 @@ the approval of the owner for that deployment.
   chain it reads. Checkpoints come later, with a written rule for the cadence
   and for what a mismatch does. Refer to
   `docs/decisions/sync-writer-checkpoints.md`.
+- **TestFlight invitations (2026-11-25)**: the operator adds each invited
+  tester to the TestFlight beta by hand. The server has no App Store Connect
+  automation, no `HASALA_TESTFLIGHT_MODE` and no `services.hasala.asc`
+  options. Refer to `docs/decisions/testflight-manual.md`.
 - **Outbound mail**: Cloudflare Email Service.
 - **Hosting (QA)**: the QA host, behind Cloudflare Tunnel. hasalad listens
   only on loopback. It has no TLS code.

@@ -224,7 +224,7 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	q.Register("test", mailq.TestRenderer)
 	q.Register("deleted", mailq.DeletedRenderer)
 	minter, _ := tagger.(invites.Minter)
-	q.Register("invite", invites.Renderer{WebBase: cfg.Email.WebBaseURL, ManualTestFlight: true, Minter: minter})
+	q.Register("invite", invites.Renderer{WebBase: cfg.Email.WebBaseURL, Minter: minter})
 	var (
 		hold   purgeledger.HoldFunc
 		record func(purgeledger.Entry)

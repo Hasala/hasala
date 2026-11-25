@@ -89,13 +89,6 @@ let
             ntfyUrl = "http://127.0.0.1:2586/test";
             earlyAccessNotice = true;
           };
-          asc = {
-            enable = true;
-            keyFile = secret "asc_key_p8";
-            keyId = "ZYXWV98765";
-            issuerId = "00000000-0000-4000-8000-000000000001";
-            refusedKeyIds = [ "AAAAA11111" ];
-          };
           hardening.inaccessiblePaths = [
             "-/var/lib/postgresql"
             "-/run/postgresql"
@@ -421,44 +414,6 @@ let
       "M20"
       (hasala { extraEnvironment.HASALA_ASC_KEY_ID = "ABCDEFGHIJ"; })
     ];
-    "asc without the console" = [
-      "M20"
-      (hasala {
-        asc = {
-          enable = true;
-          keyFile = secret "asc_key_p8";
-          keyId = "ZYXWV98765";
-          issuerId = "00000000-0000-4000-8000-000000000001";
-        };
-      })
-    ];
-    "asc with a refused key id" = [
-      "M20"
-      (hasala (
-        lib.recursiveUpdate consoleOn {
-          asc = {
-            enable = true;
-            keyFile = secret "asc_key_p8";
-            keyId = "AAAAA11111";
-            issuerId = "00000000-0000-4000-8000-000000000001";
-            refusedKeyIds = [ "AAAAA11111" ];
-          };
-        }
-      ))
-    ];
-    "asc with no refused key ids" = [
-      "M20"
-      (hasala (
-        lib.recursiveUpdate consoleOn {
-          asc = {
-            enable = true;
-            keyFile = secret "asc_key_p8";
-            keyId = "ZYXWV98765";
-            issuerId = "00000000-0000-4000-8000-000000000001";
-          };
-        }
-      ))
-    ];
     "console on an nftables host" = [
       "M21"
       (lib.recursiveUpdate (hasala consoleOn) { networking.nftables.enable = true; })
@@ -557,12 +512,6 @@ let
       "M22"
       (hasala { authKeyFile = "${builtins.storeDir}/x-auth-key"; })
     ];
-    "asc.keyFile under the Nix store" = [
-      "M22"
-      (lib.recursiveUpdate full {
-        services.hasala.asc.keyFile = "${builtins.storeDir}/0000000000000000000000000000000-asc.p8";
-      })
-    ];
     "relative secret path" = [
       "M22"
       (hasala { apns.keyFile = "secrets/apns.p8"; })
@@ -587,14 +536,6 @@ let
   };
 
   typeErrors = {
-    "asc.keyKind developer" = [
-      (c: c.asc.keyKind)
-      (hasala { asc.keyKind = "developer"; })
-    ];
-    "asc.testerLimit 0" = [
-      (c: c.asc.testerLimit)
-      (hasala { asc.testerLimit = 0; })
-    ];
     "authKeyFile as a Nix path literal" = [
       (c: c.authKeyFile)
       (hasala { authKeyFile = ./lib.nix; })
@@ -639,7 +580,9 @@ let
   fullSys = t.evalSystem full;
   linkOnlySys = t.evalSystem (hasala gmailLink);
   outlookLinkOnlySys = t.evalSystem (hasala outlookLink);
-  manualSys = t.evalSystem (lib.recursiveUpdate full { services.hasala.asc.enable = false; });
+  retiredAscSys = t.evalSystem (hasala {
+    asc.refusedKeyIds = [ "AAAAA11111" ];
+  });
 
   positiveErrors =
     lib.optional (failedAny minimal != [ ]) "AT-E1 minimal: ${builtins.toJSON (failedAny minimal)}"
@@ -670,7 +613,6 @@ let
     "apns_key_p8"
     "mailbox_route_key"
     "turnstile_secret"
-    "asc_key_p8"
     "tunnel_credentials"
     "backup_rclone_conf"
   ];
@@ -680,7 +622,6 @@ let
   mailboxKeys =
     env: keysWith [ "HASALA_GOOGLE_" "HASALA_GMAIL_" "HASALA_OUTLOOK_" "HASALA_MAILBOX_" ] env;
   consoleEnv = envOf fullSys "hasala-console";
-  manualConsoleEnv = envOf manualSys "hasala-console";
   allEnvValues = lib.concatMap (s: map toString (lib.attrValues (s.environment or { }))) (
     lib.attrValues fullSys.config.systemd.services
   );
@@ -738,7 +679,7 @@ let
     "GOMEMLIMIT"
     "TZ"
   ];
-  consoleKeysManual = [
+  consoleKeys = [
     "HASALA_PG_DSN"
     "HASALA_RP_ID"
     "HASALA_RP_ORIGINS"
@@ -748,20 +689,8 @@ let
     "HASALA_CONSOLE_LOGINS"
     "HASALA_CONSOLE_TAILNET"
     "HASALA_PURGE_LEDGER_PATH"
-    "HASALA_TESTFLIGHT_MODE"
     "GOMEMLIMIT"
     "TZ"
-  ];
-  consoleKeysExternal = consoleKeysManual ++ [
-    "HASALA_ASC_KEY_FILE"
-    "HASALA_ASC_KEY_ID"
-    "HASALA_ASC_KEY_KIND"
-    "HASALA_ASC_ISSUER_ID"
-    "HASALA_ASC_BUNDLE_ID"
-    "HASALA_ASC_BETA_GROUP"
-    "HASALA_ASC_TESTER_LIMIT"
-    "HASALA_ASC_RECONCILE_INTERVAL"
-    "HASALA_ASC_REQUEST_BUDGET"
   ];
   sameSet = a: b: lib.sort lib.lessThan a == lib.sort lib.lessThan b;
   hardenedUnits = [
@@ -847,18 +776,20 @@ let
     ++ check (
       mailboxKeys (envOf minimal "hasalad") == [ ]
     ) "AT-E3 hasalad has [gmail] or [outlook] keys with none configured"
-    ++ check (sameSet (lib.attrNames consoleEnv) consoleKeysExternal) "AT-E3 console environment (external) is ${builtins.toJSON (lib.attrNames consoleEnv)}"
+    ++ check (sameSet (lib.attrNames consoleEnv) consoleKeys) "AT-E3 console environment is ${builtins.toJSON (lib.attrNames consoleEnv)}"
     ++ check (
-      consoleEnv.HASALA_TESTFLIGHT_MODE == "external"
-    ) "AT-E3 console TESTFLIGHT_MODE with asc on"
+      keysWith [ "HASALA_ASC_" "HASALA_TESTFLIGHT_" ] consoleEnv == [ ]
+    ) "AT-E3 the console has App Store Connect or TestFlight keys"
     ++ check (
-      credsOf fullSys "hasala-console" == [ "asc-key.p8" ]
+      credsOf fullSys "hasala-console" == [ ]
     ) "AT-E3 console LoadCredential is ${builtins.toJSON (credsOf fullSys "hasala-console")}"
-    ++ check (sameSet (lib.attrNames manualConsoleEnv) consoleKeysManual) "AT-E3 console environment (manual) is ${builtins.toJSON (lib.attrNames manualConsoleEnv)}"
-    ++ check (
-      manualConsoleEnv.HASALA_TESTFLIGHT_MODE == "manual"
-    ) "AT-E3 console TESTFLIGHT_MODE with asc off"
-    ++ check (credsOf manualSys "hasala-console" == [ ]) "AT-E3 console holds a credential with asc off"
+    ++
+      check
+        (
+          lib.any (lib.hasInfix "services.hasala.asc") (failedAny retiredAscSys)
+          && lib.any (lib.hasInfix "docs/decisions/testflight-manual.md") (failedAny retiredAscSys)
+        )
+        "AT-E2 a host that still sets services.hasala.asc is not told to remove it (failed: ${builtins.toJSON (failedAny retiredAscSys)})"
     ++ check (lib.elem "-/run/credentials/hasala-console.service" (hardeningOf "hasalad").InaccessiblePaths) "AT-E3 hasalad can read the console's credentials"
     ++ check (lib.elem "-/run/credentials/hasalad.service" (hardeningOf "hasala-console").InaccessiblePaths) "AT-E3 the console can read hasalad's credentials"
     ++ check (

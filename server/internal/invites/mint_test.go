@@ -68,7 +68,7 @@ func TestARetriedInviteEmailCarriesTheSameCode(t *testing.T) {
 		return nil
 	}}
 	q := mailq.New(pool, fake, testTagger{})
-	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true, Minter: minter})
+	q.Register("invite", Renderer{WebBase: "https://hasala.app", Minter: minter})
 	q.Unsent = MailUnsent(nil, minter, nil)
 	const addr = "retry@example.com"
 	_, invite := approved(t, pool, q, addr)
@@ -134,7 +134,7 @@ func TestARetryOfAReplacedInviteEmailLeavesTheNewerCodeLive(t *testing.T) {
 		return nil
 	}}
 	q := mailq.New(pool, fake, testTagger{})
-	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true, Minter: minter})
+	q.Register("invite", Renderer{WebBase: "https://hasala.app", Minter: minter})
 	q.Unsent = MailUnsent(nil, minter, nil)
 	const addr = "replaced@example.com"
 	_, invite := approved(t, pool, q, addr)
@@ -244,7 +244,7 @@ func mintingQueue(t *testing.T, pool *pgxpool.Pool, fake *mail.Fake) *mailq.Queu
 		t.Fatal(err)
 	}
 	q := mailq.New(pool, fake, testTagger{})
-	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true, Minter: minter})
+	q.Register("invite", Renderer{WebBase: "https://hasala.app", Minter: minter})
 	q.Unsent = MailUnsent(nil, minter, nil)
 	return q
 }
@@ -442,7 +442,7 @@ func TestAQueuedEmailAtTheMintLimitNamesTheLimitAndKeepsTheCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := Renderer{WebBase: "https://hasala.app", ManualTestFlight: true, Minter: minter}
+	r := Renderer{WebBase: "https://hasala.app", Minter: minter}
 	err = pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error {
 		_, err := r.Render(bg, tx, row)
 		return err
@@ -592,7 +592,7 @@ func TestARetryingEmailStaysReplacedWhileANewerEmailCanStillGo(t *testing.T) {
 				WHERE invite_id = $1 AND id > $3`, invite, status, older); err != nil {
 				t.Fatal(err)
 			}
-			r := Renderer{WebBase: "https://hasala.app", ManualTestFlight: true}
+			r := Renderer{WebBase: "https://hasala.app"}
 			row := mailq.Row{ID: older, Kind: "invite", Recipient: "both@example.com", InviteID: &invite}
 			err := pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error {
 				_, err := r.Render(bg, tx, row)
@@ -614,7 +614,7 @@ func resendFixture(t *testing.T, addr string) (*pgxpool.Pool, *mailq.Queue, *mai
 	}
 	fake := &mail.Fake{}
 	q := mailq.New(pool, fake, testTagger{})
-	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true, Minter: minter})
+	q.Register("invite", Renderer{WebBase: "https://hasala.app", Minter: minter})
 	q.Unsent = MailUnsent(nil, minter, nil)
 	q.Sent = MailSent(minter)
 	entry, invite := approved(t, pool, q, addr)

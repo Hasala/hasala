@@ -27,7 +27,7 @@ func (testTagger) EmailTag(s string) []byte {
 
 func unsentQueue(pool *pgxpool.Pool, fake *mail.Fake) *mailq.Queue {
 	q := mailq.New(pool, fake, testTagger{})
-	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true})
+	q.Register("invite", Renderer{WebBase: "https://hasala.app"})
 	q.Unsent = MailUnsent(nil, nil, nil)
 	return q
 }

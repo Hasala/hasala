@@ -466,16 +466,14 @@ func TestTheConsoleConfigurationIsChecked(t *testing.T) {
 		"HASALA_PG_DSN": "x", "HASALA_RP_ID": "hasala.app", "HASALA_RP_ORIGINS": "https://hasala.app",
 		"HASALA_CONSOLE_LISTEN": "127.0.0.1:8472", "HASALA_CONSOLE_METRICS_LISTEN": "127.0.0.1:9473",
 		"HASALA_CONSOLE_HOST": "console.example.test", "HASALA_CONSOLE_LOGINS": "operator@github",
-		"HASALA_TESTFLIGHT_MODE": "manual",
 	}
 	if err := mustLoad(t, base).ValidateFor("console"); err != nil {
 		t.Fatalf("a good console configuration: %v", err)
 	}
 	for k, v := range map[string]string{
-		"HASALA_CONSOLE_LISTEN":  "localhost:8472",
-		"HASALA_CONSOLE_HOST":    "admin.hasala.app",
-		"HASALA_CONSOLE_LOGINS":  " , ",
-		"HASALA_TESTFLIGHT_MODE": "internal",
+		"HASALA_CONSOLE_LISTEN": "localhost:8472",
+		"HASALA_CONSOLE_HOST":   "admin.hasala.app",
+		"HASALA_CONSOLE_LOGINS": " , ",
 	} {
 		e := env{}
 		for kk, vv := range base {
@@ -576,8 +574,8 @@ func TestUnknownEnvironment(t *testing.T) {
 	got := UnknownEnvironment([]string{"HASALA_PG_DSN=x", "HASALA_TURNSTILE_REQUIRED=true", "HASALA_CONFIG=x",
 		"HASALA_ADMIN_ACTOR=x", "HASALA_CONSOLE_LISTEN=x", "PATH=/bin", "HASALA_TURNSTYLE_REQUIRED=true",
 		"HASALA_PURGE_LEDGER_PATH=x", "HASALA_PURGE_LEDGER=x", "HASALA_TURNSTYLE_REQUIRED=false",
-		"HASALA_METRICS_LISTEN=127.0.0.1:9471", "HASALA_CONSOLE_METRICS_LISTEN=x"})
-	if strings.Join(got, ",") != "HASALA_METRICS_LISTEN,HASALA_PURGE_LEDGER,HASALA_TURNSTYLE_REQUIRED" {
+		"HASALA_METRICS_LISTEN=127.0.0.1:9471", "HASALA_CONSOLE_METRICS_LISTEN=x", "HASALA_TESTFLIGHT_MODE=manual"})
+	if strings.Join(got, ",") != "HASALA_METRICS_LISTEN,HASALA_PURGE_LEDGER,HASALA_TESTFLIGHT_MODE,HASALA_TURNSTYLE_REQUIRED" {
 		t.Fatalf("unknown: %v", got)
 	}
 }

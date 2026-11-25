@@ -29,7 +29,7 @@ The decisions of record of each area are one level up, in `docs/decisions/`.
 | [iOS replay, soft auth and store](ios-replay-to-store.md) | 28 |
 | [iOS scripts and tools](ios-scripts-to-tools.md) | 15 |
 | [iOS sync, account ceremonies and bank templates](ios-sync-to-template.md) | 26 |
-| [iOS core tests, mailbox to Keychain](ios-tests-coremailboxtests-to-hasalakeychaintests.md) | 6 |
+| [iOS core tests, mailbox to Keychain](ios-tests-coremailboxtests-to-hasalakeychaintests.md) | 7 |
 | [Sample seed generator and HasalaDesign components](ios-to-hasalakit.md) | 8 |
 | [iOS core test support, text, time and wire](ios-to-tests.md) | 14 |
 | [The gate scripts and the hasalad command](scripts-to-server.md) | 17 |

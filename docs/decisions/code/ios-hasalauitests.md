@@ -177,15 +177,24 @@ The harness is `ios/scripts/e2e-app.sh`.
   name in the harness makes the live tests skip. They do not fail. Keep the names in the
   harness and in `LiveE2EEnvironment` the same.
 - **The test runner does not call the server.** The emailed codes, the account that E1
-  makes and the wake requests go through files in the temporary directory of the
-  harness. The processes of the simulator can read and write that directory.
+  makes, the wake requests and the op log position go through files in the temporary
+  directory of the harness. The processes of the simulator can read and write that
+  directory.
+- **E2 waits for its upload.** The test writes `oplog-request`, and the harness answers
+  with the number of rows in `op_log` in `oplog-position` (`oplog-failed` when the query
+  fails). E2 reads the position before it sorts the card, and then it reads again until
+  the position is larger, for 60 s at most. E2 fails when it is not, so E3 does not start
+  with the edit still in the outbox of B. The server cannot read an op, thus a larger
+  position proves that B uploaded a batch after the read. It does not prove which op the
+  batch has.
 - **Passwords only.** A passkey needs the real relying party (`hasala.app`), and a local
   server cannot be that. Gmail and the full chain from mail to upload, pull and replay
   are tested in the core (`HasalaCoreE2ETests`). In these tests, the data is the sample
   of the review account.
 
 Applies to: `ios/HasalaUITests/LiveE2ESupport.swift` (`LiveE2EEnvironment`,
-`LiveE2ECase`), `ios/HasalaUITests/LiveE2ETests.swift` (`LiveE2ETests`).
+`LiveE2ECase`, `oplogPosition`, `waitForUpload`), `ios/HasalaUITests/LiveE2ETests.swift`
+(`LiveE2ETests`).
 
 ## Live end-to-end tests: a simulator push needs notification permission
 

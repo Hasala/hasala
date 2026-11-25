@@ -32,39 +32,49 @@ struct ActivityReviewModelTests {
     #expect(app.cover == nil && app.tab == .activity)
   }
 
-  @Test func aRowStartsTheSessionAtItsCard() {
+  @Test func aRowStartsTheSessionAtItsCard() throws {
     let app = AppModel(store: InMemoryLedger())
-    ReviewEntry.open(app, at: "lulu")
-    #expect(app.cover == .review)
-    let deck = ReviewViewModel(app: app)
+    app.startReview(at: "lulu")
+    #expect(app.cover == .review(start: "lulu"))
+    let deck = try #require(app.cover).session(for: app)
     #expect(deck.cards.map(\.id) == ["lulu", "apple", "transfer-in", "atm", "steam", "dubai-taxi"])
     #expect(deck.position == 1 && deck.total == 6)
     #expect(ReviewViewModel(app: app).cards.first?.id == "steam")
     let other = AppModel(store: InMemoryLedger())
-    ReviewEntry.request(other, at: "atm")
-    #expect(ReviewViewModel(app: app).cards.first?.id == "steam")
+    other.startReview(at: "atm")
+    #expect(app.cover == .review(start: "lulu"))
+    #expect(try #require(other.cover).session(for: other).cards.first?.id == "atm")
   }
 
-  @Test func aRowTappedOverAnOpenDeckDoesNotSeedALaterPlainStart() {
+  @Test func theStartCardWaitsInTheRouteUntilTheSheetCloses() throws {
     let app = AppModel(store: InMemoryLedger())
-    ReviewEntry.open(app, at: "lulu")
-    _ = ReviewViewModel(app: app)
-    ReviewEntry.open(app, at: "atm")
+    app.startReview(at: "lulu", afterSheetCloses: true)
+    #expect(app.cover == nil && app.router.nextCover == .review(start: "lulu"))
+    app.router.sheetDismissed()
+    #expect(try #require(app.cover).session(for: app).cards.first?.id == "lulu")
+  }
+
+  @Test func aRowTappedOverAnOpenDeckDoesNotSeedALaterPlainStart() throws {
+    let app = AppModel(store: InMemoryLedger())
+    app.startReview(at: "lulu")
+    app.startReview(at: "atm")
+    #expect(app.cover == .review(start: "atm") && CoverRoute.review(start: "atm").id == CoverRoute.review(start: "lulu").id)
     app.cover = nil
     app.startReview()
-    #expect(ReviewViewModel(app: app).cards.first?.id == "steam")
-    ReviewEntry.open(app, at: "atm")
+    #expect(app.cover == .review())
+    #expect(try #require(app.cover).session(for: app).cards.first?.id == "steam")
+    app.startReview(at: "atm")
     app.cover = nil
     app.startReview(over: .allTime)
-    #expect(ReviewViewModel(app: app).cards.first?.id != "atm")
-    ReviewEntry.open(app, at: "lulu")
-    #expect(ReviewViewModel(app: app).cards.first?.id == "lulu")
+    #expect(try #require(app.cover).session(for: app).cards.first?.id != "atm")
+    app.cover = nil
+    app.startReview(at: "lulu")
+    #expect(try #require(app.cover).session(for: app).cards.first?.id == "lulu")
   }
 
   @Test func aPickKeepsTheSuggestionInPlaceAndAnnouncesTheFiling() {
     let app = AppModel(store: InMemoryLedger())
-    ReviewEntry.request(app, at: "lulu")
-    let deck = ReviewViewModel(app: app)
+    let deck = ReviewViewModel(app: app, start: "lulu")
     deck.pick("lulu", .need)
     #expect(deck.picking?.choice == .need && deck.picking?.card.id == "lulu")
     #expect(deck.picking?.card.suggestion?.id == "groceries")
@@ -151,7 +161,7 @@ struct ActivityReviewModelTests {
                           postedAt: LocalDateTime(2026, 9, 20, 18, 0), accountID: "dib"))
     let app = AppModel(store: InMemoryLedger(state: state))
     app.period = .month(YearMonth(2026, 9))
-    ReviewEntry.open(app, at: nil)
+    app.startReview()
     let deck = ReviewViewModel(app: app)
     #expect(deck.periodTitle == "September 2026" && !deck.isThisMonth)
     #expect(deck.total == 1 && deck.cards.map(\.id) == ["sep-shop"])
@@ -171,7 +181,7 @@ struct ActivityReviewModelTests {
     let app = AppModel(store: InMemoryLedger(state: state))
     app.period = .month(YearMonth(2026, 9))
     ActivityViewModel(app: app).startReview()
-    #expect(app.cover == .review)
+    #expect(app.cover == .review())
     let deck = ReviewViewModel(app: app)
     #expect(deck.periodTitle == "September 2026" && !deck.isThisMonth)
     #expect(deck.total == 1 && deck.cards.map(\.id) == ["sep-shop"])
@@ -182,7 +192,7 @@ struct ActivityReviewModelTests {
     #expect(deck.elsewhere == nil)
     app.cover = nil
     app.open(.review)
-    #expect(app.cover == .review && ReviewViewModel(app: app).total == 7)
+    #expect(app.cover == .review() && ReviewViewModel(app: app).total == 7)
   }
 
   @Test func aNewPeriodKeepsTheCardInFrontAndOneOrderForTheSession() {
@@ -192,8 +202,8 @@ struct ActivityReviewModelTests {
                             postedAt: LocalDateTime(2026, 9, day, 18, 0), accountID: "dib"))
     }
     let app = AppModel(store: InMemoryLedger(state: state))
-    ReviewEntry.open(app, at: "lulu")
-    let deck = ReviewViewModel(app: app)
+    app.startReview(at: "lulu")
+    let deck = ReviewViewModel(app: app, start: "lulu")
     #expect(deck.cards.first?.id == "lulu" && deck.total == 6)
     app.period = Period(YearMonth(2026, 9), MayaLedger.october)
     deck.periodChanged()
@@ -226,7 +236,7 @@ struct ActivityReviewModelTests {
     #expect(app.period.isAllTime && app.period.title == "All time")
     #expect(app.period == .allTime(since: app.earliestMonth, today: MayaLedger.october))
     after?()
-    #expect(app.cover == .review)
+    #expect(app.cover == .review())
     let deck = ReviewViewModel(app: app)
     #expect(deck.periodTitle == "All time" && !deck.isThisMonth && deck.elsewhere == nil)
     #expect(app.reviewCards.count == 11 && app.reviewElsewhere == nil)
@@ -364,7 +374,7 @@ struct ActivityReviewModelTests {
     activity.openBill("dewa")
     #expect(app.router.activity == [.bill("dewa")])
     activity.startReview()
-    #expect(app.cover == .review)
+    #expect(app.cover == .review())
   }
 
   @Test func aRequestFromSearchOpensActivityFiltered() {

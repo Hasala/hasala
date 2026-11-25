@@ -10,8 +10,7 @@ import Testing
 struct LastPickDeckTests {
   static func deck(at card: TxnID, _ state: LedgerState = Scenario.mayaBacklog.state) -> (AppModel, ReviewViewModel) {
     let app = AppModel(store: InMemoryLedger(state: state))
-    ReviewEntry.request(app, at: card)
-    return (app, ReviewViewModel(app: app))
+    return (app, ReviewViewModel(app: app, start: card))
   }
 
   @Test func theNextCardIsTheSameMerchantAndUseFilesTheStripsCategory() throws {

@@ -15,7 +15,7 @@ The decisions of record of each area are one level up, in `docs/decisions/`.
 | [iOS account, accounts, activity and bills screens](ios-hasala-features-account-to-bills.md) | 13 |
 | [iOS Home and Mailbox screens](ios-hasala-features-home-to-mailbox.md) | 12 |
 | [iOS onboarding](ios-hasala-features-onboarding-to-mocks.md) | 14 |
-| [iOS app, Plan, Profile, Review and Search screens](ios-hasala-features-plan-to-search.md) | 12 |
+| [iOS app, Plan, Profile, Review and Search screens](ios-hasala-features-plan-to-search.md) | 13 |
 | [iOS app, Security to SignIn features](ios-hasala-features-security-to-signin.md) | 14 |
 | [iOS app, transaction sheet and Live layer](ios-hasala-features-to-live.md) | 15 |
 | [iOS platform adapters, package layout, API client and categorization](ios-hasala.md) | 13 |

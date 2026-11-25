@@ -216,7 +216,7 @@ struct WidgetLinkRoutingTests {
     #expect(app.tab == .activity)
     app.open(.review)
     #expect(app.tab == .review)
-    #expect(app.cover == .review)
+    #expect(app.cover == .review())
     app.open(.home)
     #expect(app.tab == .home)
     #expect(app.router.home.isEmpty)
@@ -233,7 +233,7 @@ struct WidgetLinkRoutingTests {
     app.open(.review)
     #expect(app.cover == nil)
     app.router.sheetDismissed()
-    #expect(app.cover == .review)
+    #expect(app.cover == .review())
     #expect(app.router.nextCover == nil)
   }
 
@@ -285,6 +285,6 @@ struct WidgetLinkRoutingTests {
     #expect(app.period == .month(YearMonth(2026, 9)))
     #expect(app.reviewCount == widget.toReview?.count)
     #expect(app.reviewCount == 6)
-    #expect(app.cover == .review)
+    #expect(app.cover == .review())
   }
 }

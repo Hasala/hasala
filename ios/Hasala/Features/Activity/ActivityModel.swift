@@ -71,5 +71,5 @@ final class ActivityViewModel: ActivityModel {
     app.router.home = [.bills]
     app.tab = .home
   }
-  func startReview() { ReviewEntry.open(app, at: nil) }
+  func startReview() { app.startReview() }
 }

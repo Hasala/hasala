@@ -26,7 +26,6 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "budget.amount").waitForExistence(timeout: uiWait))
     waitUntilStill(el(app, "budget.close"))
     assertNoPlaceholders(app, "Plan › Dining budget")
-    XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Match'")).count, 0)
     try audit(app)
     tap(app, "budget.close")
 
@@ -73,6 +72,29 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     tap(app, "projects.new", opening: "projectEditor.name")
     assertNoPlaceholders(app, "Plan › New project")
     try audit(app, overSheet: true)
+  }
+
+  @MainActor
+  func testTheBudgetSheetOffersLastMonthsSpending() throws {
+    let app = launchRelease()
+    openPlan(app)
+    let row = app.buttons["plan.row.groceries"]
+    XCTAssertTrue(reveal(app, row))
+    row.tap()
+    XCTAssertTrue(el(app, "category.hero").waitForExistence(timeout: uiWait))
+    let change = el(app, "category.changeBudget")
+    XCTAssertTrue(reveal(app, change))
+    change.tap()
+    XCTAssertTrue(el(app, "budget.amount").waitForExistence(timeout: uiWait))
+    waitUntilStill(el(app, "budget.close"))
+    attach(app, "Release · Plan › Groceries budget")
+    assertNoPlaceholders(app, "Plan › Groceries budget")
+    let match = app.buttons["Match September, 2,214 dirhams"]
+    XCTAssertTrue(match.exists)
+    XCTAssertGreaterThanOrEqual(match.frame.height, 44)
+    match.tap()
+    XCTAssertEqual(el(app, "budget.amount").value as? String, "2,214")
+    XCTAssertEqual(el(app, "budget.save").label, "Set to AED 2,214")
   }
 
   @MainActor

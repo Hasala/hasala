@@ -98,9 +98,11 @@ func (d *DB) Each(fn func(Message) error) error {
 			return fmt.Errorf("corpus: scan: %w", err)
 		}
 		if recv != "" {
-			if t, err := time.Parse(time.RFC3339, recv); err == nil {
-				m.ReceivedAt = t
+			t, err := time.Parse(time.RFC3339, recv)
+			if err != nil {
+				return fmt.Errorf("corpus: message %d: received_at is not RFC 3339", m.ID)
 			}
+			m.ReceivedAt = t
 		}
 		body, err := gunzip(rawBody)
 		if err != nil {

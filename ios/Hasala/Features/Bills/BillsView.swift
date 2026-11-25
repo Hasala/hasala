@@ -238,6 +238,7 @@ struct BillsView: View {
 
   static let foundPill = "Looks recurring"
   static let trackTitle = "Track it"
+  static func trackedFact(_ count: Int) -> String { "\(count) tracked" }
 
   private var found: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -277,15 +278,7 @@ struct BillsView: View {
 
   private var upcoming: some View {
     VStack(alignment: .leading, spacing: 12) {
-      if unfinished {
-        ReflowingRow(alignment: .firstTextBaseline) {
-          Text("Upcoming").hType(.section).foregroundStyle(HColor.textPrimary).accessibilityAddTraits(.isHeader)
-        } trailing: {
-          allSchedules
-        }
-      } else {
-        HSectionHeader("Upcoming", trailing: .fact("\(snap.tracked) tracked"))
-      }
+      HSectionHeader("Upcoming", trailing: .fact(Self.trackedFact(snap.tracked)))
       HStack(spacing: 8) {
         ForEach(BillsSnapshot.Range.allCases) { r in
           FilterChip(r.title, selected: snap.range == r) { model.setRange(r) }
@@ -325,21 +318,6 @@ struct BillsView: View {
     .buttonStyle(HRowPressStyle())
     .accessibilityLabel("Add recurring")
     .accessibilityIdentifier("bills.add")
-  }
-
-  private var allSchedules: some View {
-    Button { app.say("Every schedule comes in a later build", icon: .calendar) } label: {
-      HStack(spacing: 2) {
-        Text("All schedules · \(snap.tracked)").hType(.body.weight(.medium))
-        HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.textLink)
-      }
-      .foregroundStyle(HColor.textLink)
-      .frame(minHeight: HSpacing.targetMinimum)
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel("All schedules, \(snap.tracked)")
-    .accessibilityIdentifier("bills.allSchedules")
   }
 
   private var recentlyPaid: some View {

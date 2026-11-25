@@ -28,6 +28,14 @@ struct BillsScreenTests {
     #expect(BillsView.trackTitle == "Track it")
   }
 
+  @Test func theUpcomingHeaderCountsTheTrackedItemsInEveryBuild() {
+    #expect(BillsView.trackedFact(9) == "9 tracked")
+    let store = InMemoryLedger()
+    let tracked = BillsViewModel(app: AppModel(store: store)).snapshot.tracked
+    #expect(tracked > 0)
+    #expect(tracked == store.state.bills.filter { $0.state == .tracked }.count)
+  }
+
   @Test func anEstimateIsSpokenAsAbout() throws {
     let app = AppModel(store: InMemoryLedger())
     let dewa = try #require(BillsViewModel(app: app).detail("dewa"))

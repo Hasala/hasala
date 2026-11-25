@@ -90,7 +90,7 @@ let package = Package(
     .testTarget(
       name: "HasalaCoreConformanceTests",
       dependencies: l0 + ["CoreWire", "CoreCrypto", "CoreNorm", "CoreTemplate", "CoreExtract", "CoreMail"]
-        + ["CoreReplay", "CoreInvariants", "CoreCategorize", "CoreDomain", "CoreSoftAuth"],
+        + ["CoreReplay", "CoreInvariants", "CoreCategorize", "CoreDomain", "CoreSoftAuth", "CoreAuth"],
       path: "Tests/HasalaCoreConformanceTests"),
     .testTarget(
       name: "HasalaCoreE2ETests",

@@ -21,6 +21,13 @@ public final class SoftPasskey: PasskeyProvider {
   private let prfSupported = Mutex(true)
   private let backup = Mutex<UInt8>(0)
   private let reported = Mutex<[Data]>([])
+  private let fixed = Mutex<Fixed?>(nil)
+
+  struct Fixed: Sendable {
+    let signer: P256.Signing.PrivateKey
+    let credentialID: Data
+    let prfSecret: Data
+  }
 
   public init(rpID: String = "hasala.app", origin: String = "https://hasala.app") {
     self.rpID = rpID
@@ -34,6 +41,11 @@ public final class SoftPasskey: PasskeyProvider {
   }
   public func failNext(_ error: PasskeyError) { failure.withLock { $0 = error } }
 
+  public func fixNext(privateScalar: Data, credentialID: Data, prfSecret: Data) throws(PasskeyError) {
+    guard let k = try? P256.Signing.PrivateKey(rawRepresentation: privateScalar) else { throw .failed("private scalar") }
+    fixed.withLock { $0 = Fixed(signer: k, credentialID: credentialID, prfSecret: prfSecret) }
+  }
+
   public var credentials: [Credential] { state.withLock { $0 } }
   public var reportedUnknown: [Data] { reported.withLock { $0 } }
 
@@ -45,11 +57,10 @@ public final class SoftPasskey: PasskeyProvider {
   public func register(_ options: CreationOptions, prfSalt: Data?) async throws(PasskeyError) -> RawRegistration {
     if let f = takeFailure() { throw f }
     if options.rpID != rpID, !options.rpID.isEmpty { throw .failed("rp id") }
-    let key = P256.Signing.PrivateKey()
-    var id = Data(count: 16)
-    var secret = Data(count: 32)
-    _ = id.withUnsafeMutableBytes { SecRandomFill($0) }
-    _ = secret.withUnsafeMutableBytes { SecRandomFill($0) }
+    let made = takeFixed() ?? Self.random()
+    let key = made.signer
+    let id = made.credentialID
+    let secret = made.prfSecret
     let cred = Credential(id: id, userHandle: options.userID, signer: key, prfSecret: secret, signCount: 0)
     if state.withLock({ creds in creds.contains { options.excludeCredentialIDs.contains($0.id) } }) {
       throw .failed("excluded credential")
@@ -125,6 +136,21 @@ public final class SoftPasskey: PasskeyProvider {
 
   static func clientData(type: String, challenge: Data, origin: String) -> Data {
     Data(#"{"type":"\#(type)","challenge":"\#(Base64.encodeURL(challenge))","origin":"\#(origin)","crossOrigin":false}"#.utf8)
+  }
+
+  private func takeFixed() -> Fixed? {
+    fixed.withLock { f in
+      defer { f = nil }
+      return f
+    }
+  }
+
+  private static func random() -> Fixed {
+    var id = Data(count: 16)
+    var secret = Data(count: 32)
+    _ = id.withUnsafeMutableBytes { SecRandomFill($0) }
+    _ = secret.withUnsafeMutableBytes { SecRandomFill($0) }
+    return Fixed(signer: P256.Signing.PrivateKey(), credentialID: id, prfSecret: secret)
   }
 
   private func takeFailure() -> PasskeyError? {

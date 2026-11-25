@@ -311,7 +311,7 @@ CONFORMANCE=(
 	"outlook-sender|"
 	"replay|"
 	"sms-extract|"
-	"swift|"
+	"swift|./internal/authtest"
 	"templates|./internal/tmpl ./internal/tmpl/seed"
 	"ts|./internal/oplog/opref"
 )

@@ -47,8 +47,8 @@ entries that were used least recently.
 ## Time budgets
 
 `scripts/ci-budget.sh` has one budget for each job, in seconds, and one for
-the path to the result (the start of the run to the end of the jobs that
-`ci-ok` needs). The time of a job is its start to its end: the setup and the
+the path to the result (the start of the run to the end of the fast jobs
+that `ci-ok` needs). The time of a job is its start to its end: the setup and the
 steps, not the wait for a runner.
 
 - The budgets of 2026-11-22 are about 1.3 times the slowest run of each job in
@@ -141,5 +141,25 @@ entries before it.
 to this event, thus each Linux job runs. The Mac jobs (`swift` and
 `ios-tools`, and the Mac seed job `nix-cache-mac`) skip on a merge group, by the owner's choice (2026-11-23): the
 free plan has five Mac runners, and they made each queue entry wait. The
-queue merges when `ci-ok` passes, as on a pull request. The push to `main`
-then runs the Mac jobs on the merged commit, with the usual path rules.
+queue merges when `ci-ok` passes. The push to `main` then runs the Mac jobs
+on the merged commit, with the usual path rules.
+
+## The Mac jobs are required on a pull request
+
+Since 2026-11-26, by the owner's choice, `ci-ok` needs `swift` and
+`ios-tools`. On a pull request, `ci-ok` waits for them and fails when one of
+them failed or was cancelled, thus that pull request cannot go into the merge
+queue. A Mac job that the path rules skip counts as a pass. On a merge group
+the two jobs still skip, thus the queue is as fast as before.
+
+The reason: on 2026-11-25, #426 changed `ios/scripts/e2e-hasalad.sh` and
+merged with a failed `ios-tools`. The job then failed on each run on `main`
+until #438.
+
+- A pull request that changes `ios/`, `conformance/`, `design/` or the flake
+  now waits about 10 minutes for its result, plus the wait for a Mac runner.
+- The time budget step of `ci-ok` still measures only the fast jobs, because
+  no change in this repository makes a Mac runner start sooner. The job
+  `budget` measures the Mac jobs.
+- Two pull requests that each pass alone can still break a Mac job together.
+  The push to `main` finds that case.

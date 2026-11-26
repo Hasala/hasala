@@ -105,7 +105,7 @@ struct SignInSecurityFlowTests: AccountSuite {
   @Test func aPasskeyOnlyRecoveryVerifiesTheCodeOnItsOwnScreen() async {
     let account = MockAccountService(existing: .passkey)
     account.delay = .zero
-    account.capabilities = .beta
+    account.capabilities = AccountCapabilities.beta.subtracting(.recoverWithPassword)
     let m = SignInModel(account: account) { _ in }
     m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
     #expect(await m.submitRecoveryWords())
@@ -124,7 +124,7 @@ struct SignInSecurityFlowTests: AccountSuite {
   @Test func anotherAccountsWordsStopAtTheCode() async {
     let account = MockAccountService(existing: .passkey)
     account.delay = .zero
-    account.capabilities = .beta
+    account.capabilities = AccountCapabilities.beta.subtracting(.recoverWithPassword)
     let m = SignInModel(account: account) { _ in }
     m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
     #expect(await m.submitRecoveryWords())
@@ -152,7 +152,7 @@ struct SignInSecurityFlowTests: AccountSuite {
 
   private func verifiedRecovery(_ account: MockAccountService) async -> SignInModel {
     account.delay = .zero
-    account.capabilities = .beta
+    account.capabilities = AccountCapabilities.beta.subtracting(.recoverWithPassword)
     let m = SignInModel(account: account) { _ in }
     m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
     #expect(await m.submitRecoveryWords())
@@ -258,7 +258,7 @@ struct SignInSecurityFlowTests: AccountSuite {
   @Test func aRecoveryCodeRunsOutTenMinutesAfterItWasSent() async throws {
     let account = MockAccountService(existing: .passkey)
     account.delay = .zero
-    account.capabilities = .beta
+    account.capabilities = AccountCapabilities.beta.subtracting(.recoverWithPassword)
     let m = SignInModel(account: account) { _ in }
     #expect(!m.recoverCodeExpired(now: .now))
     m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
@@ -274,7 +274,7 @@ struct SignInSecurityFlowTests: AccountSuite {
   @Test func aRecoveryCodeAlreadyAcceptedDoesNotRunOut() async throws {
     let account = MockAccountService(existing: .passkey)
     account.delay = .zero
-    account.capabilities = .beta
+    account.capabilities = AccountCapabilities.beta.subtracting(.recoverWithPassword)
     let m = SignInModel(account: account) { _ in }
     m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
     #expect(await m.submitRecoveryWords())
@@ -299,7 +299,7 @@ struct SignInSecurityFlowTests: AccountSuite {
   @Test func aFailedResendLeavesAUsedUpRecoveryCodeExpired() async throws {
     let account = MockAccountService(existing: .passkey)
     account.delay = .zero
-    account.capabilities = .beta
+    account.capabilities = AccountCapabilities.beta.subtracting(.recoverWithPassword)
     let m = SignInModel(account: account) { _ in }
     m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
     #expect(await m.submitRecoveryWords())
@@ -342,7 +342,7 @@ struct SignInSecurityFlowTests: AccountSuite {
   @Test func aWrongRecoveryCodeIsNotUsedUp() async throws {
     let account = MockAccountService(existing: .passkey)
     account.delay = .zero
-    account.capabilities = .beta
+    account.capabilities = AccountCapabilities.beta.subtracting(.recoverWithPassword)
     let m = SignInModel(account: account) { _ in }
     m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
     #expect(await m.submitRecoveryWords())
@@ -357,7 +357,7 @@ struct SignInSecurityFlowTests: AccountSuite {
   @Test func forgettingARecoveryForgetsThatItsCodeWasUsedUp() async {
     let account = MockAccountService(existing: .passkey)
     account.delay = .zero
-    account.capabilities = .beta
+    account.capabilities = AccountCapabilities.beta.subtracting(.recoverWithPassword)
     let m = SignInModel(account: account) { _ in }
     m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
     #expect(await m.submitRecoveryWords())

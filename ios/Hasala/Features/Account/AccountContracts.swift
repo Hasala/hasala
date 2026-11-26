@@ -205,7 +205,7 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
     .unlockWithPhrase,
     .signOut, .signOutEverywhere,
     .deleteAccount,
-    .recoverAccess,
+    .recoverAccess, .recoverWithPassword,
     .viewPhrase,
     .addPasskey,
     .changeName,

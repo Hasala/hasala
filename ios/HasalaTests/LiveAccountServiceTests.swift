@@ -85,8 +85,8 @@ struct LiveAccountServiceTests {
   @Test func theBetaOffersWhatItCarriesOut() {
     let a = LiveAccountService(env: Self.phone(MiniHasalad(invite: Self.invite)))
     #expect(a.capabilities == .beta)
-    #expect(!a.capabilities.contains(.resetPassword) && !a.capabilities.contains(.recoverWithPassword))
-    #expect(a.capabilities.contains(.recoverAccess))
+    #expect(!a.capabilities.contains(.resetPassword))
+    #expect(a.capabilities.isSuperset(of: [.recoverAccess, .recoverWithPassword]))
     #expect(a.capabilities.contains(.deleteAccount))
     #expect(a.capabilities.contains(.addPasskey))
     #expect(!a.capabilities.contains(.removeThisIPhone))

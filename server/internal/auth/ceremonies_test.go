@@ -163,6 +163,9 @@ func TestRecoveryWithAPasswordRegistersANewDevice(t *testing.T) {
 	if v.UserID != m.user.UserID || !sameBytes(v.Salt, f.keys.PasswordSalt(m.addr)) || len(v.RecoveryWrap) != 127 {
 		t.Fatalf("%+v", v)
 	}
+	if v.EmailNorm != m.addr {
+		t.Fatalf("a verified password recovery answered the address %q, want %q", v.EmailNorm, m.addr)
+	}
 	d := authtest.NewDevice(t)
 	newS := f.stretch(m.addr, "recovered password here")
 	msg, _ := keyproto.RecoverySigninPassword(v.Nonce, newS)
@@ -226,6 +229,9 @@ func TestRecoveryWithAPasskeyRegistersTheCredentialAndItsWrap(t *testing.T) {
 	}
 	if v.Options == nil || v.Options.Response.AuthenticatorSelection.UserVerification != protocol.VerificationRequired {
 		t.Fatal("passkey recovery needs UV registration options")
+	}
+	if v.EmailNorm != "" || v.Salt != nil {
+		t.Fatalf("a passkey recovery answered the address %q and the salt %x", v.EmailNorm, v.Salt)
 	}
 	a := authtest.New(t)
 	cred := a.Create(t, v.Options)

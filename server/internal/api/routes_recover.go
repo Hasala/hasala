@@ -57,6 +57,7 @@ type RecoverVerifyResponse struct {
 	CurrentEpoch    int             `json:"current_epoch"`
 	Options         json.RawMessage `json:"options,omitempty"`
 	Salt            string          `json:"salt,omitempty"`
+	EmailNorm       string          `json:"email_norm,omitempty"`
 }
 
 func (s *Server) handleRecoverVerify(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +80,7 @@ func (s *Server) handleRecoverVerify(w http.ResponseWriter, r *http.Request) {
 		}
 		resp.Options = raw
 	} else {
-		resp.Salt = b64(out.Salt)
+		resp.Salt, resp.EmailNorm = b64(out.Salt), out.EmailNorm
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

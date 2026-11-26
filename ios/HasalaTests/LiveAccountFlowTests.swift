@@ -240,8 +240,52 @@ struct LiveAccountFlowTests {
     #expect(await m.submitRecoveryWords())
     m.recoverCode = try #require(server.lastCode)
     #expect(await m.submitRecoveryCode())
-    #expect(m.verifiedRecoveryKind == .passkey)
+    #expect(m.verifiedRecoveryKind == nil && server.recoverVerifies == 0)
     return (b, m, defaults)
+  }
+
+  @Test func aRecoveryToANewPasswordSignsInWithItAndNotWithTheOldOne() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (b, m, defaults) = try await recoveryReadyToFinish(server)
+    let newPassword = "a new lantern for maya 7"
+    #expect(await m.finishRecovery(.password(newPassword)) == .done)
+    #expect(m.recovered == .password && m.verifiedRecoveryKind == .password)
+    #expect(server.recoverVerifies == 1 && server.recoverFinishes == 1)
+    #expect(server.recoverKinds == ["password"])
+    #expect(LocalAccountData.setupFinished(defaults))
+    let binding = try #require(b.binding)
+    #expect(binding.email_norm == "maya@example.com" && binding.serverSalt != nil)
+    #expect(m.accountEmail == "maya@example.com")
+
+    let c = Phone(server).relaunched()
+    #expect(try await c.signInWithPassword(email: "maya@example.com", password: newPassword) == .needsUnlock(passkeyCanUnlock: false))
+    await #expect(throws: AuthFailure.self) {
+      _ = try await Phone(server).relaunched().signInWithPassword(email: "maya@example.com", password: Self.password)
+    }
+  }
+
+  @Test func aWrongCodeOnAPasswordRecoveryGoesBackToTheCodeAndKeepsTheKindOpen() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (_, m, _) = try await recoveryReadyToFinish(server)
+    m.recoverCode = "000000"
+    #expect(await m.finishRecovery(.password("a new lantern for maya 7")) == .codeRejected)
+    #expect(m.failure(on: .recoverCode) == .codeWrong(triesLeft: 4))
+    #expect(m.verifiedRecoveryKind == nil && server.recoverFinishes == 0)
+    m.recoverCode = try #require(server.lastCode)
+    #expect(await m.finishRecovery(.password("a new lantern for maya 7")) == .done)
+  }
+
+  @Test func aRecoveryVerifiedForAPasswordRefusesAPasskeyWithoutAskingTheServer() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (_, m, _) = try await recoveryReadyToFinish(server)
+    server.accountUnavailable = true
+    #expect(await m.finishRecovery(.password("a new lantern for maya 7")) == .failed)
+    #expect(m.verifiedRecoveryKind == .password && server.recoverFinishes == 1)
+    #expect(await m.finishRecovery(.passkey) == .failed)
+    #expect(server.recoverVerifies == 1 && server.recoverFinishes == 1)
+    server.accountUnavailable = false
+    #expect(await m.finishRecovery(.password("a new lantern for maya 7")) == .done)
+    #expect(server.recoverFinishes == 1)
   }
 
   @Test func aRecoveryTheServerTookFinishesOnTheSameScreen() async throws {
@@ -840,6 +884,7 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     var recoveries: [String: (user: String, code: String)] = [:]
     var recoverNonces: [String: Data] = [:]
     var recoverVerifies = 0
+    var recoverKinds: [String: String] = [:]
     var recoverFinishes = 0
     var refusesRecoverFinish = false
     var accountUnavailable = false
@@ -871,6 +916,7 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
   var wrapsStored: Int { state.withLock { $0.users.values.reduce(0) { $0 + $1.wraps.count } } }
   var unfreezeCalls: Int { state.withLock { $0.unfreezeCalls } }
   var recoverVerifies: Int { state.withLock { $0.recoverVerifies } }
+  var recoverKinds: [String] { state.withLock { Array($0.recoverKinds.values) } }
   var recoverFinishes: Int { state.withLock { $0.recoverFinishes } }
   var refusesRecoverFinish: Bool {
     get { state.withLock { $0.refusesRecoverFinish } }
@@ -1019,26 +1065,39 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     case "POST /api/v1/auth/recover/verify":
       s.recoverVerifies += 1
       guard let id = b["ceremony_id"] as? String, let c = s.recoveries[id], c.code == b["code"] as? String,
-        let u = s.users[c.user]
+        let u = s.users[c.user], let kind = b["kind"] as? String, s.recoverKinds[id] == nil
       else { return error(403, "code_rejected") }
       let nonce = bytes(32)
       s.recoverNonces[id] = nonce
-      return ok([
+      s.recoverKinds[id] = kind
+      var answer: [String: Any] = [
         "nonce": Base64.encode(nonce), "user_id": u.id, "amk_commitment": u.keys["amk_commitment"] ?? "",
         "authority_pubkey": u.keys["authority_pubkey"] ?? "", "recovery_wrap": u.keys["recovery_wrap"] ?? "",
         "current_epoch": 1,
-        "options": [
+      ]
+      if kind == "password" {
+        answer["salt"] = Base64.encode(salt(u.email))
+        answer["email_norm"] = u.email
+      } else {
+        answer["options"] = [
           "publicKey": [
             "challenge": Base64.encodeURL(bytes(32)), "rp": ["id": "hasala.app", "name": "Hasala"],
             "user": ["id": Base64.encodeURL(bytes(32)), "name": "Hasala", "displayName": "Hasala"],
           ]
-        ],
-      ])
+        ]
+      }
+      return ok(answer)
     case "POST /api/v1/auth/recover/finish":
       guard !s.refusesRecoverFinish, let id = b["ceremony_id"] as? String, let c = s.recoveries.removeValue(forKey: id),
         var u = s.users[c.user], let nonce = s.recoverNonces.removeValue(forKey: id),
-        let w = b["writer"] as? [String: Any], let wid = w["writer_id"] as? String
+        let w = b["writer"] as? [String: Any], let wid = w["writer_id"] as? String,
+        let kind = b["kind"] as? String, s.recoverKinds[id] == kind
       else { return error(403, "recovery_refused") }
+      if kind == "password" {
+        guard let v = (b["verifier"] as? String).flatMap({ try? Base64.decode($0) }), v.count == 32, b["credential"] == nil
+        else { return error(400, "bad_request") }
+        u.verifierHash = Data(SHA256.hash(data: v))
+      }
       s.recoverFinishes += 1
       u.writers.append(
         writerRow(wid, w["pubkey"], w["dak_pubkey"], Base64.encode(nonce), w["registration_sig"], id: u.writers.count + 1))

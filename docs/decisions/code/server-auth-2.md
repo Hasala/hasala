@@ -428,3 +428,24 @@ by clocks that can differ, and tests cannot move the time. Do not write
 Applies to: `server/internal/auth/session.go` (`Sessions.Now`, `Sessions.Info`,
 `Sessions.ReapDeletedAccountTombstones`), `server/internal/auth/passkey_store.go`
 (`claimCeremony`, `ReapExpiredCeremonies`).
+
+## A verified password recovery answers the address, and nothing before the code does
+
+`RecoverVerify` answers `email_norm` (with the password salt) only when the kind is a
+password, and only in the same step that accepts the email code. `RecoverBegin` answers
+the masked hint and never the address. A passkey recovery gets no address and no salt.
+
+The reason: the client stretches the new password with `s_srv ‖ email_norm` (spec 01
+§10.6), and a recovery has no step in which the person types the address. Without the
+address the client cannot make a verifier that a later sign-in can make again.
+
+What this reveals: nothing that the 12 words and the code do not already give. The holder
+of the two can finish the recovery, and the session from `RecoverFinish` reads the address
+at `GET /api/v1/account`. The holder of the words alone gets only the hint.
+
+Do not move the address to `RecoverBegin`, and do not answer it for a code that was not
+accepted. `TestPasswordRecoveryOverHTTPAnswersTheAddressAtVerifyNotAtBegin` and
+`TestRecoveryWithAPasskeyRegistersTheCredentialAndItsWrap` fail on those changes.
+
+Applies to: `server/internal/auth/recovery.go` (`RecoverVerified`, `RecoverVerify`),
+`server/internal/api/routes_recover.go` (`RecoverVerifyResponse`).

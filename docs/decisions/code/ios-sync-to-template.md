@@ -130,17 +130,36 @@ Applies to: `ios/HasalaCore/Sources/HasalaCore/Sync/AccountCreation.swift`
 (`StepUpHelper.Proof`), `ios/HasalaCore/Sources/HasalaCore/Sync/AccountRecovery.swift`
 (`Recovery`).
 
-## Recovery with the 12 words makes a new passkey only
+## Recovery with the 12 words ends with a new passkey or a new password
 
-Access recovery (C4; `02` routes #7, #48, #8) ends with a new passkey. It cannot end with a
-new password.
+Access recovery (C4; `02` routes #7, #48, #8) ends with a new passkey or with a new
+password. The person chooses, and the ceremony is bound to that kind at `recover/verify`.
 
-The reason: a password is stretched with the salt `s_srv ‖ email_norm` (spec 01 §10.6), so
-the phone must know the full address. `recover/verify` (#48) answers only the masked hint of
-the address. Do not add a password path to recovery unless the phone has the full
-address. A change of #48 to answer it is a change to what the 12 words reveal.
+A password is stretched with the salt `s_srv ‖ email_norm` (spec 01 §10.6), so the phone
+must know the full address. `recover/begin` (#7) answers only the masked hint. When the
+kind is a password, `recover/verify` (#48) answers `salt` and `email_norm`, after the code
+from that mailbox is correct. For a passkey it answers neither.
 
-Applies to: `ios/HasalaCore/Sources/HasalaCore/Sync/AccountRecovery.swift`.
+- The phone uses the answered address and salt for the stretch, and writes them to the
+  binding. It does not ask the person to type the address: a typing error would set a
+  password that no sign-in can make again.
+- The phone refuses an answer with no 32-byte salt or with an address that is not in the
+  normalized form, before it asks for a password.
+- A ceremony that was verified for one kind does not finish with the other kind. The phone
+  refuses it and sends nothing.
+
+The 12 words alone still reveal only the hint. The full address needs the words and the
+code, and those two already give the account (the session of `recover/finish` reads the
+address at `GET /api/v1/account`). The server side of this rule is in
+`docs/decisions/code/server-auth-2.md`.
+
+Forgot password (C9) is a different flow and stays out of the build. It needs the approval
+of another iPhone.
+
+Applies to: `ios/HasalaCore/Sources/HasalaCore/Sync/AccountRecovery.swift`
+(`verifyForPassword`, `finishWithPassword`, `Recovery.Way`),
+`ios/Hasala/Live/Account/LiveAccountService.swift` (`verifyRecovery`, `finishRecovery`),
+`ios/Hasala/Features/Account/AccountContracts.swift` (`AccountCapabilities.beta`).
 
 ## A recovery checks the answered keys before the passkey sheet
 

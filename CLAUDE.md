@@ -412,10 +412,12 @@ it manually (`workflow_dispatch`). CI does not have the private fixtures.
 A pull request merges only through the merge queue. On a merge group, the Mac
 jobs skip, and the queue merges when `ci-ok` passes (`docs/ci.md`).
 
-The last job, `ci-ok`, needs only the fast jobs: `changes`, `gate`,
-`selftest`, `nix-eval`, `nix-build`, `vuln` and `secrets`. It always runs. It fails if
-one of these jobs failed or was cancelled. It passes when each one succeeded or
-was skipped. `ci-ok` is the one required check that the ruleset names. These
+The last job, `ci-ok`, needs the fast jobs (`changes`, `gate`, `selftest`,
+`nix-eval`, `nix-build`, `vuln` and `secrets`) and the two Mac jobs (`swift`
+and `ios-tools`). It always runs. It fails if one of these jobs failed or was
+cancelled. It passes when each one succeeded or was skipped. `ci-ok` is the
+one required check that the ruleset names. Thus a pull request whose Mac job
+fails cannot go into the merge queue (2026-11-26, `docs/ci.md`). The fast
 jobs run at the same time:
 
 - `gate`: `scripts/check.sh` in the devShell. In CI, `scripts/check.sh`
@@ -439,22 +441,25 @@ jobs run at the same time:
 
 Do not change these job names or the name `ci-ok`. The required status
 checks find the jobs by their names. Add a new job to the `needs` of `ci-ok`
-only when it is fast and it must stop a merge. Do not add the slow jobs
-(the Mac jobs, `web` and `nixos-vm`).
+only when it must stop a merge. Do not add `web` and `nixos-vm`.
 
-These jobs are slow. They are not required, and `ci-ok` does not need them,
-thus they do not stop a merge: `swift` (HasalaCore on a Mac), `ios-tools`
-(the iOS checks on a Mac, refer to "The iOS app" below), `web`
-(the website, refer to "Website") and `nixos-vm` (it builds
-`checks.x86_64-linux.qa-vm` with KVM).
+The Mac jobs are slow, and `ci-ok` waits for them on a pull request: `swift`
+(HasalaCore on a Mac) and `ios-tools` (the iOS checks on a Mac, refer to "The
+iOS app" below). A Mac job that the path rules skip counts as a pass. The time
+budget of `ci-ok` does not measure them.
+
+These jobs are slow and not required. `ci-ok` does not need them, thus they do
+not stop a merge: `web` (the website, refer to "Website") and `nixos-vm` (it
+builds `checks.x86_64-linux.qa-vm` with KVM).
 
 ### Time budgets
 
 Each job has a time budget, in seconds, in `scripts/ci-budget.sh`.
 
-- `ci-ok` fails when a job that it needs ran longer than its budget. It also
-  fails when the time from the start of the run to the end of these jobs is
-  longer than the path budget in that script.
+- `ci-ok` fails when a fast job that it needs ran longer than its budget. It
+  also fails when the time from the start of the run to the end of these jobs
+  is longer than the path budget in that script. It does not measure the Mac
+  jobs; `budget` does.
 - The last job, `budget`, does the same check for all jobs when they are
   complete. It is not required.
 - A new job must get a budget in that script. Without one, `budget` fails.
@@ -686,7 +691,8 @@ CI for iOS:
   HasalaKit tests, the design tokens, the project against `ios/project.yml`,
   `ios/scripts/tests/run.sh` and shellcheck on `ios/scripts`. It runs
   `ios/scripts/tests/devshell_test.sh` only when `ios/` or the flake changed.
-- `ios-tools` is not a required check, and `ci-ok` does not need it.
+- `ci-ok` needs `ios-tools` and `swift`, thus a failure in one of them stops
+  a merge. They skip on a merge group.
 
 ### Nix
 

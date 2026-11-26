@@ -584,7 +584,7 @@ jobs:
           retention-days: 14
 
   ci-ok:
-    needs: [changes, gate, selftest, nix-eval, nix-build, vuln, secrets]
+    needs: [changes, gate, selftest, nix-eval, nix-build, vuln, secrets, swift, ios-tools]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
@@ -609,7 +609,7 @@ jobs:
           sparse-checkout: scripts/ci-budget.sh
           sparse-checkout-cone-mode: false
 
-      - name: Every needed job stayed in its time budget
+      - name: Every fast job stayed in its time budget
         env:
           GH_TOKEN: ${{ github.token }}
         run: scripts/ci-budget.sh changes gate selftest nix-eval nix-build vuln secrets

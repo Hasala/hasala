@@ -146,3 +146,23 @@ The cross-check is the Go tests that read the same files, thus run them after a
 regeneration.
 
 Applies to: `ios/HasalaCore/Tests/HasalaCoreConformanceTests/SwiftGoldenTests.swift`.
+
+## A time limit in a test counts the thread's processor time, and the fake network has no timeout (2026-11-26)
+
+`swift test` runs all the tests of the package in one process and at the same time. On a
+CI runner with three cores, a test can wait for a thread for more than a minute. In the
+runs of 2026-11-25, tests with no work in them ended after 44 to 70 seconds. A limit on
+elapsed time then measures the other tests, not the code.
+
+`LongInputTests.timed` thus reads the processor time of its thread
+(`CLOCK_THREAD_CPUTIME_ID`). Its body has no suspension point, so it stays on one thread.
+The limit of 3 seconds stays. The slowest case, the Arabic card prefix at the size limit of
+a text, uses about 1.1 seconds on the Mac of the owner.
+
+`FakeGmailURLProtocol.exchange` sets the request and resource timeouts of its session to
+one day. The default of URLSession is 60 seconds. The fake answers from memory, so a
+timeout there can only come from a starved test process, and it reached the tests as
+`.offline`. A test of a timeout uses a fake clock or its own exchange, not this session.
+
+Applies to: `ios/HasalaCore/Tests/CoreExtractTests/LongInputTests.swift`,
+`ios/HasalaCore/Sources/HasalaCore/TestSupport/FakeGmail.swift`.

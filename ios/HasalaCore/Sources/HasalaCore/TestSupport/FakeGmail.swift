@@ -393,12 +393,15 @@ public final class FakeGmailURLProtocol: URLProtocol, @unchecked Sendable {
   nonisolated(unsafe) private static var next = 0
 
   private var loading: Task<Void, Never>?
+  static let noTimeout: TimeInterval = 86_400
 
   public static func exchange(for fake: any HTTPExchange, maxResponseBytes: Int? = nil) -> FakeURLSessionExchange {
     let id = register(fake)
     let c = URLSessionConfiguration.ephemeral
     c.protocolClasses = [FakeGmailURLProtocol.self]
     c.httpAdditionalHeaders = [header: id]
+    c.timeoutIntervalForRequest = noTimeout
+    c.timeoutIntervalForResource = noTimeout
     return FakeURLSessionExchange(id: id, session: URLSessionHTTPExchange(configuration: c, maxResponseBytes: maxResponseBytes))
   }
 

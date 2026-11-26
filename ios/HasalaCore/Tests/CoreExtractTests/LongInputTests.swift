@@ -7,8 +7,16 @@ import Testing
 struct LongInputTests {
   static let budget = Duration.seconds(3)
 
+  static func threadCPU() -> Duration {
+    var t = timespec()
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t)
+    return .seconds(Int64(t.tv_sec)) + .nanoseconds(Int64(t.tv_nsec))
+  }
+
   static func timed(_ body: () -> Void) -> Duration {
-    ContinuousClock().measure(body)
+    let start = threadCPU()
+    body()
+    return threadCPU() - start
   }
 
   static func mail(_ text: String, subject: String = "Card transaction alert") -> ExtractInput {

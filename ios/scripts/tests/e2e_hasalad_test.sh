@@ -20,6 +20,21 @@ trap 'stop_listener; stop_other_run; rm -rf "$work"' EXIT
 fail=0
 mkdir -p "$work/ios/scripts" "$work/stub"
 cp "$here/e2e-hasalad.sh" "$work/ios/scripts/"
+mkdir -p "$work/ios/HasalaCore/Sources/Stub" "$work/ios/HasalaCore/Tests/StubTests"
+cat >"$work/ios/HasalaCore/Package.swift" <<'SWIFT'
+// swift-tools-version: 6.0
+import PackageDescription
+
+let package = Package(
+  name: "HasalaCore",
+  targets: [
+    .target(name: "Stub"),
+    .testTarget(name: "StubTests", dependencies: ["Stub"]),
+  ]
+)
+SWIFT
+echo 'public let stub = 0' >"$work/ios/HasalaCore/Sources/Stub/Stub.swift"
+echo 'import Stub' >"$work/ios/HasalaCore/Tests/StubTests/StubTests.swift"
 real_curl="$(command -v curl)"
 
 cat >"$work/listener.py" <<'PY'

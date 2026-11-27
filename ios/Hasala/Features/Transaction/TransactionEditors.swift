@@ -272,6 +272,38 @@ struct RenameMerchantView: View {
   }
 }
 
+struct CurrencyPickerView: View {
+  let options: [String]
+  let pick: (String) -> Void
+
+  static let footnote = "The amount stays the same."
+
+  var body: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 12) {
+        HListCard {
+          ForEach(Array(options.enumerated()), id: \.element) { i, code in
+            if i > 0 { HDivider(inset: .text16) }
+            Button { pick(code) } label: {
+              HListRow(leading: .none, title: code, trailing: .none)
+            }
+            .buttonStyle(HRowPressStyle())
+            .accessibilityIdentifier("txnCurrency.\(code)")
+          }
+        }
+        Text(Self.footnote)
+          .hType(.footnote).foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.horizontal, 4)
+      }
+      .padding(HSpacing.insetPage)
+    }
+    .background(HColor.sheetSurfaceLarge)
+    .navigationTitle("Currency")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
 struct TextLimit: Equatable {
   let scalars: Int
   let bytes: Int

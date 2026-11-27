@@ -77,6 +77,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case refundOf(txn: String, of: String?)
     case archived(txn: String, archived: Bool)
     case split(txn: String, lines: [SplitLine])
+    case currency(txn: String, currency: String)
     case budget(category: String, month: YearMonth, onward: Int64, assigned: Int64)
     case move(from: String?, to: String?, month: YearMonth, amount: Money, undoes: String)
     case occurrence(bill: String, due: LocalDate)
@@ -173,6 +174,13 @@ nonisolated struct LedgerEditAuthor: Sendable {
           txnID: id, parentVersion: row.version,
           parts: lines.map { (category: $0.categoryID, amountMinor: $0.amount.minor, note: $0.note.isEmpty ? nil : $0.note) })
       }
+    case .changeCurrency(let id, let code):
+      let row = try txn(id)
+      guard let shown = before.txn(id) else { throw Failure.notFound }
+      guard Self.takesCurrency(row), row.currency != code, CurrencyChange.options(for: shown, in: before).contains(code),
+        try offersCurrency(code)
+      else { throw Failure.refused(CurrencyChange.refusedText) }
+      try await build { a throws(AuthorError) in a.editTxn(txnID: id, parentVersion: row.version, currency: code) }
     case .resolveCopy(let id, let merge):
       let row = try txn(id)
       guard let other = row.copyOf else { throw Failure.notFound }
@@ -337,6 +345,16 @@ nonisolated struct LedgerEditAuthor: Sendable {
     return []
   }
 
+  static func takesCurrency(_ row: TxnRow) -> Bool {
+    !row.unparsed && row.supersededBy == nil && !row.heldCopy && row.provenance == "user" && row.homeSource != .stated
+  }
+
+  func offersCurrency(_ code: String) throws -> Bool {
+    if code == Money.home { return true }
+    guard ExchangeRates.isCurrencyCode(code) else { return false }
+    return try reader.rates().contains { $0.currency == code && $0.rateMicro != nil }
+  }
+
   static func paidDues(_ s: LedgerState, _ id: String) -> Set<CivilDate> {
     Set((s.bill(id)?.payments ?? []).compactMap { CivilDate(year: $0.due.year, month: $0.due.month, day: $0.due.day) })
   }
@@ -458,7 +476,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     }
     for inv in inverses {
       switch inv {
-      case .category(let t, _, _), .split(let t, _), .displayName(let t, _): rows[t] = try txn(t)
+      case .category(let t, _, _), .split(let t, _), .displayName(let t, _), .currency(let t, _): rows[t] = try txn(t)
       case .note(let t, _), .project(let t, _), .archived(let t, _), .refundOf(let t, _): rows[t] = try reader.txn(t)
       case .samePurchase(let t, _, _, _, _), .samePurchaseDeclined(let t), .copyReopened(let t): rows[t] = try txn(t)
       case .refile(let t, _, _, _, _, _): rows[t] = try reader.txn(t)
@@ -513,6 +531,9 @@ nonisolated struct LedgerEditAuthor: Sendable {
           a.split(
             txnID: t, parentVersion: row.version,
             parts: lines.map { (category: $0.categoryID, amountMinor: $0.amount.minor, note: $0.note.isEmpty ? nil : $0.note) })
+        case .currency(let t, let code):
+          guard let row = rows[t], row.currency != code, Self.takesCurrency(row) else { continue }
+          a.editTxn(txnID: t, parentVersion: row.version, currency: code)
         case .budget(let c, let month, let onward, let assigned):
           guard let m = CivilMonth(year: month.year, month: month.month) else { continue }
           a.setBudget(category: c, month: m, amountMinor: onward)

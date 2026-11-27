@@ -50,10 +50,12 @@ protocol TransactionModel: AnyObject, Observable {
   var categoryGroups: [CategoryGroup] { get }
   var projects: [(id: ProjectID, name: String)] { get }
   var merchantName: String { get }
+  var currencyOptions: [String] { get }
   func choose(_ category: CategoryID, alwaysUse: Bool)
   @discardableResult func setNote(_ note: String) -> Bool
   @discardableResult func rename(_ name: String) -> Bool
   @discardableResult func saveSplit(_ lines: [SplitLine]) -> Bool
+  @discardableResult func changeCurrency(_ currency: String) -> Bool
   func removeSplit()
   func toggleRefund()
   func markTransfer()
@@ -84,6 +86,11 @@ final class TransactionViewModel: TransactionModel {
 
   var categoryGroups: [CategoryGroup] { CategoryGroup.all(app.store.state) }
 
+  var currencyOptions: [String] {
+    let s = app.store.state
+    return s.txn(id).map { CurrencyChange.options(for: $0, in: s) } ?? []
+  }
+
   var projects: [(id: ProjectID, name: String)] {
     app.store.state.projects.filter { !$0.complete }.map { ($0.id, $0.name) }
   }
@@ -95,6 +102,7 @@ final class TransactionViewModel: TransactionModel {
   @discardableResult func setNote(_ note: String) -> Bool { app.perform(.setNote(id, note)) }
   @discardableResult func rename(_ name: String) -> Bool { app.perform(.renameMerchant(id, name)) }
   @discardableResult func saveSplit(_ lines: [SplitLine]) -> Bool { app.perform(.split(id, lines)) }
+  @discardableResult func changeCurrency(_ currency: String) -> Bool { app.perform(.changeCurrency(id, to: currency)) }
   func removeSplit() { app.perform(.split(id, [])) }
   func toggleRefund() { app.perform(.markRefund(id)) }
   func markTransfer() { app.perform(.markTransfer(id)) }

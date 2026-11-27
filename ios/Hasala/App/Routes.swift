@@ -29,7 +29,7 @@ enum ReviewRoute: Hashable {
 }
 
 enum TransactionRoute: Hashable {
-  case category, note, rename, split, project
+  case category, note, rename, split, project, currency
   case reviewReason(TxnReviewReason)
 }
 

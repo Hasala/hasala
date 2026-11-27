@@ -397,6 +397,10 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
         SortPatch.carried(&s, [t.groupRef])
       }
       return (lines.isEmpty ? "Split removed" : "Split into \(lines.count) categories", [.split(txn: id, lines: t.splits)])
+    case .changeCurrency(let id, let currency):
+      let old = s.txns[try index(id)].amount.currency
+      try s.changeCurrency(id, to: currency)
+      return (CurrencyChange.title(currency), [.currency(txn: id, currency: old)])
     case .archive(let id, let archived):
       if archived, s.unreadMail.contains(where: { $0.id == id }) || s.unreadTexts.contains(where: { $0.id == id }) {
         s.unreadMail.removeAll { $0.id == id }

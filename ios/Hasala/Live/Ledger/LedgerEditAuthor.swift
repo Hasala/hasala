@@ -77,7 +77,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case refundOf(txn: String, of: String?)
     case archived(txn: String, archived: Bool)
     case split(txn: String, lines: [SplitLine])
-    case currency(txn: String, currency: String)
+    case currency(txn: String, from: String, to: String)
     case budget(category: String, month: YearMonth, onward: Int64, assigned: Int64)
     case move(from: String?, to: String?, month: YearMonth, amount: Money, undoes: String)
     case occurrence(bill: String, due: LocalDate)
@@ -476,7 +476,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     }
     for inv in inverses {
       switch inv {
-      case .category(let t, _, _), .split(let t, _), .displayName(let t, _), .currency(let t, _): rows[t] = try txn(t)
+      case .category(let t, _, _), .split(let t, _), .displayName(let t, _), .currency(let t, _, _): rows[t] = try txn(t)
       case .note(let t, _), .project(let t, _), .archived(let t, _), .refundOf(let t, _): rows[t] = try reader.txn(t)
       case .samePurchase(let t, _, _, _, _), .samePurchaseDeclined(let t), .copyReopened(let t): rows[t] = try txn(t)
       case .refile(let t, _, _, _, _, _): rows[t] = try reader.txn(t)
@@ -531,9 +531,9 @@ nonisolated struct LedgerEditAuthor: Sendable {
           a.split(
             txnID: t, parentVersion: row.version,
             parts: lines.map { (category: $0.categoryID, amountMinor: $0.amount.minor, note: $0.note.isEmpty ? nil : $0.note) })
-        case .currency(let t, let code):
-          guard let row = rows[t], row.currency != code, Self.takesCurrency(row) else { continue }
-          a.editTxn(txnID: t, parentVersion: row.version, currency: code)
+        case .currency(let t, let from, let to):
+          guard let row = rows[t], row.currency == from, Self.takesCurrency(row) else { continue }
+          a.editTxn(txnID: t, parentVersion: row.version, currency: to)
         case .budget(let c, let month, let onward, let assigned):
           guard let m = CivilMonth(year: month.year, month: month.month) else { continue }
           a.setBudget(category: c, month: m, amountMinor: onward)

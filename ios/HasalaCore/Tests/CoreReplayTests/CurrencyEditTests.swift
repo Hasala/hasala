@@ -28,6 +28,29 @@ struct CurrencyEditTests {
     #expect(t.homeRateMicro == 24_500)
     #expect(t.version == 2)
     #expect(log.kinds.isEmpty)
+    #expect(log.state.anomalies.isEmpty && log.state.forks.isEmpty)
+  }
+
+  @Test("two currency edits of one version from two writers: one wins whole, with a fork notice and no anomaly")
+  func forkedEdits() throws {
+    var log = Log()
+    try log.blob(Self.home, Self.jpyRate, Self.usdRate)
+    try log.blob(ingest(1, id: Ids.t1, amount: "150000"))
+    try log.blob(Self.toCurrency("JPY", id: 10))
+    try log.blob(Self.toCurrency("USD", id: 11), as: Log.w2)
+    #expect(log.kinds.isEmpty)
+    #expect(log.state.forks.count == 1)
+    let fork = try #require(log.state.forks.first)
+    #expect(fork.entityKind == "txn" && fork.entityID == Ids.t1)
+    #expect(Set([fork.winnerOp, fork.loserOp]) == ["op-10", "op-11"])
+    let wonJPY = fork.winnerOp == "op-10"
+    let t = try #require(log.state.txns[Ids.t1])
+    #expect(t.currency == (wonJPY ? "JPY" : "USD"))
+    #expect(t.amountMinor == 150_000)
+    #expect(t.amountHomeMinor == (wonJPY ? 36_75 : 5_508_75))
+    #expect(t.homeSource == .rate)
+    #expect(t.homeRateMicro == (wonJPY ? 24_500 : 3_672_500))
+    #expect(log.state.pendingByCurrency.isEmpty)
   }
 
   @Test("with no rate the row waits for one, and a later rate fills it")

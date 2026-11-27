@@ -69,6 +69,48 @@ struct CurrencyChangeTests {
     for t in [split, transfer, bill, refund] { #expect(CurrencyChange.isEligible(t)) }
   }
 
+  @Test func aRowWithNoCurrencyIsNotOffered() {
+    var unread = Self.row("x", 0, "")
+    unread.archived = true
+    let s = Self.state([unread])
+    #expect(CurrencyChange.options(for: unread, in: s).isEmpty)
+    #expect(CurrencyChange.options(for: Self.row("y", 10_00, "dirham"), in: s).isEmpty)
+    let ledger = InMemoryLedger(state: s)
+    #expect(throws: ActionError.refused(CurrencyChange.refusedText)) { try ledger.apply(.changeCurrency("x", to: "AED")) }
+    #expect(ledger.state.txn("x")?.amount.currency == "")
+  }
+
+  @Test func theForeignRowOfAnOpenSamePurchaseQuestionIsNotOffered() {
+    let foreign = Self.row("u", 45_99, "USD", home: .some(168_90))
+    var home = Self.row("h", 170_00)
+    home.samePurchase = SamePurchaseMatch(of: "u")
+    var s = Self.state([foreign, home])
+    #expect(CurrencyChange.isEligible(foreign) && CurrencyChange.isAwaited(foreign, in: s))
+    #expect(CurrencyChange.options(for: foreign, in: s).isEmpty)
+    #expect(CurrencyChange.options(for: home, in: s).isEmpty)
+    let ledger = InMemoryLedger(state: s)
+    #expect(throws: ActionError.refused(CurrencyChange.refusedText)) { try ledger.apply(.changeCurrency("u", to: "AED")) }
+    #expect(ledger.state.txn("u")?.amount.currency == "USD")
+    let i = s.txns.firstIndex { $0.id == "h" }!
+    s.txns[i].samePurchase = nil
+    #expect(CurrencyChange.options(for: foreign, in: s) == ["AED", "JPY"])
+  }
+
+  @Test func theOriginalOfAHeldCopyIsNotOffered() {
+    let original = Self.row("a", 27_00)
+    var copy = Self.row("c", 27_00)
+    copy.heldCopy = HeldCopy(of: "a", fromOtherInbox: true)
+    var s = Self.state([original, copy])
+    #expect(CurrencyChange.isEligible(original) && CurrencyChange.isAwaited(original, in: s))
+    #expect(CurrencyChange.options(for: original, in: s).isEmpty)
+    #expect(CurrencyChange.options(for: copy, in: s).isEmpty)
+    let ledger = InMemoryLedger(state: s)
+    #expect(throws: ActionError.refused(CurrencyChange.refusedText)) { try ledger.apply(.changeCurrency("a", to: "JPY")) }
+    #expect(ledger.state.txn("a")?.amount == .aed(27_00))
+    s.txns.removeAll { $0.id == "c" }
+    #expect(CurrencyChange.options(for: original, in: s) == ["JPY", "USD"])
+  }
+
   @Test func theChangeKeepsTheNumberAndCountsItAtTheRate() throws {
     let ledger = InMemoryLedger(state: Self.state([Self.row("a", 1_500_00)]))
     let token = try #require(try ledger.apply(.changeCurrency("a", to: "JPY")))

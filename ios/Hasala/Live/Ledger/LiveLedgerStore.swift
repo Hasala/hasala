@@ -400,7 +400,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     case .changeCurrency(let id, let currency):
       let old = s.txns[try index(id)].amount.currency
       try s.changeCurrency(id, to: currency)
-      return (CurrencyChange.title(currency), [.currency(txn: id, currency: old)])
+      return (CurrencyChange.title(currency), [.currency(txn: id, from: currency, to: old)])
     case .archive(let id, let archived):
       if archived, s.unreadMail.contains(where: { $0.id == id }) || s.unreadTexts.contains(where: { $0.id == id }) {
         s.unreadMail.removeAll { $0.id == id }

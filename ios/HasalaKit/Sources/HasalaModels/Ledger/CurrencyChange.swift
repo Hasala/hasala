@@ -18,8 +18,12 @@ public enum CurrencyChange {
 
   public static func isEligible(_ t: Txn) -> Bool { block(t) == nil }
 
+  public static func isAwaited(_ t: Txn, in s: LedgerState) -> Bool {
+    s.txns.contains { $0.samePurchase?.of == t.id || $0.heldCopy?.of == t.id }
+  }
+
   public static func options(for t: Txn, in s: LedgerState) -> [String] {
-    guard isEligible(t) else { return [] }
+    guard isEligible(t), ExchangeRates.isCurrencyCode(t.amount.currency), !isAwaited(t, in: s) else { return [] }
     let rated = Set(s.rates.filter { $0.rateMicro != nil && ExchangeRates.isCurrencyCode($0.currency) }.map(\.currency))
     return ([Money.home] + rated.subtracting([Money.home]).sorted()).filter { $0 != t.amount.currency }
   }

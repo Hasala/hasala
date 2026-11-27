@@ -30,16 +30,20 @@ new home amount.
 **Rows that are not offered.** The sheet shows no Currency row for them, and the app writes
 nothing if an edit for one still arrives:
 
-- A held copy. It waits for the answer "merge or keep both", and it is compared with the
-  other row by its amount and currency.
-- A row that waits for a same-purchase answer. The question is "is this AED row the same
-  purchase as that foreign row", and a new currency would change the question.
+- A held copy, and the row that it is a copy of. The copy waits for the answer "merge or
+  keep both", and the two rows are compared by amount and currency. Only the copy carries
+  the mark (`heldCopy`), so `CurrencyChange.isAwaited` finds the other row.
+- The two rows of an open same-purchase question: the AED row that carries the question
+  (`samePurchase`), and the foreign row that it names. The question is "is this AED row the
+  same purchase as that foreign row", and a new currency on one of them would change it.
+- A row whose own currency is not a currency code. An unread bank email or text that the
+  person archived is such a row: it is in the list with no amount and no currency.
 - A row that was counted once with another row (a merged copy). It is archived and its
   amount is in the other row.
 - A row with a home amount that the bank stated. That figure belongs to the first currency.
   The fold drops it on a currency edit, so the bank's own figure would be lost.
 - An unparsed row. It has no amount and no currency yet, and the fold refuses a money edit
-  on it.
+  on it. The author examines the stored row for this, also when the screen state is wrong.
 - A row that a newer row replaced, and a row that the old ingest writer made. The fold
   refuses a money edit on them.
 
@@ -47,15 +51,31 @@ nothing if an edit for one still arrives:
 "this merchant is in yen", and it does not change other rows or later rows of that merchant.
 
 **No new op type.** The edit is a `txn_edited` op whose payload has only `currency`
-(`OpAuthor.editTxn(txnID:parentVersion:currency:)`). It has no `amount_minor`. Undo writes
-a second `txn_edited` with the first currency, when the row still has the new one. The home
-amount after an undo comes from the rate of that moment, not from the rate that the row had
-before.
+(`OpAuthor.editTxn(txnID:parentVersion:currency:)`). It has no `amount_minor`.
+
+**Undo.** The undo keeps the two currencies (`Inverse.currency(txn:from:to:)`). It writes a
+second `txn_edited` with the first currency only when the stored row still has the currency
+that the person picked and still takes a currency edit (`takesCurrency`). If another iPhone
+changed the currency again, or the row got a stated home amount in the meantime, Undo
+writes nothing. The mock does the same (`revertFields`). The home amount after an undo
+comes from the rate of that moment, not from the rate that the row had before.
 
 **Older builds.** The fold already reads `currency` in `txn_edited` (`applyMoneyEdit` in
 `Replay/Causal.swift`). A build from before this decision folds the op to the same state.
 It has no Currency row, but it shows the changed row correctly. The schema version does not
 change.
+
+## Known limits
+
+- The fold puts a row in its copy-candidate bucket when the row is ingested, and it does
+  not move the row when the currency changes (`Replay/V4/Duplicates.swift`,
+  `detectTransferCopy`). If the person changes the currency of a transfer notice before its
+  debit alert arrives, that alert can become a held copy of the notice. The fold is not
+  changed for this.
+- Undo does not examine if the first currency still has a rate. If its rate was removed,
+  the row has no home amount after the undo, until a rate is set.
+- If a later read of the same mail ever writes `txn_superseded`, the new row takes the
+  currency of the mail and the correction is lost.
 
 ## Where it is in the code
 

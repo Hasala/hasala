@@ -37,9 +37,11 @@ struct LiveCurrencyTests {
     return Live(a: a, author: author, store: store)
   }
 
-  static func manual(_ o: inout OpAuthor, minor: Int64 = 1_500_00, currency: String = "AED") throws(AuthorError) -> String {
+  static func manual(
+    _ o: inout OpAuthor, minor: Int64 = 1_500_00, currency: String = "AED", merchant: String = "Test Kiosk"
+  ) throws(AuthorError) -> String {
     try o.manualEntry(
-      amountMinor: minor, currency: currency, direction: "debit", localWallMs: 1_791_633_600_000, merchant: "Test Kiosk",
+      amountMinor: minor, currency: currency, direction: "debit", localWallMs: 1_791_633_600_000, merchant: merchant,
       category: "dining")
   }
 
@@ -136,8 +138,9 @@ struct LiveCurrencyTests {
 
   @Test func aHeldCopyKeepsItsCurrency() async throws {
     var copy = ""
+    var original = ""
     let l = try await Self.live(suite: "currency.held.tests") { o throws(AuthorError) in
-      try o.ingest(
+      original = try o.ingest(
         payload: LiveUndoTests.alert(grant: "u/mbx-a", message: "m1", at: "08:00:00"), ingestID: String(repeating: "c", count: 64))
       copy = try o.ingest(
         payload: LiveUndoTests.alert(grant: "u/mbx-b", message: "m2", at: "08:05:00"), ingestID: String(repeating: "d", count: 64))
@@ -149,6 +152,13 @@ struct LiveCurrencyTests {
     await #expect(throws: Self.refused) {
       try await l.author.author(.changeCurrency(copy, to: "USD"), before: l.store.state, today: MayaLedger.now.date)
     }
+    #expect(l.store.state.txn(copy)?.heldCopy?.of == original)
+    #expect(TransactionViewModel(app: AppModel(store: l.store), id: original).currencyOptions.isEmpty)
+    #expect(throws: ActionError.refused(CurrencyChange.refusedText)) { try l.store.apply(.changeCurrency(original, to: "USD")) }
+    await #expect(throws: Self.refused) {
+      try await l.author.author(.changeCurrency(original, to: "USD"), before: l.store.state, today: MayaLedger.now.date)
+    }
+    #expect(try l.a.projection.reader.txn(original)?.currency == "AED")
     var open = l.store.state
     let i = try #require(open.txns.firstIndex { $0.id == copy })
     open.txns[i].heldCopy = nil
@@ -175,6 +185,14 @@ struct LiveCurrencyTests {
     await #expect(throws: Self.refused) {
       try await l.author.author(.changeCurrency(home, to: "USD"), before: l.store.state, today: today)
     }
+    let asked = try l.a.context.store.pendingCount()
+    #expect(TransactionViewModel(app: AppModel(store: l.store), id: foreign).currencyOptions.isEmpty)
+    #expect(throws: ActionError.refused(CurrencyChange.refusedText)) { try l.store.apply(.changeCurrency(foreign, to: "AED")) }
+    await #expect(throws: Self.refused) {
+      try await l.author.author(.changeCurrency(foreign, to: "AED"), before: l.store.state, today: today)
+    }
+    #expect(try l.a.context.store.pendingCount() == asked)
+    #expect(try l.a.projection.reader.txn(foreign)?.currency == "USD")
     try l.store.apply(.resolveSamePurchase(home, same: true))
     try await Mapper.eventually { try l.a.projection.reader.txn(foreign)?.homeSource == .stated }
     await l.store.writesFinished()
@@ -207,6 +225,139 @@ struct LiveCurrencyTests {
     var stated = row
     stated.homeSource = .stated
     for r in [unparsed, superseded, held, ingest, stated] { #expect(!LedgerEditAuthor.takesCurrency(r)) }
+  }
+
+  @Test func anUnreadEmailIsNeverGivenACurrency() async throws {
+    var id = ""
+    var other = ""
+    let l = try await Self.live(suite: "currency.unparsed.tests") { o throws(AuthorError) in
+      let (payload, ingest) = UnreadMailFlowTests.unparsedPayload()
+      id = try o.ingest(payload: payload, ingestID: ingest)
+      other = try Self.manual(&o)
+    }
+    let today = MayaLedger.now.date
+    let stored = try #require(try l.a.projection.reader.txn(id))
+    #expect(stored.unparsed && stored.currency == "")
+    #expect(l.store.state.txn(id) == nil && l.store.state.unreadMail.contains { $0.id == id })
+    let pending = try l.a.context.store.pendingCount()
+    #expect(throws: ActionError.notFound) { try l.store.apply(.changeCurrency(id, to: "USD")) }
+    await #expect(throws: LedgerEditAuthor.Failure.notFound) {
+      try await l.author.author(.changeCurrency(id, to: "USD"), before: l.store.state, today: today)
+    }
+    var lying = l.store.state
+    var shown = try #require(lying.txn(other))
+    shown.id = id
+    lying.txns.append(shown)
+    #expect(CurrencyChange.options(for: shown, in: lying).contains("USD"))
+    await #expect(throws: Self.refused) { try await l.author.author(.changeCurrency(id, to: "USD"), before: lying, today: today) }
+
+    try l.store.apply(.archive(id, true))
+    try await Mapper.eventually { try l.a.projection.reader.txn(id)?.archived != nil }
+    await l.store.writesFinished()
+    let archived = try l.a.context.store.pendingCount()
+    #expect(archived == pending + 1)
+    #expect(l.store.state.txn(id)?.archived == true)
+    #expect(TransactionViewModel(app: AppModel(store: l.store), id: id).currencyOptions.isEmpty)
+    #expect(throws: ActionError.refused(CurrencyChange.refusedText)) { try l.store.apply(.changeCurrency(id, to: "USD")) }
+    await #expect(throws: Self.refused) {
+      try await l.author.author(.changeCurrency(id, to: "USD"), before: l.store.state, today: today)
+    }
+    #expect(try l.a.context.store.pendingCount() == archived)
+    #expect(try l.a.projection.reader.txn(id)?.currency == "")
+  }
+
+  @Test func undoLeavesACurrencyThatChangedAgain() async throws {
+    var id = ""
+    let l = try await Self.live(suite: "currency.undo.again.tests") { o throws(AuthorError) in
+      try o.setRate(currency: "JPY", rateMicro: 24_500)
+      id = try Self.manual(&o)
+    }
+    var failed = false
+    l.store.onWriteFailed = { failed = true }
+    let token = try #require(try l.store.apply(.changeCurrency(id, to: "JPY")))
+    try await Mapper.eventually { try l.a.projection.reader.txn(id)?.currency == "JPY" }
+    await l.store.writesFinished()
+    #expect(l.store.undos[token.id] == [.currency(txn: id, from: "JPY", to: "AED")])
+    let head = try #require(try l.a.projection.reader.txn(id)).version
+    let row = id
+    let peer = try #require(
+      try l.a.observer.stamps.build(try await l.a.observer.authorContext()) { o throws(AuthorError) in
+        o.editTxn(txnID: row, parentVersion: head, currency: "USD")
+      })
+    try await l.a.outbox.enqueue(peer.ops)
+    try await l.a.observer.reproject()
+    #expect(try l.a.projection.reader.txn(id)?.currency == "USD")
+    let pending = try l.a.context.store.pendingCount()
+    l.store.undo(token)
+    await l.store.writesFinished()
+    #expect(try l.a.context.store.pendingCount() == pending)
+    let after = try #require(try l.a.projection.reader.txn(id))
+    #expect(after.currency == "USD" && after.version == head + 1 && after.amountMinor == 1_500_00)
+    #expect(!failed)
+  }
+
+  @Test func undoLeavesARowThatNoLongerTakesACurrency() async throws {
+    var id = ""
+    var home = ""
+    let l = try await Self.live(suite: "currency.undo.stated.tests") { o throws(AuthorError) in
+      id = try Self.manual(&o, minor: 25_00)
+      home = try Self.manual(&o, minor: 93_00, merchant: "Other Kiosk")
+    }
+    var failed = false
+    l.store.onWriteFailed = { failed = true }
+    let token = try #require(try l.store.apply(.changeCurrency(id, to: "USD")))
+    try await Mapper.eventually { try l.a.projection.reader.txn(id)?.currency == "USD" }
+    await l.store.writesFinished()
+    let head = try #require(try l.a.projection.reader.txn(id)).version
+    let (foreign, counted) = (id, home)
+    let peer = try #require(
+      try l.a.observer.stamps.build(try await l.a.observer.authorContext()) { o throws(AuthorError) in
+        o.confirmSamePurchase(
+          foreignID: foreign, foreignVersion: head, homeID: counted, homeAmountMinor: 93_00, foreignMinor: 25_00,
+          foreignCurrency: "USD")
+      })
+    try await l.a.outbox.enqueue(peer.ops)
+    try await l.a.observer.reproject()
+    let stated = try #require(try l.a.projection.reader.txn(id))
+    #expect(stated.currency == "USD" && stated.homeSource == .stated && stated.amountHomeMinor == 93_00)
+    #expect(!LedgerEditAuthor.takesCurrency(stated))
+    let pending = try l.a.context.store.pendingCount()
+    l.store.undo(token)
+    await l.store.writesFinished()
+    #expect(try l.a.context.store.pendingCount() == pending)
+    let after = try #require(try l.a.projection.reader.txn(id))
+    #expect(after.currency == "USD" && after.homeSource == .stated && after.amountHomeMinor == 93_00)
+    #expect(after.version == stated.version)
+    #expect(!failed)
+  }
+
+  @Test func aSplitsFoldedSharesMatchTheOnesShownAtOnce() async throws {
+    var id = ""
+    let l = try await Self.live(suite: "currency.split.tests") { o throws(AuthorError) in
+      try o.setRate(currency: "JPY", rateMicro: 24_500)
+      id = try Self.manual(&o, minor: 342_15)
+    }
+    var failed = false
+    l.store.onWriteFailed = { failed = true }
+    try l.store.apply(
+      .split(id, [SplitLine(id: 0, categoryID: "groceries", amount: .aed(297_00)), SplitLine(id: 1, categoryID: "dining", amount: .aed(45_15))]))
+    try await Mapper.eventually { try l.a.projection.reader.txn(id)?.split == true }
+    await l.store.writesFinished()
+    #expect(l.store.state.txn(id)?.splits.count == 2)
+    var optimistic = l.store.state
+    try optimistic.changeCurrency(id, to: "JPY")
+    let shown = try #require(optimistic.txn(id))
+    try l.store.apply(.changeCurrency(id, to: "JPY"))
+    #expect(l.store.state.txn(id) == shown)
+    try await Mapper.eventually { try l.a.projection.reader.txn(id)?.currency == "JPY" }
+    await l.store.writesFinished()
+    let folded = try #require(l.store.state.txn(id))
+    #expect(folded.amount == shown.amount && folded.homeMinor == shown.homeMinor)
+    #expect(folded.splits.count == 2)
+    #expect(folded.splits.map(\.amount) == shown.splits.map(\.amount))
+    #expect(folded.splits.map(\.homeMinor) == shown.splits.map(\.homeMinor))
+    #expect(folded.splits.compactMap(\.homeMinor).reduce(0, +) == folded.homeMinor)
+    #expect(!failed)
   }
 
   @Test func theSheetOffersACurrencyOnlyWhenThereIsAChoice() throws {

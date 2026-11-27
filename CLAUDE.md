@@ -1164,6 +1164,14 @@ the approval of the owner for that deployment.
   tester to the TestFlight beta by hand. The server has no App Store Connect
   automation, no `HASALA_TESTFLIGHT_MODE` and no `services.hasala.asc`
   options. Refer to `docs/decisions/testflight-manual.md`.
+- **Transaction currency (2026-11-27; proposed, the owner confirms in review)**: the
+  transaction sheet can change a row's currency, because many bank texts have no currency
+  mark. The choices are AED and the currencies with a set rate. The amount is not changed
+  (every currency is stored in hundredths); only the home amount is computed again. The
+  two rows of a held copy and of an open same-purchase question, rows counted once, rows
+  with a stated home amount and rows with no currency (unparsed) are not offered. There is no memory for a merchant and no new op type: the edit is
+  `txn_edited` with only `currency`, which older builds already fold. Refer to
+  `docs/decisions/transaction-currency.md`.
 - **Outbound mail**: Cloudflare Email Service.
 - **Hosting (QA)**: the QA host, behind Cloudflare Tunnel. hasalad listens
   only on loopback. It has no TLS code.

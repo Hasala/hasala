@@ -242,6 +242,10 @@ public final class InMemoryLedger: LedgerStore {
         s.txns[i].merchant = name
       }
       title = "Renamed to \(name)"
+    case .changeCurrency(let id, let currency):
+      try s.changeCurrency(id, to: currency)
+      touched.insert(id)
+      title = CurrencyChange.title(currency)
     case .split(let id, let lines):
       guard let t = s.txn(id) else { throw .notFound }
       if !lines.isEmpty, !TransactionEngine.splitAddsUp(lines, total: t.amount) { throw .splitDoesNotAddUp }
@@ -635,6 +639,11 @@ public final class InMemoryLedger: LedgerStore {
     field(\.projectID)
     field(\.note)
     field(\.archived)
+    if t.amount == after.amount, t.amount != before.amount {
+      let home = (t.homeMinor, t.homeSource, t.homeRateMicro)
+      t.amount = before.amount
+      (t.homeMinor, t.homeSource, t.homeRateMicro) = home
+    }
     field(\.homeMinor)
     field(\.homeSource)
     field(\.homeRateMicro)

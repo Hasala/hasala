@@ -54,6 +54,10 @@ struct TransactionSheet: View {
             if model.rename($0) { app.router.transaction.removeAll() }
           }
         case .split: SplitEditorView(model: model) { app.router.transaction.removeAll() }
+        case .currency:
+          CurrencyPickerView(options: model.currencyOptions) {
+            if model.changeCurrency($0) { app.router.transaction.removeAll() }
+          }
         case .project:
           if let d = model.detail {
             ProjectPickerView(app: app, txn: d.id) { app.router.transaction.removeAll() }
@@ -210,6 +214,18 @@ struct TransactionSheet: View {
 
       HDivider(inset: .none)
       KeyValueRow("Account", value: d.account ?? "Not set", placeholder: d.account == nil)
+
+      if !model.currencyOptions.isEmpty {
+        HDivider(inset: .none)
+        Button { push(.currency) } label: {
+          KeyValueRow("Currency", value: d.amount.currency, chevron: true).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Currency, \(d.amount.currency)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("txn.currency")
+      }
 
       HDivider(inset: .none)
       if d.canEditNote {

@@ -9,6 +9,7 @@ public enum LedgerEdit: Sendable, Hashable {
   case fileRefund(TxnID, into: CategoryID, of: TxnID?)
   case setNote(TxnID, String)
   case renameMerchant(TxnID, String)
+  case changeCurrency(TxnID, to: String)
   case split(TxnID, [SplitLine])
   case archive(TxnID, Bool)
   case resolveCopy(TxnID, merge: Bool)
